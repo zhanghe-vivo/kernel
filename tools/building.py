@@ -207,7 +207,6 @@ def PrepareBuilding(env, root_directory, has_libcpu=False, remove_components = [
         env['LINK'] = rtconfig.LINK
     if exec_path:
         env.PrependENVPath('PATH', rtconfig.EXEC_PATH)
-    env['ASCOM']= env['ASPPCOM']
 
     if GetOption('strict-compiling'):
         STRICT_FLAGS = ''
@@ -289,18 +288,18 @@ def PrepareBuilding(env, root_directory, has_libcpu=False, remove_components = [
     if rtconfig.PLATFORM in ['gcc'] and str(env['LINKFLAGS']).find('nano.specs') != -1:
         env.AppendUnique(CPPDEFINES = ['_REENT_SMALL'])
 
-    attach_global_macros = GetOption('global-macros')
-    if attach_global_macros:
-        attach_global_macros = attach_global_macros.split(',')
-        if isinstance(attach_global_macros, list):
-            for config in attach_global_macros:
+    add_rtconfig = GetOption('add_rtconfig')
+    if add_rtconfig:
+        add_rtconfig = add_rtconfig.split(',')
+        if isinstance(add_rtconfig, list):
+            for config in add_rtconfig:
                 if isinstance(config, str):
-                    AddDepend(attach_global_macros)
+                    AddDepend(add_rtconfig)
                     env.Append(CFLAGS=' -D' + config, CXXFLAGS=' -D' + config, AFLAGS=' -D' + config)
                 else:
-                    print('--global-macros arguments are illegal!')
+                    print('add_rtconfig arguements are illegal!')
         else:
-            print('--global-macros arguments are illegal!')
+            print('add_rtconfig arguements are illegal!')
 
     if GetOption('genconfig'):
         from genconf import genconfig
@@ -317,7 +316,7 @@ def PrepareBuilding(env, root_directory, has_libcpu=False, remove_components = [
             menuconfig(Rtt_Root)
             exit(0)
 
-    if GetOption('pyconfig-silent'):
+    if GetOption('pyconfig_silent'):
         from menuconfig import guiconfig_silent
         guiconfig_silent(Rtt_Root)
         exit(0)
@@ -375,8 +374,6 @@ def PrepareBuilding(env, root_directory, has_libcpu=False, remove_components = [
                            variant_dir=kernel_vdir + '/examples/utest/testcases',
                            duplicate=0))
 
-    objs.extend(SConscript(Rtt_Root + '/rs_src/SConscript',
-                    variant_dir=kernel_vdir + '/rs_src', duplicate=0))
     return objs
 
 def PrepareModuleBuilding(env, root_directory, bsp_directory):
@@ -785,7 +782,6 @@ def DoBuilding(target, objects):
 
         return False
 
-    PreBuilding()
     objects = one_list(objects)
 
     program = None
@@ -876,9 +872,6 @@ def GenTargetProject(program = None):
     if GetOption('target') == 'vsc':
         from vsc import GenerateVSCode
         GenerateVSCode(Env)
-        if GetOption('cmsispack'):
-            from vscpyocd import GenerateVSCodePyocdConfig
-            GenerateVSCodePyocdConfig(GetOption('cmsispack'))
 
     if GetOption('target') == 'cdk':
         from cdk import CDKProject
