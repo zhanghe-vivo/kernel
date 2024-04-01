@@ -1,0 +1,8 @@
+config USE_RUST
+    bool "Use Rust for building"
+    default n
+
+config USE_RUST_CLOCK
+    bool
+    default y
+    depends on USE_RUST
