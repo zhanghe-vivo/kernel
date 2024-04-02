@@ -206,7 +206,6 @@
 /* RT-Thread Utestcases */
 
 #define USE_RUST
-#define USE_RUST_CLOCK
 
 /* RT-Thread online packages */
 
