@@ -1,6 +1,11 @@
 #![no_std]
 
+#[macro_use]
+mod static_assert;
+
 extern crate cty;
+
+mod clock;
 
 use core::panic::PanicInfo;
 use core::sync::atomic::{self, Ordering};
