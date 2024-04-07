@@ -52,16 +52,6 @@ wait
 
 parse_config
 
-echo "是否clean？(y/n)"
-read clean_config
-sleep 1 &
-if [ "$clean_config" = "y" ]; then
-    scons --clean
-    cd ../../rs_src
-    cargo clean
-    cd ../bsp/$path
-fi
-
 if [[ "$macros" == *"USE_RUST"* ]]; then
 # if grep -q "$macros" <<< "USE_RUST"; then
     cd ../../rs_src

@@ -1,15 +1,11 @@
 #![no_std]
-#![feature(link_llvm_intrinsics)]
 
 #[macro_use]
 mod static_assert;
-#[macro_use]
-mod caller_address;
 
 extern crate cty;
 
 mod clock;
-mod cpu;
 
 use core::panic::PanicInfo;
 use core::sync::atomic::{self, Ordering};
