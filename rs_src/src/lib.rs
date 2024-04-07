@@ -1,8 +1,9 @@
 #![no_std]
-#![feature(link_llvm_intrinsics)]
 
 #[macro_use]
 mod static_assert;
+
+#[cfg(feature = "RT_DEBUGING_SPINLOCK")]
 #[macro_use]
 mod caller_address;
 

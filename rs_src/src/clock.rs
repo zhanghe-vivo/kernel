@@ -6,11 +6,19 @@ use core::ptr::addr_of;
 use core::ptr::addr_of_mut;
 use rt_bindings::*;
 
-#[cfg(feature = "RT_USING_SMP")]
-static mut RT_TICK: rt_tick_t = (*rt_cpu_index(0)).tick;
-
 #[cfg(not(feature = "RT_USING_SMP"))]
-static mut RT_TICK: rt_tick_t = 0;
+static mut RT_TICK: rt_atomic_t = 0;
+
+fn tick_addr_mut() -> *mut rt_atomic_t {
+    unsafe {
+        #[cfg(feature = "RT_USING_SMP")]
+        return addr_of_mut!((*rt_cpu_index(0)).tick);
+
+        #[cfg(not(feature = "RT_USING_SMP"))]
+        return addr_of_mut!(RT_TICK);
+    }
+}
+
 
 #[cfg(all(feature = "RT_USING_HOOK", feature = "RT_HOOK_USING_FUNC_PTR"))]
 static mut RT_TICK_HOOK: Option<unsafe extern "C" fn()> = None;
@@ -27,10 +35,7 @@ pub extern "C" fn rt_tick_sethook(hook: unsafe extern "C" fn()) {
 #[no_mangle]
 pub extern "C" fn rt_tick_get() -> rt_tick_t {
     unsafe {
-        let level = rt_hw_interrupt_disable();
-        let tick = core::ptr::read_volatile(addr_of!(RT_TICK));
-        rt_hw_interrupt_enable(level);
-        tick
+        return rt_atomic_load(tick_addr_mut()) as rt_tick_t;
     }
 }
 
@@ -38,9 +43,7 @@ pub extern "C" fn rt_tick_get() -> rt_tick_t {
 #[no_mangle]
 pub extern "C" fn rt_tick_set(tick: rt_tick_t) {
     unsafe {
-        let level = rt_hw_interrupt_disable();
-        core::ptr::write_volatile(addr_of_mut!(RT_TICK), tick);
-        rt_hw_interrupt_enable(level);
+        rt_atomic_store(tick_addr_mut(), tick as i32);
     }
 }
 
@@ -52,35 +55,31 @@ pub extern "C" fn rt_tick_increase() {
 
         #[cfg(all(feature = "RT_USING_HOOK", feature = "RT_HOOK_USING_FUNC_PTR"))]
         {
-            if let Some(hook) = unsafe { RT_TICK_HOOK } {
-                unsafe {
-                    hook();
-                }
+            if let Some(hook) = RT_TICK_HOOK {
+                hook();
             }
         }
 
-        let level = rt_hw_interrupt_disable();
-
-        #[cfg(feature = "RT_USING_SMP")]
-        {
-            (*rt_cpu_self()).tick += 1;
-        }
-
-        core::ptr::write_volatile(addr_of_mut!(RT_TICK), RT_TICK + 1);
+        rt_atomic_add(tick_addr_mut() as *mut i32, 1);
 
         /* check time slice */
-        let thread = rt_thread_self();
-        (*thread).remaining_tick -= 1;
-
-        if (*thread).remaining_tick == 0 {
+        let level = rt_hw_interrupt_disable();
+        let current_thread = rt_thread_self();
+        (*current_thread).remaining_tick -= 1;
+        if (*current_thread).remaining_tick == 0 {
             /* change to initialized tick */
-            (*thread).remaining_tick = (*thread).init_tick;
-            (*thread).stat |= RT_THREAD_STAT_YIELD as u8;
-
+            (*current_thread).remaining_tick = (*current_thread).init_tick;
+            (*current_thread).stat |= RT_THREAD_STAT_YIELD as u8;
             rt_hw_interrupt_enable(level);
             rt_schedule();
         } else {
             rt_hw_interrupt_enable(level);
+        }
+
+        /* check timer */
+        #[cfg(feature = "RT_USING_SMP")]
+        if rt_hw_cpu_id() != 0 {
+            return;
         }
 
         rt_timer_check();

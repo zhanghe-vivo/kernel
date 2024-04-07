@@ -11,10 +11,14 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <msh.h>
+#include <finsh.h>
 
 int main(void)
 {
     printf("Hello RT-Thread!\n");
+
+    msh_exec("utest_run",11);
 
     return 0;
 }

@@ -53,4 +53,4 @@ cmake-build-debug
 
 rs_src/target
 rs_src/Cargo.lock
-
+*log.txt

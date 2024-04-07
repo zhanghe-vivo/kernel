@@ -3,22 +3,58 @@ mod rt_bindings {
 }
 
 use core::ptr;
+use core::mem;
 use rt_bindings::*;
 
-#[cfg(feature = "RT_USING_DEBUG")]
-static mut CPUS_CRITICAL_LEVEL: rt_base_t = 0;
+#[cfg(feature = "RT_USING_SMP")]
+static mut CPUS: [rt_cpu; RT_CPUS_NR as usize] = unsafe { mem::zeroed() };
 
 #[cfg(feature = "RT_USING_SMP")]
-static mut CPUS: [rt_cpu; RT_CPUS_NR] = [rt_cpu {}; RT_CPUS_NR];
+#[no_mangle]
+static mut _cpus_lock: rt_hw_spinlock_t =  unsafe { mem::zeroed() };
 
+// Disables preemption for the CPU.
 #[cfg(feature = "RT_USING_SMP")]
-static mut CPUS_LOCK: rt_hw_spinlock_t =  {};
+fn cpu_preempt_disable() {
+    unsafe {
+        /* disable interrupt */
+        let level = rt_hw_local_irq_disable();
 
-#[cfg(all(feature = "RT_USING_SMP", feature = "RT_DEBUGING_SPINLOCK"))]
-static CPUS_LOCK_OWNER: *mut rt_thread = 0;
+        let current_thread = rt_thread_self();
+        if current_thread == ptr::null_mut() {
+            rt_hw_local_irq_enable(level);
+            return;
+        }
 
-#[cfg(all(feature = "RT_USING_SMP", feature = "RT_DEBUGING_SPINLOCK"))]
-static CPUS_LOCK_PC: usize = 0;
+        /* lock scheduler for local cpu */
+        (*current_thread).scheduler_lock_nest += 1;
+
+        /* enable interrupt */
+        rt_hw_local_irq_enable(level);
+    }
+}
+
+/// Enables scheduler for the CPU.
+#[cfg(feature = "RT_USING_SMP")]
+fn cpu_preempt_enable() {
+    unsafe {
+        /* disable interrupt */
+        let level = rt_hw_local_irq_disable();
+
+        let current_thread = rt_thread_self();
+        if current_thread == ptr::null_mut() {
+            rt_hw_local_irq_enable(level);
+            return;
+        }
+
+        /* unlock scheduler for local cpu */
+        (*current_thread).scheduler_lock_nest -= 1;
+
+        rt_schedule();
+        /* enable interrupt */
+        rt_hw_local_irq_enable(level);
+    }
+}
 
 /// Initialize a static spinlock object.
 ///
@@ -32,9 +68,9 @@ static CPUS_LOCK_PC: usize = 0;
 /// // Initialize a spinlock
 /// let mut spinlock = Spinlock::new();
 /// ```
-#[cfg(feature = "RT_USING_SMP")]
 #[no_mangle]
 pub extern "C" fn rt_spin_lock_init(lock: *mut rt_spinlock) {
+    #[cfg(feature = "RT_USING_SMP")]
     unsafe { rt_hw_spin_lock_init(&mut (*lock).lock) };
 }
 
@@ -47,14 +83,17 @@ pub extern "C" fn rt_spin_lock_init(lock: *mut rt_spinlock) {
 ///
 /// * `lock` - a pointer to the spinlock.
 ///
-#[cfg(feature = "RT_USING_SMP")]
 #[no_mangle]
 pub extern "C" fn rt_spin_lock(lock: *mut rt_spinlock) {
     unsafe {
+        #[cfg(feature = "RT_USING_SMP")]
+        {
+            cpu_preempt_disable();
+            rt_hw_spin_lock(&mut (*lock).lock);
+        }
+
+        #[cfg(not(feature = "RT_USING_SMP"))]
         rt_enter_critical();
-        rt_hw_spin_lock(&mut (*lock).lock);
-        #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
-        rt_spin_lock_debug(lock);
     }
 }
 
@@ -64,16 +103,17 @@ pub extern "C" fn rt_spin_lock(lock: *mut rt_spinlock) {
 ///
 /// * `lock` - a pointer to the spinlock.
 ///
-#[cfg(feature = "RT_USING_SMP")]
 #[no_mangle]
 pub extern "C" fn rt_spin_unlock(lock: *mut rt_spinlock) {
     unsafe {
-        let mut critical_level: rt_base_t = 0;
-        #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
-        rt_spin_unlock_debug(lock, &mut critical_level);
-    
-        rt_hw_spin_unlock(&mut (*lock).lock);
-        rt_exit_critical_safe(critical_level);
+        #[cfg(feature = "RT_USING_SMP")]
+        {
+            rt_hw_spin_unlock(&mut (*lock).lock);
+            cpu_preempt_enable();
+        }
+
+        #[cfg(not(feature = "RT_USING_SMP"))]
+        rt_exit_critical();
     }
 }
 
@@ -90,19 +130,19 @@ pub extern "C" fn rt_spin_unlock(lock: *mut rt_spinlock) {
 ///
 /// Returns current CPU interrupt status.
 ///
-#[cfg(feature = "RT_USING_SMP")]
 #[no_mangle]
 pub extern "C" fn rt_spin_lock_irqsave(lock: *mut rt_spinlock) -> rt_base_t {
-    let level: rt_base_t;
-    unsafe {
-        level = rt_hw_local_irq_disable();
-        rt_enter_critical();
-        rt_hw_spin_lock(&mut (*lock).lock);
-
-        #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
-        RT_SPIN_LOCK_DEBUG(lock);
+    #[cfg(feature = "RT_USING_SMP")] {
+        cpu_preempt_disable();
+        unsafe {
+            let level = rt_hw_local_irq_disable();
+            rt_hw_spin_lock(&mut (*lock).lock);
+            level
+        }
     }
-    level
+
+    #[cfg(not(feature = "RT_USING_SMP"))]
+    unsafe { return rt_hw_interrupt_disable(); }
 }
 
 /// This function will unlock the spinlock and then restore current CPU interrupt status, will unlock the thread scheduler.
@@ -112,19 +152,17 @@ pub extern "C" fn rt_spin_lock_irqsave(lock: *mut rt_spinlock) -> rt_base_t {
 /// * `lock` - a pointer to the spinlock.
 /// * `level` - interrupt status returned by rt_spin_lock_irqsave().
 ///
-#[cfg(feature = "RT_USING_SMP")]
 #[no_mangle]
 pub extern "C" fn rt_spin_unlock_irqrestore(lock: *mut rt_spinlock, level: rt_base_t) {
+    #[cfg(feature = "RT_USING_SMP")]
     unsafe {
-        let mut critical_level: rt_base_t = 0;
-
-        #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
-        RT_SPIN_UNLOCK_DEBUG(lock, &mut critical_level);
-
         rt_hw_spin_unlock(&mut (*lock).lock);
         rt_hw_local_irq_enable(level);
-        rt_exit_critical_safe(critical_level);
+        cpu_preempt_enable();
     }
+
+    #[cfg(not(feature = "RT_USING_SMP"))]
+    unsafe { rt_hw_interrupt_enable(level);}
 }
 
 /// This function will return current CPU object.
@@ -136,7 +174,7 @@ pub extern "C" fn rt_spin_unlock_irqrestore(lock: *mut rt_spinlock, level: rt_ba
 #[cfg(feature = "RT_USING_SMP")]
 #[no_mangle]
 pub extern "C" fn rt_cpu_self() -> *mut rt_cpu {
-    &CPUS[rt_hw_cpu_id() as usize]
+    unsafe { ptr::addr_of_mut!(CPUS[rt_hw_cpu_id() as usize]) }
 }
 
 /// This function will return the CPU object corresponding to the index.
@@ -151,8 +189,8 @@ pub extern "C" fn rt_cpu_self() -> *mut rt_cpu {
 ///
 #[cfg(feature = "RT_USING_SMP")]
 #[no_mangle]
-pub extern "C" fn rt_cpu_index(index: c_int) -> *mut rt_cpu {
-    &CPUS[index as usize]
+pub extern "C" fn rt_cpu_index(index: cty::c_int) -> *mut rt_cpu {
+    unsafe { ptr::addr_of_mut!(CPUS[index as usize]) }
 }
 
 /// This function will lock all cpus's scheduler and disable local irq.
@@ -160,25 +198,20 @@ pub extern "C" fn rt_cpu_index(index: c_int) -> *mut rt_cpu {
 #[cfg(feature = "RT_USING_SMP")]
 #[no_mangle]
 pub extern "C" fn rt_cpus_lock() -> rt_base_t {
-    let level = rt_hw_local_irq_disable();
-    let current_thread = *(rt_cpu_self()).current_thread;
-    if current_thread != ptr::null() {
-        // TODO: 是否要将rt的atomic实现封装为rust的atomic
-        let lock_nest = rt_atomic_load(current_thread.cpus_lock_nest);
-        rt_atomic_add(current_thread.cpus_lock_nest, 1);
+    unsafe {
+        let level = rt_hw_local_irq_disable();
+        let current_thread = (*(rt_cpu_self())).current_thread;
+        if current_thread != ptr::null_mut() {
+            let lock_nest = (*current_thread).cpus_lock_nest;
+            (*current_thread).cpus_lock_nest += 1;
 
-        if lock_nest == 0 {
-            rt_enter_critical();
-            rt_hw_spin_lock(&_cpus_lock);
-            #[cfg(feature = "RT_USING_DEBUG")]
-            CPUS_CRITICAL_LEVEL = rt_critical_level();
-            #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
-            CPUS_LOCK_OWNER = current_thread;
-            CPUS_LOCK_PC = caller_address!();
+            if lock_nest == 0 {
+                (*current_thread).scheduler_lock_nest += 1;
+                rt_hw_spin_lock(ptr::addr_of_mut!(_cpus_lock));
+            }
         }
+        level
     }
-
-    level
 }
 
 /// This function will restore all cpus's scheduler and restore local irq.
@@ -186,23 +219,40 @@ pub extern "C" fn rt_cpus_lock() -> rt_base_t {
 #[cfg(feature = "RT_USING_SMP")]
 #[no_mangle]
 pub extern "C" fn rt_cpus_unlock(level: rt_base_t) {
-    let current_thread = *(rt_cpu_self()).current_thread;
+    unsafe {
+        let current_thread = (*(rt_cpu_self())).current_thread;
 
-    if current_thread != ptr::null() {
-        assert!(rt_atomic_load(current_thread.cpus_lock_nest) > 0);
-        rt_atomic_sub(current_thread.cpus_lock_nest, 1);
+        if current_thread != ptr::null_mut() {
+            assert!((*current_thread).cpus_lock_nest > 0);
+            (*current_thread).cpus_lock_nest -= 1;
 
-        if current_thread.cpus_lock_nest == 0 {
-            #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
-            _cpus_lock_owner = __OWNER_MAGIC;
-            _cpus_lock_pc = RT_NULL;
-            #[cfg(feature = "RT_USING_DEBUG")]
-            let critical_level = CPUS_CRITICAL_LEVEL;
-            CPUS_CRITICAL_LEVEL = 0;
-            rt_hw_spin_unlock(&_cpus_lock);
-            rt_exit_critical_safe(critical_level);
+            if (*current_thread).cpus_lock_nest == 0 {
+                (*current_thread).scheduler_lock_nest -= 1;
+                rt_hw_spin_unlock(ptr::addr_of_mut!(_cpus_lock));
+            }
         }
+        rt_hw_local_irq_enable(level);
     }
-    rt_hw_local_irq_enable(level);
 }
 
+/// This function is invoked by scheduler.
+/// It will restore the lock state to whatever the thread's counter expects.
+/// If target thread not locked the cpus then unlock the cpus lock.
+///
+/// thread is a pointer to the target thread.
+#[cfg(feature = "RT_USING_SMP")]
+#[no_mangle]
+pub extern "C" fn rt_cpus_lock_status_restore(thread: *mut rt_thread) {
+    unsafe {
+        let pcpu = rt_cpu_self();
+
+        #[cfg(all(feature = "ARCH_MM_MMU", feature = "RT_USING_SMART"))]
+        lwp_aspace_switch(thread);
+        
+        
+        (*pcpu).current_thread = thread;
+        if thread != ptr::null_mut() && (*thread).cpus_lock_nest == 0 {
+            rt_hw_spin_unlock(ptr::addr_of_mut!(_cpus_lock));
+        }
+    }
+}

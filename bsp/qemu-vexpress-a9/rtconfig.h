@@ -7,6 +7,8 @@
 /* RT-Thread Kernel */
 
 #define RT_NAME_MAX 8
+#define RT_USING_SMP
+#define RT_CPUS_NR 2
 #define RT_ALIGN_SIZE 8
 #define RT_THREAD_PRIORITY_256
 #define RT_THREAD_PRIORITY_MAX 256
@@ -17,6 +19,7 @@
 #define RT_USING_IDLE_HOOK
 #define RT_IDLE_HOOK_LIST_SIZE 4
 #define IDLE_THREAD_STACK_SIZE 4096
+#define SYSTEM_THREAD_STACK_SIZE 4096
 #define RT_USING_TIMER_SOFT
 #define RT_TIMER_THREAD_PRIO 4
 #define RT_TIMER_THREAD_STACK_SIZE 1024
@@ -196,6 +199,9 @@
 
 /* Utilities */
 
+#define RT_USING_UTEST
+#define UTEST_THR_STACK_SIZE 4096
+#define UTEST_THR_PRIORITY 20
 #define RT_USING_RESOURCE_ID
 #define RT_USING_ADT
 #define RT_USING_ADT_AVL
@@ -204,6 +210,35 @@
 #define RT_USING_ADT_REF
 
 /* RT-Thread Utestcases */
+
+#define RT_USING_UTESTCASES
+
+/* Utest Self Testcase */
+
+#define UTEST_SELF_PASS_TC
+
+/* Kernel Testcase */
+
+#define UTEST_MEMHEAP_TC
+#define UTEST_SMALL_MEM_TC
+#define UTEST_IRQ_TC
+#define UTEST_SEMAPHORE_TC
+#define UTEST_EVENT_TC
+#define UTEST_TIMER_TC
+#define UTEST_MUTEX_TC
+#define UTEST_MAILBOX_TC
+#define UTEST_THREAD_TC
+
+/* CPP11 Testcase */
+
+
+/* Utest Serial Testcase */
+
+
+/* RTT Posix Testcase */
+
+
+/* Memory Management Subsytem Testcase */
 
 #define USE_RUST
 
