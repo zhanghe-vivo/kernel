@@ -3,7 +3,7 @@
 // need to add #![feature(link_llvm_intrinsics)]
 
 #![feature(link_llvm_intrinsics)]
-extern {
+extern "C" {
     #[link_name = "llvm.returnaddress"]
     fn return_address(a: i32) -> *const u8;
 }

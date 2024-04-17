@@ -19,7 +19,6 @@ fn tick_addr_mut() -> *mut rt_atomic_t {
     }
 }
 
-
 #[cfg(all(feature = "RT_USING_HOOK", feature = "RT_HOOK_USING_FUNC_PTR"))]
 static mut RT_TICK_HOOK: Option<unsafe extern "C" fn()> = None;
 

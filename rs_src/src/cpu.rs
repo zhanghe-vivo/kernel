@@ -2,8 +2,8 @@ mod rt_bindings {
     include!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/rt_bindings.rs"));
 }
 
-use core::ptr;
 use core::mem;
+use core::ptr;
 use rt_bindings::*;
 
 #[cfg(feature = "RT_USING_SMP")]
@@ -11,7 +11,7 @@ static mut CPUS: [rt_cpu; RT_CPUS_NR as usize] = unsafe { mem::zeroed() };
 
 #[cfg(feature = "RT_USING_SMP")]
 #[no_mangle]
-static mut _cpus_lock: rt_hw_spinlock_t =  unsafe { mem::zeroed() };
+static mut _cpus_lock: rt_hw_spinlock_t = unsafe { mem::zeroed() };
 
 // Disables preemption for the CPU.
 #[cfg(feature = "RT_USING_SMP")]
@@ -71,7 +71,9 @@ fn cpu_preempt_enable() {
 #[no_mangle]
 pub extern "C" fn rt_spin_lock_init(lock: *mut rt_spinlock) {
     #[cfg(feature = "RT_USING_SMP")]
-    unsafe { rt_hw_spin_lock_init(&mut (*lock).lock) };
+    unsafe {
+        rt_hw_spin_lock_init(&mut (*lock).lock)
+    };
 }
 
 /// This function will lock the spinlock, will lock the thread scheduler.
@@ -132,7 +134,8 @@ pub extern "C" fn rt_spin_unlock(lock: *mut rt_spinlock) {
 ///
 #[no_mangle]
 pub extern "C" fn rt_spin_lock_irqsave(lock: *mut rt_spinlock) -> rt_base_t {
-    #[cfg(feature = "RT_USING_SMP")] {
+    #[cfg(feature = "RT_USING_SMP")]
+    {
         cpu_preempt_disable();
         unsafe {
             let level = rt_hw_local_irq_disable();
@@ -142,7 +145,9 @@ pub extern "C" fn rt_spin_lock_irqsave(lock: *mut rt_spinlock) -> rt_base_t {
     }
 
     #[cfg(not(feature = "RT_USING_SMP"))]
-    unsafe { return rt_hw_interrupt_disable(); }
+    unsafe {
+        return rt_hw_interrupt_disable();
+    }
 }
 
 /// This function will unlock the spinlock and then restore current CPU interrupt status, will unlock the thread scheduler.
@@ -162,7 +167,9 @@ pub extern "C" fn rt_spin_unlock_irqrestore(lock: *mut rt_spinlock, level: rt_ba
     }
 
     #[cfg(not(feature = "RT_USING_SMP"))]
-    unsafe { rt_hw_interrupt_enable(level);}
+    unsafe {
+        rt_hw_interrupt_enable(level);
+    }
 }
 
 /// This function will return current CPU object.
@@ -248,8 +255,7 @@ pub extern "C" fn rt_cpus_lock_status_restore(thread: *mut rt_thread) {
 
         #[cfg(all(feature = "ARCH_MM_MMU", feature = "RT_USING_SMART"))]
         lwp_aspace_switch(thread);
-        
-        
+
         (*pcpu).current_thread = thread;
         if thread != ptr::null_mut() && (*thread).cpus_lock_nest == 0 {
             rt_hw_spin_unlock(ptr::addr_of_mut!(_cpus_lock));
