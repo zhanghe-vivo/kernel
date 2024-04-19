@@ -758,7 +758,7 @@ struct rt_cpu
     rt_uint32_t priority_group;
 #endif /* RT_THREAD_PRIORITY_MAX > 32 */
 
-    rt_atomic_t tick;
+    rt_tick_t tick;
 };
 
 #endif /* RT_USING_SMP */
