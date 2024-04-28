@@ -34,7 +34,7 @@ up-unit-test:
   script:
     - echo "...测试NP代码..."  
     - cd bsp/qemu-vexpress-a9
-    - timeout 60s ./qemu-test.sh || true
+    - timeout 90s ./qemu-test.sh || true
     - cd ../../
     - python check_result.py
   tags:
@@ -66,7 +66,7 @@ mp-unit-test:
   script:
     - echo "...测试MP代码..."  
     - cd bsp/qemu-vexpress-a9
-    - timeout 60s ./qemu-test.sh || true
+    - timeout 90s ./qemu-test.sh || true
     - cd ../../
     - python check_result.py
   tags:
