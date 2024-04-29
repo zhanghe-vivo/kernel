@@ -1,12 +1,19 @@
-mod rt_bindings {
-    include!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/rt_bindings.rs"));
-}
-
-use core::ptr::addr_of;
+use crate::rt_bindings::*;
+use crate::rt_object_hook_call;
 use core::ptr::addr_of_mut;
 use core::ptr::read_volatile;
 use core::ptr::write_volatile;
-use rt_bindings::*;
+
+#[cfg(all(feature = "RT_USING_HOOK", feature = "RT_HOOK_USING_FUNC_PTR"))]
+static mut RT_TICK_HOOK: Option<unsafe extern "C" fn()> = None;
+
+#[cfg(all(feature = "RT_USING_HOOK", feature = "RT_HOOK_USING_FUNC_PTR"))]
+#[no_mangle]
+pub extern "C" fn rt_tick_sethook(hook: unsafe extern "C" fn()) {
+    unsafe {
+        RT_TICK_HOOK = Some(hook);
+    }
+}
 
 #[cfg(not(feature = "RT_USING_SMP"))]
 static mut RT_TICK: rt_tick_t = 0;
@@ -18,17 +25,6 @@ fn tick_addr_mut() -> *mut rt_tick_t {
 
         #[cfg(not(feature = "RT_USING_SMP"))]
         return addr_of_mut!(RT_TICK);
-    }
-}
-
-#[cfg(all(feature = "RT_USING_HOOK", feature = "RT_HOOK_USING_FUNC_PTR"))]
-static mut RT_TICK_HOOK: Option<unsafe extern "C" fn()> = None;
-
-#[cfg(all(feature = "RT_USING_HOOK", feature = "RT_HOOK_USING_FUNC_PTR"))]
-#[no_mangle]
-pub extern "C" fn rt_tick_sethook(hook: unsafe extern "C" fn()) {
-    unsafe {
-        RT_TICK_HOOK = Some(hook);
     }
 }
 
@@ -56,12 +52,7 @@ pub extern "C" fn rt_tick_increase() {
     unsafe {
         assert!(rt_interrupt_get_nest() > 0);
 
-        #[cfg(all(feature = "RT_USING_HOOK", feature = "RT_HOOK_USING_FUNC_PTR"))]
-        {
-            if let Some(hook) = RT_TICK_HOOK {
-                hook();
-            }
-        }
+        rt_object_hook_call!(RT_TICK_HOOK);
 
         let level = rt_hw_interrupt_disable();
 

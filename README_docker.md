@@ -1,6 +1,6 @@
 ## use docker
 ```bash
-sudo docker build -t compile_rtt -f dockerfile .
+sudo docker build -t compile_rtt -f Dockerfile .
 sudo docker images
 sudo docker run -d --user "$(id -u)":"$(id -g)" -v "$PWD":/usr/src/rtt -w /usr/src/rtt compile_rtt tail -f /dev/null
 sudo docker exec -it compile_rtt bash

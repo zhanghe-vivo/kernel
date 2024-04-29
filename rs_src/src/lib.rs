@@ -11,6 +11,9 @@ extern crate cty;
 
 mod clock;
 mod cpu;
+mod object;
+mod rt_bindings;
+mod rt_list;
 
 use core::panic::PanicInfo;
 use core::sync::atomic::{self, Ordering};

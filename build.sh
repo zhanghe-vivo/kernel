@@ -9,7 +9,11 @@ parse_config(){
         if echo "$line" | grep -q "^#define"; then
             macro_name=$(echo "$line" | awk '{print $2}')
             macro_value=$(echo "$line" | awk '{print $3}')
-            if ! [ -n "$macro_value" ]; then
+            
+            # need RT_NAME_MAX as feature when bigger than 0
+            if [ "$macro_name" = "RT_NAME_MAX" ] && [ "$macro_value" != "0" ]; then
+                macros="$macros $macro_name"
+            elif ! [ -n "$macro_value" ]; then
                 macros="$macros $macro_name"   
             fi
         fi

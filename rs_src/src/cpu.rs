@@ -1,10 +1,6 @@
-mod rt_bindings {
-    include!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/rt_bindings.rs"));
-}
-
+use crate::rt_bindings::*;
 use core::mem;
 use core::ptr;
-use rt_bindings::*;
 
 #[cfg(feature = "RT_USING_SMP")]
 static mut CPUS: [rt_cpu; RT_CPUS_NR as usize] = unsafe { mem::zeroed() };
