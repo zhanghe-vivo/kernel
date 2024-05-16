@@ -1,28 +1,39 @@
+#![feature(panic_info_message)]
+#![allow(internal_features)]
+#![feature(core_intrinsics)]
 #![no_std]
 
 #[macro_use]
 mod static_assert;
+#[macro_use]
+mod print;
 
 #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
 #[macro_use]
 mod caller_address;
 
-extern crate cty;
-
+mod rt_bindings;
 mod clock;
 mod cpu;
 mod object;
-mod rt_bindings;
 mod rt_list;
+mod sync;
+mod alloc;
 
-use core::panic::PanicInfo;
 use core::sync::atomic::{self, Ordering};
 
-// TODO: write a panic by rtthread
-#[inline(never)]
 #[panic_handler]
-fn panic(_info: &PanicInfo) -> ! {
+fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
+    println!("{}", info);
+
+    unsafe {
+        // rt_bindings::rt_backtrace(); // backtrace fall into infinite loop
+        rt_bindings::rt_hw_cpu_reset(); // may return
+    }
+    #[cfg(debug_assertions)]
     loop {
         atomic::compiler_fence(Ordering::SeqCst);
     }
+    #[cfg(not(debug_assertions))]
+    unsafe { core::intrinsics::abort() }
 }

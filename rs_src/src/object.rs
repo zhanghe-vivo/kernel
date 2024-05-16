@@ -1,14 +1,14 @@
 use crate::container_of;
 use crate::rt_bindings::*;
-use core::ptr;
+use core::{ptr, ffi};
 
-type DestroyFunc = extern "C" fn(*mut cty::c_void) -> rt_err_t;
+type DestroyFunc = extern "C" fn(*mut ffi::c_void) -> rt_err_t;
 
 #[derive(Debug, Copy, Clone)]
 struct RtCustomObject {
     parent: rt_object,
     destroy: Option<DestroyFunc>,
-    data: *mut cty::c_void,
+    data: *mut ffi::c_void,
 }
 
 /// Type to define object_info for the number of _object_container items.
@@ -314,7 +314,6 @@ pub extern "C" fn rt_object_get_information(
 #[no_mangle]
 pub extern "C" fn rt_object_get_length(object_type: rt_object_class_type) -> usize {
     let mut count = 0;
-    let mut node: *const rt_list_node = core::ptr::null();
     let information = rt_object_get_information(object_type);
 
     if !information.is_null() {
@@ -356,8 +355,6 @@ pub extern "C" fn rt_object_get_pointers(
     }
 
     let mut index = 0usize;
-
-    let mut node: *const rt_list_node = core::ptr::null();
     let information = rt_object_get_information(object_type);
 
     if !information.is_null() {
@@ -369,7 +366,7 @@ pub extern "C" fn rt_object_get_pointers(
                 &((*information).object_list) as *const rt_list_node as *mut rt_list_node,
                 {
                     let object = crate::rt_list_entry!(node, rt_object, list);
-                    let offset_pointer = unsafe { pointers.add(index) };
+                    let offset_pointer = pointers.add(index);
                     *offset_pointer = object as *mut _;
                     index += 1;
                     if index >= maxlen {
@@ -400,7 +397,7 @@ pub extern "C" fn rt_object_get_pointers(
 pub extern "C" fn rt_object_init(
     object: *mut rt_object,
     type_: rt_object_class_type,
-    name: *const u8,
+    name: *const ffi::c_char,
 ) {
     let information = rt_object_get_information(type_);
     assert!(!information.is_null());
@@ -414,7 +411,7 @@ pub extern "C" fn rt_object_init(
                 break;
             }
             let obj = crate::rt_list_entry!(node, rt_object, list);
-            assert!(!ptr::eq(obj, object));
+            assert!(!ptr::eq(obj as *mut rt_object, object));
             node = (*node).next;
         }
         rt_exit_critical();
@@ -451,7 +448,7 @@ pub extern "C" fn rt_object_init(
             (*module)
                 .object_list
                 .insert_after(&(*object).list as *const _ as *mut _);
-            (*object).module_id = module as *mut cty::c_void;
+            (*object).module_id = module as *mut ffi::c_void;
         }
     } else {
         // insert object into information object list
@@ -462,14 +459,14 @@ pub extern "C" fn rt_object_init(
         }
     }
 
-    #[cfg(not(feature = "RT_USING_MODULE"))]
     unsafe {
+        #[cfg(not(feature = "RT_USING_MODULE"))]
         (*information)
             .object_list
             .insert_after(&(*object).list as *const _ as *mut _);
-    }
 
-    unsafe { rt_hw_interrupt_enable(level) };
+        rt_hw_interrupt_enable(level);
+    }
 }
 
 /// This function will detach a static object from the object system,
@@ -500,7 +497,7 @@ pub extern "C" fn rt_object_detach(object: *mut rt_object) {
 /// Returns the allocated object.
 #[cfg(feature = "RT_USING_HEAP")]
 #[no_mangle]
-pub extern "C" fn rt_object_allocate(type_: rt_object_class_type, name: *const u8) -> rt_object_t {
+pub extern "C" fn rt_object_allocate(type_: rt_object_class_type, name: *const ffi::c_char) -> rt_object_t {
     // get object information
     let information = rt_object_get_information(type_);
     assert!(!information.is_null());
@@ -513,7 +510,7 @@ pub extern "C" fn rt_object_allocate(type_: rt_object_class_type, name: *const u
     }
 
     unsafe {
-        rt_memset(object as *mut cty::c_void, 0x0, (*information).object_size);
+        rt_memset(object as *mut ffi::c_void, 0x0, (*information).object_size);
         (*object).type_ = type_ as u8;
         (*object).flag = 0;
         #[cfg(feature = "RT_NAME_MAX")]
@@ -540,7 +537,7 @@ pub extern "C" fn rt_object_allocate(type_: rt_object_class_type, name: *const u
             (*module)
                 .object_list
                 .insert_after(&(*object).list as *const _ as *mut _);
-            (*object).module_id = module as *mut cty::c_void;
+            (*object).module_id = module as *mut ffi::c_void;
         }
     } else {
         // insert object into information object list
@@ -551,17 +548,14 @@ pub extern "C" fn rt_object_allocate(type_: rt_object_class_type, name: *const u
         }
     }
 
-    #[cfg(not(feature = "RT_USING_MODULE"))]
     unsafe {
+        #[cfg(not(feature = "RT_USING_MODULE"))]
         (*information)
             .object_list
             .insert_after(&(*object).list as *const _ as *mut _);
-    }
 
-    unsafe {
         rt_hw_interrupt_enable(level);
     }
-
     object
 }
 
@@ -586,7 +580,7 @@ pub extern "C" fn rt_object_delete(object: rt_object_t) {
         // remove from old list
         (*object).list.remove();
         rt_hw_interrupt_enable(level);
-        rt_free(object as *mut cty::c_void);
+        rt_free(object as *mut ffi::c_void);
     }
 }
 
@@ -608,8 +602,8 @@ pub extern "C" fn rt_object_delete(object: rt_object_t) {
 #[cfg(feature = "RT_USING_HEAP")]
 #[no_mangle]
 pub extern "C" fn rt_custom_object_create(
-    name: *const cty::c_char,
-    data: *mut cty::c_void,
+    name: *const ffi::c_char,
+    data: *mut ffi::c_void,
     data_destroy: DestroyFunc,
 ) -> rt_object_t {
     let cobj = rt_object_allocate(rt_object_class_type_RT_Object_Class_Custom, name)
@@ -673,10 +667,10 @@ pub extern "C" fn rt_object_is_systemobject(object: rt_object_t) -> rt_bool_t {
     let obj_type = unsafe { (*object).type_ };
 
     if (obj_type & rt_object_class_type_RT_Object_Class_Static as u8) != 0 {
-        return RT_TRUE as cty::c_int;
+        return RT_TRUE as ffi::c_int;
     }
 
-    return RT_FALSE as cty::c_int;
+    return RT_FALSE as ffi::c_int;
 }
 
 /// This function will return the type of object without
@@ -715,7 +709,7 @@ pub extern "C" fn rt_object_get_type(object: rt_object_t) -> rt_uint8_t {
 ///
 /// This function shall not be invoked in interrupt status.
 #[no_mangle]
-pub extern "C" fn rt_object_find(name: *const cty::c_char, type_: rt_uint8_t) -> rt_object_t {
+pub extern "C" fn rt_object_find(name: *const ffi::c_char, type_: rt_uint8_t) -> rt_object_t {
     let information = rt_object_get_information(type_ as u32);
 
     /* parameter check */
@@ -726,26 +720,23 @@ pub extern "C" fn rt_object_find(name: *const cty::c_char, type_: rt_uint8_t) ->
     /* which is invoke in interrupt status */
     crate::rt_debug_not_in_interrupt!();
 
-    let mut object: rt_object_t = ptr::null_mut();
-    let mut node: *mut rt_list_node = ptr::null_mut();
     unsafe {
         /* enter critical */
         rt_enter_critical();
-
         /* try to find object */
         crate::rt_list_for_each!(
             node,
             &(*information).object_list as *const rt_list_node as *mut rt_list_node,
             {
-                object = crate::rt_list_entry!(node, rt_object, list) as *mut rt_object;
+                let object = crate::rt_list_entry!(node, rt_object, list) as *mut rt_object;
                 if rt_strncmp(
-                    (*object).name.as_ptr() as *const cty::c_char,
+                    (*object).name.as_ptr() as *const ffi::c_char,
                     name,
                     RT_NAME_MAX,
                 ) == 0
                 {
                     /* leave critical */
-                    unsafe { rt_exit_critical() };
+                    rt_exit_critical();
                     return object;
                 }
             }
@@ -776,7 +767,7 @@ pub extern "C" fn rt_object_find(name: *const cty::c_char, type_: rt_uint8_t) ->
 #[no_mangle]
 pub extern "C" fn rt_object_get_name(
     object: rt_object_t,
-    name: *const cty::c_char,
+    name: *const ffi::c_char,
     name_size: rt_uint8_t,
 ) -> rt_err_t {
     let mut result: rt_err_t = -(RT_EINVAL as i32);

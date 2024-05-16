@@ -1,15 +1,16 @@
 ## use docker
 ```bash
-sudo docker build -t compile_rtt -f Dockerfile .
+sudo docker build -t compile_rtt .
 sudo docker images
 sudo docker run -d --user "$(id -u)":"$(id -g)" -v "$PWD":/usr/src/rtt -w /usr/src/rtt compile_rtt tail -f /dev/null
 sudo docker exec -it compile_rtt bash
 ```
 
-## use containerd and nerdctl
-https://github.com/containerd/nerdctl
-
+## use colima and nerdctl
 ```bash
+brew install colima
+colima start --arch aarch64 --vm-type=vz --vz-rosetta --cpu 2 --memory 4 --disk 60 --runtime containerd
+colima nerdctl install
 nerdctl build -t compile_rtt .
 nerdctl images
 nerdctl run -d --user "$(id -u)":"$(id -g)" -v "$PWD":/usr/src/rtt -w /usr/src/rtt compile_rtt tail -f /dev/null

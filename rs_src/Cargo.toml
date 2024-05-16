@@ -12,18 +12,49 @@ path = "src/lib.rs"
 
 [build-dependencies]
 bindgen = "0.69.4"
-cty = "0.2.2"
+#cty = "0.2.2"
 
 [dependencies]
-cty = "0.2.2"
+#cty = "0.2.2"
+log = "0.4"
+#heapless = "0.8.0"
+#slabmalloc = { version = "0.11.0", default-features = false, optional = true }
+#linked_list_allocator = { version = "0.10.5", default-features = false, optional = true }
+#buddy_system_allocator = { version = "0.9.1", default-features = false, optional = true }
+#rlsf = { version = "0.2.1", default-features = false, optional = true }
+#const-default = { version = "1.0.0", default-features = false, optional = true }
 
 [profile.dev]
-panic = 'abort'
+opt-level = 0
+debug = true
+split-debuginfo = '...'  # Platform-specific.
+strip = false
+debug-assertions = true
+overflow-checks = true
+lto = false
+incremental = true
+codegen-units = 256
+rpath = false
 
 [profile.release]
-panic = 'abort'
+opt-level = 3 # use 'z' or 's' for opt code size
+debug = false
+split-debuginfo = '...'  # Platform-specific.
+strip = true
+debug-assertions = false
+overflow-checks = false
+lto = true
+incremental = false
+codegen-units = 16
+rpath = false
 
 [features]
+default = ["llff",]
+#slab = []
+#buddy = []
+llff = []
+#tlsf = []
+# RT-thread config
 RT_USING_SMP = []
 RT_USING_HOOK = []
 USE_RUST = []
@@ -153,3 +184,4 @@ UTEST_TIMER_TC = []
 UTEST_IRQ_TC = []
 RT_NAME_MAX = []
 RT_USING_MODULE = []
+RT_USING_HEAP_ISR = []
