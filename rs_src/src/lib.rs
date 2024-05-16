@@ -25,9 +25,7 @@ use core::sync::atomic::{self, Ordering};
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
     println!("{}", info);
-
     unsafe {
-        // rt_bindings::rt_backtrace(); // backtrace fall into infinite loop
         rt_bindings::rt_hw_cpu_reset(); // may return
     }
     #[cfg(debug_assertions)]

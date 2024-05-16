@@ -183,10 +183,6 @@ impl Heap {
 
     pub unsafe fn realloc(&mut self, ptr: NonNull<u8>, layout: Layout, new_size: usize) -> Option<NonNull<u8>> {
         let new_layout = Layout::from_size_align(new_size, layout.align()).unwrap();
-        if new_size == 0 {
-            return self.allocate_first_fit(new_layout);
-        }
-        
         if let Some(new_ptr) = self.allocate_first_fit(new_layout) {
             let old_size = self.holes.get_allocated_size(ptr);
             core::ptr::copy(ptr.as_ptr(), new_ptr.as_ptr(), old_size);

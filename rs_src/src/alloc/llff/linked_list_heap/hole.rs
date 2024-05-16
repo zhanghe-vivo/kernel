@@ -57,8 +57,7 @@ impl Cursor {
     // to accomodate any new holes and allocation. On error, it returns the cursor
     // unmodified, and has made no changes to the linked list of holes.
     fn split_current(self, required_layout: Layout) -> Result<(*mut u8, usize), Self> {
-        // delete front_padding as we need allocated header, 
-        // let front_padding;
+        let hole_addr_u8 = self.hole.as_ptr().cast::<u8>();
         let alloc_ptr;
         let mut alloc_size;
         let back_padding;
@@ -67,7 +66,6 @@ impl Cursor {
         // live to the point where we start doing pointer surgery below.
         {
             let hole_size = self.current().size;
-            let hole_addr_u8 = self.hole.as_ptr().cast::<u8>();
             let required_size = required_layout.size();
             let required_align = required_layout.align();
             let size_with_header = align_up_size(required_size + mem::size_of::<HoleInfo>(), required_layout.align());
@@ -117,7 +115,9 @@ impl Cursor {
 
                 // Will the proposed new back padding actually fit in the old hole slot?
                 if back_padding_end <= hole_end {
-                    alloc_size = size_with_header;
+                    unsafe {
+                        alloc_size = (back_padding_start.offset_from(hole_addr_u8)) as usize;
+                    }
                     // Yes, it does! Place a back padding node
                     Some(HoleInfo {
                         addr: back_padding_start,
@@ -128,14 +128,6 @@ impl Cursor {
                     None
                 }
             };
-
-            // save hole size in the Header
-            unsafe {
-                hole_addr_u8.cast::<usize>().write(alloc_size);
-                // save hole addr before alloc_ptr
-                let hole_addr_ptr = alloc_ptr.wrapping_sub(mem::size_of::<*mut u8>());
-                hole_addr_ptr.cast::<*const u8>().write(hole_addr_u8);
-            }
         }
 
         ////////////////////////////////////////////////////////////////////////////
@@ -178,6 +170,13 @@ impl Cursor {
                 // Then connect the OLD previous to the NEW single padding
                 prev.as_mut().next = Some(NonNull::new_unchecked(singlepad_ptr));
             },
+        }
+
+        // save new hole size in the Header, save hole addr before alloc_ptr
+        unsafe {
+            hole_addr_u8.cast::<usize>().write(alloc_size);
+            let hole_addr_ptr = alloc_ptr.wrapping_sub(mem::size_of::<*mut u8>());
+            hole_addr_ptr.cast::<*const u8>().write(hole_addr_u8);
         }
 
         // Well that went swimmingly! Hand off the allocation, with surgery performed successfully!
@@ -359,8 +358,8 @@ impl HoleList {
 
         loop {
             match cursor.split_current(aligned_layout) {
-                Ok((ptr, _len)) => {
-                    return Ok((NonNull::new(ptr).ok_or(())?, _len, aligned_layout.size()));
+                Ok((ptr, hole_size)) => {
+                    return Ok((NonNull::new(ptr).ok_or(())?, hole_size, aligned_layout.size()));
                 }
                 Err(curs) => {
                     cursor = curs.next().ok_or(())?;

@@ -85,6 +85,10 @@ pub extern "C" fn rt_system_heap_init(begin_addr: *mut ffi::c_void, end_addr: *m
 
 #[no_mangle]
 pub extern "C" fn rt_malloc(size: usize) -> *mut ffi::c_void {
+    if core::intrinsics::unlikely(size == 0) {
+        return ptr::null_mut() as *mut ffi::c_void;
+    }
+
     let layout = Layout::from_size_align(size, RT_ALIGN_SIZE as usize).unwrap();
     if let Some(alloc_ptr) = HEAP.alloc(layout) {
         alloc_ptr.as_ptr() as *mut ffi::c_void
@@ -95,11 +99,24 @@ pub extern "C" fn rt_malloc(size: usize) -> *mut ffi::c_void {
 }
 #[no_mangle]
 pub extern "C" fn rt_free(ptr: *mut ffi::c_void) {
+    if core::intrinsics::unlikely(ptr.is_null()) {
+        return;
+    }
+
     let layout = Layout::from_size_align(0, RT_ALIGN_SIZE as usize).unwrap();
     unsafe { HEAP.dealloc(ptr as *mut u8, layout) };
 }
 #[no_mangle]
 pub extern "C" fn rt_realloc(ptr: *mut ffi::c_void, newsize: usize) -> *mut ffi::c_void {
+    if newsize == 0 {
+        rt_free(ptr);
+        return ptr::null_mut() as *mut ffi::c_void;
+    }
+
+    if ptr.is_null() {
+        return rt_malloc(newsize);
+    }
+    
     let layout = Layout::from_size_align(0, RT_ALIGN_SIZE as usize).unwrap();
     if let Some(alloc_ptr) = unsafe { HEAP.realloc(ptr as *mut u8, layout, newsize) } {
         alloc_ptr.as_ptr() as *mut ffi::c_void
