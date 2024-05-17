@@ -41,9 +41,9 @@ pub const fn align_up_size(addr: usize, align: usize) -> usize {
 
 /// Align upwards. Returns the smallest x with alignment `align`
 /// so that x >= addr. The alignment must be a power of 2.
+#[inline]
 pub fn align_up(addr: *mut u8, align: usize) -> *mut u8 {
-    let offset = addr.align_offset(align);
-    addr.wrapping_add(offset)
+    align_up_size(addr as usize, align) as *mut u8
 }
 
 /// Returns the offset of the address within the alignment.

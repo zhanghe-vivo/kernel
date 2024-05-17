@@ -383,28 +383,30 @@ impl HoleList {
     /// The function performs exactly the same layout adjustments as [`allocate_first_fit`] and
     /// returns the aligned layout.
     pub unsafe fn deallocate(&mut self, ptr: NonNull<u8>, layout: Layout) -> (usize, usize) {
-        let aligned_layout = Self::align_layout(layout).unwrap();
-        
         // read HoleInfo in allocated header.
         let hole_addr_ptr = ptr.as_ptr().wrapping_sub(mem::size_of::<*mut u8>());
         let hole_addr_u8 : *const u8 = hole_addr_ptr.cast::<*const u8>().read();
-        let header_ptr = hole_addr_u8.cast::<HoleInfo>();
-        let info: HoleInfo = header_ptr.read();
-        let required_size = info.size - ptr.as_ptr().offset_from(hole_addr_u8) as usize;
+        let header_ptr = hole_addr_u8.cast::<usize>();
+        let hole_size = header_ptr.read();
 
-        debug_assert!(required_size >= aligned_layout.size(), "hole required_size is small than layout size");
-        deallocate(self, hole_addr_u8 as *mut u8, info.size);
-        (info.size, required_size)
+        debug_assert!(ptr.as_ptr() > hole_addr_u8 as *mut u8, "hole required_size is small than layout size");
+        let required_size = hole_size - ptr.as_ptr().offset_from(hole_addr_u8) as usize;
+        debug_assert!(required_size >= layout.size(), "hole required_size is small than layout size");
+
+        deallocate(self, hole_addr_u8 as *mut u8, hole_size);
+        (hole_size, required_size)
     }
 
     pub unsafe fn get_allocated_size(&mut self, ptr: NonNull<u8>) -> usize {
         // read HoleInfo in allocated header.
         let hole_addr_ptr = ptr.as_ptr().wrapping_sub(mem::size_of::<*mut u8>());
         let hole_addr_u8 : *const u8 = hole_addr_ptr.cast::<*const u8>().read();
-        let header_ptr = hole_addr_u8.cast::<HoleInfo>();
-        let info: HoleInfo = header_ptr.read();
+        debug_assert!(ptr.as_ptr() > hole_addr_u8 as *mut u8, "hole required_size is small than layout size");
 
-        info.size - ptr.as_ptr().offset_from(hole_addr_u8) as usize
+        let header_ptr = hole_addr_u8.cast::<usize>();
+        let hole_size = header_ptr.read();
+
+        hole_size - ptr.as_ptr().offset_from(hole_addr_u8) as usize
     }
 
     /// Returns the minimal allocation size. Smaller allocations or deallocations are not allowed.
