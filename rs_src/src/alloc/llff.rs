@@ -75,14 +75,24 @@ impl Heap {
         (*heap.get_mut()).deallocate(NonNull::new_unchecked(ptr), layout);
     }
 
-    pub unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> Option<NonNull<u8>> {
+    pub unsafe fn realloc(
+        &self,
+        ptr: *mut u8,
+        layout: Layout,
+        new_size: usize,
+    ) -> Option<NonNull<u8>> {
         let mut heap = self.heap.lock();
         (*heap.get_mut()).realloc(NonNull::new_unchecked(ptr), layout, new_size)
     }
 
     pub fn memory_info(&self) -> (usize, usize, usize, usize) {
         let mut heap = self.heap.lock();
-        ((*heap.get_mut()).size(), (*heap.get_mut()).used(), (*heap.get_mut()).required(), (*heap.get_mut()).maximum())
+        (
+            (*heap.get_mut()).size(),
+            (*heap.get_mut()).used(),
+            (*heap.get_mut()).required(),
+            (*heap.get_mut()).maximum(),
+        )
     }
 }
 

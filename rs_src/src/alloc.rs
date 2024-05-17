@@ -1,14 +1,14 @@
 #![warn(missing_docs)]
-use core::{ffi, ptr};
-use core::alloc::Layout;
 use crate::rt_bindings::*;
+use core::alloc::Layout;
+use core::{ffi, ptr};
 
 // #[cfg(feature = "buddy")]
 // pub use buddy::Heap as BuddyHeap;
 #[cfg(feature = "llff")]
 pub mod llff;
 #[cfg(feature = "llff")]
-pub use llff::Heap as Heap;
+pub use llff::Heap;
 // #[cfg(feature = "tlsf")]
 // pub use tlsf::Heap as TlsfHeap;
 
@@ -116,7 +116,7 @@ pub extern "C" fn rt_realloc(ptr: *mut ffi::c_void, newsize: usize) -> *mut ffi:
     if ptr.is_null() {
         return rt_malloc(newsize);
     }
-    
+
     let layout = Layout::from_size_align(0, RT_ALIGN_SIZE as usize).unwrap();
     if let Some(alloc_ptr) = unsafe { HEAP.realloc(ptr as *mut u8, layout, newsize) } {
         alloc_ptr.as_ptr() as *mut ffi::c_void

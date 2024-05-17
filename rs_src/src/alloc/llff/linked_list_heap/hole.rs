@@ -5,7 +5,7 @@ use core::ptr::null_mut;
 use core::ptr::NonNull;
 
 use crate::alloc::RT_ALIGN_SIZE;
-use crate::alloc::{align_down_size, align_up_size, align_up};
+use crate::alloc::{align_down_size, align_up, align_up_size};
 
 /// A sorted list of holes. It uses the the holes itself to store its nodes.
 pub struct HoleList {
@@ -68,8 +68,11 @@ impl Cursor {
             let hole_size = self.current().size;
             let required_size = required_layout.size();
             let required_align = required_layout.align();
-            let size_with_header = align_up_size(required_size + mem::size_of::<HoleInfo>(), required_layout.align());
-  
+            let size_with_header = align_up_size(
+                required_size + mem::size_of::<HoleInfo>(),
+                required_layout.align(),
+            );
+
             // Quick check: If the new item is larger than the current hole, it's never gunna
             // work. Go ahead and bail early to save ourselves some math.
             if hole_size < size_with_header {
@@ -96,7 +99,7 @@ impl Cursor {
             if allocation_end > hole_end {
                 // hole is too small
                 return Err(self);
-            }            
+            }
 
             alloc_size = hole_size;
 
@@ -352,14 +355,21 @@ impl HoleList {
     // NOTE: We could probably replace this with an `Option` instead of a `Result` in a later
     // release to remove this clippy warning
     #[allow(clippy::result_unit_err)]
-    pub fn allocate_first_fit(&mut self, layout: Layout) -> Result<(NonNull<u8>, usize, usize), ()> {
+    pub fn allocate_first_fit(
+        &mut self,
+        layout: Layout,
+    ) -> Result<(NonNull<u8>, usize, usize), ()> {
         let aligned_layout = Self::align_layout(layout).map_err(|_| ())?;
         let mut cursor = self.cursor().ok_or(())?;
 
         loop {
             match cursor.split_current(aligned_layout) {
                 Ok((ptr, hole_size)) => {
-                    return Ok((NonNull::new(ptr).ok_or(())?, hole_size, aligned_layout.size()));
+                    return Ok((
+                        NonNull::new(ptr).ok_or(())?,
+                        hole_size,
+                        aligned_layout.size(),
+                    ));
                 }
                 Err(curs) => {
                     cursor = curs.next().ok_or(())?;
@@ -385,13 +395,19 @@ impl HoleList {
     pub unsafe fn deallocate(&mut self, ptr: NonNull<u8>, layout: Layout) -> (usize, usize) {
         // read HoleInfo in allocated header.
         let hole_addr_ptr = ptr.as_ptr().wrapping_sub(mem::size_of::<*mut u8>());
-        let hole_addr_u8 : *const u8 = hole_addr_ptr.cast::<*const u8>().read();
+        let hole_addr_u8: *const u8 = hole_addr_ptr.cast::<*const u8>().read();
         let header_ptr = hole_addr_u8.cast::<usize>();
         let hole_size = header_ptr.read();
 
-        debug_assert!(ptr.as_ptr() > hole_addr_u8 as *mut u8, "hole required_size is small than layout size");
+        debug_assert!(
+            ptr.as_ptr() > hole_addr_u8 as *mut u8,
+            "hole required_size is small than layout size"
+        );
         let required_size = hole_size - ptr.as_ptr().offset_from(hole_addr_u8) as usize;
-        debug_assert!(required_size >= layout.size(), "hole required_size is small than layout size");
+        debug_assert!(
+            required_size >= layout.size(),
+            "hole required_size is small than layout size"
+        );
 
         deallocate(self, hole_addr_u8 as *mut u8, hole_size);
         (hole_size, required_size)
@@ -400,8 +416,11 @@ impl HoleList {
     pub unsafe fn get_allocated_size(&mut self, ptr: NonNull<u8>) -> usize {
         // read HoleInfo in allocated header.
         let hole_addr_ptr = ptr.as_ptr().wrapping_sub(mem::size_of::<*mut u8>());
-        let hole_addr_u8 : *const u8 = hole_addr_ptr.cast::<*const u8>().read();
-        debug_assert!(ptr.as_ptr() > hole_addr_u8 as *mut u8, "hole required_size is small than layout size");
+        let hole_addr_u8: *const u8 = hole_addr_ptr.cast::<*const u8>().read();
+        debug_assert!(
+            ptr.as_ptr() > hole_addr_u8 as *mut u8,
+            "hole required_size is small than layout size"
+        );
 
         let header_ptr = hole_addr_u8.cast::<usize>();
         let hole_size = header_ptr.read();

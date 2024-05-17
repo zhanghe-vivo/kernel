@@ -1,6 +1,6 @@
 use crate::container_of;
 use crate::rt_bindings::*;
-use core::{ptr, ffi};
+use core::{ffi, ptr};
 
 type DestroyFunc = extern "C" fn(*mut ffi::c_void) -> rt_err_t;
 
@@ -497,7 +497,10 @@ pub extern "C" fn rt_object_detach(object: *mut rt_object) {
 /// Returns the allocated object.
 #[cfg(feature = "RT_USING_HEAP")]
 #[no_mangle]
-pub extern "C" fn rt_object_allocate(type_: rt_object_class_type, name: *const ffi::c_char) -> rt_object_t {
+pub extern "C" fn rt_object_allocate(
+    type_: rt_object_class_type,
+    name: *const ffi::c_char,
+) -> rt_object_t {
     // get object information
     let information = rt_object_get_information(type_);
     assert!(!information.is_null());

@@ -103,7 +103,10 @@ macro_rules! rt_debug_not_in_interrupt {
     () => {{
         let level = rt_hw_interrupt_disable();
         if rt_interrupt_get_nest() != 0 {
-            rt_kprintf(b"Function[%s] shall not be used in ISR\n", core::function!());
+            rt_kprintf(
+                b"Function[%s] shall not be used in ISR\n",
+                core::function!(),
+            );
             assert!(0);
         }
         rt_hw_interrupt_enable(level);

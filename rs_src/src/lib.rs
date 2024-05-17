@@ -12,13 +12,13 @@ mod print;
 #[macro_use]
 mod caller_address;
 
-mod rt_bindings;
+mod alloc;
 mod clock;
 mod cpu;
 mod object;
+mod rt_bindings;
 mod rt_list;
 mod sync;
-mod alloc;
 
 use core::sync::atomic::{self, Ordering};
 
@@ -33,5 +33,7 @@ fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
         atomic::compiler_fence(Ordering::SeqCst);
     }
     #[cfg(not(debug_assertions))]
-    unsafe { core::intrinsics::abort() }
+    unsafe {
+        core::intrinsics::abort()
+    }
 }

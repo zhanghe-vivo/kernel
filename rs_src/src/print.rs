@@ -2,7 +2,6 @@ use core::cmp::min;
 use core::fmt;
 use core::str::from_utf8;
 
-
 pub struct Console;
 /// A struct representing a writer that appends formatted data to a byte buffer.
 pub struct WriteTo<'a> {

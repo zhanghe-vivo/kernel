@@ -1,6 +1,6 @@
 use core::alloc::Layout;
 use core::ptr::NonNull;
-use core::{mem, cmp};
+use core::{cmp, mem};
 
 use hole::HoleList;
 
@@ -160,7 +160,7 @@ impl Heap {
                 self.maximum = cmp::max(self.maximum, self.allocated);
                 Some(ptr)
             }
-            Err(err) => None
+            Err(err) => None,
         }
     }
 
@@ -181,7 +181,12 @@ impl Heap {
         self.required -= aligned_size;
     }
 
-    pub unsafe fn realloc(&mut self, ptr: NonNull<u8>, layout: Layout, new_size: usize) -> Option<NonNull<u8>> {
+    pub unsafe fn realloc(
+        &mut self,
+        ptr: NonNull<u8>,
+        layout: Layout,
+        new_size: usize,
+    ) -> Option<NonNull<u8>> {
         let new_layout = Layout::from_size_align(new_size, layout.align()).unwrap();
         if let Some(new_ptr) = self.allocate_first_fit(new_layout) {
             let old_size = self.holes.get_allocated_size(ptr);

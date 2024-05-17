@@ -1,8 +1,8 @@
 use crate::rt_bindings::*;
 use core::{
     cell::UnsafeCell,
-    ptr,
     ops::{Deref, DerefMut},
+    ptr,
 };
 
 // Disables preemption for the CPU.
@@ -74,7 +74,9 @@ pub extern "C" fn rt_spin_lock(lock: *mut rt_spinlock) {
     }
 
     #[cfg(not(feature = "RT_USING_SMP"))]
-    unsafe {rt_enter_critical()};
+    unsafe {
+        rt_enter_critical()
+    };
 }
 
 /// This function will unlock the spinlock, will unlock the thread scheduler.
@@ -86,13 +88,15 @@ pub extern "C" fn rt_spin_lock(lock: *mut rt_spinlock) {
 #[no_mangle]
 pub extern "C" fn rt_spin_unlock(lock: *mut rt_spinlock) {
     #[cfg(feature = "RT_USING_SMP")]
-    unsafe{
+    unsafe {
         rt_hw_spin_unlock(&mut (*lock).lock);
         cpu_preempt_enable();
     }
 
     #[cfg(not(feature = "RT_USING_SMP"))]
-    unsafe {rt_exit_critical()};
+    unsafe {
+        rt_exit_critical()
+    };
 }
 
 /// This function will disable the local interrupt and then lock the spinlock, will lock the thread scheduler.
@@ -119,7 +123,9 @@ pub extern "C" fn rt_spin_lock_irqsave(lock: *mut rt_spinlock) -> rt_base_t {
     }
 
     #[cfg(not(feature = "RT_USING_SMP"))]
-    unsafe { rt_hw_interrupt_disable() }
+    unsafe {
+        rt_hw_interrupt_disable()
+    }
 }
 
 /// This function will unlock the spinlock and then restore current CPU interrupt status, will unlock the thread scheduler.
@@ -139,7 +145,9 @@ pub extern "C" fn rt_spin_unlock_irqrestore(lock: *mut rt_spinlock, level: rt_ba
     }
 
     #[cfg(not(feature = "RT_USING_SMP"))]
-    unsafe {rt_hw_interrupt_enable(level)};
+    unsafe {
+        rt_hw_interrupt_enable(level)
+    };
 }
 
 impl rt_spinlock {
@@ -176,7 +184,7 @@ unsafe impl<T: ?Sized + Send> Send for SpinLockGuard<'_, T> {}
 
 impl<T> SpinLock<T> {
     #[inline(always)]
-    pub const fn new (t: T) -> Self {
+    pub const fn new(t: T) -> Self {
         Self {
             lock: rt_spinlock::new(),
             data: UnsafeCell::new(t),
@@ -188,10 +196,9 @@ impl<T> SpinLock<T> {
         self.data.get()
     }
 
-
     #[inline(always)]
     pub fn lock(&self) -> SpinLockGuard<T> {
-        unsafe{ 
+        unsafe {
             rt_spin_lock(&self.lock as *const _ as *mut _);
         }
         SpinLockGuard {
@@ -237,7 +244,7 @@ impl<'a, T: ?Sized> DerefMut for SpinLockGuard<'a, T> {
 impl<'a, T: ?Sized> Drop for SpinLockGuard<'a, T> {
     /// The dropping of the MutexGuard will release the lock it was created from.
     fn drop(&mut self) {
-        unsafe{ 
+        unsafe {
             rt_spin_unlock(self.lock as *const _ as *mut _);
         }
     }
