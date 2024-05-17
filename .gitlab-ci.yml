@@ -6,7 +6,7 @@ stages:
 
 before_script:
     - export PATH="$PATH:/home/vivoadmin/.cargo/bin"
-    - rustup toolchain link mygnutoolchain "/home/vivoadmin/.rustup/toolchains/stable-x86_64-unknown-linux-gnu"
+    - rustup toolchain link mygnutoolchain "/home/vivoadmin/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu"
     - rustup default mygnutoolchain
     
 up-build:
