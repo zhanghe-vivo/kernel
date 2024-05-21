@@ -92,7 +92,7 @@ macro_rules! rt_object_hook_call {
 macro_rules! rt_object_hook_call {
     ($func:ident $(, $argv:expr)?) => {
         if let Some(hook) = $func {
-            hook$(($argv))?;
+            hook($(($argv))?);
         }
     };
 }

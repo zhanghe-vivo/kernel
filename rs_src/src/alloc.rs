@@ -9,8 +9,11 @@ use core::{ffi, ptr};
 pub mod llff;
 #[cfg(feature = "llff")]
 pub use llff::Heap;
-// #[cfg(feature = "tlsf")]
-// pub use tlsf::Heap as TlsfHeap;
+
+#[cfg(feature = "tlsf")]
+pub mod tlsf;
+#[cfg(feature = "tlsf")]
+pub use tlsf::Heap;
 
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
@@ -24,6 +27,7 @@ static mut RT_FREE_HOOK: Option<extern "C" fn(*mut ffi::c_void)> = None;
 /// Returns the greatest `x` with alignment `align` so that `x <= addr`.
 ///
 /// The alignment must be a power of two.
+#[allow(dead_code)]
 #[inline]
 pub const fn align_down_size(addr: usize, align: usize) -> usize {
     addr & !(align - 1)
@@ -34,6 +38,7 @@ pub const fn align_down_size(addr: usize, align: usize) -> usize {
 /// Returns the smallest `x` with alignment `align` so that `x >= addr`.
 ///
 /// The alignment must be a power of two.
+#[allow(dead_code)]
 #[inline]
 pub const fn align_up_size(addr: usize, align: usize) -> usize {
     (addr + align - 1) & !(align - 1)
@@ -41,6 +46,7 @@ pub const fn align_up_size(addr: usize, align: usize) -> usize {
 
 /// Align upwards. Returns the smallest x with alignment `align`
 /// so that x >= addr. The alignment must be a power of 2.
+#[allow(dead_code)]
 #[inline]
 pub fn align_up(addr: *mut u8, align: usize) -> *mut u8 {
     align_up_size(addr as usize, align) as *mut u8
@@ -49,6 +55,7 @@ pub fn align_up(addr: *mut u8, align: usize) -> *mut u8 {
 /// Returns the offset of the address within the alignment.
 ///
 /// Equivalent to `addr % align`, but the alignment must be a power of two.
+#[allow(dead_code)]
 #[inline]
 pub const fn align_offset(addr: usize, align: usize) -> usize {
     addr & (align - 1)
@@ -57,6 +64,7 @@ pub const fn align_offset(addr: usize, align: usize) -> usize {
 /// Checks whether the address has the demanded alignment.
 ///
 /// Equivalent to `addr % align == 0`, but the alignment must be a power of two.
+#[allow(dead_code)]
 #[inline]
 pub const fn is_aligned(addr: usize, align: usize) -> bool {
     align_offset(addr, align) == 0
@@ -157,7 +165,7 @@ pub extern "C" fn rt_free_align(ptr: *mut ffi::c_void) {
 }
 #[no_mangle]
 pub extern "C" fn rt_memory_info(total: *mut usize, used: *mut usize, max_used: *mut usize) {
-    let (total_size, used_size, required, maximum) = HEAP.memory_info();
+    let (total_size, used_size, maximum) = HEAP.memory_info();
     unsafe {
         *total = total_size;
         *used = used_size;

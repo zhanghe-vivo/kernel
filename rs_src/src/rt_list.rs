@@ -1,4 +1,5 @@
-// TODO: rewrite by linked_list
+#![allow(dead_code)]
+
 use crate::rt_bindings::rt_list_node;
 use crate::rt_bindings::rt_slist_node;
 use core::ptr;

@@ -12,11 +12,10 @@ path = "src/lib.rs"
 
 [build-dependencies]
 bindgen = "0.69.4"
-#cty = "0.2.2"
 
 [dependencies]
-#cty = "0.2.2"
 log = "0.4"
+const_default1 = { version = "1", package = "const-default", default-features = false }
 #heapless = "0.8.0"
 #slabmalloc = { version = "0.11.0", default-features = false, optional = true }
 #linked_list_allocator = { version = "0.10.5", default-features = false, optional = true }
@@ -49,11 +48,11 @@ codegen-units = 16
 rpath = false
 
 [features]
-default = ["llff",]
+default = ["tlsf",]
 #slab = []
 #buddy = []
 llff = []
-#tlsf = []
+tlsf = []
 # RT-thread config
 RT_USING_SMP = []
 RT_USING_HOOK = []

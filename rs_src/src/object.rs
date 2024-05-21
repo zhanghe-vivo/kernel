@@ -6,6 +6,7 @@ type DestroyFunc = extern "C" fn(*mut ffi::c_void) -> rt_err_t;
 
 #[derive(Debug, Copy, Clone)]
 struct RtCustomObject {
+    #[allow(dead_code)]
     parent: rt_object,
     destroy: Option<DestroyFunc>,
     data: *mut ffi::c_void,
