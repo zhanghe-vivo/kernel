@@ -1,8 +1,9 @@
-mod gen_bindings {
-    include!(concat!(env!("CARGO_MANIFEST_DIR"), "/bindings.rs"));
-}
+#![allow(non_upper_case_globals)]
+#![allow(non_camel_case_types)]
+#![allow(non_snake_case)]
+#![allow(dead_code)]
 
-pub use gen_bindings::*;
+include!(concat!(env!("CARGO_MANIFEST_DIR"), "/bindings.rs"));
 
 #[inline(always)]
 pub fn rt_atomic_load(ptr: *mut rt_atomic_t) -> rt_atomic_t {
@@ -102,7 +103,10 @@ macro_rules! rt_debug_not_in_interrupt {
     () => {{
         let level = rt_hw_interrupt_disable();
         if rt_interrupt_get_nest() != 0 {
-            rt_kprintf("Function[%s] shall not be used in ISR\n", core::function!());
+            rt_kprintf(
+                b"Function[%s] shall not be used in ISR\n",
+                core::function!(),
+            );
             assert!(0);
         }
         rt_hw_interrupt_enable(level);
@@ -120,7 +124,7 @@ macro_rules! rt_debug_in_thread_context {
         level = rt_hw_interrupt_disable();
         if rt_thread_self().is_null() {
             rt_kprintf(
-                "Function[%s] shall not be used before scheduler start\n",
+                b"Function[%s] shall not be used before scheduler start\n",
                 core::function!(),
             );
             assert!(0);
@@ -145,13 +149,13 @@ macro_rules! rt_debug_scheduler_available {
             let level = rt_hw_interrupt_disable();
             if rt_critical_level() != 0 {
                 rt_kprintf(
-                    "Function[%s]: scheduler is not available\n",
+                    b"Function[%s]: scheduler is not available\n",
                     core::function!(),
                 );
                 assert!(0);
             }
             if interrupt_disabled {
-                rt_kprintf("Function[%s]: interrupt is disabled\n", core::function!());
+                rt_kprintf(b"Function[%s]: interrupt is disabled\n", core::function!());
                 assert!(0);
             }
             rt_debug_in_thread_context!();

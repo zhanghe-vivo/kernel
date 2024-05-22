@@ -36,7 +36,7 @@ pub const RT_SYSTEM_WORKQUEUE_PRIORITY: u32 = 23;
 pub const RT_SERIAL_RB_BUFSZ: u32 = 256;
 pub const RT_SDIO_STACK_SIZE: u32 = 512;
 pub const RT_SDIO_THREAD_PRIORITY: u32 = 15;
-pub const RT_MMCSD_STACK_SIZE: u32 = 1024;
+pub const RT_MMCSD_STACK_SIZE: u32 = 2048;
 pub const RT_MMCSD_THREAD_PREORITY: u32 = 22;
 pub const RT_MMCSD_MAX_PARTITION: u32 = 16;
 pub const RT_SFUD_SPI_MAX_HZ: u32 = 50000000;
@@ -189,17 +189,17 @@ pub const J_Bit: u32 = 16777216;
 pub const RT_VERSION: u32 = 5;
 pub const RT_SUBVERSION: u32 = 0;
 pub const RT_REVISION: u32 = 2;
-pub type rt_bool_t = cty::c_int;
-pub type rt_base_t = cty::c_long;
-pub type rt_ubase_t = cty::c_ulong;
-pub type rt_int8_t = cty::c_schar;
-pub type rt_int16_t = cty::c_short;
-pub type rt_int32_t = cty::c_int;
-pub type rt_uint8_t = cty::c_uchar;
-pub type rt_uint16_t = cty::c_ushort;
-pub type rt_uint32_t = cty::c_uint;
-pub type rt_int64_t = cty::c_longlong;
-pub type rt_uint64_t = cty::c_ulonglong;
+pub type rt_bool_t = core::ffi::c_int;
+pub type rt_base_t = core::ffi::c_long;
+pub type rt_ubase_t = core::ffi::c_ulong;
+pub type rt_int8_t = core::ffi::c_schar;
+pub type rt_int16_t = core::ffi::c_short;
+pub type rt_int32_t = core::ffi::c_int;
+pub type rt_uint8_t = core::ffi::c_uchar;
+pub type rt_uint16_t = core::ffi::c_ushort;
+pub type rt_uint32_t = core::ffi::c_uint;
+pub type rt_int64_t = core::ffi::c_longlong;
+pub type rt_uint64_t = core::ffi::c_ulonglong;
 pub type rt_size_t = rt_ubase_t;
 pub type rt_ssize_t = rt_base_t;
 pub type rt_err_t = rt_base_t;
@@ -211,11 +211,11 @@ pub type rt_off_t = rt_base_t;
 pub type rt_atomic_t = rt_base_t;
 pub type __gnuc_va_list = u32;
 pub type va_list = __gnuc_va_list;
-pub type init_fn_t = ::core::option::Option<unsafe extern "C" fn() -> cty::c_int>;
+pub type init_fn_t = ::core::option::Option<unsafe extern "C" fn() -> core::ffi::c_int>;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct rt_init_desc {
-    pub fn_name: *const cty::c_char,
+    pub fn_name: *const core::ffi::c_char,
     pub fn_: init_fn_t,
 }
 #[test]
@@ -338,7 +338,7 @@ pub type rt_slist_t = rt_slist_node;
 #[derive(Debug, Copy, Clone)]
 pub struct rt_object {
     #[doc = "< dynamic name of kernel object"]
-    pub name: [cty::c_char; 8usize],
+    pub name: [core::ffi::c_char; 8usize],
     #[doc = "< type of kernel object"]
     pub type_: rt_uint8_t,
     #[doc = "< flag of kernel object"]
@@ -437,7 +437,7 @@ pub const rt_object_class_type_RT_Object_Class_Unknown: rt_object_class_type = 1
 #[doc = "< The object is a static object."]
 pub const rt_object_class_type_RT_Object_Class_Static: rt_object_class_type = 128;
 #[doc = "  The object type can be one of the follows with specific\n  macros enabled:\n  - Thread\n  - Semaphore\n  - Mutex\n  - Event\n  - MailBox\n  - MessageQueue\n  - MemHeap\n  - MemPool\n  - Device\n  - Timer\n  - Module\n  - Unknown\n  - Static"]
-pub type rt_object_class_type = cty::c_uint;
+pub type rt_object_class_type = core::ffi::c_uint;
 #[doc = " The information of the kernel object"]
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -503,9 +503,10 @@ pub struct rt_timer {
     pub parent: rt_object,
     pub row: [rt_list_t; 1usize],
     #[doc = "< timeout function"]
-    pub timeout_func: ::core::option::Option<unsafe extern "C" fn(parameter: *mut cty::c_void)>,
+    pub timeout_func:
+        ::core::option::Option<unsafe extern "C" fn(parameter: *mut core::ffi::c_void)>,
     #[doc = "< timeout function's parameter"]
-    pub parameter: *mut cty::c_void,
+    pub parameter: *mut core::ffi::c_void,
     #[doc = "< timer timeout tick"]
     pub init_tick: rt_tick_t,
     #[doc = "< timeout tick"]
@@ -590,7 +591,7 @@ pub type rt_timer_t = *mut rt_timer;
 pub const RT_INTERRUPTIBLE: _bindgen_ty_1 = 0;
 pub const RT_KILLABLE: _bindgen_ty_1 = 1;
 pub const RT_UNINTERRUPTIBLE: _bindgen_ty_1 = 2;
-pub type _bindgen_ty_1 = cty::c_uint;
+pub type _bindgen_ty_1 = core::ffi::c_uint;
 #[doc = " CPUs definitions\n"]
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -708,13 +709,13 @@ pub struct rt_thread {
     #[doc = "< the thread list"]
     pub tlist: rt_list_t,
     #[doc = "< stack point"]
-    pub sp: *mut cty::c_void,
+    pub sp: *mut core::ffi::c_void,
     #[doc = "< entry"]
-    pub entry: *mut cty::c_void,
+    pub entry: *mut core::ffi::c_void,
     #[doc = "< parameter"]
-    pub parameter: *mut cty::c_void,
+    pub parameter: *mut core::ffi::c_void,
     #[doc = "< stack address"]
-    pub stack_addr: *mut cty::c_void,
+    pub stack_addr: *mut core::ffi::c_void,
     #[doc = "< stack size"]
     pub stack_size: rt_uint32_t,
     #[doc = "< error code"]
@@ -1412,7 +1413,7 @@ pub struct rt_messagequeue {
     #[doc = "< inherit from ipc_object"]
     pub parent: rt_ipc_object,
     #[doc = "< start address of message queue"]
-    pub msg_pool: *mut cty::c_void,
+    pub msg_pool: *mut core::ffi::c_void,
     #[doc = "< message size of each message"]
     pub msg_size: rt_uint16_t,
     #[doc = "< max number of messages"]
@@ -1420,11 +1421,11 @@ pub struct rt_messagequeue {
     #[doc = "< index of messages in the queue"]
     pub entry: rt_uint16_t,
     #[doc = "< list head"]
-    pub msg_queue_head: *mut cty::c_void,
+    pub msg_queue_head: *mut core::ffi::c_void,
     #[doc = "< list tail"]
-    pub msg_queue_tail: *mut cty::c_void,
+    pub msg_queue_tail: *mut core::ffi::c_void,
     #[doc = "< pointer indicated the free node of queue"]
-    pub msg_queue_free: *mut cty::c_void,
+    pub msg_queue_free: *mut core::ffi::c_void,
     #[doc = "< sender thread suspended on this message queue"]
     pub suspend_sender_thread: rt_list_t,
 }
@@ -1540,7 +1541,7 @@ pub struct rt_memory {
     #[doc = "< inherit from rt_object"]
     pub parent: rt_object,
     #[doc = "< Memory management algorithm name"]
-    pub algorithm: *const cty::c_char,
+    pub algorithm: *const core::ffi::c_char,
     #[doc = "< memory start address"]
     pub address: rt_ubase_t,
     #[doc = "< memory size"]
@@ -1626,7 +1627,6 @@ fn bindgen_test_layout_rt_memory() {
     );
 }
 pub type rt_mem_t = *mut rt_memory;
-pub type rt_smem_t = rt_mem_t;
 #[doc = " memory item on the heap"]
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -1738,7 +1738,7 @@ pub struct rt_memheap {
     #[doc = "< inherit from rt_object"]
     pub parent: rt_object,
     #[doc = "< pool start address and size"]
-    pub start_addr: *mut cty::c_void,
+    pub start_addr: *mut core::ffi::c_void,
     #[doc = "< pool size"]
     pub pool_size: rt_size_t,
     #[doc = "< available size"]
@@ -1878,7 +1878,7 @@ pub struct rt_mempool {
     #[doc = "< inherit from rt_object"]
     pub parent: rt_object,
     #[doc = "< memory pool start"]
-    pub start_address: *mut cty::c_void,
+    pub start_address: *mut core::ffi::c_void,
     #[doc = "< size of memory pool"]
     pub size: rt_size_t,
     #[doc = "< size of memory blocks"]
@@ -2053,7 +2053,7 @@ pub const rt_device_class_type_RT_Device_Class_Bus: rt_device_class_type = 30;
 #[doc = "< unknown device"]
 pub const rt_device_class_type_RT_Device_Class_Unknown: rt_device_class_type = 31;
 #[doc = " device (I/O) class type"]
-pub type rt_device_class_type = cty::c_uint;
+pub type rt_device_class_type = core::ffi::c_uint;
 pub type rt_device_t = *mut rt_device;
 #[doc = " operations set for device object"]
 #[repr(C)]
@@ -2068,7 +2068,7 @@ pub struct rt_device_ops {
         unsafe extern "C" fn(
             dev: rt_device_t,
             pos: rt_off_t,
-            buffer: *mut cty::c_void,
+            buffer: *mut core::ffi::c_void,
             size: rt_size_t,
         ) -> rt_ssize_t,
     >,
@@ -2076,12 +2076,16 @@ pub struct rt_device_ops {
         unsafe extern "C" fn(
             dev: rt_device_t,
             pos: rt_off_t,
-            buffer: *const cty::c_void,
+            buffer: *const core::ffi::c_void,
             size: rt_size_t,
         ) -> rt_ssize_t,
     >,
     pub control: ::core::option::Option<
-        unsafe extern "C" fn(dev: rt_device_t, cmd: cty::c_int, args: *mut cty::c_void) -> rt_err_t,
+        unsafe extern "C" fn(
+            dev: rt_device_t,
+            cmd: core::ffi::c_int,
+            args: *mut core::ffi::c_void,
+        ) -> rt_err_t,
     >,
 }
 #[test]
@@ -2222,13 +2226,13 @@ pub struct rt_device {
     pub rx_indicate:
         ::core::option::Option<unsafe extern "C" fn(dev: rt_device_t, size: rt_size_t) -> rt_err_t>,
     pub tx_complete: ::core::option::Option<
-        unsafe extern "C" fn(dev: rt_device_t, buffer: *mut cty::c_void) -> rt_err_t,
+        unsafe extern "C" fn(dev: rt_device_t, buffer: *mut core::ffi::c_void) -> rt_err_t,
     >,
     pub ops: *const rt_device_ops,
     pub fops: *mut dfs_file_ops,
     pub wait_queue: rt_wqueue,
     #[doc = "< device private data"]
-    pub user_data: *mut cty::c_void,
+    pub user_data: *mut core::ffi::c_void,
 }
 #[test]
 fn bindgen_test_layout_rt_device() {
@@ -2368,8 +2372,8 @@ fn bindgen_test_layout_rt_device() {
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct rt_device_id {
-    pub compatible: *const cty::c_char,
-    pub data: *mut cty::c_void,
+    pub compatible: *const core::ffi::c_char,
+    pub data: *mut core::ffi::c_void,
 }
 #[test]
 fn bindgen_test_layout_rt_device_id() {
@@ -2411,16 +2415,19 @@ fn bindgen_test_layout_rt_device_id() {
 pub struct rt_driver {
     pub dev_ops: *const rt_device_ops,
     pub fops: *mut filesystem_ops,
-    pub name: *const cty::c_char,
+    pub name: *const core::ffi::c_char,
     pub dev_type: rt_device_class_type,
-    pub device_size: cty::c_int,
-    pub flag: cty::c_int,
+    pub device_size: core::ffi::c_int,
+    pub flag: core::ffi::c_int,
     pub dev_match: *const rt_device_id,
-    pub probe: ::core::option::Option<unsafe extern "C" fn(dev: *mut rt_device) -> cty::c_int>,
-    pub probe_init: ::core::option::Option<unsafe extern "C" fn(dev: *mut rt_device) -> cty::c_int>,
-    pub remove: ::core::option::Option<unsafe extern "C" fn(dev: *mut rt_device) -> cty::c_int>,
-    pub ops: *const cty::c_void,
-    pub drv_priv_data: *mut cty::c_void,
+    pub probe:
+        ::core::option::Option<unsafe extern "C" fn(dev: *mut rt_device) -> core::ffi::c_int>,
+    pub probe_init:
+        ::core::option::Option<unsafe extern "C" fn(dev: *mut rt_device) -> core::ffi::c_int>,
+    pub remove:
+        ::core::option::Option<unsafe extern "C" fn(dev: *mut rt_device) -> core::ffi::c_int>,
+    pub ops: *const core::ffi::c_void,
+    pub drv_priv_data: *mut core::ffi::c_void,
 }
 #[test]
 fn bindgen_test_layout_rt_driver() {
@@ -2716,7 +2723,7 @@ pub const RTGRAPHIC_PIXEL_FORMAT_BGR888: _bindgen_ty_2 = 9;
 pub const RTGRAPHIC_PIXEL_FORMAT_ARGB888: _bindgen_ty_2 = 10;
 pub const RTGRAPHIC_PIXEL_FORMAT_ABGR888: _bindgen_ty_2 = 11;
 pub const RTGRAPHIC_PIXEL_FORMAT_RESERVED: _bindgen_ty_2 = 12;
-pub type _bindgen_ty_2 = cty::c_uint;
+pub type _bindgen_ty_2 = core::ffi::c_uint;
 #[doc = " graphic device information structure"]
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -2896,32 +2903,40 @@ fn bindgen_test_layout_rt_device_rect_info() {
 #[derive(Debug, Copy, Clone)]
 pub struct rt_device_graphic_ops {
     pub set_pixel: ::core::option::Option<
-        unsafe extern "C" fn(pixel: *const cty::c_char, x: cty::c_int, y: cty::c_int),
+        unsafe extern "C" fn(
+            pixel: *const core::ffi::c_char,
+            x: core::ffi::c_int,
+            y: core::ffi::c_int,
+        ),
     >,
     pub get_pixel: ::core::option::Option<
-        unsafe extern "C" fn(pixel: *mut cty::c_char, x: cty::c_int, y: cty::c_int),
+        unsafe extern "C" fn(
+            pixel: *mut core::ffi::c_char,
+            x: core::ffi::c_int,
+            y: core::ffi::c_int,
+        ),
     >,
     pub draw_hline: ::core::option::Option<
         unsafe extern "C" fn(
-            pixel: *const cty::c_char,
-            x1: cty::c_int,
-            x2: cty::c_int,
-            y: cty::c_int,
+            pixel: *const core::ffi::c_char,
+            x1: core::ffi::c_int,
+            x2: core::ffi::c_int,
+            y: core::ffi::c_int,
         ),
     >,
     pub draw_vline: ::core::option::Option<
         unsafe extern "C" fn(
-            pixel: *const cty::c_char,
-            x: cty::c_int,
-            y1: cty::c_int,
-            y2: cty::c_int,
+            pixel: *const core::ffi::c_char,
+            x: core::ffi::c_int,
+            y1: core::ffi::c_int,
+            y2: core::ffi::c_int,
         ),
     >,
     pub blit_line: ::core::option::Option<
         unsafe extern "C" fn(
-            pixel: *const cty::c_char,
-            x: cty::c_int,
-            y: cty::c_int,
+            pixel: *const core::ffi::c_char,
+            x: core::ffi::c_int,
+            y: core::ffi::c_int,
             size: rt_size_t,
         ),
     >,
@@ -2994,7 +3009,7 @@ fn bindgen_test_layout_rt_device_graphic_ops() {
 }
 pub const RT_HW_CACHE_OPS_RT_HW_CACHE_FLUSH: RT_HW_CACHE_OPS = 1;
 pub const RT_HW_CACHE_OPS_RT_HW_CACHE_INVALIDATE: RT_HW_CACHE_OPS = 2;
-pub type RT_HW_CACHE_OPS = cty::c_uint;
+pub type RT_HW_CACHE_OPS = core::ffi::c_uint;
 extern "C" {
     pub fn rt_hw_cpu_icache_enable();
 }
@@ -3005,7 +3020,11 @@ extern "C" {
     pub fn rt_hw_cpu_icache_status() -> rt_base_t;
 }
 extern "C" {
-    pub fn rt_hw_cpu_icache_ops(ops: cty::c_int, addr: *mut cty::c_void, size: cty::c_int);
+    pub fn rt_hw_cpu_icache_ops(
+        ops: core::ffi::c_int,
+        addr: *mut core::ffi::c_void,
+        size: core::ffi::c_int,
+    );
 }
 extern "C" {
     pub fn rt_hw_cpu_dcache_enable();
@@ -3017,7 +3036,11 @@ extern "C" {
     pub fn rt_hw_cpu_dcache_status() -> rt_base_t;
 }
 extern "C" {
-    pub fn rt_hw_cpu_dcache_ops(ops: cty::c_int, addr: *mut cty::c_void, size: cty::c_int);
+    pub fn rt_hw_cpu_dcache_ops(
+        ops: core::ffi::c_int,
+        addr: *mut core::ffi::c_void,
+        size: core::ffi::c_int,
+    );
 }
 extern "C" {
     pub fn rt_hw_cpu_reset();
@@ -3026,24 +3049,25 @@ extern "C" {
     pub fn rt_hw_cpu_shutdown();
 }
 extern "C" {
-    pub fn rt_hw_cpu_arch() -> *const cty::c_char;
+    pub fn rt_hw_cpu_arch() -> *const core::ffi::c_char;
 }
 extern "C" {
     pub fn rt_hw_stack_init(
-        entry: *mut cty::c_void,
-        parameter: *mut cty::c_void,
+        entry: *mut core::ffi::c_void,
+        parameter: *mut core::ffi::c_void,
         stack_addr: *mut rt_uint8_t,
-        exit: *mut cty::c_void,
+        exit: *mut core::ffi::c_void,
     ) -> *mut rt_uint8_t;
 }
-pub type rt_isr_handler_t =
-    ::core::option::Option<unsafe extern "C" fn(vector: cty::c_int, param: *mut cty::c_void)>;
+pub type rt_isr_handler_t = ::core::option::Option<
+    unsafe extern "C" fn(vector: core::ffi::c_int, param: *mut core::ffi::c_void),
+>;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct rt_irq_desc {
     pub handler: rt_isr_handler_t,
-    pub param: *mut cty::c_void,
-    pub name: [cty::c_char; 8usize],
+    pub param: *mut core::ffi::c_void,
+    pub name: [core::ffi::c_char; 8usize],
     pub counter: rt_uint32_t,
 }
 #[test]
@@ -3105,17 +3129,17 @@ extern "C" {
     pub fn rt_hw_interrupt_init();
 }
 extern "C" {
-    pub fn rt_hw_interrupt_mask(vector: cty::c_int);
+    pub fn rt_hw_interrupt_mask(vector: core::ffi::c_int);
 }
 extern "C" {
-    pub fn rt_hw_interrupt_umask(vector: cty::c_int);
+    pub fn rt_hw_interrupt_umask(vector: core::ffi::c_int);
 }
 extern "C" {
     pub fn rt_hw_interrupt_install(
-        vector: cty::c_int,
+        vector: core::ffi::c_int,
         handler: rt_isr_handler_t,
-        param: *mut cty::c_void,
-        name: *const cty::c_char,
+        param: *mut core::ffi::c_void,
+        name: *const core::ffi::c_char,
     ) -> rt_isr_handler_t;
 }
 extern "C" {
@@ -3135,14 +3159,14 @@ extern "C" {
 }
 extern "C" {
     pub fn rt_hw_context_switch_interrupt(
-        context: *mut cty::c_void,
+        context: *mut core::ffi::c_void,
         from: rt_ubase_t,
         to: rt_ubase_t,
         to_thread: *mut rt_thread,
     );
 }
 extern "C" {
-    pub fn rt_hw_console_output(str_: *const cty::c_char);
+    pub fn rt_hw_console_output(str_: *const core::ffi::c_char);
 }
 extern "C" {
     pub fn rt_hw_backtrace(fp: *mut rt_uint32_t, thread_entry: rt_ubase_t);
@@ -3153,7 +3177,7 @@ extern "C" {
 extern "C" {
     pub fn rt_hw_exception_install(
         exception_handle: ::core::option::Option<
-            unsafe extern "C" fn(context: *mut cty::c_void) -> rt_err_t,
+            unsafe extern "C" fn(context: *mut core::ffi::c_void) -> rt_err_t,
         >,
     );
 }
@@ -3161,32 +3185,32 @@ extern "C" {
     pub fn rt_hw_us_delay(us: rt_uint32_t);
 }
 extern "C" {
-    pub fn rt_hw_cpu_id() -> cty::c_int;
+    pub fn rt_hw_cpu_id() -> core::ffi::c_int;
 }
 extern "C" {
     #[doc = "  ipi function"]
-    pub fn rt_hw_ipi_send(ipi_vector: cty::c_int, cpu_mask: cty::c_uint);
+    pub fn rt_hw_ipi_send(ipi_vector: core::ffi::c_int, cpu_mask: core::ffi::c_uint);
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct rt_hw_exp_stack {
-    pub r0: cty::c_ulong,
-    pub r1: cty::c_ulong,
-    pub r2: cty::c_ulong,
-    pub r3: cty::c_ulong,
-    pub r4: cty::c_ulong,
-    pub r5: cty::c_ulong,
-    pub r6: cty::c_ulong,
-    pub r7: cty::c_ulong,
-    pub r8: cty::c_ulong,
-    pub r9: cty::c_ulong,
-    pub r10: cty::c_ulong,
-    pub fp: cty::c_ulong,
-    pub ip: cty::c_ulong,
-    pub sp: cty::c_ulong,
-    pub lr: cty::c_ulong,
-    pub pc: cty::c_ulong,
-    pub cpsr: cty::c_ulong,
+    pub r0: core::ffi::c_ulong,
+    pub r1: core::ffi::c_ulong,
+    pub r2: core::ffi::c_ulong,
+    pub r3: core::ffi::c_ulong,
+    pub r4: core::ffi::c_ulong,
+    pub r5: core::ffi::c_ulong,
+    pub r6: core::ffi::c_ulong,
+    pub r7: core::ffi::c_ulong,
+    pub r8: core::ffi::c_ulong,
+    pub r9: core::ffi::c_ulong,
+    pub r10: core::ffi::c_ulong,
+    pub fp: core::ffi::c_ulong,
+    pub ip: core::ffi::c_ulong,
+    pub sp: core::ffi::c_ulong,
+    pub lr: core::ffi::c_ulong,
+    pub pc: core::ffi::c_ulong,
+    pub cpsr: core::ffi::c_ulong,
 }
 #[test]
 fn bindgen_test_layout_rt_hw_exp_stack() {
@@ -3376,22 +3400,22 @@ fn bindgen_test_layout_rt_hw_exp_stack() {
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct rt_hw_stack {
-    pub cpsr: cty::c_ulong,
-    pub r0: cty::c_ulong,
-    pub r1: cty::c_ulong,
-    pub r2: cty::c_ulong,
-    pub r3: cty::c_ulong,
-    pub r4: cty::c_ulong,
-    pub r5: cty::c_ulong,
-    pub r6: cty::c_ulong,
-    pub r7: cty::c_ulong,
-    pub r8: cty::c_ulong,
-    pub r9: cty::c_ulong,
-    pub r10: cty::c_ulong,
-    pub fp: cty::c_ulong,
-    pub ip: cty::c_ulong,
-    pub lr: cty::c_ulong,
-    pub pc: cty::c_ulong,
+    pub cpsr: core::ffi::c_ulong,
+    pub r0: core::ffi::c_ulong,
+    pub r1: core::ffi::c_ulong,
+    pub r2: core::ffi::c_ulong,
+    pub r3: core::ffi::c_ulong,
+    pub r4: core::ffi::c_ulong,
+    pub r5: core::ffi::c_ulong,
+    pub r6: core::ffi::c_ulong,
+    pub r7: core::ffi::c_ulong,
+    pub r8: core::ffi::c_ulong,
+    pub r9: core::ffi::c_ulong,
+    pub r10: core::ffi::c_ulong,
+    pub fp: core::ffi::c_ulong,
+    pub ip: core::ffi::c_ulong,
+    pub lr: core::ffi::c_ulong,
+    pub pc: core::ffi::c_ulong,
 }
 #[test]
 fn bindgen_test_layout_rt_hw_stack() {
@@ -3571,14 +3595,14 @@ fn bindgen_test_layout_rt_hw_stack() {
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub union rt_hw_spinlock_t {
-    pub slock: cty::c_ulong,
+    pub slock: core::ffi::c_ulong,
     pub tickets: rt_hw_spinlock_t___arch_tickets,
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct rt_hw_spinlock_t___arch_tickets {
-    pub owner: cty::c_ushort,
-    pub next: cty::c_ushort,
+    pub owner: core::ffi::c_ushort,
+    pub next: core::ffi::c_ushort,
 }
 #[test]
 fn bindgen_test_layout_rt_hw_spinlock_t___arch_tickets() {
@@ -3746,10 +3770,10 @@ extern "C" {
 }
 pub const RT_WORK_STATE_PENDING: _bindgen_ty_3 = 1;
 pub const RT_WORK_STATE_SUBMITTING: _bindgen_ty_3 = 2;
-pub type _bindgen_ty_3 = cty::c_uint;
+pub type _bindgen_ty_3 = core::ffi::c_uint;
 pub const RT_WORK_TYPE_DELAYED: _bindgen_ty_4 = 1;
 #[doc = " work type definitions"]
-pub type _bindgen_ty_4 = cty::c_uint;
+pub type _bindgen_ty_4 = core::ffi::c_uint;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct rt_workqueue {
@@ -3829,9 +3853,9 @@ fn bindgen_test_layout_rt_workqueue() {
 pub struct rt_work {
     pub list: rt_list_t,
     pub work_func: ::core::option::Option<
-        unsafe extern "C" fn(work: *mut rt_work, work_data: *mut cty::c_void),
+        unsafe extern "C" fn(work: *mut rt_work, work_data: *mut core::ffi::c_void),
     >,
-    pub work_data: *mut cty::c_void,
+    pub work_data: *mut core::ffi::c_void,
     pub flags: rt_uint16_t,
     pub type_: rt_uint16_t,
     pub timer: rt_timer,
@@ -3927,14 +3951,14 @@ extern "C" {
     pub fn rt_work_init(
         work: *mut rt_work,
         work_func: ::core::option::Option<
-            unsafe extern "C" fn(work: *mut rt_work, work_data: *mut cty::c_void),
+            unsafe extern "C" fn(work: *mut rt_work, work_data: *mut core::ffi::c_void),
         >,
-        work_data: *mut cty::c_void,
+        work_data: *mut core::ffi::c_void,
     );
 }
 extern "C" {
     pub fn rt_workqueue_create(
-        name: *const cty::c_char,
+        name: *const core::ffi::c_char,
         stack_size: rt_uint16_t,
         priority: rt_uint8_t,
     ) -> *mut rt_workqueue;
@@ -4007,17 +4031,17 @@ extern "C" {
     pub fn rt_delayed_work_init(
         work: *mut rt_delayed_work,
         work_func: ::core::option::Option<
-            unsafe extern "C" fn(work: *mut rt_work, work_data: *mut cty::c_void),
+            unsafe extern "C" fn(work: *mut rt_work, work_data: *mut core::ffi::c_void),
         >,
-        work_data: *mut cty::c_void,
+        work_data: *mut core::ffi::c_void,
     );
 }
-pub type syscall_func = ::core::option::Option<unsafe extern "C" fn() -> cty::c_long>;
+pub type syscall_func = ::core::option::Option<unsafe extern "C" fn() -> core::ffi::c_long>;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct finsh_syscall {
-    pub name: *const cty::c_char,
-    pub desc: *const cty::c_char,
+    pub name: *const core::ffi::c_char,
+    pub desc: *const core::ffi::c_char,
     pub opt: *mut msh_cmd_opt,
     pub func: syscall_func,
 }
@@ -4121,8 +4145,8 @@ fn bindgen_test_layout_finsh_syscall_item() {
 #[derive(Debug, Copy, Clone)]
 pub struct msh_cmd_opt {
     pub id: rt_uint32_t,
-    pub name: *const cty::c_char,
-    pub des: *const cty::c_char,
+    pub name: *const core::ffi::c_char,
+    pub des: *const core::ffi::c_char,
 }
 #[test]
 fn bindgen_test_layout_msh_cmd_opt() {
@@ -4171,14 +4195,14 @@ fn bindgen_test_layout_msh_cmd_opt() {
 }
 pub type msh_cmd_opt_t = msh_cmd_opt;
 extern "C" {
-    pub fn msh_opt_list_dump(options: *mut cty::c_void);
+    pub fn msh_opt_list_dump(options: *mut core::ffi::c_void);
 }
 extern "C" {
     pub fn msh_cmd_opt_id_get(
-        argc: cty::c_int,
-        argv: *mut *mut cty::c_char,
-        options: *mut cty::c_void,
-    ) -> cty::c_int;
+        argc: core::ffi::c_int,
+        argv: *mut *mut core::ffi::c_char,
+        options: *mut core::ffi::c_void,
+    ) -> core::ffi::c_int;
 }
 extern "C" {
     pub static mut global_syscall_list: *mut finsh_syscall_item;
@@ -4190,45 +4214,47 @@ extern "C" {
     pub static mut _syscall_table_end: *mut finsh_syscall;
 }
 extern "C" {
-    pub fn finsh_syscall_lookup(name: *const cty::c_char) -> *mut finsh_syscall;
+    pub fn finsh_syscall_lookup(name: *const core::ffi::c_char) -> *mut finsh_syscall;
 }
 extern "C" {
     #[doc = " @addtogroup KernelObject\n @{"]
     pub fn rt_object_get_information(type_: rt_object_class_type) -> *mut rt_object_information;
 }
 extern "C" {
-    pub fn rt_object_get_length(type_: rt_object_class_type) -> cty::c_int;
+    pub fn rt_object_get_length(type_: rt_object_class_type) -> core::ffi::c_int;
 }
 extern "C" {
     pub fn rt_object_get_pointers(
         type_: rt_object_class_type,
         pointers: *mut rt_object_t,
-        maxlen: cty::c_int,
-    ) -> cty::c_int;
+        maxlen: rt_size_t,
+    ) -> core::ffi::c_int;
 }
 extern "C" {
     pub fn rt_object_init(
         object: *mut rt_object,
         type_: rt_object_class_type,
-        name: *const cty::c_char,
+        name: *const core::ffi::c_char,
     );
 }
 extern "C" {
     pub fn rt_object_detach(object: rt_object_t);
 }
 extern "C" {
-    pub fn rt_object_allocate(type_: rt_object_class_type, name: *const cty::c_char)
-        -> rt_object_t;
+    pub fn rt_object_allocate(
+        type_: rt_object_class_type,
+        name: *const core::ffi::c_char,
+    ) -> rt_object_t;
 }
 extern "C" {
     pub fn rt_object_delete(object: rt_object_t);
 }
 extern "C" {
     pub fn rt_custom_object_create(
-        name: *const cty::c_char,
-        data: *mut cty::c_void,
+        name: *const core::ffi::c_char,
+        data: *mut core::ffi::c_void,
         data_destroy: ::core::option::Option<
-            unsafe extern "C" fn(arg1: *mut cty::c_void) -> rt_err_t,
+            unsafe extern "C" fn(arg1: *mut core::ffi::c_void) -> rt_err_t,
         >,
     ) -> rt_object_t;
 }
@@ -4242,12 +4268,12 @@ extern "C" {
     pub fn rt_object_get_type(object: rt_object_t) -> rt_uint8_t;
 }
 extern "C" {
-    pub fn rt_object_find(name: *const cty::c_char, type_: rt_uint8_t) -> rt_object_t;
+    pub fn rt_object_find(name: *const core::ffi::c_char, type_: rt_uint8_t) -> rt_object_t;
 }
 extern "C" {
     pub fn rt_object_get_name(
         object: rt_object_t,
-        name: *mut cty::c_char,
+        name: *mut core::ffi::c_char,
         name_size: rt_uint8_t,
     ) -> rt_err_t;
 }
@@ -4304,9 +4330,9 @@ extern "C" {
 extern "C" {
     pub fn rt_timer_init(
         timer: rt_timer_t,
-        name: *const cty::c_char,
-        timeout: ::core::option::Option<unsafe extern "C" fn(parameter: *mut cty::c_void)>,
-        parameter: *mut cty::c_void,
+        name: *const core::ffi::c_char,
+        timeout: ::core::option::Option<unsafe extern "C" fn(parameter: *mut core::ffi::c_void)>,
+        parameter: *mut core::ffi::c_void,
         time: rt_tick_t,
         flag: rt_uint8_t,
     );
@@ -4316,9 +4342,9 @@ extern "C" {
 }
 extern "C" {
     pub fn rt_timer_create(
-        name: *const cty::c_char,
-        timeout: ::core::option::Option<unsafe extern "C" fn(parameter: *mut cty::c_void)>,
-        parameter: *mut cty::c_void,
+        name: *const core::ffi::c_char,
+        timeout: ::core::option::Option<unsafe extern "C" fn(parameter: *mut core::ffi::c_void)>,
+        parameter: *mut core::ffi::c_void,
         time: rt_tick_t,
         flag: rt_uint8_t,
     ) -> rt_timer_t;
@@ -4333,7 +4359,11 @@ extern "C" {
     pub fn rt_timer_stop(timer: rt_timer_t) -> rt_err_t;
 }
 extern "C" {
-    pub fn rt_timer_control(timer: rt_timer_t, cmd: cty::c_int, arg: *mut cty::c_void) -> rt_err_t;
+    pub fn rt_timer_control(
+        timer: rt_timer_t,
+        cmd: core::ffi::c_int,
+        arg: *mut core::ffi::c_void,
+    ) -> rt_err_t;
 }
 extern "C" {
     pub fn rt_timer_next_timeout_tick() -> rt_tick_t;
@@ -4355,10 +4385,10 @@ extern "C" {
     #[doc = " @addtogroup Thread\n @{"]
     pub fn rt_thread_init(
         thread: *mut rt_thread,
-        name: *const cty::c_char,
-        entry: ::core::option::Option<unsafe extern "C" fn(parameter: *mut cty::c_void)>,
-        parameter: *mut cty::c_void,
-        stack_start: *mut cty::c_void,
+        name: *const core::ffi::c_char,
+        entry: ::core::option::Option<unsafe extern "C" fn(parameter: *mut core::ffi::c_void)>,
+        parameter: *mut core::ffi::c_void,
+        stack_start: *mut core::ffi::c_void,
         stack_size: rt_uint32_t,
         priority: rt_uint8_t,
         tick: rt_uint32_t,
@@ -4369,9 +4399,9 @@ extern "C" {
 }
 extern "C" {
     pub fn rt_thread_create(
-        name: *const cty::c_char,
-        entry: ::core::option::Option<unsafe extern "C" fn(parameter: *mut cty::c_void)>,
-        parameter: *mut cty::c_void,
+        name: *const core::ffi::c_char,
+        entry: ::core::option::Option<unsafe extern "C" fn(parameter: *mut core::ffi::c_void)>,
+        parameter: *mut core::ffi::c_void,
         stack_size: rt_uint32_t,
         priority: rt_uint8_t,
         tick: rt_uint32_t,
@@ -4384,7 +4414,7 @@ extern "C" {
     pub fn rt_thread_self() -> rt_thread_t;
 }
 extern "C" {
-    pub fn rt_thread_find(name: *mut cty::c_char) -> rt_thread_t;
+    pub fn rt_thread_find(name: *mut core::ffi::c_char) -> rt_thread_t;
 }
 extern "C" {
     pub fn rt_thread_startup(thread: rt_thread_t) -> rt_err_t;
@@ -4404,26 +4434,29 @@ extern "C" {
 extern "C" {
     pub fn rt_thread_control(
         thread: rt_thread_t,
-        cmd: cty::c_int,
-        arg: *mut cty::c_void,
+        cmd: core::ffi::c_int,
+        arg: *mut core::ffi::c_void,
     ) -> rt_err_t;
 }
 extern "C" {
     pub fn rt_thread_suspend(thread: rt_thread_t) -> rt_err_t;
 }
 extern "C" {
-    pub fn rt_thread_suspend_with_flag(thread: rt_thread_t, suspend_flag: cty::c_int) -> rt_err_t;
+    pub fn rt_thread_suspend_with_flag(
+        thread: rt_thread_t,
+        suspend_flag: core::ffi::c_int,
+    ) -> rt_err_t;
 }
 extern "C" {
     pub fn rt_thread_resume(thread: rt_thread_t) -> rt_err_t;
 }
 extern "C" {
-    pub fn rt_thread_timeout(parameter: *mut cty::c_void);
+    pub fn rt_thread_timeout(parameter: *mut core::ffi::c_void);
 }
 extern "C" {
     pub fn rt_thread_get_name(
         thread: rt_thread_t,
-        name: *mut cty::c_char,
+        name: *mut core::ffi::c_char,
         name_size: rt_uint8_t,
     ) -> rt_err_t;
 }
@@ -4494,13 +4527,13 @@ extern "C" {
     pub fn rt_secondary_cpu_entry();
 }
 extern "C" {
-    pub fn rt_scheduler_ipi_handler(vector: cty::c_int, param: *mut cty::c_void);
+    pub fn rt_scheduler_ipi_handler(vector: core::ffi::c_int, param: *mut core::ffi::c_void);
 }
 extern "C" {
     pub fn rt_mp_init(
         mp: *mut rt_mempool,
-        name: *const cty::c_char,
-        start: *mut cty::c_void,
+        name: *const core::ffi::c_char,
+        start: *mut core::ffi::c_void,
         size: rt_size_t,
         block_size: rt_size_t,
     ) -> rt_err_t;
@@ -4510,7 +4543,7 @@ extern "C" {
 }
 extern "C" {
     pub fn rt_mp_create(
-        name: *const cty::c_char,
+        name: *const core::ffi::c_char,
         block_count: rt_size_t,
         block_size: rt_size_t,
     ) -> rt_mp_t;
@@ -4519,89 +4552,70 @@ extern "C" {
     pub fn rt_mp_delete(mp: rt_mp_t) -> rt_err_t;
 }
 extern "C" {
-    pub fn rt_mp_alloc(mp: rt_mp_t, time: rt_int32_t) -> *mut cty::c_void;
+    pub fn rt_mp_alloc(mp: rt_mp_t, time: rt_int32_t) -> *mut core::ffi::c_void;
 }
 extern "C" {
-    pub fn rt_mp_free(block: *mut cty::c_void);
+    pub fn rt_mp_free(block: *mut core::ffi::c_void);
 }
 extern "C" {
     pub fn rt_mp_alloc_sethook(
         hook: ::core::option::Option<
-            unsafe extern "C" fn(mp: *mut rt_mempool, block: *mut cty::c_void),
+            unsafe extern "C" fn(mp: *mut rt_mempool, block: *mut core::ffi::c_void),
         >,
     );
 }
 extern "C" {
     pub fn rt_mp_free_sethook(
         hook: ::core::option::Option<
-            unsafe extern "C" fn(mp: *mut rt_mempool, block: *mut cty::c_void),
+            unsafe extern "C" fn(mp: *mut rt_mempool, block: *mut core::ffi::c_void),
         >,
     );
 }
 extern "C" {
-    pub fn rt_system_heap_init(begin_addr: *mut cty::c_void, end_addr: *mut cty::c_void);
+    pub fn rt_system_heap_init(
+        begin_addr: *mut core::ffi::c_void,
+        end_addr: *mut core::ffi::c_void,
+    );
 }
 extern "C" {
-    pub fn rt_malloc(size: rt_size_t) -> *mut cty::c_void;
+    pub fn rt_malloc(size: rt_size_t) -> *mut core::ffi::c_void;
 }
 extern "C" {
-    pub fn rt_free(ptr: *mut cty::c_void);
+    pub fn rt_free(ptr: *mut core::ffi::c_void);
 }
 extern "C" {
-    pub fn rt_realloc(ptr: *mut cty::c_void, newsize: rt_size_t) -> *mut cty::c_void;
+    pub fn rt_realloc(ptr: *mut core::ffi::c_void, newsize: rt_size_t) -> *mut core::ffi::c_void;
 }
 extern "C" {
-    pub fn rt_calloc(count: rt_size_t, size: rt_size_t) -> *mut cty::c_void;
+    pub fn rt_calloc(count: rt_size_t, size: rt_size_t) -> *mut core::ffi::c_void;
 }
 extern "C" {
-    pub fn rt_malloc_align(size: rt_size_t, align: rt_size_t) -> *mut cty::c_void;
+    pub fn rt_malloc_align(size: rt_size_t, align: rt_size_t) -> *mut core::ffi::c_void;
 }
 extern "C" {
-    pub fn rt_free_align(ptr: *mut cty::c_void);
+    pub fn rt_free_align(ptr: *mut core::ffi::c_void);
 }
 extern "C" {
     pub fn rt_memory_info(total: *mut rt_size_t, used: *mut rt_size_t, max_used: *mut rt_size_t);
 }
 extern "C" {
     pub fn rt_malloc_sethook(
-        hook: ::core::option::Option<unsafe extern "C" fn(ptr: *mut cty::c_void, size: rt_size_t)>,
+        hook: ::core::option::Option<
+            unsafe extern "C" fn(ptr: *mut core::ffi::c_void, size: rt_size_t),
+        >,
     );
 }
 extern "C" {
     pub fn rt_free_sethook(
-        hook: ::core::option::Option<unsafe extern "C" fn(ptr: *mut cty::c_void)>,
+        hook: ::core::option::Option<unsafe extern "C" fn(ptr: *mut core::ffi::c_void)>,
     );
-}
-extern "C" {
-    #[doc = " small memory object interface"]
-    pub fn rt_smem_init(
-        name: *const cty::c_char,
-        begin_addr: *mut cty::c_void,
-        size: rt_size_t,
-    ) -> rt_smem_t;
-}
-extern "C" {
-    pub fn rt_smem_detach(m: rt_smem_t) -> rt_err_t;
-}
-extern "C" {
-    pub fn rt_smem_alloc(m: rt_smem_t, size: rt_size_t) -> *mut cty::c_void;
-}
-extern "C" {
-    pub fn rt_smem_realloc(
-        m: rt_smem_t,
-        rmem: *mut cty::c_void,
-        newsize: rt_size_t,
-    ) -> *mut cty::c_void;
-}
-extern "C" {
-    pub fn rt_smem_free(rmem: *mut cty::c_void);
 }
 extern "C" {
     #[doc = " memory heap object interface"]
     pub fn rt_memheap_init(
         memheap: *mut rt_memheap,
-        name: *const cty::c_char,
-        start_addr: *mut cty::c_void,
+        name: *const core::ffi::c_char,
+        start_addr: *mut core::ffi::c_void,
         size: rt_size_t,
     ) -> rt_err_t;
 }
@@ -4609,17 +4623,17 @@ extern "C" {
     pub fn rt_memheap_detach(heap: *mut rt_memheap) -> rt_err_t;
 }
 extern "C" {
-    pub fn rt_memheap_alloc(heap: *mut rt_memheap, size: rt_size_t) -> *mut cty::c_void;
+    pub fn rt_memheap_alloc(heap: *mut rt_memheap, size: rt_size_t) -> *mut core::ffi::c_void;
 }
 extern "C" {
     pub fn rt_memheap_realloc(
         heap: *mut rt_memheap,
-        ptr: *mut cty::c_void,
+        ptr: *mut core::ffi::c_void,
         newsize: rt_size_t,
-    ) -> *mut cty::c_void;
+    ) -> *mut core::ffi::c_void;
 }
 extern "C" {
-    pub fn rt_memheap_free(ptr: *mut cty::c_void);
+    pub fn rt_memheap_free(ptr: *mut core::ffi::c_void);
 }
 extern "C" {
     pub fn rt_memheap_info(
@@ -4632,7 +4646,7 @@ extern "C" {
 extern "C" {
     pub fn rt_sem_init(
         sem: rt_sem_t,
-        name: *const cty::c_char,
+        name: *const core::ffi::c_char,
         value: rt_uint32_t,
         flag: rt_uint8_t,
     ) -> rt_err_t;
@@ -4642,7 +4656,7 @@ extern "C" {
 }
 extern "C" {
     pub fn rt_sem_create(
-        name: *const cty::c_char,
+        name: *const core::ffi::c_char,
         value: rt_uint32_t,
         flag: rt_uint8_t,
     ) -> rt_sem_t;
@@ -4666,17 +4680,24 @@ extern "C" {
     pub fn rt_sem_release(sem: rt_sem_t) -> rt_err_t;
 }
 extern "C" {
-    pub fn rt_sem_control(sem: rt_sem_t, cmd: cty::c_int, arg: *mut cty::c_void) -> rt_err_t;
+    pub fn rt_sem_control(
+        sem: rt_sem_t,
+        cmd: core::ffi::c_int,
+        arg: *mut core::ffi::c_void,
+    ) -> rt_err_t;
 }
 extern "C" {
-    pub fn rt_mutex_init(mutex: rt_mutex_t, name: *const cty::c_char, flag: rt_uint8_t)
-        -> rt_err_t;
+    pub fn rt_mutex_init(
+        mutex: rt_mutex_t,
+        name: *const core::ffi::c_char,
+        flag: rt_uint8_t,
+    ) -> rt_err_t;
 }
 extern "C" {
     pub fn rt_mutex_detach(mutex: rt_mutex_t) -> rt_err_t;
 }
 extern "C" {
-    pub fn rt_mutex_create(name: *const cty::c_char, flag: rt_uint8_t) -> rt_mutex_t;
+    pub fn rt_mutex_create(name: *const core::ffi::c_char, flag: rt_uint8_t) -> rt_mutex_t;
 }
 extern "C" {
     pub fn rt_mutex_delete(mutex: rt_mutex_t) -> rt_err_t;
@@ -4706,17 +4727,24 @@ extern "C" {
     pub fn rt_mutex_release(mutex: rt_mutex_t) -> rt_err_t;
 }
 extern "C" {
-    pub fn rt_mutex_control(mutex: rt_mutex_t, cmd: cty::c_int, arg: *mut cty::c_void) -> rt_err_t;
+    pub fn rt_mutex_control(
+        mutex: rt_mutex_t,
+        cmd: core::ffi::c_int,
+        arg: *mut core::ffi::c_void,
+    ) -> rt_err_t;
 }
 extern "C" {
-    pub fn rt_event_init(event: rt_event_t, name: *const cty::c_char, flag: rt_uint8_t)
-        -> rt_err_t;
+    pub fn rt_event_init(
+        event: rt_event_t,
+        name: *const core::ffi::c_char,
+        flag: rt_uint8_t,
+    ) -> rt_err_t;
 }
 extern "C" {
     pub fn rt_event_detach(event: rt_event_t) -> rt_err_t;
 }
 extern "C" {
-    pub fn rt_event_create(name: *const cty::c_char, flag: rt_uint8_t) -> rt_event_t;
+    pub fn rt_event_create(name: *const core::ffi::c_char, flag: rt_uint8_t) -> rt_event_t;
 }
 extern "C" {
     pub fn rt_event_delete(event: rt_event_t) -> rt_err_t;
@@ -4752,13 +4780,17 @@ extern "C" {
     ) -> rt_err_t;
 }
 extern "C" {
-    pub fn rt_event_control(event: rt_event_t, cmd: cty::c_int, arg: *mut cty::c_void) -> rt_err_t;
+    pub fn rt_event_control(
+        event: rt_event_t,
+        cmd: core::ffi::c_int,
+        arg: *mut core::ffi::c_void,
+    ) -> rt_err_t;
 }
 extern "C" {
     pub fn rt_mb_init(
         mb: rt_mailbox_t,
-        name: *const cty::c_char,
-        msgpool: *mut cty::c_void,
+        name: *const core::ffi::c_char,
+        msgpool: *mut core::ffi::c_void,
         size: rt_size_t,
         flag: rt_uint8_t,
     ) -> rt_err_t;
@@ -4768,7 +4800,7 @@ extern "C" {
 }
 extern "C" {
     pub fn rt_mb_create(
-        name: *const cty::c_char,
+        name: *const core::ffi::c_char,
         size: rt_size_t,
         flag: rt_uint8_t,
     ) -> rt_mailbox_t;
@@ -4817,7 +4849,11 @@ extern "C" {
     ) -> rt_err_t;
 }
 extern "C" {
-    pub fn rt_mb_control(mb: rt_mailbox_t, cmd: cty::c_int, arg: *mut cty::c_void) -> rt_err_t;
+    pub fn rt_mb_control(
+        mb: rt_mailbox_t,
+        cmd: core::ffi::c_int,
+        arg: *mut core::ffi::c_void,
+    ) -> rt_err_t;
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -4874,8 +4910,8 @@ fn bindgen_test_layout_rt_mq_message() {
 extern "C" {
     pub fn rt_mq_init(
         mq: rt_mq_t,
-        name: *const cty::c_char,
-        msgpool: *mut cty::c_void,
+        name: *const core::ffi::c_char,
+        msgpool: *mut core::ffi::c_void,
         msg_size: rt_size_t,
         pool_size: rt_size_t,
         flag: rt_uint8_t,
@@ -4886,7 +4922,7 @@ extern "C" {
 }
 extern "C" {
     pub fn rt_mq_create(
-        name: *const cty::c_char,
+        name: *const core::ffi::c_char,
         msg_size: rt_size_t,
         max_msgs: rt_size_t,
         flag: rt_uint8_t,
@@ -4896,26 +4932,26 @@ extern "C" {
     pub fn rt_mq_delete(mq: rt_mq_t) -> rt_err_t;
 }
 extern "C" {
-    pub fn rt_mq_send(mq: rt_mq_t, buffer: *const cty::c_void, size: rt_size_t) -> rt_err_t;
+    pub fn rt_mq_send(mq: rt_mq_t, buffer: *const core::ffi::c_void, size: rt_size_t) -> rt_err_t;
 }
 extern "C" {
     pub fn rt_mq_send_interruptible(
         mq: rt_mq_t,
-        buffer: *const cty::c_void,
+        buffer: *const core::ffi::c_void,
         size: rt_size_t,
     ) -> rt_err_t;
 }
 extern "C" {
     pub fn rt_mq_send_killable(
         mq: rt_mq_t,
-        buffer: *const cty::c_void,
+        buffer: *const core::ffi::c_void,
         size: rt_size_t,
     ) -> rt_err_t;
 }
 extern "C" {
     pub fn rt_mq_send_wait(
         mq: rt_mq_t,
-        buffer: *const cty::c_void,
+        buffer: *const core::ffi::c_void,
         size: rt_size_t,
         timeout: rt_int32_t,
     ) -> rt_err_t;
@@ -4923,7 +4959,7 @@ extern "C" {
 extern "C" {
     pub fn rt_mq_send_wait_interruptible(
         mq: rt_mq_t,
-        buffer: *const cty::c_void,
+        buffer: *const core::ffi::c_void,
         size: rt_size_t,
         timeout: rt_int32_t,
     ) -> rt_err_t;
@@ -4931,18 +4967,19 @@ extern "C" {
 extern "C" {
     pub fn rt_mq_send_wait_killable(
         mq: rt_mq_t,
-        buffer: *const cty::c_void,
+        buffer: *const core::ffi::c_void,
         size: rt_size_t,
         timeout: rt_int32_t,
     ) -> rt_err_t;
 }
 extern "C" {
-    pub fn rt_mq_urgent(mq: rt_mq_t, buffer: *const cty::c_void, size: rt_size_t) -> rt_err_t;
+    pub fn rt_mq_urgent(mq: rt_mq_t, buffer: *const core::ffi::c_void, size: rt_size_t)
+        -> rt_err_t;
 }
 extern "C" {
     pub fn rt_mq_recv(
         mq: rt_mq_t,
-        buffer: *mut cty::c_void,
+        buffer: *mut core::ffi::c_void,
         size: rt_size_t,
         timeout: rt_int32_t,
     ) -> rt_ssize_t;
@@ -4950,7 +4987,7 @@ extern "C" {
 extern "C" {
     pub fn rt_mq_recv_interruptible(
         mq: rt_mq_t,
-        buffer: *mut cty::c_void,
+        buffer: *mut core::ffi::c_void,
         size: rt_size_t,
         timeout: rt_int32_t,
     ) -> rt_ssize_t;
@@ -4958,32 +4995,36 @@ extern "C" {
 extern "C" {
     pub fn rt_mq_recv_killable(
         mq: rt_mq_t,
-        buffer: *mut cty::c_void,
+        buffer: *mut core::ffi::c_void,
         size: rt_size_t,
         timeout: rt_int32_t,
     ) -> rt_ssize_t;
 }
 extern "C" {
-    pub fn rt_mq_control(mq: rt_mq_t, cmd: cty::c_int, arg: *mut cty::c_void) -> rt_err_t;
+    pub fn rt_mq_control(
+        mq: rt_mq_t,
+        cmd: core::ffi::c_int,
+        arg: *mut core::ffi::c_void,
+    ) -> rt_err_t;
 }
 extern "C" {
     pub fn rt_mq_send_wait_prio(
         mq: rt_mq_t,
-        buffer: *const cty::c_void,
+        buffer: *const core::ffi::c_void,
         size: rt_size_t,
         prio: rt_int32_t,
         timeout: rt_int32_t,
-        suspend_flag: cty::c_int,
+        suspend_flag: core::ffi::c_int,
     ) -> rt_err_t;
 }
 extern "C" {
     pub fn rt_mq_recv_prio(
         mq: rt_mq_t,
-        buffer: *mut cty::c_void,
+        buffer: *mut core::ffi::c_void,
         size: rt_size_t,
         prio: *mut rt_int32_t,
         timeout: rt_int32_t,
-        suspend_flag: cty::c_int,
+        suspend_flag: core::ffi::c_int,
     ) -> rt_ssize_t;
 }
 extern "C" {
@@ -5009,12 +5050,12 @@ extern "C" {
 }
 extern "C" {
     #[doc = " @addtogroup Device\n @{"]
-    pub fn rt_device_find(name: *const cty::c_char) -> rt_device_t;
+    pub fn rt_device_find(name: *const core::ffi::c_char) -> rt_device_t;
 }
 extern "C" {
     pub fn rt_device_register(
         dev: rt_device_t,
-        name: *const cty::c_char,
+        name: *const core::ffi::c_char,
         flags: rt_uint16_t,
     ) -> rt_err_t;
 }
@@ -5022,7 +5063,7 @@ extern "C" {
     pub fn rt_device_unregister(dev: rt_device_t) -> rt_err_t;
 }
 extern "C" {
-    pub fn rt_device_create(type_: cty::c_int, attach_size: cty::c_int) -> rt_device_t;
+    pub fn rt_device_create(type_: core::ffi::c_int, attach_size: core::ffi::c_int) -> rt_device_t;
 }
 extern "C" {
     pub fn rt_device_destroy(device: rt_device_t);
@@ -5039,7 +5080,7 @@ extern "C" {
     pub fn rt_device_set_tx_complete(
         dev: rt_device_t,
         tx_done: ::core::option::Option<
-            unsafe extern "C" fn(dev: rt_device_t, buffer: *mut cty::c_void) -> rt_err_t,
+            unsafe extern "C" fn(dev: rt_device_t, buffer: *mut core::ffi::c_void) -> rt_err_t,
         >,
     ) -> rt_err_t;
 }
@@ -5056,7 +5097,7 @@ extern "C" {
     pub fn rt_device_read(
         dev: rt_device_t,
         pos: rt_off_t,
-        buffer: *mut cty::c_void,
+        buffer: *mut core::ffi::c_void,
         size: rt_size_t,
     ) -> rt_ssize_t;
 }
@@ -5064,12 +5105,16 @@ extern "C" {
     pub fn rt_device_write(
         dev: rt_device_t,
         pos: rt_off_t,
-        buffer: *const cty::c_void,
+        buffer: *const core::ffi::c_void,
         size: rt_size_t,
     ) -> rt_ssize_t;
 }
 extern "C" {
-    pub fn rt_device_control(dev: rt_device_t, cmd: cty::c_int, arg: *mut cty::c_void) -> rt_err_t;
+    pub fn rt_device_control(
+        dev: rt_device_t,
+        cmd: core::ffi::c_int,
+        arg: *mut core::ffi::c_void,
+    ) -> rt_err_t;
 }
 extern "C" {
     pub fn rt_interrupt_enter();
@@ -5087,7 +5132,7 @@ extern "C" {
     pub fn rt_cpu_self() -> *mut rt_cpu;
 }
 extern "C" {
-    pub fn rt_cpu_index(index: cty::c_int) -> *mut rt_cpu;
+    pub fn rt_cpu_index(index: core::ffi::c_int) -> *mut rt_cpu;
 }
 extern "C" {
     pub fn rt_interrupt_get_nest() -> rt_uint8_t;
@@ -5105,39 +5150,43 @@ extern "C" {
     pub fn rt_components_board_init();
 }
 extern "C" {
-    pub fn rt_kprintf(fmt: *const cty::c_char, ...) -> cty::c_int;
+    pub fn rt_kprintf(fmt: *const core::ffi::c_char, ...) -> core::ffi::c_int;
 }
 extern "C" {
-    pub fn rt_kputs(str_: *const cty::c_char);
+    pub fn rt_kputs(str_: *const core::ffi::c_char);
 }
 extern "C" {
     pub fn rt_vsprintf(
-        dest: *mut cty::c_char,
-        format: *const cty::c_char,
+        dest: *mut core::ffi::c_char,
+        format: *const core::ffi::c_char,
         arg_ptr: va_list,
-    ) -> cty::c_int;
+    ) -> core::ffi::c_int;
 }
 extern "C" {
     pub fn rt_vsnprintf(
-        buf: *mut cty::c_char,
+        buf: *mut core::ffi::c_char,
         size: rt_size_t,
-        fmt: *const cty::c_char,
+        fmt: *const core::ffi::c_char,
         args: va_list,
-    ) -> cty::c_int;
+    ) -> core::ffi::c_int;
 }
 extern "C" {
-    pub fn rt_sprintf(buf: *mut cty::c_char, format: *const cty::c_char, ...) -> cty::c_int;
+    pub fn rt_sprintf(
+        buf: *mut core::ffi::c_char,
+        format: *const core::ffi::c_char,
+        ...
+    ) -> core::ffi::c_int;
 }
 extern "C" {
     pub fn rt_snprintf(
-        buf: *mut cty::c_char,
+        buf: *mut core::ffi::c_char,
         size: rt_size_t,
-        format: *const cty::c_char,
+        format: *const core::ffi::c_char,
         ...
-    ) -> cty::c_int;
+    ) -> core::ffi::c_int;
 }
 extern "C" {
-    pub fn rt_console_set_device(name: *const cty::c_char) -> rt_device_t;
+    pub fn rt_console_set_device(name: *const core::ffi::c_char) -> rt_device_t;
 }
 extern "C" {
     pub fn rt_console_get_device() -> rt_device_t;
@@ -5149,90 +5198,345 @@ extern "C" {
     pub fn rt_set_errno(no: rt_err_t);
 }
 extern "C" {
-    pub fn _rt_errno() -> *mut cty::c_int;
+    pub fn _rt_errno() -> *mut core::ffi::c_int;
 }
 extern "C" {
-    pub fn rt_strerror(error: rt_err_t) -> *const cty::c_char;
+    pub fn rt_strerror(error: rt_err_t) -> *const core::ffi::c_char;
 }
 extern "C" {
-    pub fn __rt_ffs(value: cty::c_int) -> cty::c_int;
+    pub fn __rt_ffs(value: core::ffi::c_int) -> core::ffi::c_int;
 }
 extern "C" {
-    pub fn rt_memset(src: *mut cty::c_void, c: cty::c_int, n: rt_ubase_t) -> *mut cty::c_void;
+    pub fn rt_memset(
+        src: *mut core::ffi::c_void,
+        c: core::ffi::c_int,
+        n: rt_ubase_t,
+    ) -> *mut core::ffi::c_void;
 }
 extern "C" {
     pub fn rt_memcpy(
-        dest: *mut cty::c_void,
-        src: *const cty::c_void,
+        dest: *mut core::ffi::c_void,
+        src: *const core::ffi::c_void,
         n: rt_ubase_t,
-    ) -> *mut cty::c_void;
+    ) -> *mut core::ffi::c_void;
 }
 extern "C" {
     pub fn rt_memmove(
-        dest: *mut cty::c_void,
-        src: *const cty::c_void,
+        dest: *mut core::ffi::c_void,
+        src: *const core::ffi::c_void,
         n: rt_size_t,
-    ) -> *mut cty::c_void;
+    ) -> *mut core::ffi::c_void;
 }
 extern "C" {
     pub fn rt_memcmp(
-        cs: *const cty::c_void,
-        ct: *const cty::c_void,
+        cs: *const core::ffi::c_void,
+        ct: *const core::ffi::c_void,
         count: rt_size_t,
     ) -> rt_int32_t;
 }
 extern "C" {
-    pub fn rt_strdup(s: *const cty::c_char) -> *mut cty::c_char;
+    pub fn rt_strdup(s: *const core::ffi::c_char) -> *mut core::ffi::c_char;
 }
 extern "C" {
-    pub fn rt_strnlen(s: *const cty::c_char, maxlen: rt_ubase_t) -> rt_size_t;
+    pub fn rt_strnlen(s: *const core::ffi::c_char, maxlen: rt_ubase_t) -> rt_size_t;
 }
 extern "C" {
-    pub fn rt_strstr(str1: *const cty::c_char, str2: *const cty::c_char) -> *mut cty::c_char;
+    pub fn rt_strstr(
+        str1: *const core::ffi::c_char,
+        str2: *const core::ffi::c_char,
+    ) -> *mut core::ffi::c_char;
 }
 extern "C" {
-    pub fn rt_strcasecmp(a: *const cty::c_char, b: *const cty::c_char) -> rt_int32_t;
+    pub fn rt_strcasecmp(a: *const core::ffi::c_char, b: *const core::ffi::c_char) -> rt_int32_t;
 }
 extern "C" {
-    pub fn rt_strcpy(dst: *mut cty::c_char, src: *const cty::c_char) -> *mut cty::c_char;
+    pub fn rt_strcpy(
+        dst: *mut core::ffi::c_char,
+        src: *const core::ffi::c_char,
+    ) -> *mut core::ffi::c_char;
 }
 extern "C" {
     pub fn rt_strncpy(
-        dest: *mut cty::c_char,
-        src: *const cty::c_char,
+        dest: *mut core::ffi::c_char,
+        src: *const core::ffi::c_char,
         n: rt_size_t,
-    ) -> *mut cty::c_char;
+    ) -> *mut core::ffi::c_char;
 }
 extern "C" {
     pub fn rt_strncmp(
-        cs: *const cty::c_char,
-        ct: *const cty::c_char,
+        cs: *const core::ffi::c_char,
+        ct: *const core::ffi::c_char,
         count: rt_size_t,
     ) -> rt_int32_t;
 }
 extern "C" {
-    pub fn rt_strcmp(cs: *const cty::c_char, ct: *const cty::c_char) -> rt_int32_t;
+    pub fn rt_strcmp(cs: *const core::ffi::c_char, ct: *const core::ffi::c_char) -> rt_int32_t;
 }
 extern "C" {
-    pub fn rt_strlen(src: *const cty::c_char) -> rt_size_t;
+    pub fn rt_strlen(src: *const core::ffi::c_char) -> rt_size_t;
 }
 extern "C" {
     pub fn rt_show_version();
 }
 extern "C" {
     pub static mut rt_assert_hook: ::core::option::Option<
-        unsafe extern "C" fn(ex: *const cty::c_char, func: *const cty::c_char, line: rt_size_t),
+        unsafe extern "C" fn(
+            ex: *const core::ffi::c_char,
+            func: *const core::ffi::c_char,
+            line: rt_size_t,
+        ),
     >;
 }
 extern "C" {
     pub fn rt_assert_set_hook(
         hook: ::core::option::Option<
-            unsafe extern "C" fn(ex: *const cty::c_char, func: *const cty::c_char, line: rt_size_t),
+            unsafe extern "C" fn(
+                ex: *const core::ffi::c_char,
+                func: *const core::ffi::c_char,
+                line: rt_size_t,
+            ),
         >,
     );
 }
 extern "C" {
-    pub fn rt_assert_handler(ex: *const cty::c_char, func: *const cty::c_char, line: rt_size_t);
+    pub fn rt_assert_handler(
+        ex: *const core::ffi::c_char,
+        func: *const core::ffi::c_char,
+        line: rt_size_t,
+    );
+}
+pub const unwind_reason_code_URC_OK: unwind_reason_code = 0;
+pub const unwind_reason_code_URC_CONTINUE_UNWIND: unwind_reason_code = 8;
+pub const unwind_reason_code_URC_FAILURE: unwind_reason_code = 9;
+pub type unwind_reason_code = core::ffi::c_uint;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct unwind_idx {
+    pub addr_offset: core::ffi::c_ulong,
+    pub insn: core::ffi::c_ulong,
+}
+#[test]
+fn bindgen_test_layout_unwind_idx() {
+    const UNINIT: ::core::mem::MaybeUninit<unwind_idx> = ::core::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(
+        ::core::mem::size_of::<unwind_idx>(),
+        8usize,
+        concat!("Size of: ", stringify!(unwind_idx))
+    );
+    assert_eq!(
+        ::core::mem::align_of::<unwind_idx>(),
+        4usize,
+        concat!("Alignment of ", stringify!(unwind_idx))
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).addr_offset) as usize - ptr as usize },
+        0usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(unwind_idx),
+            "::",
+            stringify!(addr_offset)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).insn) as usize - ptr as usize },
+        4usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(unwind_idx),
+            "::",
+            stringify!(insn)
+        )
+    );
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct unwind_table {
+    pub start: *const unwind_idx,
+    pub origin: *const unwind_idx,
+    pub stop: *const unwind_idx,
+    pub begin_addr: core::ffi::c_ulong,
+    pub end_addr: core::ffi::c_ulong,
+}
+#[test]
+fn bindgen_test_layout_unwind_table() {
+    const UNINIT: ::core::mem::MaybeUninit<unwind_table> = ::core::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(
+        ::core::mem::size_of::<unwind_table>(),
+        20usize,
+        concat!("Size of: ", stringify!(unwind_table))
+    );
+    assert_eq!(
+        ::core::mem::align_of::<unwind_table>(),
+        4usize,
+        concat!("Alignment of ", stringify!(unwind_table))
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).start) as usize - ptr as usize },
+        0usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(unwind_table),
+            "::",
+            stringify!(start)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).origin) as usize - ptr as usize },
+        4usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(unwind_table),
+            "::",
+            stringify!(origin)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).stop) as usize - ptr as usize },
+        8usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(unwind_table),
+            "::",
+            stringify!(stop)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).begin_addr) as usize - ptr as usize },
+        12usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(unwind_table),
+            "::",
+            stringify!(begin_addr)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).end_addr) as usize - ptr as usize },
+        16usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(unwind_table),
+            "::",
+            stringify!(end_addr)
+        )
+    );
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct stackframe {
+    pub fp: core::ffi::c_ulong,
+    pub sp: core::ffi::c_ulong,
+    pub lr: core::ffi::c_ulong,
+    pub pc: core::ffi::c_ulong,
+}
+#[test]
+fn bindgen_test_layout_stackframe() {
+    const UNINIT: ::core::mem::MaybeUninit<stackframe> = ::core::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(
+        ::core::mem::size_of::<stackframe>(),
+        16usize,
+        concat!("Size of: ", stringify!(stackframe))
+    );
+    assert_eq!(
+        ::core::mem::align_of::<stackframe>(),
+        4usize,
+        concat!("Alignment of ", stringify!(stackframe))
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).fp) as usize - ptr as usize },
+        0usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(stackframe),
+            "::",
+            stringify!(fp)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).sp) as usize - ptr as usize },
+        4usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(stackframe),
+            "::",
+            stringify!(sp)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).lr) as usize - ptr as usize },
+        8usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(stackframe),
+            "::",
+            stringify!(lr)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).pc) as usize - ptr as usize },
+        12usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(stackframe),
+            "::",
+            stringify!(pc)
+        )
+    );
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct pt_regs {
+    pub uregs: [core::ffi::c_ulong; 18usize],
+}
+#[test]
+fn bindgen_test_layout_pt_regs() {
+    const UNINIT: ::core::mem::MaybeUninit<pt_regs> = ::core::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(
+        ::core::mem::size_of::<pt_regs>(),
+        72usize,
+        concat!("Size of: ", stringify!(pt_regs))
+    );
+    assert_eq!(
+        ::core::mem::align_of::<pt_regs>(),
+        4usize,
+        concat!("Alignment of ", stringify!(pt_regs))
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).uregs) as usize - ptr as usize },
+        0usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(pt_regs),
+            "::",
+            stringify!(uregs)
+        )
+    );
+}
+extern "C" {
+    pub fn unwind_frame(
+        frame: *mut stackframe,
+        origin_idx: *mut *const unwind_idx,
+        exidx_start: *const unwind_idx,
+        exidx_end: *const unwind_idx,
+    ) -> core::ffi::c_int;
+}
+extern "C" {
+    pub fn unwind_backtrace(
+        regs: *mut pt_regs,
+        exidx_start: *const unwind_idx,
+        exidx_end: *const unwind_idx,
+    );
+}
+extern "C" {
+    pub fn rt_unwind(regs: *mut rt_hw_exp_stack, pc_adj: core::ffi::c_uint);
+}
+extern "C" {
+    pub fn rt_backtrace();
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]

@@ -1538,6 +1538,7 @@ RTM_EXPORT(rt_kprintf);
 #endif /* RT_USING_CONSOLE */
 
 #if defined(RT_USING_HEAP) && !defined(RT_USING_USERHEAP)
+#ifndef USE_RUST
 #ifdef RT_USING_HOOK
 static void (*rt_malloc_hook)(void *ptr, rt_size_t size);
 static void (*rt_free_hook)(void *ptr);
@@ -1928,6 +1929,7 @@ rt_weak void rt_free_align(void *ptr)
     rt_free(real_ptr);
 }
 RTM_EXPORT(rt_free_align);
+#endif /* USE_RUST */
 #endif /* RT_USING_HEAP */
 
 #ifndef RT_USING_CPU_FFS

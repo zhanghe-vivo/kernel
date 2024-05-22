@@ -1,3 +1,4 @@
+// TODO: rewrite by linked_list
 use crate::rt_bindings::rt_list_node;
 use crate::rt_bindings::rt_slist_node;
 use core::ptr;
@@ -57,9 +58,9 @@ impl rt_list_node {
 #[macro_export]
 macro_rules! container_of {
     ($ptr:expr, $type:ty, $($f:tt)*) => {{
-        let ptr = $ptr as *const _ as *const u8;
-        let offset: usize = core::mem::offset_of!($type, $($f)*);
-        ptr.sub(offset) as *const $type
+        let temp_ptr = $ptr as *const _ as *const u8;
+        let temp_offset: usize = core::mem::offset_of!($type, $($f)*);
+        temp_ptr.sub(temp_offset) as *const $type
     }}
 }
 

@@ -1,4 +1,4 @@
-use bindgen;
+use bindgen::Builder;
 use std::env;
 use std::path::PathBuf;
 
@@ -20,16 +20,15 @@ fn main() {
         current_dir.join("../libcpu/arm/cortex-a"),
     ];
 
-    let mut builder = bindgen::Builder::default();
+    let mut builder = Builder::default();
     for path in &include_path {
         builder = builder.clang_arg(format!("-I{}", path.to_string_lossy()));
     }
 
     let bindings = builder
         .header("rt_wrapper.h")
-        .ctypes_prefix("cty")
+        .ctypes_prefix("core::ffi")
         .use_core()
-        .parse_callbacks(Box::new(bindgen::CargoCallbacks))
         .generate()
         .expect("Unable to generate bindings");
 
