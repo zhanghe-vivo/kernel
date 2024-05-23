@@ -42,9 +42,9 @@ codegen-units = 16
 rpath = false
 
 [features]
-default = ["tlsf",]
+default = ["buddy",]
 #slab = []
-#buddy = []
+buddy = []
 llff = []
 tlsf = []
 # RT-thread config

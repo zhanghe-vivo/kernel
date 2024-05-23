@@ -12,15 +12,14 @@ mod print;
 #[macro_use]
 mod caller_address;
 
+mod rt_bindings;
 mod alloc;
 mod clock;
 mod cpu;
-mod int;
 mod object;
-mod rt_bindings;
 mod rt_list;
 mod sync;
-mod utils;
+mod linked_list;
 
 use core::sync::atomic::{self, Ordering};
 

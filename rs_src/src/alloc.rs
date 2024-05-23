@@ -7,11 +7,18 @@ use core::{ffi, ptr};
 pub mod llff;
 #[cfg(feature = "llff")]
 pub use llff::Heap;
-
+#[cfg(feature = "buddy")]
+pub mod buddy;
+#[cfg(feature = "buddy")]
+pub use buddy::Heap;
 #[cfg(feature = "tlsf")]
 pub mod tlsf;
 #[cfg(feature = "tlsf")]
 pub use tlsf::Heap;
+
+pub mod block_hdr;
+pub mod int;
+pub mod utils;
 
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
