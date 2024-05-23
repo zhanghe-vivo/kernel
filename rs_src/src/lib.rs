@@ -15,10 +15,12 @@ mod caller_address;
 mod alloc;
 mod clock;
 mod cpu;
+mod int;
 mod object;
 mod rt_bindings;
 mod rt_list;
 mod sync;
+mod utils;
 
 use core::sync::atomic::{self, Ordering};
 

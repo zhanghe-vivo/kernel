@@ -1,6 +1,5 @@
-use core::cmp::min;
-use core::fmt;
-use core::str::from_utf8;
+#![allow(dead_code)]
+use core::{cmp, fmt, str};
 
 pub struct Console;
 /// A struct representing a writer that appends formatted data to a byte buffer.
@@ -57,7 +56,7 @@ impl<'a> WriteTo<'a> {
     /// Converts the written portion of the buffer into a string slice, if possible.
     pub fn as_str(self) -> Option<&'a str> {
         if self.len <= self.buf.len() {
-            from_utf8(&self.buf[..self.len]).ok()
+            str::from_utf8(&self.buf[..self.len]).ok()
         } else {
             None
         }
@@ -91,7 +90,7 @@ impl<'a> fmt::Write for WriteTo<'a> {
 
         let rem = &mut self.buf[self.len..];
         let raw_s = s.as_bytes();
-        let num = min(raw_s.len(), rem.len());
+        let num = cmp::min(raw_s.len(), rem.len());
 
         rem[..num].copy_from_slice(&raw_s[..num]);
         self.len += raw_s.len();

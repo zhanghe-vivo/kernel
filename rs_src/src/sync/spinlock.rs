@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use crate::rt_bindings::*;
 use core::{
     cell::UnsafeCell,
@@ -189,6 +190,14 @@ impl<T> SpinLock<T> {
             lock: rt_spinlock::new(),
             data: UnsafeCell::new(t),
         }
+    }
+
+    #[inline(always)]
+    pub fn into_inner(self) -> T {
+        // We know statically that there are no outstanding references to
+        // `self` so there's no need to lock.
+        let SpinLock { data, .. } = self;
+        data.into_inner()
     }
 
     #[inline(always)]
