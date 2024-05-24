@@ -1,11 +1,13 @@
 use core::alloc::{Layout, LayoutError};
 use core::mem;
 use core::mem::{align_of, size_of};
-use core::ptr::null_mut;
-use core::ptr::NonNull;
+use core::ptr::{null_mut , NonNull};
 
-use crate::alloc::RT_ALIGN_SIZE;
-use crate::alloc::{align_down_size, align_up, align_up_size};
+use crate::alloc::{
+    RT_ALIGN_SIZE, align_down_size, align_up, align_up_size,
+    block_hdr::*,
+};
+
 
 /// A sorted list of holes. It uses the the holes itself to store its nodes.
 pub struct HoleList {
@@ -68,38 +70,36 @@ impl Cursor {
             let hole_size = self.current().size;
             let required_size = required_layout.size();
             let required_align = required_layout.align();
-            let size_with_header = align_up_size(
-                required_size + mem::size_of::<HoleInfo>(),
-                required_layout.align(),
-            );
+            let (max_overhead, search_size) = get_overhead_and_size(required_layout)?;
 
             // Quick check: If the new item is larger than the current hole, it's never gunna
             // work. Go ahead and bail early to save ourselves some math.
-            if hole_size < size_with_header {
+            if hole_size < search_size {
                 return Err(self);
             }
 
-            // Attempt to fracture the current hole into the following parts:
-            // (allocation, [back_padding])
-            //
-            // The paddings are optional, and only placed if required.
-            let addr_after_header = hole_addr_u8.wrapping_add(mem::size_of::<HoleInfo>());
-            let aligned_addr = align_up(addr_after_header, required_align);
-            alloc_ptr = if addr_after_header == aligned_addr {
-                addr_after_header
+            // Decide the starting address of the payload
+            let unaligned_ptr = hole_addr_u8 as usize + mem::size_of::<UsedBlockHdr>();
+            let alloc_ptr = unsafe {
+                NonNull::new_unchecked(
+                    (unaligned_ptr.wrapping_add(required_align - 1) & !(required_align - 1)) as *mut u8,
+                )};
+
+            if layout.align() < GRANULARITY {
+                debug_assert_eq!(unaligned_ptr, alloc_ptr.as_ptr() as usize);
             } else {
-                aligned_addr
-            };
+                debug_assert_ne!(unaligned_ptr, alloc_ptr.as_ptr() as usize);
+            }
+
+            // Calculate the actual overhead and the final block size of the
+            // used block being created here
+            debug_assert!((alloc_ptr.as_ptr() as usize - hole_addr_u8 as usize) <= max_overhead);
 
             // Okay, now that we found space, we need to see if the decisions we just made
             // ACTUALLY fit in the previous hole space
-            let allocation_end = aligned_addr.wrapping_add(required_size);
+            let allocation_end = hole_addr_u8.wrapping_add(search_size);
             let hole_end = hole_addr_u8.wrapping_add(hole_size);
-
-            if allocation_end > hole_end {
-                // hole is too small
-                return Err(self);
-            }
+            debug_assert!(allocation_end > hole_end);
 
             alloc_size = hole_size;
 
@@ -180,6 +180,16 @@ impl Cursor {
             hole_addr_u8.cast::<usize>().write(alloc_size);
             let hole_addr_ptr = alloc_ptr.wrapping_sub(mem::size_of::<*mut u8>());
             hole_addr_ptr.cast::<*const u8>().write(hole_addr_u8);
+        }
+
+        // Turn `block` into a used memory block and initialize the used block
+        // header. `prev_phys_block` is already set.
+        let mut block = hole_addr_u8.cast::<UsedBlockHdr>();
+        block.common.size = search_size | SIZE_USED;
+
+        // Place a `UsedBlockPad` (used by `used_block_hdr_for_allocation`)
+        if layout.align() >= GRANULARITY {
+            unsafe{ (*UsedBlockPad::get_for_allocation(hole_addr_u8)).block_hdr = block; }
         }
 
         // Well that went swimmingly! Hand off the allocation, with surgery performed successfully!
@@ -393,14 +403,15 @@ impl HoleList {
     /// The function performs exactly the same layout adjustments as [`allocate_first_fit`] and
     /// returns the aligned layout.
     pub unsafe fn deallocate(&mut self, ptr: NonNull<u8>, layout: Layout) -> (usize, usize) {
-        // read HoleInfo in allocated header.
-        let hole_addr_ptr = ptr.as_ptr().wrapping_sub(mem::size_of::<*mut u8>());
-        let hole_addr_u8: *const u8 = hole_addr_ptr.cast::<*const u8>().read();
-        let header_ptr = hole_addr_u8.cast::<usize>();
-        let hole_size = header_ptr.read();
+        // Safety: `ptr` is a previously allocated memory block with the same
+        //         alignment as `align`. This is upheld by the caller.
+        let old_block = used_block_hdr_for_allocation(ptr, layout.align()).cast::<BlockHdr>();
+        let hole_addr_u8 = old_block.as_ptr() as *mut u8;
+        let hole_size = old_block.as_ref().size & !SIZE_USED;
+
 
         debug_assert!(
-            ptr.as_ptr() > hole_addr_u8 as *mut u8,
+            ptr.as_ptr() > hole_addr_u8,
             "hole required_size is small than layout size"
         );
         let required_size = hole_size - ptr.as_ptr().offset_from(hole_addr_u8) as usize;
@@ -409,23 +420,8 @@ impl HoleList {
             "hole required_size is small than layout size"
         );
 
-        deallocate(self, hole_addr_u8 as *mut u8, hole_size);
+        deallocate(self, hole_addr_u8, hole_size);
         (hole_size, required_size)
-    }
-
-    pub unsafe fn get_allocated_size(&mut self, ptr: NonNull<u8>) -> usize {
-        // read HoleInfo in allocated header.
-        let hole_addr_ptr = ptr.as_ptr().wrapping_sub(mem::size_of::<*mut u8>());
-        let hole_addr_u8: *const u8 = hole_addr_ptr.cast::<*const u8>().read();
-        debug_assert!(
-            ptr.as_ptr() > hole_addr_u8 as *mut u8,
-            "hole required_size is small than layout size"
-        );
-
-        let header_ptr = hole_addr_u8.cast::<usize>();
-        let hole_size = header_ptr.read();
-
-        hole_size - ptr.as_ptr().offset_from(hole_addr_u8) as usize
     }
 
     /// Returns the minimal allocation size. Smaller allocations or deallocations are not allowed.

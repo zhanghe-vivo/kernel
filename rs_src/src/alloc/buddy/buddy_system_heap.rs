@@ -55,9 +55,8 @@ impl<const ORDER: usize> Heap<ORDER> {
 
     /// Add a range of memory [start, end) to the heap
     pub unsafe fn add_to_heap(&mut self, mut start: usize, mut end: usize) {
-        // avoid unaligned access on some platforms
-        start = (start + mem::size_of::<usize>() - 1) & (!mem::size_of::<usize>() + 1);
-        end &= !mem::size_of::<usize>() + 1;
+        start = start.wrapping_add(GRANULARITY - 1) & !(GRANULARITY - 1);
+        end &= !(GRANULARITY - 1);
         assert!(start <= end);
 
         let mut total = 0;
@@ -152,16 +151,16 @@ impl<const ORDER: usize> Heap<ORDER> {
     pub unsafe fn deallocate(&mut self, ptr: NonNull<u8>, layout: Layout) {
         // Safety: `ptr` is a previously allocated memory block with the same
         //         alignment as `align`. This is upheld by the caller.
-        let block = used_block_hdr_for_allocation(ptr, layout.align()).cast::<BlockHdr>();
-        let size = block.as_ref().size & !SIZE_USED;
+        let old_block = used_block_hdr_for_allocation(ptr, layout.align()).cast::<BlockHdr>();
+        let size = old_block.as_ref().size & !SIZE_USED;
         let class = size.trailing_zeros() as usize;
 
         unsafe {
             // Put back into free list
-            self.free_list[class].push(ptr.as_ptr() as *mut usize);
+            self.free_list[class].push(old_block.as_ptr() as *mut usize);
 
             // Merge free buddy lists
-            let mut current_ptr = ptr.as_ptr() as usize;
+            let mut current_ptr = old_block.as_ptr() as usize;
             let mut current_class = class;
 
             while current_class < self.free_list.len() - 1 {
