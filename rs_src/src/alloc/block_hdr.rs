@@ -1,10 +1,10 @@
-use core::ptr::{NonNull, addr_of};
 use core::alloc::Layout;
 use core::mem;
+use core::ptr::{addr_of, NonNull};
 
 /// The allocation granularity.
 ///
-/// It is `size_of::<usize>() * 4` bytes, which is the minimum size of a 
+/// It is `size_of::<usize>() * 4` bytes, which is the minimum size of a
 /// free block.
 pub(crate) const GRANULARITY: usize = core::mem::size_of::<usize>() * 4;
 

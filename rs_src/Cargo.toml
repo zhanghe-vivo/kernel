@@ -43,7 +43,7 @@ rpath = false
 
 [features]
 default = ["llff",]
-#slab = []
+slab = []
 buddy = []
 llff = []
 tlsf = []

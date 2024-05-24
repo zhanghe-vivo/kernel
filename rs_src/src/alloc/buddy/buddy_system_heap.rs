@@ -1,13 +1,10 @@
 #![cfg_attr(feature = "const_fn", feature(const_mut_refs, const_fn_fn_ptr_basics))]
 
 use core::alloc::Layout;
-use core::{cmp, fmt, mem};
 use core::ptr::NonNull;
+use core::{cmp, fmt, mem};
 
-use crate::{
-    alloc::block_hdr::*,
-    linked_list::LinkedList,
-};
+use crate::{alloc::block_hdr::*, linked_list::LinkedList};
 /// A heap that uses buddy system with configurable order.
 ///
 /// # Usage
@@ -110,9 +107,11 @@ impl<const ORDER: usize> Heap<ORDER> {
                 if let Some(result) = result {
                     unsafe {
                         // Decide the starting address of the payload
-                        let unaligned_ptr = result.as_ptr() as *mut u8 as usize + mem::size_of::<UsedBlockHdr>();
+                        let unaligned_ptr =
+                            result.as_ptr() as *mut u8 as usize + mem::size_of::<UsedBlockHdr>();
                         let ptr = NonNull::new_unchecked(
-                            (unaligned_ptr.wrapping_add(layout.align() - 1) & !(layout.align() - 1)) as *mut u8,
+                            (unaligned_ptr.wrapping_add(layout.align() - 1) & !(layout.align() - 1))
+                                as *mut u8,
                         );
 
                         if layout.align() < GRANULARITY {
@@ -123,7 +122,9 @@ impl<const ORDER: usize> Heap<ORDER> {
 
                         // Calculate the actual overhead and the final block size of the
                         // used block being created here
-                        debug_assert!((ptr.as_ptr() as usize - result.as_ptr() as usize) <= max_overhead);
+                        debug_assert!(
+                            (ptr.as_ptr() as usize - result.as_ptr() as usize) <= max_overhead
+                        );
 
                         // Turn `block` into a used memory block and initialize the used block
                         // header. `prev_phys_block` is already set.

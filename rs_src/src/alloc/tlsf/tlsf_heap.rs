@@ -12,9 +12,9 @@ use core::{
 };
 
 use crate::alloc::{
+    block_hdr::*,
     int::BinInteger,
     utils::{nonnull_slice_from_raw_parts, nonnull_slice_len, nonnull_slice_start},
-    block_hdr::*,
 };
 
 /// The TLSF header (top-level) data structure.
@@ -744,10 +744,11 @@ impl<'pool, FLBitmap: BinInteger, SLBitmap: BinInteger, const FLLEN: usize, cons
             let new_size = (new_size + GRANULARITY - 1) & !(GRANULARITY - 1);
             debug_assert!(new_size <= search_size);
 
-            if new_size == size {
+            let new_size = if new_size == size {
                 // The allocation completely fills this free block.
                 // Updating `next_phys_block.prev_phys_block` is unnecessary in this
                 // case because it's still supposed to point to `block`.
+                new_size
             } else {
                 // The allocation partially fills this free block. Create a new
                 // free block header at `block + new_size..block + size`
@@ -756,19 +757,24 @@ impl<'pool, FLBitmap: BinInteger, SLBitmap: BinInteger, const FLLEN: usize, cons
                     NonNull::new_unchecked(block.cast::<u8>().as_ptr().add(new_size)).cast();
                 let new_free_block_size = size - new_size;
 
-                // Update `next_phys_block.prev_phys_block` to point to this new
-                // free block
-                // Invariant: No two adjacent free blocks
-                debug_assert!((next_phys_block.as_ref().size & SIZE_USED) != 0);
-                next_phys_block.as_mut().prev_phys_block = Some(new_free_block.cast());
+                if new_free_block_size >= GRANULARITY {
+                    // Update `next_phys_block.prev_phys_block` to point to this new
+                    // free block
+                    // Invariant: No two adjacent free blocks
+                    debug_assert!((next_phys_block.as_ref().size & SIZE_USED) != 0);
+                    next_phys_block.as_mut().prev_phys_block = Some(new_free_block.cast());
 
-                // Create the new free block header
-                new_free_block.as_mut().common = BlockHdr {
-                    size: new_free_block_size,
-                    prev_phys_block: Some(block.cast()),
-                };
-                self.link_free_block(new_free_block, new_free_block_size);
-            }
+                    // Create the new free block header
+                    new_free_block.as_mut().common = BlockHdr {
+                        size: new_free_block_size,
+                        prev_phys_block: Some(block.cast()),
+                    };
+                    self.link_free_block(new_free_block, new_free_block_size);
+                    new_size
+                } else {
+                    size
+                }
+            };
 
             // Turn `block` into a used memory block and initialize the used block
             // header. `prev_phys_block` is already set.
