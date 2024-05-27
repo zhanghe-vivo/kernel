@@ -80,8 +80,10 @@ impl Cursor {
             // Decide the starting address of the payload
             let unaligned_ptr = hole_addr_u8.as_ptr() as usize + mem::size_of::<UsedBlockHdr>();
             alloc_ptr = unsafe {
-                NonNull::new_unchecked((unaligned_ptr.wrapping_add(required_layout.align() - 1)
-                    & !(required_layout.align() - 1)) as *mut u8)
+                NonNull::new_unchecked(
+                    (unaligned_ptr.wrapping_add(required_layout.align() - 1)
+                        & !(required_layout.align() - 1)) as *mut u8,
+                )
             };
 
             if required_layout.align() < GRANULARITY {
@@ -304,7 +306,8 @@ impl HoleList {
         debug_assert!(hole_size >= GRANULARITY);
 
         let aligned_hole_addr = align_up(hole_addr, GRANULARITY);
-        let requested_hole_size = hole_size.saturating_sub(aligned_hole_addr.wrapping_sub(hole_addr as usize) as usize);
+        let requested_hole_size =
+            hole_size.saturating_sub(aligned_hole_addr.wrapping_sub(hole_addr as usize) as usize);
         let aligned_hole_size = align_down_size(requested_hole_size, GRANULARITY);
         assert!(aligned_hole_size >= GRANULARITY);
 
@@ -361,10 +364,7 @@ impl HoleList {
     // NOTE: We could probably replace this with an `Option` instead of a `Result` in a later
     // release to remove this clippy warning
     #[allow(clippy::result_unit_err)]
-    pub fn allocate_first_fit(
-        &mut self,
-        layout: Layout,
-    ) -> Result<(NonNull<u8>, usize), ()> {
+    pub fn allocate_first_fit(&mut self, layout: Layout) -> Result<(NonNull<u8>, usize), ()> {
         let aligned_layout = Self::align_layout(layout).map_err(|_| ())?;
         let mut cursor = self.cursor().ok_or(())?;
 
@@ -401,10 +401,7 @@ impl HoleList {
         let hole_addr_u8 = old_block.as_ptr() as *mut u8;
         let hole_size = old_block.as_ref().size & !SIZE_USED;
 
-        debug_assert!(
-            ptr.as_ptr() > hole_addr_u8,
-            "hole ptr is bigger than ptr"
-        );
+        debug_assert!(ptr.as_ptr() > hole_addr_u8, "hole ptr is bigger than ptr");
 
         debug_assert!(
             (hole_size - ptr.as_ptr().offset_from(hole_addr_u8) as usize) >= layout.size(),
