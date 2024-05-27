@@ -31,7 +31,7 @@ pub static mut rt_interrupt_nest: rt_uint8_t = 0;
 fn interrupt_nest_addr_mut() -> *mut rt_uint8_t {
     unsafe {
         #[cfg(feature = "RT_USING_SMP")]
-        return addr_of_mut!((*rt_cpu_index(0)).irq_nest);
+        return addr_of_mut!((*rt_cpu_self()).irq_nest) as *mut rt_uint8_t;
 
         #[cfg(not(feature = "RT_USING_SMP"))]
         return addr_of_mut!(rt_interrupt_nest);
