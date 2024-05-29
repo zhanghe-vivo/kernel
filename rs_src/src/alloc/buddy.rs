@@ -1,4 +1,4 @@
-use core::alloc::{GlobalAlloc, Layout};
+use core::alloc::Layout;
 use core::cell::RefCell;
 use core::ptr::{self, NonNull};
 
@@ -81,38 +81,5 @@ impl Heap {
             (*heap.get_mut()).stats_alloc_actual(),
             (*heap.get_mut()).stats_alloc_max(),
         )
-    }
-}
-
-unsafe impl GlobalAlloc for Heap {
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        self.alloc(layout)
-            .map_or(ptr::null_mut(), |allocation| allocation.as_ptr())
-    }
-
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        self.dealloc(ptr, layout);
-    }
-}
-
-#[cfg(feature = "allocator_api")]
-mod allocator_api {
-    use super::*;
-    use core::alloc::{AllocError, Allocator};
-
-    unsafe impl Allocator for Heap {
-        fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
-            match layout.size() {
-                0 => Ok(NonNull::slice_from_raw_parts(layout.dangling(), 0)),
-                size => self.alloc(layout).map_or(Err(AllocError), |allocation| {
-                    Ok(NonNull::slice_from_raw_parts(allocation, size))
-                }),
-            }
-        }
-        unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
-            if layout.size() != 0 {
-                self.dealloc(ptr.as_ptr(), layout);
-            }
-        }
     }
 }

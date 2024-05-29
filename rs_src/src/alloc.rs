@@ -1,8 +1,14 @@
 #![warn(missing_docs)]
 use crate::rt_bindings::*;
-use core::alloc::Layout;
+use core::alloc::{GlobalAlloc, Layout};
 use core::{ffi, ptr};
 
+#[cfg(feature = "slab")]
+pub mod buddy;
+#[cfg(feature = "slab")]
+pub mod slab;
+#[cfg(feature = "slab")]
+pub use slab::Heap;
 #[cfg(feature = "llff")]
 pub mod llff;
 #[cfg(feature = "llff")]
@@ -26,6 +32,40 @@ static HEAP: Heap = Heap::empty();
 static mut RT_MALLOC_HOOK: Option<extern "C" fn(*mut ffi::c_void, usize)> = None;
 #[cfg(feature = "RT_USING_HOOK")]
 static mut RT_FREE_HOOK: Option<extern "C" fn(*mut ffi::c_void)> = None;
+
+/// impl for GlobalAlloc and allocator_api
+unsafe impl GlobalAlloc for Heap {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        self.alloc(layout)
+            .map_or(ptr::null_mut(), |allocation| allocation.as_ptr())
+    }
+
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        self.dealloc(ptr, layout);
+    }
+}
+
+#[cfg(feature = "allocator_api")]
+mod allocator_api {
+    use super::*;
+    use core::alloc::{AllocError, Allocator};
+
+    unsafe impl Allocator for Heap {
+        fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
+            match layout.size() {
+                0 => Ok(NonNull::slice_from_raw_parts(layout.dangling(), 0)),
+                size => self.alloc(layout).map_or(Err(AllocError), |allocation| {
+                    Ok(NonNull::slice_from_raw_parts(allocation, size))
+                }),
+            }
+        }
+        unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
+            if layout.size() != 0 {
+                self.dealloc(ptr.as_ptr(), layout);
+            }
+        }
+    }
+}
 
 /// Align address and size downwards.
 ///

@@ -148,6 +148,11 @@ impl<const ORDER: usize> Heap<ORDER> {
         None
     }
 
+    pub unsafe fn get_block_size(&mut self, ptr: NonNull<u8>, align: usize) -> usize {
+        let old_block = used_block_hdr_for_allocation(ptr, align).cast::<BlockHdr>();
+        old_block.as_ref().size & !SIZE_USED
+    }
+
     /// Dealloc a range of memory from the heap
     pub unsafe fn deallocate(&mut self, ptr: NonNull<u8>, layout: Layout) {
         // Safety: `ptr` is a previously allocated memory block with the same

@@ -42,7 +42,7 @@ codegen-units = 16
 rpath = false
 
 [features]
-default = ["llff",]
+default = ["slab",]
 slab = []
 buddy = []
 llff = []

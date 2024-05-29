@@ -1,19 +1,21 @@
 use core::alloc::Layout;
 use core::cell::RefCell;
-use core::ptr::{self, NonNull};
+use core::ptr::NonNull;
 
-use const_default1::ConstDefault;
 #[cfg(feature = "RT_USING_HEAP_ISR")]
 type Mutex<T> = crate::sync::spinlock::SpinLock<T>;
 
-pub mod tlsf_heap;
-use tlsf_heap::Tlsf;
+pub mod slab_heap;
+use slab_heap::Heap as SlabHeap;
 
-type TlsfHeap = Tlsf<'static, usize, usize, { usize::BITS as usize }, { usize::BITS as usize }>;
+pub const PAGE_SIZE: usize = 4096;
+pub const NUM_OF_SLABS: usize = 8;
+pub const MIN_SLAB_SIZE: usize = PAGE_SIZE;
+pub const MIN_HEAP_SIZE: usize = NUM_OF_SLABS * MIN_SLAB_SIZE;
 
-/// A two-Level segregated fit heap.
+/// A buddy system heap.
 pub struct Heap {
-    heap: Mutex<RefCell<TlsfHeap>>,
+    heap: Mutex<RefCell<SlabHeap>>,
 }
 
 impl Heap {
@@ -23,7 +25,7 @@ impl Heap {
     /// [`init`](Self::init) method before using the allocator.
     pub const fn empty() -> Heap {
         Heap {
-            heap: Mutex::new(RefCell::new(ConstDefault::DEFAULT)),
+            heap: Mutex::new(RefCell::new(SlabHeap::empty())),
         }
     }
 
@@ -52,9 +54,8 @@ impl Heap {
     /// - This function must be called exactly ONCE.
     /// - `size > 0`
     pub unsafe fn init(&self, start_addr: usize, size: usize) {
-        let block: &[u8] = core::slice::from_raw_parts(start_addr as *const u8, size);
         let mut heap = self.heap.lock();
-        (*heap.get_mut()).insert_free_block_ptr(block.into());
+        (*heap.get_mut()).init(start_addr, size);
     }
 
     pub fn alloc(&self, layout: Layout) -> Option<NonNull<u8>> {
@@ -64,7 +65,7 @@ impl Heap {
 
     pub unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         let mut heap = self.heap.lock();
-        (*heap.get_mut()).deallocate(NonNull::new_unchecked(ptr), layout.align())
+        (*heap.get_mut()).deallocate(NonNull::new_unchecked(ptr), layout);
     }
 
     pub unsafe fn realloc(
@@ -82,7 +83,7 @@ impl Heap {
         let mut heap = self.heap.lock();
         (
             (*heap.get_mut()).total(),
-            (*heap.get_mut()).used(),
+            (*heap.get_mut()).allocated(),
             (*heap.get_mut()).maximum(),
         )
     }
