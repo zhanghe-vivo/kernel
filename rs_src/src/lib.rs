@@ -1,6 +1,7 @@
 #![feature(panic_info_message)]
 #![allow(internal_features)]
 #![feature(core_intrinsics)]
+#![feature(linkage)]
 #![no_std]
 
 #[macro_use]
@@ -15,6 +16,7 @@ mod caller_address;
 mod alloc;
 mod clock;
 mod cpu;
+mod irq;
 mod linked_list;
 mod object;
 mod rt_bindings;
