@@ -5,12 +5,12 @@ use core::ptr::{self, NonNull};
 #[cfg(feature = "RT_USING_HEAP_ISR")]
 type Mutex<T> = crate::sync::spinlock::SpinLock<T>;
 
-pub mod linked_list_heap;
-use linked_list_heap::Heap as LLHeap;
+pub mod buddy_system_heap;
+use buddy_system_heap::Heap as BuddyHeap;
 
-/// A linked list first fit heap.
+/// A buddy system heap.
 pub struct Heap {
-    heap: Mutex<RefCell<LLHeap>>,
+    heap: Mutex<RefCell<BuddyHeap<32>>>,
 }
 
 impl Heap {
@@ -20,7 +20,7 @@ impl Heap {
     /// [`init`](Self::init) method before using the allocator.
     pub const fn empty() -> Heap {
         Heap {
-            heap: Mutex::new(RefCell::new(LLHeap::empty())),
+            heap: Mutex::new(RefCell::new(BuddyHeap::empty())),
         }
     }
 
@@ -50,12 +50,12 @@ impl Heap {
     /// - `size > 0`
     pub unsafe fn init(&self, start_addr: usize, size: usize) {
         let mut heap = self.heap.lock();
-        (*heap.get_mut()).init(start_addr as *mut u8, size);
+        (*heap.get_mut()).init(start_addr, size);
     }
 
     pub fn alloc(&self, layout: Layout) -> Option<NonNull<u8>> {
         let mut heap = self.heap.lock();
-        (*heap.get_mut()).allocate_first_fit(layout)
+        (*heap.get_mut()).allocate(layout)
     }
 
     pub unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
@@ -69,16 +69,17 @@ impl Heap {
         layout: Layout,
         new_size: usize,
     ) -> Option<NonNull<u8>> {
+        let new_layout = Layout::from_size_align_unchecked(new_size, layout.align());
         let mut heap = self.heap.lock();
-        (*heap.get_mut()).realloc(NonNull::new_unchecked(ptr), layout, new_size)
+        (*heap.get_mut()).reallocate(NonNull::new_unchecked(ptr), new_layout)
     }
 
     pub fn memory_info(&self) -> (usize, usize, usize) {
         let mut heap = self.heap.lock();
         (
-            (*heap.get_mut()).size(),
-            (*heap.get_mut()).used(),
-            (*heap.get_mut()).maximum(),
+            (*heap.get_mut()).stats_total_bytes(),
+            (*heap.get_mut()).stats_alloc_actual(),
+            (*heap.get_mut()).stats_alloc_max(),
         )
     }
 }

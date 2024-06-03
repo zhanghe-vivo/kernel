@@ -2,15 +2,18 @@ use core::alloc::{GlobalAlloc, Layout};
 use core::cell::RefCell;
 use core::ptr::{self, NonNull};
 
+use const_default1::ConstDefault;
 #[cfg(feature = "RT_USING_HEAP_ISR")]
 type Mutex<T> = crate::sync::spinlock::SpinLock<T>;
 
-pub mod linked_list_heap;
-use linked_list_heap::Heap as LLHeap;
+pub mod tlsf_heap;
+use tlsf_heap::Tlsf;
 
-/// A linked list first fit heap.
+type TlsfHeap = Tlsf<'static, usize, usize, { usize::BITS as usize }, { usize::BITS as usize }>;
+
+/// A two-Level segregated fit heap.
 pub struct Heap {
-    heap: Mutex<RefCell<LLHeap>>,
+    heap: Mutex<RefCell<TlsfHeap>>,
 }
 
 impl Heap {
@@ -20,7 +23,7 @@ impl Heap {
     /// [`init`](Self::init) method before using the allocator.
     pub const fn empty() -> Heap {
         Heap {
-            heap: Mutex::new(RefCell::new(LLHeap::empty())),
+            heap: Mutex::new(RefCell::new(ConstDefault::DEFAULT)),
         }
     }
 
@@ -49,18 +52,19 @@ impl Heap {
     /// - This function must be called exactly ONCE.
     /// - `size > 0`
     pub unsafe fn init(&self, start_addr: usize, size: usize) {
+        let block: &[u8] = core::slice::from_raw_parts(start_addr as *const u8, size);
         let mut heap = self.heap.lock();
-        (*heap.get_mut()).init(start_addr as *mut u8, size);
+        (*heap.get_mut()).insert_free_block_ptr(block.into());
     }
 
     pub fn alloc(&self, layout: Layout) -> Option<NonNull<u8>> {
         let mut heap = self.heap.lock();
-        (*heap.get_mut()).allocate_first_fit(layout)
+        (*heap.get_mut()).allocate(layout)
     }
 
     pub unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         let mut heap = self.heap.lock();
-        (*heap.get_mut()).deallocate(NonNull::new_unchecked(ptr), layout);
+        (*heap.get_mut()).deallocate(NonNull::new_unchecked(ptr), layout.align())
     }
 
     pub unsafe fn realloc(
@@ -69,14 +73,15 @@ impl Heap {
         layout: Layout,
         new_size: usize,
     ) -> Option<NonNull<u8>> {
+        let new_layout = Layout::from_size_align_unchecked(new_size, layout.align());
         let mut heap = self.heap.lock();
-        (*heap.get_mut()).realloc(NonNull::new_unchecked(ptr), layout, new_size)
+        (*heap.get_mut()).reallocate(NonNull::new_unchecked(ptr), new_layout)
     }
 
     pub fn memory_info(&self) -> (usize, usize, usize) {
         let mut heap = self.heap.lock();
         (
-            (*heap.get_mut()).size(),
+            (*heap.get_mut()).total(),
             (*heap.get_mut()).used(),
             (*heap.get_mut()).maximum(),
         )
@@ -90,7 +95,7 @@ unsafe impl GlobalAlloc for Heap {
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        self.dealloc(ptr, layout);
+        self.dealloc(ptr, layout)
     }
 }
 
@@ -108,6 +113,7 @@ mod allocator_api {
                 }),
             }
         }
+
         unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
             if layout.size() != 0 {
                 self.dealloc(ptr.as_ptr(), layout);

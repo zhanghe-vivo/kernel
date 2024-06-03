@@ -2,13 +2,12 @@ use core::alloc::Layout;
 use core::ptr::NonNull;
 use core::{cmp, mem};
 
+use crate::alloc::block_hdr::*;
 use hole::HoleList;
-
 pub mod hole;
 
 /// A fixed size heap backed by a linked list of free memory blocks.
 pub struct Heap {
-    required: usize,
     allocated: usize,
     maximum: usize,
     holes: HoleList,
@@ -20,7 +19,6 @@ impl Heap {
     /// Creates an empty heap. All allocate calls will return `None`.
     pub const fn empty() -> Heap {
         Heap {
-            required: 0,
             allocated: 0,
             maximum: 0,
             holes: HoleList::empty(),
@@ -54,7 +52,6 @@ impl Heap {
     ///
     /// The provided memory range must be valid for the `'static` lifetime.
     pub unsafe fn init(&mut self, heap_bottom: *mut u8, heap_size: usize) {
-        self.required = 0;
         self.allocated = 0;
         self.maximum = 0;
         self.holes = HoleList::new(heap_bottom, heap_size);
@@ -123,7 +120,6 @@ impl Heap {
     /// The provided memory range must be valid for the `'static` lifetime.
     pub unsafe fn new(heap_bottom: *mut u8, heap_size: usize) -> Heap {
         Heap {
-            required: 0,
             allocated: 0,
             maximum: 0,
             holes: HoleList::new(heap_bottom, heap_size),
@@ -154,13 +150,12 @@ impl Heap {
     #[allow(clippy::result_unit_err)]
     pub fn allocate_first_fit(&mut self, layout: Layout) -> Option<NonNull<u8>> {
         match self.holes.allocate_first_fit(layout) {
-            Ok((ptr, alloc_size, aligned_size)) => {
-                self.required += aligned_size;
+            Ok((ptr, alloc_size)) => {
                 self.allocated += alloc_size;
                 self.maximum = cmp::max(self.maximum, self.allocated);
                 Some(ptr)
             }
-            Err(err) => None,
+            Err(_err) => None,
         }
     }
 
@@ -176,9 +171,8 @@ impl Heap {
     /// `ptr` must be a pointer returned by a call to the [`allocate_first_fit`] function with
     /// identical layout. Undefined behavior may occur for invalid arguments.
     pub unsafe fn deallocate(&mut self, ptr: NonNull<u8>, layout: Layout) {
-        let (alloc_size, aligned_size) = self.holes.deallocate(ptr, layout);
-        self.allocated -= alloc_size;
-        self.required -= aligned_size;
+        let free_size = self.holes.deallocate(ptr, layout);
+        self.allocated -= free_size;
     }
 
     pub unsafe fn realloc(
@@ -187,16 +181,30 @@ impl Heap {
         layout: Layout,
         new_size: usize,
     ) -> Option<NonNull<u8>> {
-        let new_layout = Layout::from_size_align(new_size, layout.align()).unwrap();
-        if let Some(new_ptr) = self.allocate_first_fit(new_layout) {
-            let old_size = self.holes.get_allocated_size(ptr);
-            core::ptr::copy(ptr.as_ptr(), new_ptr.as_ptr(), old_size);
-            let layout = Layout::from_size_align(old_size, 1).unwrap();
-            self.deallocate(ptr, layout);
-            Some(new_ptr)
-        } else {
-            None
+        // Safety: `ptr` is a previously allocated memory block with the same
+        //         alignment as `align`. This is upheld by the caller.
+        let block = used_block_hdr_for_allocation(ptr, layout.align());
+        let overhead = ptr.as_ptr() as usize - block.as_ptr() as usize;
+        let size = overhead.checked_add(new_size)?;
+        let size = size.checked_add(GRANULARITY - 1)? & !(GRANULARITY - 1);
+        let hole_size = block.as_ref().common.size - SIZE_USED;
+
+        if size <= hole_size {
+            return Some(ptr);
         }
+
+        let new_layout = Layout::from_size_align(new_size, layout.align()).unwrap();
+        // Allocate a whole new memory block
+        let new_ptr = self.allocate_first_fit(new_layout)?;
+        let old_size = hole_size - overhead;
+        // Move the existing data into the new location
+        debug_assert!(new_size >= old_size);
+        core::ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_ptr(), old_size);
+
+        // Deallocate the old memory block.
+        self.deallocate(ptr, layout);
+
+        Some(new_ptr)
     }
     /// Returns the bottom address of the heap.
     ///
@@ -222,11 +230,6 @@ impl Heap {
     /// over memory from [`bottom`][Self::bottom] to the address returned.
     pub fn top(&self) -> *mut u8 {
         unsafe { self.holes.top.add(self.holes.pending_extend as usize) }
-    }
-
-    /// Returns the size of the required size by user
-    pub fn required(&self) -> usize {
-        self.required
     }
 
     /// Returns the size of the maximum used of the heap

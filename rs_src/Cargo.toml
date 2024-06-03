@@ -15,6 +15,7 @@ bindgen = "0.69.4"
 
 [dependencies]
 log = "0.4"
+const_default1 = { version = "1", package = "const-default", default-features = false }
 
 [profile.dev]
 opt-level = 0
@@ -42,10 +43,10 @@ rpath = false
 
 [features]
 default = ["llff",]
-#slab = []
-#buddy = []
+slab = []
+buddy = []
 llff = []
-#tlsf = []
+tlsf = []
 # RT-thread config
 RT_USING_SMP = []
 RT_USING_HOOK = []
