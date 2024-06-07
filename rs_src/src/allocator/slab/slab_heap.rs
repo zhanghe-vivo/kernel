@@ -2,7 +2,7 @@ use core::alloc::Layout;
 use core::cell::UnsafeCell;
 use core::ptr::NonNull;
 
-use crate::alloc::{align_down_size, align_up_size, block_hdr::*, buddy::buddy_system_heap};
+use crate::allocator::{align_down_size, align_up_size, block_hdr::*, buddy::buddy_system_heap};
 use crate::linked_list::LinkedList;
 
 pub struct Slab {
@@ -31,7 +31,7 @@ impl Slab {
         self.len = num_of_blocks;
     }
 
-    pub fn allocate(&mut self, _layout: Layout) -> Option<NonNull<u8>> {
+    pub fn allocate(&mut self, _layout: &Layout) -> Option<NonNull<u8>> {
         match self.free_block_list.pop() {
             Some(block) => {
                 self.len -= 1;
@@ -142,7 +142,7 @@ impl Heap {
     /// beginning of that chunk if it was successful. Else it returns `()`.
     /// This function finds the slab of lowest size which can still accommodate the given chunk.
     /// The runtime is in `O(1)` for chunks of size <= 4096, and `probably fast` when chunk size is > 4096,
-    pub fn allocate(&mut self, layout: Layout) -> Option<NonNull<u8>> {
+    pub fn allocate(&mut self, layout: &Layout) -> Option<NonNull<u8>> {
         let ptr;
         match Heap::layout_to_allocator(layout.size(), layout.align()) {
             HeapAllocator::Slab64Bytes => {
@@ -192,7 +192,7 @@ impl Heap {
     /// # Safety
     ///
     /// Undefined behavior may occur for invalid arguments, thus this function is unsafe.
-    pub unsafe fn deallocate(&mut self, ptr: NonNull<u8>, layout: Layout) {
+    pub unsafe fn deallocate(&mut self, ptr: NonNull<u8>, layout: &Layout) {
         let mut size = layout.size();
         if size == 0 {
             // from c
@@ -242,7 +242,7 @@ impl Heap {
     pub unsafe fn reallocate(
         &mut self,
         ptr: NonNull<u8>,
-        new_layout: Layout,
+        new_layout: &Layout,
     ) -> Option<NonNull<u8>> {
         let slab_index = (ptr.as_ptr() as usize - self.begin_addr) / self.slab_size;
         let size = 64 * (slab_index + 1);
@@ -258,7 +258,7 @@ impl Heap {
             core::ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_ptr(), size);
             // Deallocate the old memory block.
             let layout = Layout::from_size_align(size, new_layout.align()).unwrap();
-            self.deallocate(ptr, layout);
+            self.deallocate(ptr, &layout);
 
             return Some(new_ptr);
         } else {

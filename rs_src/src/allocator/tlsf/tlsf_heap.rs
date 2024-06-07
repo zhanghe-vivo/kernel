@@ -690,7 +690,7 @@ impl<'pool, FLBitmap: BinInteger, SLBitmap: BinInteger, const FLLEN: usize, cons
     /// # Time Complexity
     ///
     /// This method will complete in constant time.
-    pub fn allocate(&mut self, layout: Layout) -> Option<NonNull<u8>> {
+    pub fn allocate(&mut self, layout: &Layout) -> Option<NonNull<u8>> {
         unsafe {
             let (max_overhead, search_size) = get_overhead_and_size(layout)?;
             let (fl, sl) = self.search_suitable_free_block_list_for_allocation(search_size)?;
@@ -978,7 +978,7 @@ impl<'pool, FLBitmap: BinInteger, SLBitmap: BinInteger, const FLLEN: usize, cons
     pub unsafe fn reallocate(
         &mut self,
         ptr: NonNull<u8>,
-        new_layout: Layout,
+        new_layout: &Layout,
     ) -> Option<NonNull<u8>> {
         // Safety: `ptr` is a previously allocated memory block with the same
         //         alignment as `align`. This is upheld by the caller.
@@ -1014,7 +1014,7 @@ impl<'pool, FLBitmap: BinInteger, SLBitmap: BinInteger, const FLLEN: usize, cons
         &mut self,
         ptr: NonNull<u8>,
         mut block: NonNull<UsedBlockHdr>,
-        new_layout: Layout,
+        new_layout: &Layout,
     ) -> Option<NonNull<u8>> {
         // The extra bytes consumed by the header and any padding
         let overhead = ptr.as_ptr() as usize - block.as_ptr() as usize;

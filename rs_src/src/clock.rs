@@ -91,8 +91,8 @@ pub extern "C" fn rt_tick_from_millisecond(ms: rt_int32_t) -> rt_tick_t {
 #[doc = "This function will return the passed millisecond from boot."]
 #[no_mangle]
 pub extern "C" fn rt_tick_get_millisecond() -> rt_tick_t {
-    static_assert!(RT_TICK_PER_SECOND > 0);
-    static_assert!(1000 % RT_TICK_PER_SECOND == 0);
+    crate::static_assert!(RT_TICK_PER_SECOND > 0);
+    crate::static_assert!(1000 % RT_TICK_PER_SECOND == 0);
 
     rt_tick_get() * (1000 / RT_TICK_PER_SECOND) as rt_tick_t
 }

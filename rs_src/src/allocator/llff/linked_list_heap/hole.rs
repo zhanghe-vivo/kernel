@@ -54,7 +54,7 @@ impl Cursor {
     // On success, it returns the new allocation, and the linked list has been updated
     // to accomodate any new holes and allocation. On error, it returns the cursor
     // unmodified, and has made no changes to the linked list of holes.
-    fn split_current(self, required_layout: Layout) -> Result<(NonNull<u8>, usize), Self> {
+    fn split_current(self, required_layout: &Layout) -> Result<(NonNull<u8>, usize), Self> {
         let alloc_ptr;
         let mut alloc_size;
         let back_padding;
@@ -364,12 +364,12 @@ impl HoleList {
     // NOTE: We could probably replace this with an `Option` instead of a `Result` in a later
     // release to remove this clippy warning
     #[allow(clippy::result_unit_err)]
-    pub fn allocate_first_fit(&mut self, layout: Layout) -> Result<(NonNull<u8>, usize), ()> {
+    pub fn allocate_first_fit(&mut self, layout: &Layout) -> Result<(NonNull<u8>, usize), ()> {
         let aligned_layout = Self::align_layout(layout).map_err(|_| ())?;
         let mut cursor = self.cursor().ok_or(())?;
 
         loop {
-            match cursor.split_current(aligned_layout) {
+            match cursor.split_current(&aligned_layout) {
                 Ok((ptr, hole_size)) => {
                     return Ok((ptr, hole_size));
                 }
@@ -394,7 +394,7 @@ impl HoleList {
     /// identical layout. Undefined behavior may occur for invalid arguments.
     /// The function performs exactly the same layout adjustments as [`allocate_first_fit`] and
     /// returns the aligned layout.
-    pub unsafe fn deallocate(&mut self, ptr: NonNull<u8>, layout: Layout) -> usize {
+    pub unsafe fn deallocate(&mut self, ptr: NonNull<u8>, layout: &Layout) -> usize {
         // Safety: `ptr` is a previously allocated memory block with the same
         //         alignment as `align`. This is upheld by the caller.
         let old_block = used_block_hdr_for_allocation(ptr, layout.align()).cast::<BlockHdr>();

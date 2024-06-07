@@ -148,7 +148,7 @@ impl Heap {
     // NOTE: We could probably replace this with an `Option` instead of a `Result` in a later
     // release to remove this clippy warning
     #[allow(clippy::result_unit_err)]
-    pub fn allocate_first_fit(&mut self, layout: Layout) -> Option<NonNull<u8>> {
+    pub fn allocate_first_fit(&mut self, layout: &Layout) -> Option<NonNull<u8>> {
         match self.holes.allocate_first_fit(layout) {
             Ok((ptr, alloc_size)) => {
                 self.allocated += alloc_size;
@@ -170,15 +170,15 @@ impl Heap {
     ///
     /// `ptr` must be a pointer returned by a call to the [`allocate_first_fit`] function with
     /// identical layout. Undefined behavior may occur for invalid arguments.
-    pub unsafe fn deallocate(&mut self, ptr: NonNull<u8>, layout: Layout) {
-        let free_size = self.holes.deallocate(ptr, layout);
+    pub unsafe fn deallocate(&mut self, ptr: NonNull<u8>, layout: &Layout) {
+        let free_size = self.holes.deallocate(ptr, &layout);
         self.allocated -= free_size;
     }
 
     pub unsafe fn realloc(
         &mut self,
         ptr: NonNull<u8>,
-        layout: Layout,
+        layout: &Layout,
         new_size: usize,
     ) -> Option<NonNull<u8>> {
         // Safety: `ptr` is a previously allocated memory block with the same
@@ -195,7 +195,7 @@ impl Heap {
 
         let new_layout = Layout::from_size_align(new_size, layout.align()).unwrap();
         // Allocate a whole new memory block
-        let new_ptr = self.allocate_first_fit(new_layout)?;
+        let new_ptr = self.allocate_first_fit(&new_layout)?;
         let old_size = hole_size - overhead;
         // Move the existing data into the new location
         debug_assert!(new_size >= old_size);
