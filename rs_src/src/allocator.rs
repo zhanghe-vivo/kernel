@@ -2,13 +2,13 @@
 
 #![warn(missing_docs)]
 use crate::{rt_bindings::*, static_init::StaticInit};
-use pinned_init::PinInit;
 use core::{
     alloc::{GlobalAlloc, Layout},
     ffi,
-    ptr,
     mem::MaybeUninit,
+    ptr,
 };
+use pinned_init::PinInit;
 
 #[cfg(feature = "slab")]
 pub mod buddy;
@@ -35,23 +35,20 @@ mod utils;
 
 #[cfg(feature = "RT_USING_HEAP_ISR")]
 type HeapLock<T> = crate::sync::SpinLock<T>;
-#[cfg(feature = "RT_USING_MUTEX")]
+#[cfg(all(not(feature = "RT_USING_HEAP_ISR"), feature = "RT_USING_MUTEX"))]
 type HeapLock<T> = crate::sync::Mutex<T>;
 
+#[cfg(all(not(feature = "RT_USING_HEAP_ISR"), feature = "RT_USING_MUTEX"))]
+pub use crate::new_mutex as new_heap_lock;
 #[cfg(feature = "RT_USING_HEAP_ISR")]
 pub use crate::new_spinlock as new_heap_lock;
-#[cfg(feature = "RT_USING_MUTEX")]
-pub use crate::new_mutex as new_heap_lock;
 
 struct KernelAllocator;
 
 struct HeapInit;
 
 unsafe impl PinInit<Heap> for HeapInit {
-    unsafe fn __pinned_init(
-        self,
-        slot: *mut Heap,
-    ) -> Result<(), core::convert::Infallible> {
+    unsafe fn __pinned_init(self, slot: *mut Heap) -> Result<(), core::convert::Infallible> {
         let init = Heap::new();
         unsafe { init.__pinned_init(slot) }
     }
@@ -166,39 +163,40 @@ pub extern "C" fn rt_free_sethook(hook: extern "C" fn(*mut ffi::c_void)) {
 }
 
 #[no_mangle]
-pub extern "C" fn rt_system_heap_init(begin_addr: *mut ffi::c_void, end_addr: *mut ffi::c_void) {
+pub unsafe extern "C" fn rt_system_heap_init(
+    begin_addr: *mut ffi::c_void,
+    end_addr: *mut ffi::c_void,
+) {
     // Initialize the allocator BEFORE you use it
     assert!(end_addr > begin_addr);
     let heap_size = end_addr as usize - begin_addr as usize;
 
-    unsafe { HEAP.init(begin_addr as usize, heap_size) }
+    HEAP.init(begin_addr as usize, heap_size);
 }
 
 #[no_mangle]
-pub extern "C" fn rt_malloc(size: usize) -> *mut ffi::c_void {
+pub unsafe extern "C" fn rt_malloc(size: usize) -> *mut ffi::c_void {
     if core::intrinsics::unlikely(size == 0) {
         return ptr::null_mut() as *mut ffi::c_void;
     }
 
     let layout = Layout::from_size_align(size, RT_ALIGN_SIZE as usize).unwrap();
-    if let Some(alloc_ptr) = HEAP.alloc(layout) {
-        alloc_ptr.as_ptr() as *mut ffi::c_void
-    } else {
-        crate::kprintf!("no memory for size %u\n", size);
-        ptr::null_mut() as *mut ffi::c_void
-    }
+    let ptr = HEAP
+        .alloc(layout)
+        .map_or(ptr::null_mut(), |allocation| allocation.as_ptr());
+    ptr as *mut ffi::c_void
 }
 #[no_mangle]
-pub extern "C" fn rt_free(ptr: *mut ffi::c_void) {
+pub unsafe extern "C" fn rt_free(ptr: *mut ffi::c_void) {
     if core::intrinsics::unlikely(ptr.is_null()) {
         return;
     }
 
     let layout = Layout::from_size_align(0, RT_ALIGN_SIZE as usize).unwrap();
-    unsafe { HEAP.dealloc(ptr as *mut u8, layout) };
+    HEAP.dealloc(ptr as *mut u8, layout);
 }
 #[no_mangle]
-pub extern "C" fn rt_realloc(ptr: *mut ffi::c_void, newsize: usize) -> *mut ffi::c_void {
+pub unsafe extern "C" fn rt_realloc(ptr: *mut ffi::c_void, newsize: usize) -> *mut ffi::c_void {
     if newsize == 0 {
         rt_free(ptr);
         return ptr::null_mut() as *mut ffi::c_void;
@@ -209,42 +207,38 @@ pub extern "C" fn rt_realloc(ptr: *mut ffi::c_void, newsize: usize) -> *mut ffi:
     }
 
     let layout = Layout::from_size_align(0, RT_ALIGN_SIZE as usize).unwrap();
-    if let Some(alloc_ptr) = unsafe { HEAP.realloc(ptr as *mut u8, layout, newsize) } {
-        alloc_ptr.as_ptr() as *mut ffi::c_void
-    } else {
-        crate::kprintf!("no memory for size %u\n", newsize);
-        ptr::null_mut() as *mut ffi::c_void
-    }
+    let ptr = HEAP
+        .realloc(ptr as *mut u8, layout, newsize)
+        .map_or(ptr::null_mut(), |allocation| allocation.as_ptr());
+    ptr as *mut ffi::c_void
 }
 #[no_mangle]
-pub extern "C" fn rt_calloc(count: usize, size: usize) -> *mut ffi::c_void {
+pub unsafe extern "C" fn rt_calloc(count: usize, size: usize) -> *mut ffi::c_void {
     let required_size = count * size;
     let layout = Layout::from_size_align(required_size, RT_ALIGN_SIZE as usize).unwrap();
     if let Some(alloc_ptr) = HEAP.alloc(layout) {
-        let c_ptr = alloc_ptr.as_ptr() as *mut ffi::c_void;
-        unsafe {
-            rt_memset(c_ptr, 0, required_size as u32);
-        }
-        c_ptr
-    } else {
-        crate::kprintf!("no memory for size %u\n", required_size);
-        ptr::null_mut() as *mut ffi::c_void
-    }
-}
-#[no_mangle]
-pub extern "C" fn rt_malloc_align(size: usize, align: usize) -> *mut ffi::c_void {
-    let layout = Layout::from_size_align(size, align).unwrap();
-    if let Some(alloc_ptr) = HEAP.alloc(layout) {
+        ptr::write_bytes(alloc_ptr.as_ptr(), 0, required_size);
         alloc_ptr.as_ptr() as *mut ffi::c_void
     } else {
-        crate::kprintf!("no memory for size %u\n", size);
         ptr::null_mut() as *mut ffi::c_void
     }
 }
 #[no_mangle]
-pub extern "C" fn rt_free_align(ptr: *mut ffi::c_void) {
+pub unsafe extern "C" fn rt_malloc_align(size: usize, align: usize) -> *mut ffi::c_void {
+    if core::intrinsics::unlikely(size == 0) {
+        return ptr::null_mut() as *mut ffi::c_void;
+    }
+
+    let layout = Layout::from_size_align(size, RT_ALIGN_SIZE as usize).unwrap();
+    let ptr = HEAP
+        .alloc(layout)
+        .map_or(ptr::null_mut(), |allocation| allocation.as_ptr());
+    ptr as *mut ffi::c_void
+}
+#[no_mangle]
+pub unsafe extern "C" fn rt_free_align(ptr: *mut ffi::c_void) {
     let layout = Layout::from_size_align(0, RT_ALIGN_SIZE as usize).unwrap();
-    unsafe { HEAP.dealloc(ptr as *mut u8, layout) };
+    HEAP.dealloc(ptr as *mut u8, layout);
 }
 #[no_mangle]
 pub extern "C" fn rt_memory_info(total: *mut usize, used: *mut usize, max_used: *mut usize) {

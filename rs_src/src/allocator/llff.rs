@@ -1,8 +1,8 @@
+use crate::allocator::{new_heap_lock, HeapLock};
 use core::alloc::Layout;
 use core::cell::RefCell;
 use core::ptr::{self, NonNull};
 use pinned_init::*;
-use crate::allocator::{HeapLock, new_heap_lock};
 
 pub mod linked_list_heap;
 use linked_list_heap::Heap as LLHeap;
@@ -51,17 +51,20 @@ impl Heap {
     /// - `size > 0`
     pub unsafe fn init(&self, start_addr: usize, size: usize) {
         let mut heap = self.heap.lock();
-        (*heap.get_mut()).init(start_addr as *mut u8, size);
+        (*heap).borrow_mut().init(start_addr as *mut u8, size);
     }
 
     pub fn alloc(&self, layout: Layout) -> Option<NonNull<u8>> {
         let mut heap = self.heap.lock();
-        (*heap.get_mut()).allocate_first_fit(&layout)
+        let ptr = (*heap).borrow_mut().allocate_first_fit(&layout);
+        ptr
     }
 
     pub unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         let mut heap = self.heap.lock();
-        (*heap.get_mut()).deallocate(NonNull::new_unchecked(ptr), &layout);
+        (*heap)
+            .borrow_mut()
+            .deallocate(NonNull::new_unchecked(ptr), &layout);
     }
 
     pub unsafe fn realloc(
@@ -71,15 +74,19 @@ impl Heap {
         new_size: usize,
     ) -> Option<NonNull<u8>> {
         let mut heap = self.heap.lock();
-        (*heap.get_mut()).realloc(NonNull::new_unchecked(ptr), &layout, new_size)
+        let new_ptr = (*heap)
+            .borrow_mut()
+            .realloc(NonNull::new_unchecked(ptr), &layout, new_size);
+        new_ptr
     }
 
     pub fn memory_info(&self) -> (usize, usize, usize) {
         let mut heap = self.heap.lock();
-        (
-            (*heap.get_mut()).size(),
-            (*heap.get_mut()).used(),
-            (*heap.get_mut()).maximum(),
-        )
+        let x = (
+            (*heap).borrow_mut().total(),
+            (*heap).borrow_mut().allocated(),
+            (*heap).borrow_mut().maximum(),
+        );
+        x
     }
 }

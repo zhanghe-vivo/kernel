@@ -1,8 +1,8 @@
+use crate::allocator::{new_heap_lock, HeapLock};
 use core::alloc::Layout;
 use core::cell::RefCell;
 use core::ptr::{self, NonNull};
 use pinned_init::*;
-use crate::allocator::{HeapLock, new_heap_lock};
 
 pub mod tlsf_heap;
 use tlsf_heap::Tlsf;
@@ -54,17 +54,20 @@ impl Heap {
     pub unsafe fn init(&self, start_addr: usize, size: usize) {
         let block: &[u8] = core::slice::from_raw_parts(start_addr as *const u8, size);
         let mut heap = self.heap.lock();
-        (*heap.get_mut()).insert_free_block_ptr(block.into());
+        (*heap).borrow_mut().insert_free_block_ptr(block.into());
     }
 
     pub fn alloc(&self, layout: Layout) -> Option<NonNull<u8>> {
         let mut heap = self.heap.lock();
-        (*heap.get_mut()).allocate(&layout)
+        let ptr = (*heap).borrow_mut().allocate(&layout);
+        ptr
     }
 
     pub unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         let mut heap = self.heap.lock();
-        (*heap.get_mut()).deallocate(NonNull::new_unchecked(ptr), layout.align())
+        (*heap)
+            .borrow_mut()
+            .deallocate(NonNull::new_unchecked(ptr), layout.align());
     }
 
     pub unsafe fn realloc(
@@ -75,15 +78,19 @@ impl Heap {
     ) -> Option<NonNull<u8>> {
         let new_layout = Layout::from_size_align_unchecked(new_size, layout.align());
         let mut heap = self.heap.lock();
-        (*heap.get_mut()).reallocate(NonNull::new_unchecked(ptr), &new_layout)
+        let new_ptr = (*heap)
+            .borrow_mut()
+            .reallocate(NonNull::new_unchecked(ptr), &new_layout);
+        new_ptr
     }
 
     pub fn memory_info(&self) -> (usize, usize, usize) {
         let mut heap = self.heap.lock();
-        (
-            (*heap.get_mut()).total(),
-            (*heap.get_mut()).used(),
-            (*heap.get_mut()).maximum(),
-        )
+        let x = (
+            (*heap).borrow_mut().total(),
+            (*heap).borrow_mut().allocated(),
+            (*heap).borrow_mut().maximum(),
+        );
+        x
     }
 }

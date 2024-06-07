@@ -10,24 +10,24 @@
 extern crate alloc;
 
 extern crate self as kernel;
-mod rt_bindings;
 mod allocator;
-pub mod error;
-pub mod clock;
-pub mod cpu;
-pub mod irq;
-pub mod object;
-pub mod klibc;
-pub mod str;
-pub mod sync;
-pub mod static_init;
-mod ext_types;
-mod linked_list;
-mod rt_list;
-mod static_assert;
-mod print;
 #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
 mod caller_address;
+pub mod clock;
+pub mod cpu;
+pub mod error;
+mod ext_types;
+pub mod irq;
+pub mod klibc;
+mod linked_list;
+pub mod object;
+mod print;
+mod rt_bindings;
+mod rt_list;
+mod static_assert;
+pub mod static_init;
+pub mod str;
+pub mod sync;
 
 use core::sync::atomic::{self, Ordering};
 

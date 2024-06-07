@@ -1,4 +1,4 @@
-use crate::{rt_bindings, irq, str::CStr};
+use crate::{irq, rt_bindings, str::CStr};
 
 use alloc::alloc::{AllocError, LayoutError};
 
@@ -26,21 +26,21 @@ pub mod code {
     pub const EPERM: super::Error = super::Error(-(crate::rt_bindings::RT_EPERM as i32));
     pub const ETRAP: super::Error = super::Error(-(crate::rt_bindings::RT_ETRAP as i32));
 
-    const EOK_STR: &'static CStr      = crate::c_str!("OK      ");
-    const ERROR_STR: &'static CStr    = crate::c_str!("ERROR   ");
+    const EOK_STR: &'static CStr = crate::c_str!("OK      ");
+    const ERROR_STR: &'static CStr = crate::c_str!("ERROR   ");
     const ETIMEOUT_STR: &'static CStr = crate::c_str!("ETIMOUT ");
-    const EFULL_STR: &'static CStr    = crate::c_str!("ERSFULL ");
-    const EEMPTY_STR: &'static CStr   = crate::c_str!("ERSEPTY ");
-    const ENOMEM_STR: &'static CStr   = crate::c_str!("ENOMEM  ");
-    const ENOSYS_STR: &'static CStr   = crate::c_str!("ENOSYS  ");
-    const EBUSY_STR: &'static CStr    = crate::c_str!("EBUSY   ");
-    const EIO_STR: &'static CStr      = crate::c_str!("EIO     ");
-    const EINTR_STR: &'static CStr    = crate::c_str!("EINTRPT ");
-    const EINVAL_STR: &'static CStr   = crate::c_str!("EINVAL  ");
-    const ENOENT_STR: &'static CStr   = crate::c_str!("ENOENT  ");
-    const ENOSPC_STR: &'static CStr   = crate::c_str!("ENOSPC  ");
-    const EPERM_STR: &'static CStr    = crate::c_str!("EPERM   ");
-    const ETRAP_STR: &'static CStr    = crate::c_str!("ETRAP   ");
+    const EFULL_STR: &'static CStr = crate::c_str!("ERSFULL ");
+    const EEMPTY_STR: &'static CStr = crate::c_str!("ERSEPTY ");
+    const ENOMEM_STR: &'static CStr = crate::c_str!("ENOMEM  ");
+    const ENOSYS_STR: &'static CStr = crate::c_str!("ENOSYS  ");
+    const EBUSY_STR: &'static CStr = crate::c_str!("EBUSY   ");
+    const EIO_STR: &'static CStr = crate::c_str!("EIO     ");
+    const EINTR_STR: &'static CStr = crate::c_str!("EINTRPT ");
+    const EINVAL_STR: &'static CStr = crate::c_str!("EINVAL  ");
+    const ENOENT_STR: &'static CStr = crate::c_str!("ENOENT  ");
+    const ENOSPC_STR: &'static CStr = crate::c_str!("ENOSPC  ");
+    const EPERM_STR: &'static CStr = crate::c_str!("EPERM   ");
+    const ETRAP_STR: &'static CStr = crate::c_str!("ETRAP   ");
     const UNKNOW_STR: &'static CStr = crate::c_str!("EUNKNOW ");
 
     pub fn name(errno: core::ffi::c_int) -> &'static CStr {

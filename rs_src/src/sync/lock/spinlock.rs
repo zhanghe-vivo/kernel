@@ -22,7 +22,7 @@ impl rt_spinlock {
         #[cfg(feature = "RT_USING_SMP")]
         unsafe {
             Self::cpu_preempt_disable();
-            rt_hw_spin_lock((& self.lock) as *const _ as *mut _);
+            rt_hw_spin_lock((&self.lock) as *const _ as *mut _);
         }
 
         #[cfg(not(feature = "RT_USING_SMP"))]
@@ -34,7 +34,7 @@ impl rt_spinlock {
     pub fn unlock(&self) {
         #[cfg(feature = "RT_USING_SMP")]
         unsafe {
-            rt_hw_spin_unlock((& self.lock) as *const _ as *mut _);
+            rt_hw_spin_unlock((&self.lock) as *const _ as *mut _);
             Self::cpu_preempt_enable();
         }
 
@@ -49,10 +49,10 @@ impl rt_spinlock {
         unsafe {
             Self::cpu_preempt_disable();
             let level = rt_hw_local_irq_disable();
-            rt_hw_spin_lock((& self.lock) as *const _ as *mut _);
+            rt_hw_spin_lock((&self.lock) as *const _ as *mut _);
             level
         }
-    
+
         #[cfg(not(feature = "RT_USING_SMP"))]
         unsafe {
             rt_hw_interrupt_disable()
@@ -62,11 +62,11 @@ impl rt_spinlock {
     pub fn unlock_irqrestore(&self, level: rt_base_t) {
         #[cfg(feature = "RT_USING_SMP")]
         unsafe {
-            rt_hw_spin_unlock((& self.lock) as *const _ as *mut _);
+            rt_hw_spin_unlock((&self.lock) as *const _ as *mut _);
             rt_hw_local_irq_enable(level);
             Self::cpu_preempt_enable();
         }
-    
+
         #[cfg(not(feature = "RT_USING_SMP"))]
         unsafe {
             rt_hw_interrupt_enable(level)
@@ -208,10 +208,7 @@ unsafe impl super::Backend for SpinLockBackend {
     type State = rt_spinlock;
     type GuardState = ();
 
-    unsafe fn init(
-        ptr: *mut Self::State,
-        name: *const core::ffi::c_char,
-    ) {
+    unsafe fn init(ptr: *mut Self::State, name: *const core::ffi::c_char) {
         // SAFETY: The safety requirements ensure that `ptr` is valid for writes, and `name` and
         // `key` are valid for read indefinitely.
         unsafe { rt_spin_lock_init(ptr) }
@@ -229,5 +226,3 @@ unsafe impl super::Backend for SpinLockBackend {
         unsafe { rt_spin_unlock(ptr) }
     }
 }
-
-

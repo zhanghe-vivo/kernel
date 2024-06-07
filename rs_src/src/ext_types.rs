@@ -3,7 +3,6 @@
 // Kernel types.
 // TODO: need to rewrite later.
 
-use pinned_init::{pin_init_from_closure, PinInit};
 use alloc::boxed::Box;
 use core::{
     cell::UnsafeCell,
@@ -12,6 +11,7 @@ use core::{
     ops::{Deref, DerefMut},
     ptr::NonNull,
 };
+use pinned_init::{pin_init_from_closure, PinInit};
 
 /// Used to transfer ownership to and from foreign (non-Rust) languages.
 ///

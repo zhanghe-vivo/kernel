@@ -1,11 +1,11 @@
 use crate::rt_bindings::rt_spinlock;
-use pinned_init::PinInit;
 use core::{
     cell::{Cell, UnsafeCell},
     mem::MaybeUninit,
     ops,
     pin::Pin,
 };
+use pinned_init::PinInit;
 
 // # Examples
 //

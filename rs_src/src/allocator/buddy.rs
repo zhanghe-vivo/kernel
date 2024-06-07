@@ -1,9 +1,9 @@
+use crate::allocator::{new_heap_lock, HeapLock};
 use core::alloc::Layout;
 use core::cell::RefCell;
-use core::ptr::{self, NonNull};
 use core::pin::Pin;
+use core::ptr::{self, NonNull};
 use pinned_init::*;
-use crate::allocator::{HeapLock, new_heap_lock};
 
 pub mod buddy_system_heap;
 use buddy_system_heap::Heap as BuddyHeap;
@@ -63,7 +63,9 @@ impl Heap {
 
     pub unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         let mut heap = self.heap.lock();
-        (*heap.get_mut()).deallocate(NonNull::new_unchecked(ptr), &layout);
+        (*heap)
+            .borrow_mut()
+            .deallocate(NonNull::new_unchecked(ptr), &layout);
     }
 
     pub unsafe fn realloc(
@@ -74,15 +76,19 @@ impl Heap {
     ) -> Option<NonNull<u8>> {
         let new_layout = Layout::from_size_align_unchecked(new_size, layout.align());
         let mut heap = self.heap.lock();
-        (*heap.get_mut()).reallocate(NonNull::new_unchecked(ptr), &new_layout)
+        let new_ptr = (*heap)
+            .borrow_mut()
+            .reallocate(NonNull::new_unchecked(ptr), &new_layout);
+        new_ptr
     }
 
     pub fn memory_info(&self) -> (usize, usize, usize) {
         let mut heap = self.heap.lock();
-        (
-            (*heap.get_mut()).stats_total_bytes(),
-            (*heap.get_mut()).stats_alloc_actual(),
-            (*heap.get_mut()).stats_alloc_max(),
-        )
+        let x = (
+            (*heap).borrow_mut().stats_total_bytes(),
+            (*heap).borrow_mut().stats_alloc_actual(),
+            (*heap).borrow_mut().stats_alloc_max(),
+        );
+        x
     }
 }

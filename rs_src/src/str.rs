@@ -1,11 +1,11 @@
 use alloc::vec::Vec;
+use core::alloc::AllocError;
 use core::fmt::{self, Write};
 use core::ops::{self, Deref, DerefMut, Index};
-use core::alloc::AllocError;
 
 use crate::{
-    klibc,
     error::{code, Error},
+    klibc,
 };
 
 /// Byte string without UTF-8 validity guarantee.
@@ -143,7 +143,6 @@ impl From<CStrConvertError> for Error {
         code::EINVAL
     }
 }
-
 
 /// A string that is guaranteed to have exactly one `NUL` byte, which is at the
 /// end.
@@ -766,27 +765,27 @@ macro_rules! fmt {
 }
 
 pub struct CStringIter {
-	ptr: *const core::ffi::c_char,
-	idx: isize,
+    ptr: *const core::ffi::c_char,
+    idx: isize,
 }
 
 impl CStringIter {
-	/// Create a new iterator from a pointer to a null-terminated string. The
-	/// behaviour is undefined if the string is not null-terminated.
-	pub fn new(s: *const core::ffi::c_char) -> CStringIter {
-		CStringIter { ptr: s, idx: 0 }
-	}
+    /// Create a new iterator from a pointer to a null-terminated string. The
+    /// behaviour is undefined if the string is not null-terminated.
+    pub fn new(s: *const core::ffi::c_char) -> CStringIter {
+        CStringIter { ptr: s, idx: 0 }
+    }
 }
 
 impl core::iter::Iterator for CStringIter {
-	type Item = core::ffi::c_char;
-	fn next(&mut self) -> Option<Self::Item> {
-		let c = unsafe { *self.ptr.offset(self.idx) };
-		if c == 0 {
-			None
-		} else {
-			self.idx += 1;
-			Some(c)
-		}
-	}
+    type Item = core::ffi::c_char;
+    fn next(&mut self) -> Option<Self::Item> {
+        let c = unsafe { *self.ptr.offset(self.idx) };
+        if c == 0 {
+            None
+        } else {
+            self.idx += 1;
+            Some(c)
+        }
+    }
 }

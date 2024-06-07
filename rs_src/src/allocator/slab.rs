@@ -1,9 +1,9 @@
+use crate::allocator::{new_heap_lock, HeapLock};
 use core::alloc::Layout;
 use core::cell::RefCell;
-use core::ptr::NonNull;
 use core::pin::Pin;
+use core::ptr::NonNull;
 use pinned_init::*;
-use crate::allocator::{HeapLock, new_heap_lock};
 
 pub mod slab_heap;
 use slab_heap::Heap as SlabHeap;
@@ -68,7 +68,9 @@ impl Heap {
 
     pub unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         let heap = self.heap.lock();
-        (*heap).borrow_mut().deallocate(NonNull::new_unchecked(ptr), &layout);
+        (*heap)
+            .borrow_mut()
+            .deallocate(NonNull::new_unchecked(ptr), &layout);
     }
 
     pub unsafe fn realloc(
@@ -79,8 +81,10 @@ impl Heap {
     ) -> Option<NonNull<u8>> {
         let new_layout = Layout::from_size_align_unchecked(new_size, layout.align());
         let heap = self.heap.lock();
-        let ptr = (*heap).borrow_mut().reallocate(NonNull::new_unchecked(ptr), &new_layout);
-        ptr
+        let new_ptr = (*heap)
+            .borrow_mut()
+            .reallocate(NonNull::new_unchecked(ptr), &new_layout);
+        new_ptr
     }
 
     pub fn memory_info(&self) -> (usize, usize, usize) {

@@ -5,14 +5,19 @@
 //! It contains a generic Rust lock and guard that allow for different backends (e.g., mutexes,
 //! spinlocks, raw spinlocks) to be provided with minimal effort.
 
-use pinned_init::*;
-use crate::{rt_bindings, str::CStr, error::Error, ext_types::{Opaque, ScopeGuard}};
-use core::{
-    ptr::addr_of_mut,
-    marker::{PhantomPinned, PhantomData},
-    cell::UnsafeCell,
-    pin::Pin
+use crate::{
+    error::Error,
+    ext_types::{Opaque, ScopeGuard},
+    rt_bindings,
+    str::CStr,
 };
+use core::{
+    cell::UnsafeCell,
+    marker::{PhantomData, PhantomPinned},
+    pin::Pin,
+    ptr::addr_of_mut,
+};
+use pinned_init::*;
 
 pub mod mutex;
 pub mod spinlock;
@@ -48,10 +53,7 @@ pub unsafe trait Backend {
     ///
     /// `ptr` must be valid for write for the duration of the call, while `name` and `key` must
     /// remain valid for read indefinitely.
-    unsafe fn init(
-        ptr: *mut Self::State,
-        name: *const core::ffi::c_char,
-    );
+    unsafe fn init(ptr: *mut Self::State, name: *const core::ffi::c_char);
 
     /// Acquires the lock, making the caller its owner.
     ///
@@ -121,9 +123,7 @@ impl<T, B: Backend> Lock<T, B> {
     pub unsafe fn init(self: Pin<&mut Self>, name: &'static CStr) {
         // SAFETY: We do not move `self`.
         let this: &mut Self = unsafe { self.get_unchecked_mut() };
-        unsafe {
-            B::init(this.state.get(), name.as_char_ptr())
-        }
+        unsafe { B::init(this.state.get(), name.as_char_ptr()) }
     }
 
     /// Constructs a new lock initialiser.
