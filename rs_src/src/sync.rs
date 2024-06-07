@@ -1,5 +1,6 @@
 pub mod lock;
 
+pub use lock::heaplock::{new_heaplock, HeapLock};
 pub use lock::mutex::{new_mutex, Mutex};
 pub use lock::spinlock::{new_spinlock, SpinLock};
 

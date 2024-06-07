@@ -51,10 +51,10 @@ impl Heap {
     /// is invalid.
     ///
     /// The provided memory range must be valid for the `'static` lifetime.
-    pub unsafe fn init(&mut self, heap_bottom: *mut u8, heap_size: usize) {
+    pub unsafe fn init(&mut self, heap_bottom: usize, heap_size: usize) {
         self.allocated = 0;
         self.maximum = 0;
-        self.holes = HoleList::new(heap_bottom, heap_size);
+        self.holes = HoleList::new(heap_bottom as *mut u8, heap_size);
     }
 
     /// Initialize an empty heap with provided memory.

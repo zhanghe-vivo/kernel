@@ -33,16 +33,6 @@ mod block_hdr;
 mod int;
 mod utils;
 
-#[cfg(feature = "RT_USING_HEAP_ISR")]
-type HeapLock<T> = crate::sync::SpinLock<T>;
-#[cfg(all(not(feature = "RT_USING_HEAP_ISR"), feature = "RT_USING_MUTEX"))]
-type HeapLock<T> = crate::sync::Mutex<T>;
-
-#[cfg(all(not(feature = "RT_USING_HEAP_ISR"), feature = "RT_USING_MUTEX"))]
-pub use crate::new_mutex as new_heap_lock;
-#[cfg(feature = "RT_USING_HEAP_ISR")]
-pub use crate::new_spinlock as new_heap_lock;
-
 struct KernelAllocator;
 
 struct HeapInit;

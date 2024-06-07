@@ -1,4 +1,4 @@
-use crate::allocator::{new_heap_lock, HeapLock};
+use crate::sync::{new_heaplock, HeapLock};
 use core::alloc::Layout;
 use core::cell::RefCell;
 use core::ptr::{self, NonNull};
@@ -23,7 +23,7 @@ impl Heap {
     /// [`init`](Self::init) method before using the allocator.
     pub fn new() -> impl PinInit<Self> {
         pin_init!(Heap {
-            heap <- new_heap_lock!(RefCell::new(ConstDefault::DEFAULT), "heap"),
+            heap <- new_heaplock!(RefCell::new(ConstDefault::DEFAULT), "heap"),
         })
     }
 

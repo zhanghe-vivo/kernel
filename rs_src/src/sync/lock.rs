@@ -19,6 +19,7 @@ use core::{
 };
 use pinned_init::*;
 
+pub mod heaplock;
 pub mod mutex;
 pub mod spinlock;
 
@@ -104,28 +105,6 @@ unsafe impl<T: ?Sized + Send, B: Backend> Send for Lock<T, B> {}
 unsafe impl<T: ?Sized + Send, B: Backend> Sync for Lock<T, B> {}
 
 impl<T, B: Backend> Lock<T, B> {
-    /// Constructs a new lock initialiser.
-    pub const fn empty(t: T) -> Self {
-        Self {
-            data: UnsafeCell::new(t),
-            _pin: PhantomPinned,
-            // SAFETY: `slot` is valid while the closure is called and both `name` and `key` have
-            // static lifetimes so they live indefinitely.
-            state: Opaque::<B::State>::uninit(),
-        }
-    }
-
-    /// Initializes this [`Lock`].
-    ///
-    /// # Safety
-    ///
-    /// This function is only called once.
-    pub unsafe fn init(self: Pin<&mut Self>, name: &'static CStr) {
-        // SAFETY: We do not move `self`.
-        let this: &mut Self = unsafe { self.get_unchecked_mut() };
-        unsafe { B::init(this.state.get(), name.as_char_ptr()) }
-    }
-
     /// Constructs a new lock initialiser.
     pub fn new(t: T, name: &'static CStr) -> impl PinInit<Self> {
         pin_init!(Self {

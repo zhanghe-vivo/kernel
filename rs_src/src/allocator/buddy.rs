@@ -1,4 +1,4 @@
-use crate::allocator::{new_heap_lock, HeapLock};
+use crate::sync::{new_heaplock, HeapLock};
 use core::alloc::Layout;
 use core::cell::RefCell;
 use core::pin::Pin;
@@ -22,7 +22,7 @@ impl Heap {
     /// [`init`](Self::init) method before using the allocator.
     pub fn new() -> impl PinInit<Self> {
         pin_init!(Heap{
-            heap <- new_heap_lock!(RefCell::new(BuddyHeap::empty()), "heap")
+            heap <- new_heaplock!(RefCell::new(BuddyHeap::empty()), "heap")
         })
     }
 
@@ -51,7 +51,7 @@ impl Heap {
     /// - This function must be called exactly ONCE.
     /// - `size > 0`
     pub unsafe fn init(&self, start_addr: usize, size: usize) {
-        let heap = self.heap.lock();
+        let mut heap = self.heap.lock();
         (*heap).borrow_mut().init(start_addr, size);
     }
 
