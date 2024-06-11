@@ -90,6 +90,7 @@ pub struct Lock<T: ?Sized, B: Backend> {
     #[pin]
     _pin: PhantomPinned,
     /// The data protected by the lock.
+    #[pin]
     pub(crate) data: UnsafeCell<T>,
 }
 
@@ -102,9 +103,11 @@ unsafe impl<T: ?Sized + Send, B: Backend> Sync for Lock<T, B> {}
 
 impl<T, B: Backend> Lock<T, B> {
     /// Constructs a new lock initialiser.
-    pub fn new(t: T, name: &'static CStr) -> impl PinInit<Self> {
+    pub fn new(val: impl PinInit<T>, name: &'static CStr) -> impl PinInit<Self> {
         pin_init!(Self {
-            data: UnsafeCell::new(t),
+            data <- unsafe {
+                pin_init_from_closure(|slot: *mut UnsafeCell<T>| val.__pinned_init(slot.cast::<T>()))
+            },
             _pin: PhantomPinned,
             // SAFETY: `slot` is valid while the closure is called and both `name` and `key` have
             // static lifetimes so they live indefinitely.

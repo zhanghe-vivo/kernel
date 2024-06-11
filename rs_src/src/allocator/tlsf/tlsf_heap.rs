@@ -10,6 +10,7 @@ use core::{
     num::NonZeroUsize,
     ptr::{addr_of, NonNull},
 };
+use pinned_init::*;
 
 use crate::allocator::{
     block_hdr::*,
@@ -68,15 +69,15 @@ use crate::allocator::{
 #[derive(Debug)]
 pub struct Tlsf<'pool, FLBitmap, SLBitmap, const FLLEN: usize, const SLLEN: usize> {
     fl_bitmap: FLBitmap,
-    /// `sl_bitmap[fl].get_bit(sl)` is set iff `first_free[fl][sl].is_some()`
+    /// `sl_bitmap[fl].get_bit(sl)` is set if `first_free[fl][sl].is_some()`
     sl_bitmap: [SLBitmap; FLLEN],
     first_free: [[Option<NonNull<FreeBlockHdr>>; SLLEN]; FLLEN],
-    _phantom: PhantomData<&'pool ()>,
-
     // statistics
     allocated: usize,
     maximum: usize,
     total: usize,
+
+    _phantom: PhantomData<&'pool ()>,
 }
 
 // Safety: All memory block headers directly or indirectly referenced by a
@@ -108,14 +109,14 @@ impl<FLBitmap: BinInteger, SLBitmap: BinInteger, const FLLEN: usize, const SLLEN
     for Tlsf<'_, FLBitmap, SLBitmap, FLLEN, SLLEN>
 {
     fn default() -> Self {
-        Self::new()
+        Self::const_new()
     }
 }
 
 impl<FLBitmap: BinInteger, SLBitmap: BinInteger, const FLLEN: usize, const SLLEN: usize>
     ConstDefault for Tlsf<'_, FLBitmap, SLBitmap, FLLEN, SLLEN>
 {
-    const DEFAULT: Self = Self::new();
+    const DEFAULT: Self = Self::const_new();
 }
 
 impl<'pool, FLBitmap: BinInteger, SLBitmap: BinInteger, const FLLEN: usize, const SLLEN: usize>
@@ -123,19 +124,34 @@ impl<'pool, FLBitmap: BinInteger, SLBitmap: BinInteger, const FLLEN: usize, cons
 {
     /// Construct an empty pool.
     #[inline]
-    pub const fn new() -> Self {
+    pub const fn const_new() -> Self {
         Self {
             fl_bitmap: FLBitmap::ZERO,
             sl_bitmap: [SLBitmap::ZERO; FLLEN],
             first_free: [[None; SLLEN]; FLLEN],
+            total: 0,
+            allocated: 0,
+            maximum: 0,
             _phantom: {
                 let () = Self::VALID;
                 PhantomData
             },
+        }
+    }
+
+    pub fn new() -> impl Init<Self> {
+        init!(Self {
+            fl_bitmap: FLBitmap::ZERO,
+            sl_bitmap: [SLBitmap::ZERO; FLLEN],
+            first_free: [[None; SLLEN]; FLLEN],
             total: 0,
             allocated: 0,
             maximum: 0,
-        }
+            _phantom: {
+                let () = Self::VALID;
+                PhantomData
+            },
+        })
     }
 
     // For testing

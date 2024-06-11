@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 use crate::rt_bindings::*;
+use core::ptr;
 
 impl rt_spinlock {
     pub const fn new() -> Self {

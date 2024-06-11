@@ -44,7 +44,7 @@ codegen-units = 16
 rpath = false
 
 [features]
-default = ["slab", "alloc", "allocator_api"]
+default = ["tlsf", "alloc", "allocator_api"]
 slab = []
 buddy = []
 llff = []
