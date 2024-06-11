@@ -1,3 +1,7 @@
+variables:
+  GIT_SUBMODULE_STRATEGY: recursive
+  GIT_SUBMODULE_UPDATE_FLAGS: --jobs 16
+
 stages:
   - build_up
   - ut_up
@@ -5,7 +9,6 @@ stages:
   - ut_mp
 
 before_script:
-    - git submodule update --init --recursive
     - export PATH="$PATH:/home/vivoadmin/.cargo/bin"
     - rustup toolchain link mygnutoolchain "/home/vivoadmin/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu"
     - rustup default mygnutoolchain
