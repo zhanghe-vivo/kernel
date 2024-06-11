@@ -2,14 +2,13 @@
 
 // Kernel types.
 // TODO: need to rewrite later.
-
+#![allow(dead_code)]
 use alloc::boxed::Box;
 use core::{
     cell::UnsafeCell,
-    marker::{PhantomData, PhantomPinned},
+    marker::PhantomPinned,
     mem::MaybeUninit,
     ops::{Deref, DerefMut},
-    ptr::NonNull,
 };
 use pinned_init::{pin_init_from_closure, PinInit};
 

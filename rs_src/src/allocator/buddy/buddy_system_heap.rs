@@ -1,5 +1,4 @@
-#![cfg_attr(feature = "const_fn", feature(const_mut_refs, const_fn_fn_ptr_basics))]
-
+#![allow(dead_code)]
 use core::alloc::Layout;
 use core::ptr::NonNull;
 use core::{cmp, fmt, mem};

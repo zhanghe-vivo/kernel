@@ -4,9 +4,7 @@
 use crate::{rt_bindings::*, static_init::StaticInit};
 use core::{
     alloc::{GlobalAlloc, Layout},
-    ffi,
-    mem::MaybeUninit,
-    ptr,
+    ffi, ptr,
 };
 use pinned_init::PinInit;
 
@@ -219,7 +217,7 @@ pub unsafe extern "C" fn rt_malloc_align(size: usize, align: usize) -> *mut ffi:
         return ptr::null_mut() as *mut ffi::c_void;
     }
 
-    let layout = Layout::from_size_align(size, RT_ALIGN_SIZE as usize).unwrap();
+    let layout = Layout::from_size_align(size, align).unwrap();
     let ptr = HEAP
         .alloc(layout)
         .map_or(ptr::null_mut(), |allocation| allocation.as_ptr());

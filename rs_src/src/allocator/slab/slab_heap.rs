@@ -1,8 +1,7 @@
 use core::alloc::Layout;
-use core::cell::UnsafeCell;
 use core::ptr::NonNull;
 
-use crate::allocator::{align_down_size, align_up_size, block_hdr::*, buddy::buddy_system_heap};
+use crate::allocator::{align_down_size, align_up_size, buddy::buddy_system_heap};
 use crate::linked_list::LinkedList;
 
 pub struct Slab {

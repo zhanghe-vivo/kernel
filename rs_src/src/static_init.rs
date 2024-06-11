@@ -3,7 +3,6 @@ use core::{
     cell::{Cell, UnsafeCell},
     mem::MaybeUninit,
     ops,
-    pin::Pin,
 };
 use pinned_init::PinInit;
 

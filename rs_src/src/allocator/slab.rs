@@ -1,7 +1,6 @@
 use crate::sync::{new_heaplock, HeapLock};
 use core::alloc::Layout;
 use core::cell::RefCell;
-use core::pin::Pin;
 use core::ptr::NonNull;
 use pinned_init::*;
 
@@ -56,7 +55,11 @@ impl Heap {
     /// - This function must be called exactly ONCE.
     /// - `size > 0`
     pub unsafe fn init(&self, start_addr: usize, size: usize) {
-        let mut heap = self.heap.lock();
+        assert!(
+            size >= MIN_HEAP_SIZE,
+            "Heap size should be greater or equal to minimum heap size"
+        );
+        let heap = self.heap.lock();
         (*heap).borrow_mut().init(start_addr, size);
     }
 

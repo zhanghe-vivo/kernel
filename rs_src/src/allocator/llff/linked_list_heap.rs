@@ -1,8 +1,9 @@
+#![allow(dead_code)]
 use core::alloc::Layout;
 use core::ptr::NonNull;
 use core::{cmp, mem};
 
-use crate::alloc::block_hdr::*;
+use crate::allocator::block_hdr::*;
 use hole::HoleList;
 pub mod hole;
 
@@ -86,13 +87,13 @@ impl Heap {
             "The heap has already been initialized."
         );
         let size = mem.len();
-        let address = mem.as_mut_ptr().cast();
+        let address = mem.as_mut_ptr();
         // SAFETY: All initialization requires the bottom address to be valid, which implies it
         // must not be 0. Initially the address is 0. The assertion above ensures that no
         // initialization had been called before.
         // The given address and size is valid according to the safety invariants of the mutable
         // reference handed to us by the caller.
-        unsafe { self.init(address, size) }
+        unsafe { self.init(address as *mut u8 as usize, size) }
     }
 
     /// Creates a new heap with the given `bottom` and `size`.
@@ -219,7 +220,7 @@ impl Heap {
     /// This is the size the heap is using for allocations, not necessarily the
     /// total amount of bytes given to the heap. To determine the exact memory
     /// boundaries, use [`bottom`][Self::bottom] and [`top`][Self::top].
-    pub fn size(&self) -> usize {
+    pub fn total(&self) -> usize {
         unsafe { self.holes.top.offset_from(self.holes.bottom) as usize }
     }
 
@@ -238,13 +239,13 @@ impl Heap {
     }
 
     /// Returns the size of the used part of the heap
-    pub fn used(&self) -> usize {
+    pub fn allocated(&self) -> usize {
         self.allocated
     }
 
     /// Returns the size of the free part of the heap
     pub fn free(&self) -> usize {
-        self.size() - self.allocated
+        self.total() - self.allocated
     }
 
     /// Extends the size of the heap by creating a new hole at the end.

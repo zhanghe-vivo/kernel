@@ -1,7 +1,7 @@
 use crate::sync::{new_heaplock, HeapLock};
 use core::alloc::Layout;
 use core::cell::RefCell;
-use core::ptr::{self, NonNull};
+use core::ptr::NonNull;
 use pinned_init::*;
 
 pub mod linked_list_heap;
@@ -50,18 +50,18 @@ impl Heap {
     /// - This function must be called exactly ONCE.
     /// - `size > 0`
     pub unsafe fn init(&self, start_addr: usize, size: usize) {
-        let mut heap = self.heap.lock();
+        let heap = self.heap.lock();
         (*heap).borrow_mut().init(start_addr, size);
     }
 
     pub fn alloc(&self, layout: Layout) -> Option<NonNull<u8>> {
-        let mut heap = self.heap.lock();
+        let heap = self.heap.lock();
         let ptr = (*heap).borrow_mut().allocate_first_fit(&layout);
         ptr
     }
 
     pub unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        let mut heap = self.heap.lock();
+        let heap = self.heap.lock();
         (*heap)
             .borrow_mut()
             .deallocate(NonNull::new_unchecked(ptr), &layout);
@@ -73,7 +73,7 @@ impl Heap {
         layout: Layout,
         new_size: usize,
     ) -> Option<NonNull<u8>> {
-        let mut heap = self.heap.lock();
+        let heap = self.heap.lock();
         let new_ptr = (*heap)
             .borrow_mut()
             .realloc(NonNull::new_unchecked(ptr), &layout, new_size);
@@ -81,7 +81,7 @@ impl Heap {
     }
 
     pub fn memory_info(&self) -> (usize, usize, usize) {
-        let mut heap = self.heap.lock();
+        let heap = self.heap.lock();
         let x = (
             (*heap).borrow_mut().total(),
             (*heap).borrow_mut().allocated(),

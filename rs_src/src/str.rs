@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-2.0
+
+// TODO: need to rewrite later.
+#![allow(dead_code)]
 use alloc::vec::Vec;
 use core::alloc::AllocError;
 use core::fmt::{self, Write};

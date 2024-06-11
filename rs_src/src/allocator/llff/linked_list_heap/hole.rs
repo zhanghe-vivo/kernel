@@ -3,7 +3,7 @@ use core::mem;
 use core::mem::{align_of, size_of};
 use core::ptr::{null_mut, NonNull};
 
-use crate::alloc::{align_down_size, align_up, align_up_size, block_hdr::*, RT_ALIGN_SIZE};
+use crate::allocator::{align_down_size, align_up, align_up_size, block_hdr::*, RT_ALIGN_SIZE};
 
 /// A sorted list of holes. It uses the the holes itself to store its nodes.
 pub struct HoleList {
@@ -341,7 +341,7 @@ impl HoleList {
     /// The [`allocate_first_fit`][HoleList::allocate_first_fit] and
     /// [`deallocate`][HoleList::deallocate] methods perform the required alignment
     /// themselves, so calling this function manually is not necessary.
-    pub fn align_layout(layout: Layout) -> Result<Layout, LayoutError> {
+    pub fn align_layout(layout: &Layout) -> Result<Layout, LayoutError> {
         let mut size = layout.size();
         if size < Self::min_size() {
             size = Self::min_size();

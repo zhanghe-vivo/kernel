@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use core::alloc::Layout;
 use core::mem;
 use core::ptr::{addr_of, NonNull};

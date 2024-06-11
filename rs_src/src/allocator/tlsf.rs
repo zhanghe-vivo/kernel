@@ -23,7 +23,7 @@ impl Heap {
     /// [`init`](Self::init) method before using the allocator.
     pub fn new() -> impl PinInit<Self> {
         pin_init!(Heap {
-            heap <- new_heaplock!(RefCell::new(ConstDefault::DEFAULT), "heap"),
+            heap <- new_heaplock!(RefCell::new(TlsfHeap::new()), "heap"),
         })
     }
 

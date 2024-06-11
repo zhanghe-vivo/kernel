@@ -1,6 +1,5 @@
 #![allow(dead_code)]
 use crate::rt_bindings::*;
-use core::ptr;
 
 impl rt_spinlock {
     pub const fn new() -> Self {
@@ -208,7 +207,7 @@ unsafe impl super::Backend for SpinLockBackend {
     type State = rt_spinlock;
     type GuardState = ();
 
-    unsafe fn init(ptr: *mut Self::State, name: *const core::ffi::c_char) {
+    unsafe fn init(ptr: *mut Self::State, _name: *const core::ffi::c_char) {
         // SAFETY: The safety requirements ensure that `ptr` is valid for writes, and `name` and
         // `key` are valid for read indefinitely.
         unsafe { rt_spin_lock_init(ptr) }

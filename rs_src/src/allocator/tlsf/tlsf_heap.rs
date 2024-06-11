@@ -11,7 +11,7 @@ use core::{
     ptr::{addr_of, NonNull},
 };
 
-use crate::alloc::{
+use crate::allocator::{
     block_hdr::*,
     int::BinInteger,
     utils::{nonnull_slice_from_raw_parts, nonnull_slice_len, nonnull_slice_start},
@@ -1274,7 +1274,7 @@ impl<'pool, FLBitmap: BinInteger, SLBitmap: BinInteger, const FLLEN: usize, cons
     }
 
     /// Returns the size of the used part of the heap
-    pub fn used(&self) -> usize {
+    pub fn allocated(&self) -> usize {
         self.allocated
     }
 

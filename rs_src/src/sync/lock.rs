@@ -6,16 +6,12 @@
 //! spinlocks, raw spinlocks) to be provided with minimal effort.
 
 use crate::{
-    error::Error,
     ext_types::{Opaque, ScopeGuard},
-    rt_bindings,
     str::CStr,
 };
 use core::{
     cell::UnsafeCell,
     marker::{PhantomData, PhantomPinned},
-    pin::Pin,
-    ptr::addr_of_mut,
 };
 use pinned_init::*;
 

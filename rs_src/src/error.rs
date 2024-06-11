@@ -3,7 +3,6 @@ use crate::{irq, rt_bindings, str::CStr};
 use alloc::alloc::{AllocError, LayoutError};
 
 use core::convert::From;
-use core::fmt;
 use core::num::TryFromIntError;
 use core::str::Utf8Error;
 
