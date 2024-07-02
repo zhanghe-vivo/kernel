@@ -1,10 +1,9 @@
-#![cfg_attr(feature = "const_fn", feature(const_mut_refs, const_fn_fn_ptr_basics))]
-
+#![allow(dead_code)]
 use core::alloc::Layout;
 use core::ptr::NonNull;
 use core::{cmp, fmt, mem};
 
-use crate::{alloc::block_hdr::*, linked_list::LinkedList};
+use crate::{allocator::block_hdr::*, linked_list::LinkedList};
 /// A heap that uses buddy system with configurable order.
 ///
 /// # Usage
@@ -77,7 +76,7 @@ impl<const ORDER: usize> Heap<ORDER> {
     }
 
     /// Alloc a range of memory from the heap satifying `layout` requirements
-    pub fn allocate(&mut self, layout: Layout) -> Option<NonNull<u8>> {
+    pub fn allocate(&mut self, layout: &Layout) -> Option<NonNull<u8>> {
         let (max_overhead, search_size) = get_overhead_and_size(layout)?;
         let search_size = search_size.next_power_of_two();
         let class = search_size.trailing_zeros() as usize;
@@ -154,7 +153,7 @@ impl<const ORDER: usize> Heap<ORDER> {
     }
 
     /// Dealloc a range of memory from the heap
-    pub unsafe fn deallocate(&mut self, ptr: NonNull<u8>, layout: Layout) {
+    pub unsafe fn deallocate(&mut self, ptr: NonNull<u8>, layout: &Layout) {
         // Safety: `ptr` is a previously allocated memory block with the same
         //         alignment as `align`. This is upheld by the caller.
         let old_block = used_block_hdr_for_allocation(ptr, layout.align()).cast::<BlockHdr>();
@@ -198,7 +197,7 @@ impl<const ORDER: usize> Heap<ORDER> {
     pub unsafe fn reallocate(
         &mut self,
         ptr: NonNull<u8>,
-        new_layout: Layout,
+        new_layout: &Layout,
     ) -> Option<NonNull<u8>> {
         // Safety: `ptr` is a previously allocated memory block with the same
         //         alignment as `align`. This is upheld by the caller.

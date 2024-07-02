@@ -42,7 +42,6 @@
 
 /* Memory Management */
 
-#define RT_USING_HEAP_ISR
 #define RT_PAGE_MAX_ORDER 11
 #define RT_USING_MEMPOOL
 //#define RT_USING_SMALL_MEM

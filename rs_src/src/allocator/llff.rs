@@ -1,16 +1,16 @@
+use crate::sync::{new_heaplock, HeapLock};
 use core::alloc::Layout;
-use core::cell::RefCell;
-use core::ptr::{self, NonNull};
-
-#[cfg(feature = "RT_USING_HEAP_ISR")]
-type Mutex<T> = crate::sync::spinlock::SpinLock<T>;
+use core::ptr::NonNull;
+use pinned_init::*;
 
 pub mod linked_list_heap;
 use linked_list_heap::Heap as LLHeap;
 
 /// A linked list first fit heap.
+#[pin_data]
 pub struct Heap {
-    heap: Mutex<RefCell<LLHeap>>,
+    #[pin]
+    heap: HeapLock<LLHeap>,
 }
 
 impl Heap {
@@ -18,10 +18,10 @@ impl Heap {
     ///
     /// You must initialize this heap using the
     /// [`init`](Self::init) method before using the allocator.
-    pub const fn empty() -> Heap {
-        Heap {
-            heap: Mutex::new(RefCell::new(LLHeap::empty())),
-        }
+    pub fn new() -> impl PinInit<Self> {
+        pin_init!(Heap {
+            heap <- new_heaplock!(LLHeap::empty(), "heap"),
+        })
     }
 
     /// Initializes the heap
@@ -50,17 +50,18 @@ impl Heap {
     /// - `size > 0`
     pub unsafe fn init(&self, start_addr: usize, size: usize) {
         let mut heap = self.heap.lock();
-        (*heap.get_mut()).init(start_addr as *mut u8, size);
+        (*heap).init(start_addr, size);
     }
 
     pub fn alloc(&self, layout: Layout) -> Option<NonNull<u8>> {
         let mut heap = self.heap.lock();
-        (*heap.get_mut()).allocate_first_fit(layout)
+        let ptr = (*heap).allocate_first_fit(&layout);
+        ptr
     }
 
     pub unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         let mut heap = self.heap.lock();
-        (*heap.get_mut()).deallocate(NonNull::new_unchecked(ptr), layout);
+        (*heap).deallocate(NonNull::new_unchecked(ptr), &layout);
     }
 
     pub unsafe fn realloc(
@@ -70,15 +71,13 @@ impl Heap {
         new_size: usize,
     ) -> Option<NonNull<u8>> {
         let mut heap = self.heap.lock();
-        (*heap.get_mut()).realloc(NonNull::new_unchecked(ptr), layout, new_size)
+        let new_ptr = (*heap).realloc(NonNull::new_unchecked(ptr), &layout, new_size);
+        new_ptr
     }
 
     pub fn memory_info(&self) -> (usize, usize, usize) {
-        let mut heap = self.heap.lock();
-        (
-            (*heap.get_mut()).size(),
-            (*heap.get_mut()).used(),
-            (*heap.get_mut()).maximum(),
-        )
+        let heap = self.heap.lock();
+        let x = ((*heap).total(), (*heap).allocated(), (*heap).maximum());
+        x
     }
 }

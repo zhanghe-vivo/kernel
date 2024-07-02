@@ -1,5 +1,5 @@
 //! Provide the intrusive LinkedList
-
+#![allow(dead_code)]
 use core::marker::PhantomData;
 use core::{fmt, ptr};
 

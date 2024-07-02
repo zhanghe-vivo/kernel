@@ -1,27 +1,33 @@
+#![no_std]
 #![feature(panic_info_message)]
 #![allow(internal_features)]
 #![feature(core_intrinsics)]
 #![feature(linkage)]
-#![no_std]
+#![feature(allocator_api)]
+#![feature(alloc_layout_extra)]
+#![feature(c_size_t)]
 
-#[macro_use]
-mod static_assert;
-#[macro_use]
-mod print;
+extern crate alloc;
 
+extern crate self as kernel;
+mod allocator;
 #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
-#[macro_use]
 mod caller_address;
-
-mod alloc;
-mod clock;
-mod cpu;
-mod irq;
+pub mod clock;
+pub mod cpu;
+pub mod error;
+mod ext_types;
+pub mod irq;
+pub mod klibc;
 mod linked_list;
-mod object;
+pub mod object;
+mod print;
 mod rt_bindings;
 mod rt_list;
-mod sync;
+mod static_assert;
+pub mod static_init;
+pub mod str;
+pub mod sync;
 
 use core::sync::atomic::{self, Ordering};
 

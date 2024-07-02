@@ -1,3 +1,7 @@
+variables:
+  GIT_SUBMODULE_STRATEGY: recursive
+  GIT_SUBMODULE_UPDATE_FLAGS: --jobs 16
+
 stages:
   - build_up
   - ut_up
@@ -25,7 +29,7 @@ up-build:
         untracked: true
         expire_in: 60 mins
         paths:
-            - /data01/runner/gitlab-runner/builds/y1GSVydi/0/11154271/rt-thread/bsp/qemu-vexpress-a9/
+            - /data01/runner/gitlab-runner/builds/y1GSVydi/0/11154271/rt-thread/bsp/qemu-vexpress-a9/rtthread.bin
 
 up-unit-test:
   stage: ut_up
@@ -55,7 +59,7 @@ mp-build:
         untracked: true
         expire_in: 60 mins
         paths:
-            - /data01/runner/gitlab-runner/builds/y1GSVydi/0/11154271/rt-thread/bsp/qemu-vexpress-a9/
+            - /data01/runner/gitlab-runner/builds/y1GSVydi/0/11154271/rt-thread/bsp/qemu-vexpress-a9/rtthread.bin
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
 

@@ -56,9 +56,6 @@
  * @{
  */
 
-/* global errno in RT-Thread */
-static volatile int __rt_errno;
-
 #if defined(RT_USING_DEVICE) && defined(RT_USING_CONSOLE)
 static rt_device_t _console_device = RT_NULL;
 #endif
@@ -95,6 +92,10 @@ rt_weak const char *rt_hw_cpu_arch(void)
 {
     return "unknown";
 }
+
+#ifndef USE_RUST
+/* global errno in RT-Thread */
+static volatile int __rt_errno;
 
 struct _errno_str_t
 {
@@ -705,6 +706,7 @@ char *rt_strdup(const char *s)
 }
 RTM_EXPORT(rt_strdup);
 #endif /* RT_USING_HEAP */
+#endif /* RT_USE_RUST */
 
 /**
  * @brief This function will show the version of rt-thread rtos

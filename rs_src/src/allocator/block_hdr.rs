@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use core::alloc::Layout;
 use core::mem;
 use core::ptr::{addr_of, NonNull};
@@ -101,7 +102,7 @@ impl UsedBlockPad {
 // aligned to `GRANULARITY / 2` bytes. Consequently, we need to insert
 // a padding containing at most `max(align - GRANULARITY / 2, 0)` bytes.
 #[inline]
-pub(crate) fn get_overhead_and_size(layout: Layout) -> Option<(usize, usize)> {
+pub(crate) fn get_overhead_and_size(layout: &Layout) -> Option<(usize, usize)> {
     let max_overhead =
         layout.align().saturating_sub(GRANULARITY / 2) + mem::size_of::<UsedBlockHdr>();
     // Search for a suitable free block

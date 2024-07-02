@@ -1,9 +1,7 @@
+use crate::sync::{new_heaplock, HeapLock};
 use core::alloc::Layout;
-use core::cell::RefCell;
 use core::ptr::NonNull;
-
-#[cfg(feature = "RT_USING_HEAP_ISR")]
-type Mutex<T> = crate::sync::spinlock::SpinLock<T>;
+use pinned_init::*;
 
 pub mod slab_heap;
 use slab_heap::Heap as SlabHeap;
@@ -13,20 +11,22 @@ pub const NUM_OF_SLABS: usize = 8;
 pub const MIN_SLAB_SIZE: usize = PAGE_SIZE;
 pub const MIN_HEAP_SIZE: usize = NUM_OF_SLABS * MIN_SLAB_SIZE;
 
-/// A buddy system heap.
+/// A slab heap.
+#[pin_data]
 pub struct Heap {
-    heap: Mutex<RefCell<SlabHeap>>,
+    #[pin]
+    heap: HeapLock<SlabHeap>,
 }
 
 impl Heap {
-    /// Create a new UNINITIALIZED heap allocator
+    /// Create a new UNINITIALIZED heap allocator, for global_allocator
     ///
     /// You must initialize this heap using the
     /// [`init`](Self::init) method before using the allocator.
-    pub const fn empty() -> Heap {
-        Heap {
-            heap: Mutex::new(RefCell::new(SlabHeap::empty())),
-        }
+    pub fn new() -> impl PinInit<Self> {
+        pin_init!(Heap{
+            heap <- new_heaplock!(SlabHeap::empty(), "heap")
+        })
     }
 
     /// Initializes the heap
@@ -54,18 +54,23 @@ impl Heap {
     /// - This function must be called exactly ONCE.
     /// - `size > 0`
     pub unsafe fn init(&self, start_addr: usize, size: usize) {
+        assert!(
+            size >= MIN_HEAP_SIZE,
+            "Heap size should be greater or equal to minimum heap size"
+        );
         let mut heap = self.heap.lock();
-        (*heap.get_mut()).init(start_addr, size);
+        (*heap).init(start_addr, size);
     }
 
     pub fn alloc(&self, layout: Layout) -> Option<NonNull<u8>> {
         let mut heap = self.heap.lock();
-        (*heap.get_mut()).allocate(layout)
+        let ptr = (*heap).allocate(&layout);
+        ptr
     }
 
     pub unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         let mut heap = self.heap.lock();
-        (*heap.get_mut()).deallocate(NonNull::new_unchecked(ptr), layout);
+        (*heap).deallocate(NonNull::new_unchecked(ptr), &layout);
     }
 
     pub unsafe fn realloc(
@@ -76,15 +81,13 @@ impl Heap {
     ) -> Option<NonNull<u8>> {
         let new_layout = Layout::from_size_align_unchecked(new_size, layout.align());
         let mut heap = self.heap.lock();
-        (*heap.get_mut()).reallocate(NonNull::new_unchecked(ptr), new_layout)
+        let new_ptr = (*heap).reallocate(NonNull::new_unchecked(ptr), &new_layout);
+        new_ptr
     }
 
     pub fn memory_info(&self) -> (usize, usize, usize) {
-        let mut heap = self.heap.lock();
-        (
-            (*heap.get_mut()).total(),
-            (*heap.get_mut()).allocated(),
-            (*heap.get_mut()).maximum(),
-        )
+        let heap = self.heap.lock();
+        let x = ((*heap).total(), (*heap).allocated(), (*heap).maximum());
+        x
     }
 }

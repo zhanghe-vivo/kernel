@@ -13,7 +13,7 @@ colima start --arch aarch64 --vm-type=vz --vz-rosetta --cpu 2 --memory 4 --disk 
 colima nerdctl install
 nerdctl build -t compile_rtt .
 nerdctl images
-nerdctl run -d --user "$(id -u)":"$(id -g)" -v "$PWD":/usr/src/rtt -w /usr/src/rtt compile_rtt tail -f /dev/null
+nerdctl run -d -v "$PWD":/usr/src/rtt -w /usr/src/rtt compile_rtt tail -f /dev/null
 nerdctl exec -it compile_rtt bash
 ```
 

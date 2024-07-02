@@ -1,8 +1,9 @@
+#![allow(dead_code)]
 use core::alloc::Layout;
 use core::ptr::NonNull;
 use core::{cmp, mem};
 
-use crate::alloc::block_hdr::*;
+use crate::allocator::block_hdr::*;
 use hole::HoleList;
 pub mod hole;
 
@@ -51,10 +52,10 @@ impl Heap {
     /// is invalid.
     ///
     /// The provided memory range must be valid for the `'static` lifetime.
-    pub unsafe fn init(&mut self, heap_bottom: *mut u8, heap_size: usize) {
+    pub unsafe fn init(&mut self, heap_bottom: usize, heap_size: usize) {
         self.allocated = 0;
         self.maximum = 0;
-        self.holes = HoleList::new(heap_bottom, heap_size);
+        self.holes = HoleList::new(heap_bottom as *mut u8, heap_size);
     }
 
     /// Initialize an empty heap with provided memory.
@@ -86,13 +87,13 @@ impl Heap {
             "The heap has already been initialized."
         );
         let size = mem.len();
-        let address = mem.as_mut_ptr().cast();
+        let address = mem.as_mut_ptr();
         // SAFETY: All initialization requires the bottom address to be valid, which implies it
         // must not be 0. Initially the address is 0. The assertion above ensures that no
         // initialization had been called before.
         // The given address and size is valid according to the safety invariants of the mutable
         // reference handed to us by the caller.
-        unsafe { self.init(address, size) }
+        unsafe { self.init(address as *mut u8 as usize, size) }
     }
 
     /// Creates a new heap with the given `bottom` and `size`.
@@ -148,7 +149,7 @@ impl Heap {
     // NOTE: We could probably replace this with an `Option` instead of a `Result` in a later
     // release to remove this clippy warning
     #[allow(clippy::result_unit_err)]
-    pub fn allocate_first_fit(&mut self, layout: Layout) -> Option<NonNull<u8>> {
+    pub fn allocate_first_fit(&mut self, layout: &Layout) -> Option<NonNull<u8>> {
         match self.holes.allocate_first_fit(layout) {
             Ok((ptr, alloc_size)) => {
                 self.allocated += alloc_size;
@@ -170,15 +171,15 @@ impl Heap {
     ///
     /// `ptr` must be a pointer returned by a call to the [`allocate_first_fit`] function with
     /// identical layout. Undefined behavior may occur for invalid arguments.
-    pub unsafe fn deallocate(&mut self, ptr: NonNull<u8>, layout: Layout) {
-        let free_size = self.holes.deallocate(ptr, layout);
+    pub unsafe fn deallocate(&mut self, ptr: NonNull<u8>, layout: &Layout) {
+        let free_size = self.holes.deallocate(ptr, &layout);
         self.allocated -= free_size;
     }
 
     pub unsafe fn realloc(
         &mut self,
         ptr: NonNull<u8>,
-        layout: Layout,
+        layout: &Layout,
         new_size: usize,
     ) -> Option<NonNull<u8>> {
         // Safety: `ptr` is a previously allocated memory block with the same
@@ -195,7 +196,7 @@ impl Heap {
 
         let new_layout = Layout::from_size_align(new_size, layout.align()).unwrap();
         // Allocate a whole new memory block
-        let new_ptr = self.allocate_first_fit(new_layout)?;
+        let new_ptr = self.allocate_first_fit(&new_layout)?;
         let old_size = hole_size - overhead;
         // Move the existing data into the new location
         debug_assert!(new_size >= old_size);
@@ -219,7 +220,7 @@ impl Heap {
     /// This is the size the heap is using for allocations, not necessarily the
     /// total amount of bytes given to the heap. To determine the exact memory
     /// boundaries, use [`bottom`][Self::bottom] and [`top`][Self::top].
-    pub fn size(&self) -> usize {
+    pub fn total(&self) -> usize {
         unsafe { self.holes.top.offset_from(self.holes.bottom) as usize }
     }
 
@@ -238,13 +239,13 @@ impl Heap {
     }
 
     /// Returns the size of the used part of the heap
-    pub fn used(&self) -> usize {
+    pub fn allocated(&self) -> usize {
         self.allocated
     }
 
     /// Returns the size of the free part of the heap
     pub fn free(&self) -> usize {
-        self.size() - self.allocated
+        self.total() - self.allocated
     }
 
     /// Extends the size of the heap by creating a new hole at the end.

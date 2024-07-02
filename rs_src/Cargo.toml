@@ -16,6 +16,8 @@ bindgen = "0.69.4"
 [dependencies]
 log = "0.4"
 const_default1 = { version = "1", package = "const-default", default-features = false }
+# lots of compile errors, use source code
+pinned-init = { path = "./third_party/pinned-init" }
 
 [profile.dev]
 opt-level = 0
@@ -42,11 +44,13 @@ codegen-units = 16
 rpath = false
 
 [features]
-default = ["slab",]
+default = ["tlsf", "alloc", "allocator_api"]
 slab = []
 buddy = []
 llff = []
 tlsf = []
+alloc = []
+allocator_api = []
 # RT-thread config
 RT_USING_SMP = []
 RT_USING_HOOK = []
@@ -178,3 +182,4 @@ UTEST_IRQ_TC = []
 RT_NAME_MAX = []
 RT_USING_MODULE = []
 RT_USING_HEAP_ISR = []
+RT_KSERVICE_USING_STDLIB_MEMORY = []
