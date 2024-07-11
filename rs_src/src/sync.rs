@@ -1,6 +1,7 @@
 pub mod lock;
 pub mod ipc_common;
 pub mod semaphore;
+pub mod event;
 
 pub use lock::heaplock::{new_heaplock, HeapLock};
 pub use lock::mutex::{new_mutex, Mutex};
