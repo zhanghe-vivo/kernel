@@ -49,7 +49,7 @@ pub extern "C" fn rt_event_detach(event: rt_event_t) -> rt_err_t {
     }
 }
 
-#[cfg(all(feature = "RT_USING_SEMAPHORE", feature = "RT_USING_HEAP"))]
+#[cfg(all(feature = "RT_USING_EVENT", feature = "RT_USING_HEAP"))]
 #[no_mangle]
 pub extern "C" fn rt_event_create(name : *const core::ffi::c_char, flag: rt_uint8_t) -> rt_event_t
 {
@@ -72,7 +72,7 @@ pub extern "C" fn rt_event_create(name : *const core::ffi::c_char, flag: rt_uint
     }
 }
 
-#[cfg(all(feature = "RT_USING_SEMAPHORE", feature = "RT_USING_HEAP"))]
+#[cfg(all(feature = "RT_USING_EVENT", feature = "RT_USING_HEAP"))]
 #[no_mangle]
 pub extern "C" fn rt_event_delete(event: rt_event_t) -> rt_err_t
 {
@@ -97,7 +97,6 @@ pub extern "C" fn rt_event_send( event: rt_event_t, set: rt_uint32_t ) -> rt_err
 {
 unsafe {
     let mut need_schedule = RT_FALSE;
-    ;
     let mut need_clear_set = 0u32;
 
     assert!(event != null_mut());
@@ -106,8 +105,6 @@ unsafe {
     if set == 0 {
         return -(RT_ERROR as rt_err_t);
     }
-
-    let mut need_schedule = RT_FALSE;
 
     let level = rt_hw_interrupt_disable();
 
