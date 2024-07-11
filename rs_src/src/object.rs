@@ -1,4 +1,4 @@
-use crate::container_of;
+use crate::{container_of, rt_bindings, rt_list_init};
 use crate::rt_bindings::*;
 use core::{ffi, ptr};
 
@@ -13,7 +13,7 @@ struct RtCustomObject {
 }
 
 /// Type to define object_info for the number of _object_container items.
-enum RtObjectInfoType {
+pub enum RtObjectInfoType {
     RTObjectInfoThread = 0,
     ///< The object is a thread.
     #[cfg(feature = "RT_USING_SEMAPHORE")]

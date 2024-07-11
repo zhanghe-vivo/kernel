@@ -177,5 +177,5 @@ macro_rules! rt_debug_in_thread_context {
 #[cfg(not(RT_DEBUGING_CONTEXT))]
 #[macro_export]
 macro_rules! rt_debug_scheduler_available {
-    () => {};
+    ($need_check:expr)  => {};
 }

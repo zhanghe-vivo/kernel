@@ -56,6 +56,15 @@ impl rt_list_node {
     }
 }
 
+/// init the rt_list status
+#[macro_export]
+macro_rules! rt_list_init {
+    ($node:expr) => {
+        $node.prev = $node;
+        $node.next = $node;
+    };
+}
+
 #[macro_export]
 macro_rules! container_of {
     ($ptr:expr, $type:ty, $($f:tt)*) => {{
