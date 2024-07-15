@@ -51,6 +51,13 @@ static mut RT_MALLOC_HOOK: Option<extern "C" fn(*mut ffi::c_void, usize)> = None
 #[cfg(feature = "RT_USING_HOOK")]
 static mut RT_FREE_HOOK: Option<extern "C" fn(*mut ffi::c_void)> = None;
 
+#[macro_export]
+macro_rules! rt_align {
+    ($size:expr, $align:expr) => {
+        ($size + $align - 1) & !($align - 1)
+    };
+}
+
 /// impl for GlobalAlloc and allocator_api
 unsafe impl GlobalAlloc for KernelAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {

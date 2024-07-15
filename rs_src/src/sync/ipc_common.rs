@@ -1,6 +1,12 @@
+use core::{ffi, ptr};
 use crate::rt_bindings::*;
 use crate::{rt_list_init, rt_list_entry, container_of};
-
+#[macro_export]
+macro_rules! rt_get_message_addr {
+    ($msg:expr) => {
+        ($msg as *mut rt_mq_message).offset(1) as *mut _
+    };
+}
 
 #[no_mangle]
 pub extern "C" fn _rt_ipc_object_init(object: *mut rt_ipc_object) -> rt_err_t{
@@ -43,10 +49,10 @@ pub extern "C" fn _rt_ipc_list_resume_all(list: *mut rt_list_t) -> rt_err_t{
 pub extern "C" fn _rt_ipc_list_suspend(list : *mut  rt_list_t, thread : * mut rt_thread, flag : rt_uint8_t, suspend_flag : i32) -> rt_err_t
 {
 unsafe {
-    if (((*thread).stat as u32 & RT_THREAD_SUSPEND_MASK) != RT_THREAD_SUSPEND_MASK) {
+    if ((*thread).stat as u32 & RT_THREAD_SUSPEND_MASK) != RT_THREAD_SUSPEND_MASK {
         let ret = rt_thread_suspend_with_flag(thread, suspend_flag);
 
-        if (ret != RT_EOK as rt_err_t) {
+        if ret != RT_EOK as rt_err_t {
             return ret;
         }
     }
@@ -83,3 +89,8 @@ unsafe {
     }
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn _rt_memcpy(dst: *mut ffi::c_void, src: * const ffi::c_void, size: usize) -> *mut ffi::c_void {
+    dst.copy_from(src, size);
+    dst
+}

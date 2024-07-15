@@ -3,7 +3,7 @@ pub mod ipc_common;
 pub mod semaphore;
 pub mod event;
 pub mod mailbox;
-//pub mod message_queue;
+pub mod message_queue;
 
 pub use lock::heaplock::{new_heaplock, HeapLock};
 pub use lock::mutex::{new_mutex, Mutex};
