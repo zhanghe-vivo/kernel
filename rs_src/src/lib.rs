@@ -6,8 +6,6 @@
 #![feature(allocator_api)]
 #![feature(alloc_layout_extra)]
 #![feature(c_size_t)]
-// FIXME!
-#![recursion_limit = "4096"]
 
 extern crate alloc;
 

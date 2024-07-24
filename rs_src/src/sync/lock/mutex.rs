@@ -1,33 +1,5 @@
 use crate::rt_bindings;
 
-// #[repr(C)]
-// #[cfg_attr(target_pointer_width = "16", repr(align(8)))]
-// #[cfg_attr(target_pointer_width = "32", repr(align(16)))]
-// #[cfg_attr(target_pointer_width = "64", repr(align(32)))]
-// #[derive(Debug)]
-// #[pin_data]
-// pub struct RawMutex {
-//     lock: RawSpin,
-
-//     // kernel base object, can't delete
-//     #[pin]
-//     parent: rt_bindings::rt_object,
-
-//     owner: *mut RtThread,
-//     /// list of tasks wait for this mutex.
-//     #[pin]
-//     wait_list: ListHead,
-//     /// list of mutex hold by thread. use to find right priority.
-//     #[pin]
-//     take_list: ListHead,
-//     /// the priority ceiling of mutexe
-//     ceiling_priority: ffi::c_uchar,
-//     /// the maximal priority for pending thread
-//     priority: ffi::c_uchar,
-//     /// numbers of thread hold the mutex
-//     count: ffi::c_uchar,
-// }
-
 #[macro_export]
 macro_rules! new_mutex {
     ($inner:expr $(, $name:literal)? $(,)?) => {

@@ -1,5 +1,5 @@
 //! Provide the intrusive LinkedList and ListHead
-
+#![allow(dead_code)]
 use core::{
     cell::Cell,
     convert::Infallible,
