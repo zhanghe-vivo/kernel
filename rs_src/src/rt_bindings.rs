@@ -6,18 +6,18 @@
 include!(concat!(env!("CARGO_MANIFEST_DIR"), "/bindings.rs"));
 
 #[cfg(not(feature = "RT_USING_SMP"))]
-const RT_CPUS_NR: u32 = 1;
+pub const RT_CPUS_NR: u32 = 1;
 
 #[cfg(not(feature = "RT_USING_SMP"))]
 #[inline(always)]
 pub fn rt_hw_local_irq_disable() -> rt_base_t {
-    rt_hw_interrupt_disable()
+    unsafe { rt_hw_interrupt_disable() }
 }
 
 #[cfg(not(feature = "RT_USING_SMP"))]
 #[inline(always)]
 pub fn rt_hw_local_irq_enable(level: rt_base_t) {
-    rt_hw_interrupt_enable(level);
+    unsafe { rt_hw_interrupt_enable(level) };
 }
 
 #[inline(always)]
@@ -95,6 +95,18 @@ pub fn rt_hw_interrupt_enable(level: rt_base_t) {
     unsafe {
         rt_cpus_unlock(level);
     }
+}
+
+#[cfg(not(feature = "RT_USING_SMP"))]
+#[inline(always)]
+pub fn rt_hw_spin_lock(lock: *mut rt_spinlock_t) {
+    unsafe { *lock = rt_hw_interrupt_disable() };
+}
+
+#[cfg(not(feature = "RT_USING_SMP"))]
+#[inline(always)]
+pub fn rt_hw_spin_unlock(lock: *mut rt_spinlock_t) {
+    unsafe { rt_hw_interrupt_enable(*lock) }
 }
 
 #[cfg(not(feature = "RT_USING_HOOK"))]

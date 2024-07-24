@@ -247,7 +247,18 @@ impl Scheduler {
 
         if thread.is_ready() {
             return;
-        } else if !thread.is_cpu_detached() {
+        }
+
+        #[cfg(feature = "RT_USING_SMP")]
+        if !thread.is_cpu_detached() {
+            // only YIELD -> READY, SUSPEND -> READY is allowed by this API. However,
+            // this is a RUNNING thread. So here we reset it's status and let it go.
+            thread.set_running();
+            return;
+        }
+
+        #[cfg(not(feature = "RT_USING_SMP"))]
+        if thread.is_current_runnung_thread() {
             // only YIELD -> READY, SUSPEND -> READY is allowed by this API. However,
             // this is a RUNNING thread. So here we reset it's status and let it go.
             thread.set_running();
@@ -285,7 +296,7 @@ impl Scheduler {
         }
     }
 
-    pub fn remove_thread_locked(&self, thread: &mut RtThread) {
+    pub fn remove_thread_locked(&mut self, thread: &mut RtThread) {
         debug_assert!(self.is_scheduled());
         debug_assert!(self.is_sched_locked());
 

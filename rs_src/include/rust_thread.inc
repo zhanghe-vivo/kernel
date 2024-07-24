@@ -1,7 +1,7 @@
 // TODO use cxx to auto generate
 
 struct rt_stack {
-    uintptr_t sp;
+    rt_ubase_t sp;
     rt_uint8_t* stack_addr;
     rt_size_t size;
 };
@@ -21,7 +21,7 @@ struct rt_thread {
     rt_tick_t remaining_tick;
     struct rt_timer thread_timer;
     //Stack stack
-    uintptr_t sp;
+    rt_ubase_t sp;
     rt_uint8_t* stack_addr;
     rt_size_t stack_size;
 

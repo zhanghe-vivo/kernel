@@ -74,11 +74,21 @@ pub struct IdleThread<const STACK_SIZE: usize> {
 }
 
 impl<const STACK_SIZE: usize> IdleThread<STACK_SIZE> {
+    #[cfg(feature = "RT_USING_SMP")]
     #[inline]
     pub(crate) fn new(cpu: u8) -> impl PinInit<Self> {
         pin_init!(Self {
             thread <- ThreadWithStack::new_with_bind(IDLE_NAME, Self::idle_thread_entry as ThreadEntryFn,
                  ptr::null_mut(), (rt_bindings::RT_THREAD_PRIORITY_MAX - 1) as u8, 32, cpu),
+        })
+    }
+
+    #[cfg(not(feature = "RT_USING_SMP"))]
+    #[inline]
+    pub(crate) fn new(_cpu: u8) -> impl PinInit<Self> {
+        pin_init!(Self {
+            thread <- ThreadWithStack::new(IDLE_NAME, Self::idle_thread_entry as ThreadEntryFn,
+                 ptr::null_mut(), (rt_bindings::RT_THREAD_PRIORITY_MAX - 1) as u8, 32),
         })
     }
 

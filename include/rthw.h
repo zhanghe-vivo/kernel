@@ -211,7 +211,7 @@ void rt_hw_secondary_cpu_idle_exec(void);
 #define rt_hw_spin_lock(lock)     *(lock) = rt_hw_interrupt_disable()
 #define rt_hw_spin_unlock(lock)   rt_hw_interrupt_enable(*(lock))
 
-typedef rt_ubase_t rt_spinlock_t;
+typedef rt_base_t rt_spinlock_t;
 struct rt_spinlock
 {
     rt_spinlock_t lock;

@@ -80,29 +80,34 @@ impl Cpus {
         }
     }
 
+    #[cfg(feature = "RT_USING_SMP")]
     #[inline]
     pub(crate) fn get_priority_group_from_global() -> u32 {
         unsafe { CPUS.global_priority_manager.get_priority_group() }
     }
 
+    #[cfg(feature = "RT_USING_SMP")]
     #[inline]
     pub(crate) fn get_highest_priority_from_global() -> u32 {
         debug_assert!(Cpu::get_current_scheduler().is_sched_locked());
         unsafe { CPUS.global_priority_manager.get_highest_ready_prio() }
     }
 
+    #[cfg(feature = "RT_USING_SMP")]
     #[inline]
     pub(crate) fn get_thread_from_global(prio: u32) -> Option<NonNull<RtThread>> {
         debug_assert!(Cpu::get_current_scheduler().is_sched_locked());
         unsafe { CPUS.global_priority_manager.get_thread_by_prio(prio) }
     }
 
+    #[cfg(feature = "RT_USING_SMP")]
     #[inline]
     pub(crate) fn insert_thread_to_global(thread: &mut RtThread) {
         debug_assert!(Cpu::get_current_scheduler().is_sched_locked());
         unsafe { CPUS.global_priority_manager.insert_thread(thread) };
     }
 
+    #[cfg(feature = "RT_USING_SMP")]
     #[inline]
     pub(crate) fn remove_thread_from_global(thread: &mut RtThread) {
         debug_assert!(Cpu::get_current_scheduler().is_sched_locked());

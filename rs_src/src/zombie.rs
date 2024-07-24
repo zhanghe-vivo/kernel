@@ -23,7 +23,7 @@ const ZOMBIE_NAME: &'static CStr = c_str!("zombie");
 pub(crate) static mut ZOMBIE_MANAGER: UnsafeStaticInit<ZombieManager, ZombieManagerInit> =
     UnsafeStaticInit::new(ZombieManagerInit);
 
-pub struct ZombieManagerInit;
+pub(crate) struct ZombieManagerInit;
 unsafe impl PinInit<ZombieManager> for ZombieManagerInit {
     unsafe fn __pinned_init(
         self,
@@ -34,14 +34,20 @@ unsafe impl PinInit<ZombieManager> for ZombieManagerInit {
     }
 }
 
+#[cfg(not(feature = "RT_USING_SMP"))]
 #[pin_data]
-pub struct ZombieManager {
+pub(crate) struct ZombieManager {
     #[pin]
     zombies_list: SpinLock<ListHead>,
-    #[cfg(feature = "RT_USING_SMP")]
+}
+
+#[cfg(feature = "RT_USING_SMP")]
+#[pin_data]
+pub(crate) struct ZombieManager {
+    #[pin]
+    zombies_list: SpinLock<ListHead>,
     #[pin]
     thread: ThreadWithStack<ZOMBIE_THREAD_STACK_SIZE>,
-    #[cfg(feature = "RT_USING_SMP")]
     #[pin]
     sem: rt_bindings::rt_semaphore,
 }

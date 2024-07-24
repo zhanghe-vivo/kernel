@@ -24,14 +24,14 @@ impl RawSpin {
         RawSpinGuard(self)
     }
 
-    #[cfg(feature = "RT_USING_SMP")]
+    #[inline]
     pub fn lock_fast(&self) {
         unsafe {
             rt_bindings::rt_hw_spin_lock((&self.lock) as *const _ as *mut _);
         }
     }
 
-    #[cfg(feature = "RT_USING_SMP")]
+    #[inline]
     pub fn unlock_fast(&self) {
         unsafe {
             rt_bindings::rt_hw_spin_unlock((&self.lock) as *const _ as *mut _);
