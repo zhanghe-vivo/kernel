@@ -65,6 +65,7 @@ pub mod code {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
 pub struct Error(core::ffi::c_int);
 static mut RT_ERRNO: Error = Error(rt_bindings::RT_EOK as i32);
 

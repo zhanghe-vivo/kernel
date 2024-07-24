@@ -592,113 +592,10 @@ pub const RT_INTERRUPTIBLE: _bindgen_ty_1 = 0;
 pub const RT_KILLABLE: _bindgen_ty_1 = 1;
 pub const RT_UNINTERRUPTIBLE: _bindgen_ty_1 = 2;
 pub type _bindgen_ty_1 = core::ffi::c_uint;
-#[doc = " CPUs definitions\n"]
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct rt_cpu {
-    pub current_thread: *mut rt_thread,
-    pub irq_nest: rt_uint16_t,
-    pub irq_switch_flag: rt_uint8_t,
-    pub current_priority: rt_uint8_t,
-    pub priority_table: [rt_list_t; 256usize],
-    pub priority_group: rt_uint32_t,
-    pub ready_table: [rt_uint8_t; 32usize],
-    pub tick: rt_tick_t,
-}
-#[test]
-fn bindgen_test_layout_rt_cpu() {
-    const UNINIT: ::core::mem::MaybeUninit<rt_cpu> = ::core::mem::MaybeUninit::uninit();
-    let ptr = UNINIT.as_ptr();
-    assert_eq!(
-        ::core::mem::size_of::<rt_cpu>(),
-        2096usize,
-        concat!("Size of: ", stringify!(rt_cpu))
-    );
-    assert_eq!(
-        ::core::mem::align_of::<rt_cpu>(),
-        4usize,
-        concat!("Alignment of ", stringify!(rt_cpu))
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).current_thread) as usize - ptr as usize },
-        0usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_cpu),
-            "::",
-            stringify!(current_thread)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).irq_nest) as usize - ptr as usize },
-        4usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_cpu),
-            "::",
-            stringify!(irq_nest)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).irq_switch_flag) as usize - ptr as usize },
-        6usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_cpu),
-            "::",
-            stringify!(irq_switch_flag)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).current_priority) as usize - ptr as usize },
-        7usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_cpu),
-            "::",
-            stringify!(current_priority)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).priority_table) as usize - ptr as usize },
-        8usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_cpu),
-            "::",
-            stringify!(priority_table)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).priority_group) as usize - ptr as usize },
-        2056usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_cpu),
-            "::",
-            stringify!(priority_group)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).ready_table) as usize - ptr as usize },
-        2060usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_cpu),
-            "::",
-            stringify!(ready_table)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).tick) as usize - ptr as usize },
-        2092usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_cpu),
-            "::",
-            stringify!(tick)
-        )
-    );
+    _unused: [u8; 0],
 }
 pub type rt_thread_cleanup_t = ::core::option::Option<unsafe extern "C" fn(tid: *mut rt_thread)>;
 #[doc = " Thread structure"]
@@ -714,24 +611,14 @@ pub struct rt_thread {
     pub entry: *mut core::ffi::c_void,
     #[doc = "< parameter"]
     pub parameter: *mut core::ffi::c_void,
+    #[doc = "< cleanup function when thread exit"]
+    pub cleanup: rt_thread_cleanup_t,
     #[doc = "< stack address"]
     pub stack_addr: *mut core::ffi::c_void,
     #[doc = "< stack size"]
     pub stack_size: rt_uint32_t,
-    #[doc = "< error code"]
-    pub error: rt_err_t,
     #[doc = "< thread status"]
-    pub stat: rt_uint8_t,
-    #[doc = "< thread is bind to cpu"]
-    pub bind_cpu: rt_uint8_t,
-    #[doc = "< process on cpu"]
-    pub oncpu: rt_uint8_t,
-    #[doc = "< scheduler lock count"]
-    pub scheduler_lock_nest: rt_uint16_t,
-    #[doc = "< cpus lock count"]
-    pub cpus_lock_nest: rt_int16_t,
-    #[doc = "< critical lock count"]
-    pub critical_lock_nest: rt_uint16_t,
+    pub stat: rt_uint16_t,
     #[doc = "< current priority"]
     pub current_priority: rt_uint8_t,
     #[doc = "< initialized priority"]
@@ -740,20 +627,24 @@ pub struct rt_thread {
     pub high_mask: rt_uint8_t,
     #[doc = "< priority number mask"]
     pub number_mask: rt_uint32_t,
+    #[doc = "< thread's initialized tick"]
+    pub init_tick: rt_tick_t,
+    #[doc = "< remaining tick"]
+    pub remaining_tick: rt_tick_t,
+    #[doc = "< built-in thread timer"]
+    pub thread_timer: rt_timer,
+    #[doc = "< error code"]
+    pub error: rt_err_t,
+    #[doc = "< thread is bind to cpu"]
+    pub bind_cpu: rt_uint8_t,
+    #[doc = "< process on cpu"]
+    pub oncpu: rt_uint8_t,
+    #[doc = "< critical lock count"]
+    pub critical_lock_nest: rt_uint16_t,
     pub taken_object_list: rt_list_t,
     pub pending_object: rt_object_t,
     pub event_set: rt_uint32_t,
     pub event_info: rt_uint8_t,
-    #[doc = "< thread's initialized tick"]
-    pub init_tick: rt_ubase_t,
-    #[doc = "< remaining tick"]
-    pub remaining_tick: rt_ubase_t,
-    #[doc = "< built-in thread timer"]
-    pub thread_timer: rt_timer,
-    #[doc = "< cleanup function when thread exit"]
-    pub cleanup: rt_thread_cleanup_t,
-    #[doc = "< private user data beyond this thread"]
-    pub user_data: rt_ubase_t,
 }
 #[test]
 fn bindgen_test_layout_rt_thread() {
@@ -761,7 +652,7 @@ fn bindgen_test_layout_rt_thread() {
     let ptr = UNINIT.as_ptr();
     assert_eq!(
         ::core::mem::size_of::<rt_thread>(),
-        152usize,
+        144usize,
         concat!("Size of: ", stringify!(rt_thread))
     );
     assert_eq!(
@@ -820,8 +711,18 @@ fn bindgen_test_layout_rt_thread() {
         )
     );
     assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).stack_addr) as usize - ptr as usize },
+        unsafe { ::core::ptr::addr_of!((*ptr).cleanup) as usize - ptr as usize },
         40usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_thread),
+            "::",
+            stringify!(cleanup)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).stack_addr) as usize - ptr as usize },
+        44usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_thread),
@@ -831,22 +732,12 @@ fn bindgen_test_layout_rt_thread() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).stack_size) as usize - ptr as usize },
-        44usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_thread),
-            "::",
-            stringify!(stack_size)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).error) as usize - ptr as usize },
         48usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_thread),
             "::",
-            stringify!(error)
+            stringify!(stack_size)
         )
     );
     assert_eq!(
@@ -860,58 +751,8 @@ fn bindgen_test_layout_rt_thread() {
         )
     );
     assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).bind_cpu) as usize - ptr as usize },
-        53usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_thread),
-            "::",
-            stringify!(bind_cpu)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).oncpu) as usize - ptr as usize },
-        54usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_thread),
-            "::",
-            stringify!(oncpu)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).scheduler_lock_nest) as usize - ptr as usize },
-        56usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_thread),
-            "::",
-            stringify!(scheduler_lock_nest)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).cpus_lock_nest) as usize - ptr as usize },
-        58usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_thread),
-            "::",
-            stringify!(cpus_lock_nest)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).critical_lock_nest) as usize - ptr as usize },
-        60usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_thread),
-            "::",
-            stringify!(critical_lock_nest)
-        )
-    );
-    assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).current_priority) as usize - ptr as usize },
-        62usize,
+        54usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_thread),
@@ -921,7 +762,7 @@ fn bindgen_test_layout_rt_thread() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).init_priority) as usize - ptr as usize },
-        63usize,
+        55usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_thread),
@@ -931,7 +772,7 @@ fn bindgen_test_layout_rt_thread() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).number) as usize - ptr as usize },
-        64usize,
+        56usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_thread),
@@ -941,7 +782,7 @@ fn bindgen_test_layout_rt_thread() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).high_mask) as usize - ptr as usize },
-        65usize,
+        57usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_thread),
@@ -951,7 +792,7 @@ fn bindgen_test_layout_rt_thread() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).number_mask) as usize - ptr as usize },
-        68usize,
+        60usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_thread),
@@ -960,48 +801,8 @@ fn bindgen_test_layout_rt_thread() {
         )
     );
     assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).taken_object_list) as usize - ptr as usize },
-        72usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_thread),
-            "::",
-            stringify!(taken_object_list)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).pending_object) as usize - ptr as usize },
-        80usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_thread),
-            "::",
-            stringify!(pending_object)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).event_set) as usize - ptr as usize },
-        84usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_thread),
-            "::",
-            stringify!(event_set)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).event_info) as usize - ptr as usize },
-        88usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_thread),
-            "::",
-            stringify!(event_info)
-        )
-    );
-    assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).init_tick) as usize - ptr as usize },
-        92usize,
+        64usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_thread),
@@ -1011,7 +812,7 @@ fn bindgen_test_layout_rt_thread() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).remaining_tick) as usize - ptr as usize },
-        96usize,
+        68usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_thread),
@@ -1021,7 +822,7 @@ fn bindgen_test_layout_rt_thread() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).thread_timer) as usize - ptr as usize },
-        100usize,
+        72usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_thread),
@@ -1030,23 +831,83 @@ fn bindgen_test_layout_rt_thread() {
         )
     );
     assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).cleanup) as usize - ptr as usize },
-        144usize,
+        unsafe { ::core::ptr::addr_of!((*ptr).error) as usize - ptr as usize },
+        116usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_thread),
             "::",
-            stringify!(cleanup)
+            stringify!(error)
         )
     );
     assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).user_data) as usize - ptr as usize },
-        148usize,
+        unsafe { ::core::ptr::addr_of!((*ptr).bind_cpu) as usize - ptr as usize },
+        120usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_thread),
             "::",
-            stringify!(user_data)
+            stringify!(bind_cpu)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).oncpu) as usize - ptr as usize },
+        121usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_thread),
+            "::",
+            stringify!(oncpu)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).critical_lock_nest) as usize - ptr as usize },
+        122usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_thread),
+            "::",
+            stringify!(critical_lock_nest)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).taken_object_list) as usize - ptr as usize },
+        124usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_thread),
+            "::",
+            stringify!(taken_object_list)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).pending_object) as usize - ptr as usize },
+        132usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_thread),
+            "::",
+            stringify!(pending_object)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).event_set) as usize - ptr as usize },
+        136usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_thread),
+            "::",
+            stringify!(event_set)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).event_info) as usize - ptr as usize },
+        140usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_thread),
+            "::",
+            stringify!(event_info)
         )
     );
 }
@@ -4426,9 +4287,6 @@ extern "C" {
     pub fn rt_thread_delay(tick: rt_tick_t) -> rt_err_t;
 }
 extern "C" {
-    pub fn rt_thread_delay_until(tick: *mut rt_tick_t, inc_tick: rt_tick_t) -> rt_err_t;
-}
-extern "C" {
     pub fn rt_thread_mdelay(ms: rt_int32_t) -> rt_err_t;
 }
 extern "C" {
@@ -5127,12 +4985,6 @@ extern "C" {
 }
 extern "C" {
     pub fn rt_cpus_unlock(level: rt_base_t);
-}
-extern "C" {
-    pub fn rt_cpu_self() -> *mut rt_cpu;
-}
-extern "C" {
-    pub fn rt_cpu_index(index: core::ffi::c_int) -> *mut rt_cpu;
 }
 extern "C" {
     pub fn rt_interrupt_get_nest() -> rt_uint8_t;

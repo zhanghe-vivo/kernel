@@ -43,14 +43,14 @@ rt_hw_context_switch_to:
     clrex
     ldr sp, [r0]            @ get new task stack pointer
 
-#ifdef RT_USING_SMP
+/* #ifdef RT_USING_SMP */
     mov     r0, r1
     bl      rt_cpus_lock_status_restore
 #ifdef RT_USING_SMART
     bl      rt_thread_self
     bl      lwp_user_setting_restore
 #endif
-#else
+#if 0 //#else
 #ifdef RT_USING_SMART
     bl      rt_thread_self
     mov     r4, r0
@@ -59,7 +59,6 @@ rt_hw_context_switch_to:
     bl      lwp_user_setting_restore
 #endif
 #endif /*RT_USING_SMP*/
-
     b       rt_hw_context_switch_exit
 
 .section .bss.share.isr
@@ -107,14 +106,14 @@ rt_hw_context_switch:
     str sp, [r0]            @ store sp in preempted tasks TCB
     ldr sp, [r1]            @ get new task stack pointer
 
-#ifdef RT_USING_SMP
+/* #ifdef RT_USING_SMP */
     mov     r0, r2
     bl      rt_cpus_lock_status_restore
 #ifdef RT_USING_SMART
     bl      rt_thread_self
     bl      lwp_user_setting_restore
 #endif
-#else
+#if 0 // #else
 #ifdef RT_USING_SMART
     bl      rt_thread_self
     mov     r4, r0
@@ -146,7 +145,7 @@ rt_hw_context_switch:
 .globl rt_hw_context_switch_interrupt
 rt_hw_context_switch_interrupt:
     clrex
-#ifdef RT_USING_SMP
+/* #ifdef RT_USING_SMP */
     /* r0 :svc_mod context
      * r1 :addr of from_thread's sp
      * r2 :addr of to_thread's sp
@@ -160,10 +159,10 @@ rt_hw_context_switch_interrupt:
 #endif
     pop {r0 - r3, lr}
 #endif
-    str     r0, [r1]
+    str     r0, [r1]  /* context store to current_thread->sp */
 
-    ldr     sp, [r2]
-    mov     r0, r3
+    ldr     sp, [r2]  /* load to_thread->sp to sp register */
+    mov     r0, r3    /* to_thread pointer to r0 for first parameter */
 #ifdef RT_USING_SMART
     mov     r4, r0
 #endif
@@ -174,7 +173,7 @@ rt_hw_context_switch_interrupt:
 #endif
     b       rt_hw_context_switch_exit
 
-#else /*RT_USING_SMP*/
+#if 0 // #else
     /* r0 :addr of from_thread's sp
      * r1 :addr of to_thread's sp
      * r2 :from_thread's tcb

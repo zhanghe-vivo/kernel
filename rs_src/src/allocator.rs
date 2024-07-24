@@ -1,7 +1,7 @@
 //! Extensions to the [`alloc`] crate.
 
 #![warn(missing_docs)]
-use crate::{rt_bindings::*, static_init::StaticInit};
+use crate::{rt_bindings::*, static_init::UnsafeStaticInit};
 use core::{
     alloc::{GlobalAlloc, Layout},
     ffi, ptr,
@@ -42,7 +42,7 @@ unsafe impl PinInit<Heap> for HeapInit {
     }
 }
 
-static HEAP: StaticInit<Heap, HeapInit> = StaticInit::new(HeapInit);
+static HEAP: UnsafeStaticInit<Heap, HeapInit> = UnsafeStaticInit::new(HeapInit);
 
 #[global_allocator]
 static ALLOCATOR: KernelAllocator = KernelAllocator;
@@ -158,7 +158,7 @@ pub unsafe extern "C" fn rt_system_heap_init(
     // Initialize the allocator BEFORE you use it
     assert!(end_addr > begin_addr);
     let heap_size = end_addr as usize - begin_addr as usize;
-
+    HEAP.init_once();
     HEAP.init(begin_addr as usize, heap_size);
 }
 

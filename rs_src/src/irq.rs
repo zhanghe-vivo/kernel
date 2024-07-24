@@ -1,7 +1,5 @@
-use crate::rt_bindings::*;
-use core::ptr::addr_of_mut;
-use core::ptr::read_volatile;
-use core::ptr::write_volatile;
+use crate::cpu::Cpu;
+use crate::rt_bindings::{self, *};
 
 #[cfg(all(feature = "RT_USING_HOOK", feature = "RT_HOOK_USING_FUNC_PTR"))]
 #[no_mangle]
@@ -23,28 +21,35 @@ pub unsafe extern "C" fn rt_interrupt_leave_sethook(hook: unsafe extern "C" fn()
     rt_interrupt_leave_hook = Some(hook);
 }
 
-#[cfg(not(feature = "RT_USING_SMP"))]
-#[no_mangle]
-pub static mut rt_interrupt_nest: rt_uint8_t = 0;
+struct IrqLock {
+    level: rt_bindings::rt_base_t,
+}
 
-#[inline]
-fn interrupt_nest_addr_mut() -> *mut rt_uint8_t {
-    unsafe {
-        #[cfg(feature = "RT_USING_SMP")]
-        return addr_of_mut!((*rt_cpu_self()).irq_nest) as *mut rt_uint8_t;
+impl IrqLock {
+    #[inline]
+    pub const fn new() -> Self {
+        Self { level: 0 }
+    }
 
-        #[cfg(not(feature = "RT_USING_SMP"))]
-        return addr_of_mut!(rt_interrupt_nest);
+    #[inline]
+    pub fn lock(&mut self) -> IrqLockGuard<'_> {
+        self.level = unsafe { rt_bindings::rt_hw_local_irq_disable() };
+        IrqLockGuard(self)
+    }
+
+    #[inline]
+    pub fn unlock(&self) {
+        unsafe { rt_bindings::rt_hw_local_irq_enable(self.level) };
     }
 }
 
-#[inline]
-unsafe fn interrupt_nest_get() -> rt_uint8_t {
-    return read_volatile(interrupt_nest_addr_mut());
-}
-#[inline]
-unsafe fn interrupt_nest_set(num: rt_uint8_t) {
-    write_volatile(interrupt_nest_addr_mut(), num);
+pub struct IrqLockGuard<'a>(&'a IrqLock);
+
+impl Drop for IrqLockGuard<'_> {
+    #[inline]
+    fn drop(&mut self) {
+        self.0.unlock();
+    }
 }
 
 /// This function will be invoked by BSP, when entering interrupt service routine
@@ -55,11 +60,8 @@ unsafe fn interrupt_nest_set(num: rt_uint8_t) {
 #[linkage = "weak"]
 #[no_mangle]
 pub unsafe extern "C" fn rt_interrupt_enter() {
-    let level = rt_hw_interrupt_disable();
-    let nest = interrupt_nest_get() + 1;
-    interrupt_nest_set(nest);
+    Cpu::interrupt_nest_inc();
     crate::rt_object_hook_call!(rt_interrupt_enter_hook);
-    rt_hw_interrupt_enable(level);
 }
 
 /// This function will be invoked by BSP, when leaving interrupt service routine
@@ -70,11 +72,8 @@ pub unsafe extern "C" fn rt_interrupt_enter() {
 #[linkage = "weak"]
 #[no_mangle]
 pub unsafe extern "C" fn rt_interrupt_leave() {
-    let level = rt_hw_interrupt_disable();
     crate::rt_object_hook_call!(rt_interrupt_leave_hook);
-    let nest = interrupt_nest_get() - 1;
-    interrupt_nest_set(nest);
-    rt_hw_interrupt_enable(level);
+    Cpu::interrupt_nest_dec();
 }
 
 /// This function will return the nest of interrupt.
@@ -85,11 +84,8 @@ pub unsafe extern "C" fn rt_interrupt_leave() {
 /// Returns the number of nested interrupts.
 #[linkage = "weak"]
 #[no_mangle]
-pub unsafe extern "C" fn rt_interrupt_get_nest() -> rt_uint8_t {
-    let level = rt_hw_interrupt_disable();
-    let ret = interrupt_nest_get();
-    rt_hw_interrupt_enable(level);
-    ret
+pub unsafe extern "C" fn rt_interrupt_get_nest() -> rt_uint32_t {
+    Cpu::interrupt_nest_load()
 }
 
 #[linkage = "weak"]

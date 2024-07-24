@@ -1,12 +1,11 @@
-use crate::container_of;
 use crate::rt_bindings::*;
 use core::{ffi, ptr};
 
 type DestroyFunc = extern "C" fn(*mut ffi::c_void) -> rt_err_t;
 
 #[derive(Debug, Copy, Clone)]
+// FIXME use #[pin_data]
 struct RtCustomObject {
-    #[allow(dead_code)]
     parent: rt_object,
     destroy: Option<DestroyFunc>,
     data: *mut ffi::c_void,
@@ -402,13 +401,14 @@ pub extern "C" fn rt_object_init(
 ) {
     let information = rt_object_get_information(type_);
     assert!(!information.is_null());
+    let information = unsafe { &mut *information };
 
     #[cfg(feature = "RT_USING_DEBUG")]
     unsafe {
-        let mut node = (*information).object_list.next;
+        let mut node = information.object_list.next;
         rt_enter_critical();
         loop {
-            if ptr::eq(node, &(*information).object_list) {
+            if ptr::eq(node, &information.object_list) {
                 break;
             }
             let obj = crate::rt_list_entry!(node, rt_object, list);
@@ -418,24 +418,47 @@ pub extern "C" fn rt_object_init(
         rt_exit_critical();
     }
 
+    let obj_ref = unsafe { &mut *object };
     // initialize object's parameters
     // set object type to static
-    let object_type = type_ as u8 | rt_object_class_type_RT_Object_Class_Static as u8;
-    unsafe {
-        (*object).type_ = object_type;
-    }
+    let type_ = type_ as u8 | rt_object_class_type_RT_Object_Class_Static as u8;
+
+    rt_object_init_internal(information, obj_ref, type_, name);
+}
+
+pub(crate) fn rt_object_init_dyn(
+    object: *mut rt_object,
+    type_: rt_object_class_type,
+    name: *const ffi::c_char,
+) {
+    let information = rt_object_get_information(type_);
+    assert!(!information.is_null());
+    let information = unsafe { &mut *information };
+    let obj_ref = unsafe { &mut *object };
+
+    rt_object_init_internal(information, obj_ref, type_ as u8, name);
+}
+
+fn rt_object_init_internal(
+    information: &mut rt_object_information,
+    obj_ref: &mut rt_object,
+    type_: u8,
+    name: *const ffi::c_char,
+) {
+    obj_ref.type_ = type_;
 
     #[cfg(feature = "RT_NAME_MAX")]
     unsafe {
-        rt_strncpy((*object).name.as_mut_ptr(), name, RT_NAME_MAX);
+        rt_strncpy(obj_ref.name.as_mut_ptr(), name, RT_NAME_MAX);
     }
+
     #[cfg(not(feature = "RT_NAME_MAX"))]
-    unsafe {
-        (*object).name = name;
+    {
+        obj_ref.name = name;
     }
 
     unsafe {
-        crate::rt_object_hook_call!(rt_object_attach_hook, object);
+        crate::rt_object_hook_call!(rt_object_attach_hook, obj_ref);
     }
 
     #[cfg(feature = "RT_USING_MODULE")]
@@ -448,23 +471,23 @@ pub extern "C" fn rt_object_init(
         unsafe {
             (*module)
                 .object_list
-                .insert_after(&(*object).list as *const _ as *mut _);
-            (*object).module_id = module as *mut ffi::c_void;
+                .insert_after(&(obj_ref.list) as *const _ as *mut _);
+            obj_ref.module_id = module as *mut ffi::c_void;
         }
     } else {
         // insert object into information object list
         unsafe {
-            (*information)
+            information
                 .object_list
-                .insert_after(&(*object).list as *const _ as *mut _);
+                .insert_after(&(obj_ref.list) as *const _ as *mut _);
         }
     }
 
     unsafe {
         #[cfg(not(feature = "RT_USING_MODULE"))]
-        (*information)
+        information
             .object_list
-            .insert_after(&(*object).list as *const _ as *mut _);
+            .insert_after(&(obj_ref.list) as *const _ as *mut _);
 
         rt_hw_interrupt_enable(level);
     }
@@ -503,63 +526,24 @@ pub extern "C" fn rt_object_allocate(
     name: *const ffi::c_char,
 ) -> rt_object_t {
     // get object information
+
+    use core::ffi::c_void;
     let information = rt_object_get_information(type_);
     assert!(!information.is_null());
+    let information = unsafe { &mut *information };
 
     crate::rt_debug_not_in_interrupt!();
 
-    let object = unsafe { rt_malloc((*information).object_size) as *mut rt_object };
+    let object = unsafe { rt_malloc(information.object_size) as *mut rt_object };
     if object.is_null() {
         return object;
     }
-
     unsafe {
-        rt_memset(object as *mut ffi::c_void, 0x0, (*information).object_size);
-        (*object).type_ = type_ as u8;
-        (*object).flag = 0;
-        #[cfg(feature = "RT_NAME_MAX")]
-        rt_strncpy((*object).name.as_mut_ptr(), name, RT_NAME_MAX);
+        rt_memset(object as *mut c_void, 0x0, information.object_size);
     }
 
-    #[cfg(not(feature = "RT_NAME_MAX"))]
-    unsafe {
-        (*object).name = name;
-    }
-
-    unsafe {
-        crate::rt_object_hook_call!(rt_object_attach_hook, object);
-    }
-
-    #[cfg(feature = "RT_USING_MODULE")]
-    let module = unsafe { dlmodule_self() };
-
-    let level = unsafe { rt_hw_interrupt_disable() };
-
-    #[cfg(feature = "RT_USING_MODULE")]
-    if !module.is_null() {
-        unsafe {
-            (*module)
-                .object_list
-                .insert_after(&(*object).list as *const _ as *mut _);
-            (*object).module_id = module as *mut ffi::c_void;
-        }
-    } else {
-        // insert object into information object list
-        unsafe {
-            (*information)
-                .object_list
-                .insert_after(&(*object).list as *const _ as *mut _);
-        }
-    }
-
-    unsafe {
-        #[cfg(not(feature = "RT_USING_MODULE"))]
-        (*information)
-            .object_list
-            .insert_after(&(*object).list as *const _ as *mut _);
-
-        rt_hw_interrupt_enable(level);
-    }
+    let obj_ref = unsafe { &mut *object };
+    rt_object_init_internal(information, obj_ref, type_ as u8, name);
     object
 }
 
@@ -575,8 +559,8 @@ pub extern "C" fn rt_object_delete(object: rt_object_t) {
         assert!(((*object).type_ & rt_object_class_type_RT_Object_Class_Static as u8) == 0);
     }
 
+    crate::rt_object_hook_call!(rt_object_detach_hook, object);
     unsafe {
-        crate::rt_object_hook_call!(rt_object_detach_hook, object);
         // reset object type
         (*object).type_ = rt_object_class_type_RT_Object_Class_Null as u8;
         // lock interrupt

@@ -124,8 +124,10 @@ rt_isr_handler_t rt_hw_interrupt_install(int              vector,
 rt_base_t rt_hw_local_irq_disable();
 void rt_hw_local_irq_enable(rt_base_t level);
 
-#define rt_hw_interrupt_disable rt_cpus_lock
-#define rt_hw_interrupt_enable rt_cpus_unlock
+void rt_sched_unlock(rt_base_t level);
+rt_base_t rt_sched_lock();
+#define rt_hw_interrupt_disable rt_sched_lock
+#define rt_hw_interrupt_enable rt_sched_unlock
 #else
 rt_base_t rt_hw_interrupt_disable(void);
 void rt_hw_interrupt_enable(rt_base_t level);
@@ -135,15 +137,15 @@ rt_bool_t rt_hw_interrupt_is_disabled(void);
 /*
  * Context interfaces
  */
-#ifdef RT_USING_SMP
+// #ifdef RT_USING_SMP
 void rt_hw_context_switch(rt_ubase_t from, rt_ubase_t to, struct rt_thread *to_thread);
 void rt_hw_context_switch_to(rt_ubase_t to, struct rt_thread *to_thread);
 void rt_hw_context_switch_interrupt(void *context, rt_ubase_t from, rt_ubase_t to, struct rt_thread *to_thread);
-#else
-void rt_hw_context_switch(rt_ubase_t from, rt_ubase_t to);
-void rt_hw_context_switch_to(rt_ubase_t to);
-void rt_hw_context_switch_interrupt(rt_ubase_t from, rt_ubase_t to, rt_thread_t from_thread, rt_thread_t to_thread);
-#endif /*RT_USING_SMP*/
+// #else
+// void rt_hw_context_switch(rt_ubase_t from, rt_ubase_t to);
+// void rt_hw_context_switch_to(rt_ubase_t to);
+// void rt_hw_context_switch_interrupt(rt_ubase_t from, rt_ubase_t to, rt_thread_t from_thread, rt_thread_t to_thread);
+// #endif /*RT_USING_SMP*/
 
 void rt_hw_console_output(const char *str);
 
@@ -181,8 +183,8 @@ void rt_hw_spin_lock_init(rt_hw_spinlock_t *lock);
 void rt_hw_spin_lock(rt_hw_spinlock_t *lock);
 void rt_hw_spin_unlock(rt_hw_spinlock_t *lock);
 
-extern rt_hw_spinlock_t _cpus_lock;
-extern rt_hw_spinlock_t _rt_critical_lock;
+// extern rt_hw_spinlock_t _cpus_lock;
+// extern rt_hw_spinlock_t _rt_critical_lock;
 
 #define __RT_HW_SPIN_LOCK_INITIALIZER(lockname) {0}
 

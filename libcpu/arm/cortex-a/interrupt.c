@@ -24,9 +24,9 @@ struct rt_irq_desc isr_table[MAX_HANDLERS];
 
 #ifndef RT_USING_SMP
 /* Those varibles will be accessed in ISR, so we need to share them. */
-rt_uint32_t rt_interrupt_from_thread        = 0;
-rt_uint32_t rt_interrupt_to_thread          = 0;
-rt_uint32_t rt_thread_switch_interrupt_flag = 0;
+// rt_uint32_t rt_interrupt_from_thread        = 0;
+// rt_uint32_t rt_interrupt_to_thread          = 0;
+// rt_uint32_t rt_thread_switch_interrupt_flag = 0;
 
 #ifdef RT_USING_HOOK
 static void (*rt_interrupt_switch_hook)(void);

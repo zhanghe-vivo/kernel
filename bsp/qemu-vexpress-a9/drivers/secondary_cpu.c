@@ -55,7 +55,8 @@ void rt_hw_secondary_cpu_bsp_start(void)
 {
     rt_hw_vector_init();
 
-    rt_hw_spin_lock(&_cpus_lock);
+    //rt_hw_spin_lock(&_cpus_lock);
+    rt_cpus_lock();
 
     arm_gic_cpu_init(0, 0);
     arm_gic_set_cpu(0, IRQ_PBA8_TIMER0_1, 0x2);

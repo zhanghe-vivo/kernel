@@ -5,6 +5,21 @@
 
 include!(concat!(env!("CARGO_MANIFEST_DIR"), "/bindings.rs"));
 
+#[cfg(not(feature = "RT_USING_SMP"))]
+const RT_CPUS_NR: u32 = 1;
+
+#[cfg(not(feature = "RT_USING_SMP"))]
+#[inline(always)]
+pub fn rt_hw_local_irq_disable() -> rt_base_t {
+    rt_hw_interrupt_disable()
+}
+
+#[cfg(not(feature = "RT_USING_SMP"))]
+#[inline(always)]
+pub fn rt_hw_local_irq_enable(level: rt_base_t) {
+    rt_hw_interrupt_enable(level);
+}
+
 #[inline(always)]
 pub fn rt_atomic_load(ptr: *mut rt_atomic_t) -> rt_atomic_t {
     unsafe { rt_hw_atomic_load(ptr) }
@@ -90,12 +105,24 @@ macro_rules! rt_object_hook_call {
 #[cfg(all(feature = "RT_USING_HOOK", feature = "RT_HOOK_USING_FUNC_PTR"))]
 #[macro_export]
 macro_rules! rt_object_hook_call {
-    ($func:ident $(, $argv:expr)?) => {
-        if let Some(hook) = $func {
-            hook($(($argv))?);
+    ($func:ident $(, $($argv:expr),* )?) => {
+        unsafe {
+            if let Some(hook) = $func {
+                hook($($($argv),*)?);
+            }
         }
     };
 }
+
+// macro_rules! rt_object_hook_call {
+//     ($func:ident $(, $argv:expr)?) => {
+//         unsafe {
+//             if let Some(hook) = $func {
+//                 hook($(($argv))?);
+//             }
+//         }
+//     };
+// }
 /// Macro to check current context.
 #[cfg(RT_DEBUGING_CONTEXT)]
 #[macro_export]

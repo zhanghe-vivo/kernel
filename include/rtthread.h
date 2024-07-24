@@ -157,11 +157,11 @@ rt_thread_t rt_thread_find(char *name);
 rt_err_t rt_thread_startup(rt_thread_t thread);
 rt_err_t rt_thread_yield(void);
 rt_err_t rt_thread_delay(rt_tick_t tick);
-rt_err_t rt_thread_delay_until(rt_tick_t *tick, rt_tick_t inc_tick);
+//rt_err_t rt_thread_delay_until(rt_tick_t *tick, rt_tick_t inc_tick);
 rt_err_t rt_thread_mdelay(rt_int32_t ms);
 rt_err_t rt_thread_control(rt_thread_t thread, int cmd, void *arg);
 rt_err_t rt_thread_suspend(rt_thread_t thread);
-rt_err_t rt_thread_suspend_with_flag(rt_thread_t thread, int suspend_flag);
+rt_err_t rt_thread_suspend_with_flag(rt_thread_t thread, rt_uint32_t suspend_flag);
 rt_err_t rt_thread_resume(rt_thread_t thread);
 #ifdef RT_USING_SMART
 rt_err_t rt_thread_wakeup(rt_thread_t thread);
@@ -614,8 +614,8 @@ void rt_interrupt_leave(void);
 rt_base_t rt_cpus_lock(void);
 void rt_cpus_unlock(rt_base_t level);
 
-struct rt_cpu *rt_cpu_self(void);
-struct rt_cpu *rt_cpu_index(int index);
+//struct rt_cpu *rt_cpu_self(void);
+//struct rt_cpu *rt_cpu_index(int index);
 
 #endif /* RT_USING_SMP */
 

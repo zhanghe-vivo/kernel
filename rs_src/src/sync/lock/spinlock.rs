@@ -1,122 +1,285 @@
 #![allow(dead_code)]
-use crate::rt_bindings::*;
-use core::ptr;
+use crate::{cpu::Cpu, rt_bindings};
+use core::{cell::UnsafeCell, fmt, ops::Deref, ops::DerefMut, ptr};
 
-impl rt_spinlock {
+// TODO: impl by rust Atomic later.
+pub type RawSpin = rt_bindings::rt_spinlock;
+
+unsafe impl Sync for RawSpin {}
+unsafe impl Send for RawSpin {}
+
+impl RawSpin {
     pub const fn new() -> Self {
         Self {
             #[cfg(feature = "RT_USING_SMP")]
-            lock: rt_hw_spinlock_t { slock: 0 },
+            lock: rt_bindings::rt_hw_spinlock_t { slock: 0 },
 
             #[cfg(not(feature = "RT_USING_SMP"))]
             lock: 0,
         }
     }
 
-    pub fn acquire(&self) -> RtSpinGuard<'_> {
+    pub fn acquire(&self) -> RawSpinGuard<'_> {
         self.lock();
-        RtSpinGuard(self)
+        RawSpinGuard(self)
+    }
+
+    #[cfg(feature = "RT_USING_SMP")]
+    pub fn lock_fast(&self) {
+        unsafe {
+            rt_bindings::rt_hw_spin_lock((&self.lock) as *const _ as *mut _);
+        }
+    }
+
+    #[cfg(feature = "RT_USING_SMP")]
+    pub fn unlock_fast(&self) {
+        unsafe {
+            rt_bindings::rt_hw_spin_unlock((&self.lock) as *const _ as *mut _);
+        }
     }
 
     pub fn lock(&self) {
         #[cfg(feature = "RT_USING_SMP")]
         unsafe {
-            Self::cpu_preempt_disable();
-            rt_hw_spin_lock((&self.lock) as *const _ as *mut _);
+            Cpu::get_current_scheduler().preempt_disable();
+            rt_bindings::rt_hw_spin_lock((&self.lock) as *const _ as *mut _);
         }
 
         #[cfg(not(feature = "RT_USING_SMP"))]
-        unsafe {
-            rt_enter_critical()
-        };
+        Cpu::get_current_scheduler().preempt_disable();
     }
 
     pub fn unlock(&self) {
         #[cfg(feature = "RT_USING_SMP")]
         unsafe {
-            rt_hw_spin_unlock((&self.lock) as *const _ as *mut _);
-            Self::cpu_preempt_enable();
+            rt_bindings::rt_hw_spin_unlock((&self.lock) as *const _ as *mut _);
+            Cpu::get_current_scheduler().preempt_enable();
         }
 
         #[cfg(not(feature = "RT_USING_SMP"))]
-        unsafe {
-            rt_exit_critical()
-        };
+        Cpu::get_current_scheduler().preempt_enable();
     }
 
-    pub fn lock_irqsave(&self) -> rt_base_t {
+    pub fn lock_irqsave(&self) -> rt_bindings::rt_base_t {
         #[cfg(feature = "RT_USING_SMP")]
         unsafe {
-            Self::cpu_preempt_disable();
-            let level = rt_hw_local_irq_disable();
-            rt_hw_spin_lock((&self.lock) as *const _ as *mut _);
+            Cpu::get_current_scheduler().preempt_disable();
+            let level = rt_bindings::rt_hw_local_irq_disable();
+            rt_bindings::rt_hw_spin_lock((&self.lock) as *const _ as *mut _);
             level
         }
 
         #[cfg(not(feature = "RT_USING_SMP"))]
         unsafe {
-            rt_hw_interrupt_disable()
+            rt_bindings::rt_hw_interrupt_disable()
         }
     }
 
-    pub fn unlock_irqrestore(&self, level: rt_base_t) {
+    pub fn unlock_irqrestore(&self, level: rt_bindings::rt_base_t) {
         #[cfg(feature = "RT_USING_SMP")]
         unsafe {
-            rt_hw_spin_unlock((&self.lock) as *const _ as *mut _);
-            rt_hw_local_irq_enable(level);
-            Self::cpu_preempt_enable();
+            rt_bindings::rt_hw_spin_unlock((&self.lock) as *const _ as *mut _);
+            rt_bindings::rt_hw_local_irq_enable(level);
+            Cpu::get_current_scheduler().preempt_enable();
         }
 
         #[cfg(not(feature = "RT_USING_SMP"))]
         unsafe {
-            rt_hw_interrupt_enable(level)
+            rt_bindings::rt_hw_interrupt_enable(level)
         };
-    }
-
-    // Disables preemption for the CPU.
-    #[cfg(feature = "RT_USING_SMP")]
-    unsafe fn cpu_preempt_disable() {
-        /* disable interrupt */
-        let level = rt_hw_local_irq_disable();
-        let current_thread = rt_thread_self();
-        if current_thread == ptr::null_mut() {
-            rt_hw_local_irq_enable(level);
-            return;
-        }
-
-        /* lock scheduler for local cpu */
-        (*current_thread).scheduler_lock_nest += 1;
-        /* enable interrupt */
-        rt_hw_local_irq_enable(level);
-    }
-
-    /// Enables scheduler for the CPU.
-    #[cfg(feature = "RT_USING_SMP")]
-    unsafe fn cpu_preempt_enable() {
-        /* disable interrupt */
-        let level = rt_hw_local_irq_disable();
-
-        let current_thread = rt_thread_self();
-        if current_thread == ptr::null_mut() {
-            rt_hw_local_irq_enable(level);
-            return;
-        }
-
-        /* unlock scheduler for local cpu */
-        (*current_thread).scheduler_lock_nest -= 1;
-
-        rt_schedule();
-        /* enable interrupt */
-        rt_hw_local_irq_enable(level);
     }
 }
 
-pub struct RtSpinGuard<'a>(&'a rt_spinlock);
+pub struct RawSpinGuard<'a>(&'a RawSpin);
 
-impl Drop for RtSpinGuard<'_> {
+impl Drop for RawSpinGuard<'_> {
     #[inline]
     fn drop(&mut self) {
         self.0.unlock();
+    }
+}
+
+pub struct SpinMutex<T: ?Sized> {
+    lock: RawSpin,
+    data: UnsafeCell<T>,
+}
+
+/// A guard that protects some data.
+///
+/// When the guard is dropped, the next ticket will be processed.
+pub struct SpinMutexGuard<'a, T: ?Sized + 'a> {
+    lock: &'a RawSpin,
+    data: &'a mut T,
+}
+
+unsafe impl<T: ?Sized + Send> Sync for SpinMutex<T> {}
+unsafe impl<T: ?Sized + Send> Send for SpinMutex<T> {}
+
+impl<T> SpinMutex<T> {
+    /// Creates a new [`SpinMutex`] wrapping the supplied data.
+    #[inline(always)]
+    pub const fn new(data: T) -> Self {
+        Self {
+            lock: RawSpin::new(),
+            data: UnsafeCell::new(data),
+        }
+    }
+
+    /// Consumes this [`SpinMutex`] and unwraps the underlying data.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let lock = SpinMutex::<_>::new(42);
+    /// assert_eq!(42, lock.into_inner());
+    /// ```
+    #[inline(always)]
+    pub fn into_inner(self) -> T {
+        self.data.into_inner()
+    }
+    /// Returns a mutable pointer to the underying data.
+    ///
+    /// This is mostly meant to be used for applications which require manual unlocking, but where
+    /// storing both the lock and the pointer to the inner data gets inefficient.
+    ///
+    /// # Example
+    /// ```
+    /// let lock = SpinMutex::<_>::new(42);
+    ///
+    /// unsafe {
+    ///     core::mem::forget(lock.lock());
+    ///
+    ///     assert_eq!(lock.as_mut_ptr().read(), 42);
+    ///     lock.as_mut_ptr().write(58);
+    ///
+    ///     lock.force_unlock();
+    /// }
+    ///
+    /// assert_eq!(*lock.lock(), 58);
+    ///
+    /// ```
+    #[inline(always)]
+    pub fn as_mut_ptr(&self) -> *mut T {
+        self.data.get()
+    }
+}
+
+impl<T: ?Sized> SpinMutex<T> {
+    /// Locks the [`SpinMutex`] and returns a guard that permits access to the inner data.
+    ///
+    /// The returned data may be dereferenced for data access
+    /// and the lock will be dropped when the guard falls out of scope.
+    ///
+    /// ```
+    /// let lock = SpinMutex::<_>::new(0);
+    /// {
+    ///     let mut data = lock.lock();
+    ///     // The lock is now locked and the data can be accessed
+    ///     *data += 1;
+    ///     // The lock is implicitly dropped at the end of the scope
+    /// }
+    /// ```
+    #[inline(always)]
+    pub fn lock(&self) -> SpinMutexGuard<T> {
+        self.lock.lock();
+
+        SpinMutexGuard {
+            lock: &self.lock,
+            // Safety
+            // We know that we are the next ticket to be served,
+            // so there's no other thread accessing the data.
+            //
+            // Every other thread has another ticket number so it's
+            // definitely stuck in the spin loop above.
+            data: unsafe { &mut *self.data.get() },
+        }
+    }
+}
+
+impl<T: ?Sized> SpinMutex<T> {
+    /// Force unlock this [`SpinMutex`], by serving the next ticket.
+    ///
+    /// # Safety
+    ///
+    /// This is *extremely* unsafe if the lock is not held by the current
+    /// thread. However, this can be useful in some instances for exposing the
+    /// lock to FFI that doesn't know how to deal with RAII.
+    #[inline(always)]
+    pub unsafe fn force_unlock(&self) {
+        self.lock.unlock();
+    }
+
+    /// Returns a mutable reference to the underlying data.
+    #[inline(always)]
+    pub fn get_mut(&mut self) -> &mut T {
+        // Safety:
+        // We know that there are no other references to `self`,
+        // so it's safe to return a exclusive reference to the data.
+        unsafe { &mut *self.data.get() }
+    }
+}
+
+impl<T: ?Sized + Default> Default for SpinMutex<T> {
+    fn default() -> Self {
+        Self::new(Default::default())
+    }
+}
+
+impl<T> From<T> for SpinMutex<T> {
+    fn from(data: T) -> Self {
+        Self::new(data)
+    }
+}
+
+impl<'a, T: ?Sized> SpinMutexGuard<'a, T> {
+    /// Leak the lock guard, yielding a mutable reference to the underlying data.
+    ///
+    /// Note that this function will permanently lock the original [`RawSpin`].
+    ///
+    /// ```
+    /// let mylock = spin::mutex::RawSpin::<_>::new(0);
+    ///
+    /// let data: &mut i32 = spin::mutex::SpinMutexGuard::leak(mylock.lock());
+    ///
+    /// *data = 1;
+    /// assert_eq!(*data, 1);
+    /// ```
+    #[inline(always)]
+    pub fn leak(this: Self) -> &'a mut T {
+        let data = this.data as *mut _; // Keep it in pointer form temporarily to avoid double-aliasing
+        core::mem::forget(this);
+        unsafe { &mut *data }
+    }
+}
+
+impl<'a, T: ?Sized + fmt::Debug> fmt::Debug for SpinMutexGuard<'a, T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Debug::fmt(&**self, f)
+    }
+}
+
+impl<'a, T: ?Sized + fmt::Display> fmt::Display for SpinMutexGuard<'a, T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(&**self, f)
+    }
+}
+
+impl<'a, T: ?Sized> Deref for SpinMutexGuard<'a, T> {
+    type Target = T;
+    fn deref(&self) -> &T {
+        self.data
+    }
+}
+
+impl<'a, T: ?Sized> DerefMut for SpinMutexGuard<'a, T> {
+    fn deref_mut(&mut self) -> &mut T {
+        self.data
+    }
+}
+
+impl<'a, T: ?Sized> Drop for SpinMutexGuard<'a, T> {
+    fn drop(&mut self) {
+        self.lock.unlock();
     }
 }
 
@@ -127,10 +290,10 @@ impl Drop for RtSpinGuard<'_> {
 /// * `lock` - a pointer to the spinlock to initialize.
 ///
 #[no_mangle]
-pub unsafe extern "C" fn rt_spin_lock_init(lock: *mut rt_spinlock) {
+pub unsafe extern "C" fn rt_spin_lock_init(lock: *mut rt_bindings::rt_spinlock) {
     #[cfg(feature = "RT_USING_SMP")]
     unsafe {
-        rt_hw_spin_lock_init(&mut (*lock).lock)
+        rt_bindings::rt_hw_spin_lock_init(&mut (*lock).lock)
     };
 }
 
@@ -144,7 +307,7 @@ pub unsafe extern "C" fn rt_spin_lock_init(lock: *mut rt_spinlock) {
 /// * `lock` - a pointer to the spinlock.
 ///
 #[no_mangle]
-pub unsafe extern "C" fn rt_spin_lock(lock: *mut rt_spinlock) {
+pub unsafe extern "C" fn rt_spin_lock(lock: *mut rt_bindings::rt_spinlock) {
     (*lock).lock();
 }
 
@@ -155,7 +318,7 @@ pub unsafe extern "C" fn rt_spin_lock(lock: *mut rt_spinlock) {
 /// * `lock` - a pointer to the spinlock.
 ///
 #[no_mangle]
-pub unsafe extern "C" fn rt_spin_unlock(lock: *mut rt_spinlock) {
+pub unsafe extern "C" fn rt_spin_unlock(lock: *mut rt_bindings::rt_spinlock) {
     (*lock).unlock();
 }
 
@@ -173,7 +336,9 @@ pub unsafe extern "C" fn rt_spin_unlock(lock: *mut rt_spinlock) {
 /// Returns current CPU interrupt status.
 ///
 #[no_mangle]
-pub unsafe extern "C" fn rt_spin_lock_irqsave(lock: *mut rt_spinlock) -> rt_base_t {
+pub unsafe extern "C" fn rt_spin_lock_irqsave(
+    lock: *mut rt_bindings::rt_spinlock,
+) -> rt_bindings::rt_base_t {
     (*lock).lock_irqsave()
 }
 
@@ -185,7 +350,10 @@ pub unsafe extern "C" fn rt_spin_lock_irqsave(lock: *mut rt_spinlock) -> rt_base
 /// * `level` - interrupt status returned by rt_spin_lock_irqsave().
 ///
 #[no_mangle]
-pub unsafe extern "C" fn rt_spin_unlock_irqrestore(lock: *mut rt_spinlock, level: rt_base_t) {
+pub unsafe extern "C" fn rt_spin_unlock_irqrestore(
+    lock: *mut rt_bindings::rt_spinlock,
+    level: rt_bindings::rt_base_t,
+) {
     (*lock).unlock_irqrestore(level);
 }
 
@@ -205,24 +373,18 @@ pub struct SpinLockBackend;
 // SAFETY: The underlying kernel `spinlock_t` object ensures mutual exclusion. `relock` uses the
 // default implementation that always calls the same locking method.
 unsafe impl super::Backend for SpinLockBackend {
-    type State = rt_spinlock;
+    type State = rt_bindings::rt_spinlock;
     type GuardState = ();
 
     unsafe fn init(ptr: *mut Self::State, _name: *const core::ffi::c_char) {
-        // SAFETY: The safety requirements ensure that `ptr` is valid for writes, and `name` and
-        // `key` are valid for read indefinitely.
         unsafe { rt_spin_lock_init(ptr) }
     }
 
     unsafe fn lock(ptr: *mut Self::State) -> Self::GuardState {
-        // SAFETY: The safety requirements of this function ensure that `ptr` points to valid
-        // memory, and that it has been initialised before.
         unsafe { rt_spin_lock(ptr) }
     }
 
     unsafe fn unlock(ptr: *mut Self::State, _guard_state: &Self::GuardState) {
-        // SAFETY: The safety requirements of this function ensure that `ptr` is valid and that the
-        // caller is the owner of the spinlock.
         unsafe { rt_spin_unlock(ptr) }
     }
 }

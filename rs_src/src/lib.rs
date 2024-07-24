@@ -6,6 +6,8 @@
 #![feature(allocator_api)]
 #![feature(alloc_layout_extra)]
 #![feature(c_size_t)]
+// FIXME!
+#![recursion_limit = "4096"]
 
 extern crate alloc;
 
@@ -17,6 +19,7 @@ pub mod clock;
 pub mod cpu;
 pub mod error;
 mod ext_types;
+mod idle;
 pub mod irq;
 pub mod klibc;
 mod linked_list;
@@ -24,10 +27,14 @@ pub mod object;
 mod print;
 mod rt_bindings;
 mod rt_list;
+pub mod scheduler;
+mod stack;
 mod static_assert;
 pub mod static_init;
 pub mod str;
 pub mod sync;
+pub mod thread;
+mod zombie;
 
 use core::sync::atomic::{self, Ordering};
 

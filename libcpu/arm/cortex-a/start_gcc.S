@@ -400,14 +400,13 @@ vector_fiq:
 .globl      rt_interrupt_from_thread
 .globl      rt_interrupt_to_thread
 
-.globl      rt_current_thread
 .globl      vmm_thread
 .globl      vmm_virq_check
 
     .align  5
 .globl vector_irq
 vector_irq:
-#ifdef RT_USING_SMP
+/* #ifdef RT_USING_SMP */
     stmfd   sp!, {r0, r1}
     cps     #Mode_SVC
     mov     r0, sp          /* svc_sp */
@@ -456,7 +455,7 @@ vector_irq:
 
     b       rt_hw_context_switch_exit
 
-#else
+#if 0 // #else
     stmfd   sp!, {r0-r12,lr}
 
     bl      rt_interrupt_enter
@@ -588,7 +587,7 @@ rt_hw_context_switch_interrupt_do:
     /* pop new task's r0-r12,lr & pc, copy spsr to cpsr */
     ldmfd   sp!, {r0-r12,lr,pc}^
 
-#endif
+#endif /* not SMP */
 
 .macro push_svc_reg
     sub     sp, sp, #17 * 4         /* Sizeof(struct rt_hw_exp_stack)  */
