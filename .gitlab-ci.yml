@@ -24,12 +24,7 @@ up-build:
     - ubuntu
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-  artifacts:
-        name: "rtthread.bin"
-        untracked: true
-        expire_in: 60 mins
-        paths:
-            - /data01/runner/gitlab-runner/builds/y1GSVydi/0/11154271/rt-thread/bsp/qemu-vexpress-a9/rtthread.bin
+
 
 up-unit-test:
   stage: ut_up
@@ -54,12 +49,6 @@ mp-build:
     - ./build.sh qemu-vexpress-a9
   tags:
     - ubuntu
-  artifacts:
-        name: "rtthread.bin"
-        untracked: true
-        expire_in: 60 mins
-        paths:
-            - /data01/runner/gitlab-runner/builds/y1GSVydi/0/11154271/rt-thread/bsp/qemu-vexpress-a9/rtthread.bin
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
 
