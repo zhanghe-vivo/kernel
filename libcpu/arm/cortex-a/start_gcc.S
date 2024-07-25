@@ -218,6 +218,11 @@ bss_loop:
     mcr p15, 0, r1, c1, c0, 1   /* enable smp */
 #endif
 
+#ifdef USE_RUST
+    /* init static struct before mutex is used below. */
+    bl init_cpus
+#endif
+
     /**
      * void rt_hw_init_mmu_table(struct mem_desc *mdesc, rt_uint32_t size)
      * initialize the mmu table and enable mmu

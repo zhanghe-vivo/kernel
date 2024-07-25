@@ -1,5 +1,5 @@
 use crate::{
-    cpu::{self, Cpu, Cpus, CPUS},
+    cpu::{self, Cpu, Cpus},
     error::Error,
     linked_list::ListHead,
     rt_bindings,
@@ -137,8 +137,10 @@ impl PriorityTableManager {
             // FIXME #[cfg(RT_THREAD_PRIORITY_MAX > 32)]
             self.ready_table[thread.number as usize] &= !thread.high_mask;
             if self.ready_table[thread.number as usize] == 0 {
-                self.priority_group &= !(thread.high_mask as u32);
+                self.priority_group &= !(thread.number_mask);
             }
+            // FIXME #[cfg(not(RT_THREAD_PRIORITY_MAX > 32))]
+            // self.priority_group &= !(thread.number_mask);
         }
     }
 }
@@ -242,7 +244,6 @@ impl Scheduler {
     }
 
     pub fn insert_thread_locked(&mut self, thread: &mut RtThread) {
-        debug_assert!(self.is_scheduled());
         debug_assert!(self.is_sched_locked());
 
         if thread.is_ready() {
@@ -297,7 +298,6 @@ impl Scheduler {
     }
 
     pub fn remove_thread_locked(&mut self, thread: &mut RtThread) {
-        debug_assert!(self.is_scheduled());
         debug_assert!(self.is_sched_locked());
 
         #[cfg(not(feature = "RT_USING_SMP"))]
@@ -398,7 +398,7 @@ impl Scheduler {
                     // _cpus_lock will unlock in rt_cpus_lock_status_restore
                     unsafe {
                         rt_bindings::rt_hw_context_switch_to(
-                            to_th.sp() as rt_bindings::rt_ubase_t,
+                            to_th.sp_ptr() as rt_bindings::rt_ubase_t,
                             to_th as *mut _ as *mut rt_bindings::rt_thread,
                         )
                     };
@@ -413,12 +413,7 @@ impl Scheduler {
         #[cfg(feature = "RT_USING_SMP")]
         Cpus::unlock_cpus();
 
-        unsafe {
-            rt_bindings::rt_hw_local_irq_disable();
-        }
-
-        #[cfg(feature = "RT_USING_SMP")]
-        self.sched_lock_mp();
+        self.sched_lock();
 
         let to_thread = self.get_highest_priority_thread_locked();
 
@@ -437,7 +432,7 @@ impl Scheduler {
                 // _cpus_lock will unlock in rt_cpus_lock_status_restore
                 unsafe {
                     rt_bindings::rt_hw_context_switch_to(
-                        th.sp() as rt_bindings::rt_ubase_t,
+                        th.sp_ptr() as rt_bindings::rt_ubase_t,
                         th as *mut RtThread as *mut rt_bindings::rt_thread,
                     )
                 };
@@ -493,10 +488,14 @@ impl Scheduler {
                 self.sched_lock_flag = 0;
                 if let Some(to_thread) = self.prepare_context_switch_locked() {
                     unsafe {
-                        let sp = self.get_current_thread().unwrap_unchecked().as_ref().sp();
+                        let sp = self
+                            .get_current_thread()
+                            .unwrap_unchecked()
+                            .as_ref()
+                            .sp_ptr();
                         rt_bindings::rt_hw_context_switch(
                             sp as rt_bindings::rt_ubase_t,
-                            to_thread.as_ref().sp() as rt_bindings::rt_ubase_t,
+                            to_thread.as_ref().sp_ptr() as rt_bindings::rt_ubase_t,
                             to_thread.as_ptr() as *mut rt_bindings::rt_thread,
                         );
                     }
@@ -559,8 +558,8 @@ impl Scheduler {
                     // sched_unlock_mp will call in rt_cpus_lock_status_restore
                     unsafe {
                         rt_bindings::rt_hw_context_switch(
-                            cur_thread.as_ref().sp() as rt_bindings::rt_ubase_t,
-                            new_thread.as_ref().sp() as rt_bindings::rt_ubase_t,
+                            cur_thread.as_ref().sp_ptr() as rt_bindings::rt_ubase_t,
+                            new_thread.as_ref().sp_ptr() as rt_bindings::rt_ubase_t,
                             new_thread.as_ptr() as *mut rt_bindings::rt_thread,
                         )
                     };
@@ -601,11 +600,15 @@ impl Scheduler {
                 match to_thread {
                     Some(new_thread) => {
                         unsafe {
-                            let sp = self.get_current_thread().unwrap_unchecked().as_ref().sp();
+                            let sp = self
+                                .get_current_thread()
+                                .unwrap_unchecked()
+                                .as_ref()
+                                .sp_ptr();
                             rt_bindings::rt_hw_context_switch_interrupt(
                                 ctx.as_ptr(),
                                 sp as rt_bindings::rt_ubase_t,
-                                new_thread.as_ref().sp() as rt_bindings::rt_ubase_t,
+                                new_thread.as_ref().sp_ptr() as rt_bindings::rt_ubase_t,
                                 new_thread.as_ptr() as *mut rt_bindings::rt_thread,
                             )
                         };
@@ -697,7 +700,7 @@ pub extern "C" fn rt_sched_is_locked() -> bool {
 
 #[no_mangle]
 pub unsafe extern "C" fn rt_system_scheduler_init() {
-    CPUS.init_once();
+    // CPUS.init_once();
 }
 
 #[no_mangle]

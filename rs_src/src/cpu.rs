@@ -14,9 +14,9 @@ use core::{
 use pinned_init::*;
 
 pub const CPUS_NUMBER: usize = rt_bindings::RT_CPUS_NR as usize;
-pub(crate) static mut CPUS: UnsafeStaticInit<Cpus, CpusInit> = UnsafeStaticInit::new(CpusInit);
+static mut CPUS: UnsafeStaticInit<Cpus, CpusInit> = UnsafeStaticInit::new(CpusInit);
 
-pub struct CpusInit;
+struct CpusInit;
 unsafe impl PinInit<Cpus> for CpusInit {
     unsafe fn __pinned_init(self, slot: *mut Cpus) -> Result<(), core::convert::Infallible> {
         let init = Cpus::new();
@@ -71,6 +71,11 @@ impl Cpus {
             inner <- pin_init_array_from_fn(|i| Cpu::new(i as u8)),
             global_priority_manager <- PriorityTableManager::new(),
         })
+    }
+
+    #[inline]
+    pub(crate) fn is_inited() -> bool {
+        unsafe { CPUS.is_inited() }
     }
 
     #[inline]
@@ -183,21 +188,6 @@ impl Cpu {
         Self::get_current_scheduler().is_scheduled()
     }
 
-    // #[inline]
-    // pub fn cpu_nest_load() -> u32 {
-    //     Self::get_current().cpus_lock_nest.load(Ordering::Relaxed)
-    // }
-
-    // #[inline]
-    // pub fn cpu_nest_inc() -> u32 {
-    //     Self::get_current().cpus_lock_nest.fetch_add(1, Ordering::Release)
-    // }
-
-    // #[inline]
-    // pub fn cpu_nest_dec() -> u32 {
-    //     Self::get_current().cpus_lock_nest.fetch_sub(1, Ordering::Release)
-    // }
-
     #[inline]
     pub fn tick_store(tick: u32) {
         Self::get_current().tick.store(tick, Ordering::Release)
@@ -299,13 +289,19 @@ pub unsafe extern "C" fn rt_cpus_unlock(level: rt_bindings::rt_base_t) {
 /// thread is a pointer to the target thread.
 #[no_mangle]
 pub extern "C" fn rt_cpus_lock_status_restore(thread: *mut RtThread) {
-    assert!(thread.is_null());
+    assert!(!thread.is_null());
 
     #[cfg(all(feature = "ARCH_MM_MMU", feature = "RT_USING_SMART"))]
     rt_bindings::lwp_aspace_switch(thread);
 
-    Cpu::get_current_scheduler().ctx_switch_unlock();
     unsafe {
         Cpu::set_current_thread(NonNull::new_unchecked(thread));
     }
+    Cpu::get_current_scheduler().ctx_switch_unlock();
+}
+
+// need to call before rt_enter_critical/ cpus_lock called
+#[no_mangle]
+pub unsafe extern "C" fn init_cpus() {
+    CPUS.init_once();
 }

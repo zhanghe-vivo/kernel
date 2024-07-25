@@ -15,12 +15,14 @@
 
 rt_weak int rt_hw_cpu_id(void)
 {
-    int cpu_id;
+    int cpu_id = 0;
+#ifdef RT_USING_SMP
     __asm__ volatile (
             "mrc p15, 0, %0, c0, c0, 5"
             :"=r"(cpu_id)
     );
     cpu_id &= 0xf;
+#endif
     return cpu_id;
 }
 
@@ -103,5 +105,12 @@ int __rt_ffs(int value)
     return __builtin_ffs(value);
 }
 #endif
+
+rt_bool_t rt_hw_interrupt_is_disabled(void)
+{
+    int rc;
+    __asm__ volatile("mrs %0, cpsr" : "=r" (rc));
+    return !!(rc & 0x80);
+}
 
 /*@}*/

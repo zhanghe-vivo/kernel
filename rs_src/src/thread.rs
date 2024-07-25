@@ -316,7 +316,7 @@ impl RtThread {
             }
 
             let cur_ref = &mut *slot;
-            ListHead::new().__pinned_init(&mut cur_ref.tlist as *mut ListHead);
+            let _ = ListHead::new().__pinned_init(&mut cur_ref.tlist as *mut ListHead);
 
             rt_bindings::rt_timer_init(
                 &mut cur_ref.thread_timer as *mut _,
@@ -362,7 +362,9 @@ impl RtThread {
 
             #[cfg(feature = "RT_USING_MUTEX")]
             {
-                ListHead::new().__pinned_init(&mut cur_ref.taken_object_list as *mut ListHead);
+                // no Error
+                let _ =
+                    ListHead::new().__pinned_init(&mut cur_ref.taken_object_list as *mut ListHead);
                 cur_ref.pending_object = ptr::null_mut();
             }
 
@@ -412,9 +414,10 @@ impl RtThread {
         }
     }
 
+    // used for hw_context_switch
     #[inline]
-    pub(crate) fn sp(&self) -> usize {
-        self.stack.sp()
+    pub(crate) fn sp_ptr(&self) -> *const usize {
+        self.stack.sp_ptr()
     }
 
     #[inline]
@@ -624,8 +627,10 @@ impl RtThread {
 
         // FIXME: RT_THREAD_PRIORITY_MAX > 32
         self.number = self.current_priority >> 3; // 5 bits
-        self.number_mask = 1 << self.number;
         self.high_mask = 1 << (self.current_priority & 0x07); // 3 bits
+        self.number_mask = 1 << self.number;
+        // FIXME: RT_THREAD_PRIORITY_MAX <= 32
+        // self.number_mask = 1 << self.current_priority
     }
 
     pub fn start(&mut self) {
@@ -853,7 +858,10 @@ pub extern "C" fn rt_thread_init(
         priority,
         tick,
     );
-    unsafe { init.__pinned_init(thread) };
+    // no Error
+    unsafe {
+        let _ = init.__pinned_init(thread);
+    }
     return rt_bindings::RT_EOK as rt_bindings::rt_err_t;
 }
 

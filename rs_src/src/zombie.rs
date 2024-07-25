@@ -55,7 +55,7 @@ pub(crate) struct ZombieManager {
 impl ZombieManager {
     #[cfg(not(feature = "RT_USING_SMP"))]
     pub(crate) fn new() -> impl PinInit<Self> {
-        pin_init!(&this in Self {
+        pin_init!(Self {
             zombies_list <- new_spinlock!(ListHead::new()),
         })
     }

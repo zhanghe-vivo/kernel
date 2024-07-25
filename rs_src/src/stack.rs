@@ -26,8 +26,14 @@ impl Stack {
     pub fn sp(&self) -> usize {
         self.sp
     }
+
     pub fn set_sp(&mut self, uptr: usize) {
         self.sp = uptr;
+    }
+
+    // used for hw_context_switch
+    pub fn sp_ptr(&self) -> *const usize {
+        &self.sp as *const usize
     }
 
     /// Pointer to first element of the stack

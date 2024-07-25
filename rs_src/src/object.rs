@@ -1,4 +1,6 @@
+use crate::cpu::Cpus;
 use crate::rt_bindings::*;
+use crate::scheduler;
 use core::{ffi, ptr};
 
 type DestroyFunc = extern "C" fn(*mut ffi::c_void) -> rt_err_t;
@@ -404,18 +406,19 @@ pub extern "C" fn rt_object_init(
     let information = unsafe { &mut *information };
 
     #[cfg(feature = "RT_USING_DEBUG")]
-    unsafe {
+    if Cpus::is_inited() {
         let mut node = information.object_list.next;
-        rt_enter_critical();
+        scheduler::rt_enter_critical();
         loop {
             if ptr::eq(node, &information.object_list) {
                 break;
             }
-            let obj = crate::rt_list_entry!(node, rt_object, list);
+
+            let obj = unsafe { crate::rt_list_entry!(node, rt_object, list) };
             assert!(!ptr::eq(obj as *mut rt_object, object));
-            node = (*node).next;
+            unsafe { node = (*node).next };
         }
-        rt_exit_critical();
+        scheduler::rt_exit_critical();
     }
 
     let obj_ref = unsafe { &mut *object };
