@@ -7,7 +7,6 @@ use crate::{
     thread::RtThread,
 };
 use core::{
-    cell::{RefCell, UnsafeCell},
     ptr::NonNull,
     sync::atomic::{AtomicU32, Ordering},
 };
@@ -119,14 +118,26 @@ impl Cpus {
         unsafe { CPUS.global_priority_manager.remove_thread(thread) };
     }
 
+    #[cfg(feature = "RT_USING_SMP")]
+    #[inline]
+    pub(crate) fn lock_cpus_fast() {
+        unsafe { CPUS.cpu_lock.lock_fast() };
+    }
+
+    #[cfg(feature = "RT_USING_SMP")]
+    #[inline]
+    pub(crate) fn unlock_cpus_fast() {
+        unsafe { CPUS.cpu_lock.unlock_fast() };
+    }
+
     #[inline]
     pub(crate) fn lock_cpus() {
-        unsafe { CPUS.cpu_lock.lock_fast() };
+        unsafe { CPUS.cpu_lock.lock() };
     }
 
     #[inline]
     pub(crate) fn unlock_cpus() {
-        unsafe { CPUS.cpu_lock.unlock_fast() };
+        unsafe { CPUS.cpu_lock.unlock() };
     }
 }
 
@@ -271,15 +282,15 @@ pub unsafe extern "C" fn rt_interrupt_nest_dec() -> u32 {
 /// This function will lock all cpus's scheduler and disable local irq.
 /// Return current cpu interrupt status.
 #[no_mangle]
-pub unsafe extern "C" fn rt_cpus_lock() {
-    CPUS.cpu_lock.lock();
+pub extern "C" fn rt_cpus_lock() {
+    Cpus::lock_cpus();
 }
 
 /// This function will restore all cpus's scheduler and restore local irq.
 /// level is interrupt status returned by rt_cpus_lock().
 #[no_mangle]
-pub unsafe extern "C" fn rt_cpus_unlock(level: rt_bindings::rt_base_t) {
-    CPUS.cpu_lock.unlock();
+pub extern "C" fn rt_cpus_unlock(_level: rt_bindings::rt_base_t) {
+    Cpus::unlock_cpus();
 }
 
 /// This function is invoked by scheduler.

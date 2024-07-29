@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use crate::cpu::Cpu;
 use crate::rt_bindings::{self, *};
 

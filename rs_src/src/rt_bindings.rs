@@ -99,14 +99,14 @@ pub fn rt_hw_interrupt_enable(level: rt_base_t) {
 
 #[cfg(not(feature = "RT_USING_SMP"))]
 #[inline(always)]
-pub fn rt_hw_spin_lock(lock: *mut rt_spinlock_t) {
-    unsafe { *lock = rt_hw_interrupt_disable() };
+pub unsafe fn rt_hw_spin_lock(lock: *mut rt_spinlock_t) {
+    *lock = rt_hw_interrupt_disable();
 }
 
 #[cfg(not(feature = "RT_USING_SMP"))]
 #[inline(always)]
-pub fn rt_hw_spin_unlock(lock: *mut rt_spinlock_t) {
-    unsafe { rt_hw_interrupt_enable(*lock) }
+pub unsafe fn rt_hw_spin_unlock(lock: *mut rt_spinlock_t) {
+    rt_hw_interrupt_enable(*lock)
 }
 
 #[cfg(not(feature = "RT_USING_HOOK"))]

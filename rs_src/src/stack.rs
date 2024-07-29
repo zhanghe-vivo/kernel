@@ -1,9 +1,9 @@
-use alloc::alloc;
-use core::alloc::Layout;
+#![allow(dead_code)]
 use core::ptr::NonNull;
 
 /// Stack management structure
 #[repr(C)]
+#[derive(Debug)]
 pub struct Stack {
     /// Current stack pointer
     sp: usize,

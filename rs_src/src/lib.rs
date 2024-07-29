@@ -38,6 +38,7 @@ use core::sync::atomic::{self, Ordering};
 
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
+    cpu::rt_cpus_lock();
     println!("{}", info);
     unsafe {
         rt_bindings::rt_hw_cpu_reset(); // may return

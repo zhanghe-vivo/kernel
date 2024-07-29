@@ -1,5 +1,5 @@
 use core::{
-    ffi, ptr,
+    ffi, mem, ptr,
     sync::atomic::{AtomicPtr, Ordering},
 };
 
@@ -61,7 +61,10 @@ impl IdleHooks {
         for i in 0..IDLE_HOOK_LIST_SIZE {
             let idle_hook = self.hooks[i].load(Ordering::Relaxed);
             if !idle_hook.is_null() {
-                unsafe { (*idle_hook)() };
+                unsafe {
+                    let idle_hook: IdleHookFn = mem::transmute(idle_hook);
+                    idle_hook();
+                }
             }
         }
     }

@@ -39,25 +39,17 @@ impl RawSpin {
     }
 
     pub fn lock(&self) {
-        #[cfg(feature = "RT_USING_SMP")]
         unsafe {
             Cpu::get_current_scheduler().preempt_disable();
             rt_bindings::rt_hw_spin_lock((&self.lock) as *const _ as *mut _);
         }
-
-        #[cfg(not(feature = "RT_USING_SMP"))]
-        Cpu::get_current_scheduler().preempt_disable();
     }
 
     pub fn unlock(&self) {
-        #[cfg(feature = "RT_USING_SMP")]
         unsafe {
             rt_bindings::rt_hw_spin_unlock((&self.lock) as *const _ as *mut _);
             Cpu::get_current_scheduler().preempt_enable();
         }
-
-        #[cfg(not(feature = "RT_USING_SMP"))]
-        Cpu::get_current_scheduler().preempt_enable();
     }
 
     pub fn lock_irqsave(&self) -> rt_bindings::rt_base_t {
@@ -290,10 +282,10 @@ impl<'a, T: ?Sized> Drop for SpinMutexGuard<'a, T> {
 /// * `lock` - a pointer to the spinlock to initialize.
 ///
 #[no_mangle]
-pub unsafe extern "C" fn rt_spin_lock_init(lock: *mut rt_bindings::rt_spinlock) {
+pub unsafe extern "C" fn rt_spin_lock_init(spin: *mut rt_bindings::rt_spinlock) {
     #[cfg(feature = "RT_USING_SMP")]
     unsafe {
-        rt_bindings::rt_hw_spin_lock_init(&mut (*lock).lock)
+        rt_bindings::rt_hw_spin_lock_init(&mut (*spin).lock)
     };
 }
 
@@ -307,8 +299,8 @@ pub unsafe extern "C" fn rt_spin_lock_init(lock: *mut rt_bindings::rt_spinlock) 
 /// * `lock` - a pointer to the spinlock.
 ///
 #[no_mangle]
-pub unsafe extern "C" fn rt_spin_lock(lock: *mut rt_bindings::rt_spinlock) {
-    (*lock).lock();
+pub unsafe extern "C" fn rt_spin_lock(spin: *mut rt_bindings::rt_spinlock) {
+    (*spin).lock();
 }
 
 /// This function will unlock the spinlock, will unlock the thread scheduler.
@@ -318,8 +310,8 @@ pub unsafe extern "C" fn rt_spin_lock(lock: *mut rt_bindings::rt_spinlock) {
 /// * `lock` - a pointer to the spinlock.
 ///
 #[no_mangle]
-pub unsafe extern "C" fn rt_spin_unlock(lock: *mut rt_bindings::rt_spinlock) {
-    (*lock).unlock();
+pub unsafe extern "C" fn rt_spin_unlock(spin: *mut rt_bindings::rt_spinlock) {
+    (*spin).unlock();
 }
 
 /// This function will disable the local interrupt and then lock the spinlock, will lock the thread scheduler.
@@ -337,9 +329,9 @@ pub unsafe extern "C" fn rt_spin_unlock(lock: *mut rt_bindings::rt_spinlock) {
 ///
 #[no_mangle]
 pub unsafe extern "C" fn rt_spin_lock_irqsave(
-    lock: *mut rt_bindings::rt_spinlock,
+    spin: *mut rt_bindings::rt_spinlock,
 ) -> rt_bindings::rt_base_t {
-    (*lock).lock_irqsave()
+    (*spin).lock_irqsave()
 }
 
 /// This function will unlock the spinlock and then restore current CPU interrupt status, will unlock the thread scheduler.
@@ -351,10 +343,10 @@ pub unsafe extern "C" fn rt_spin_lock_irqsave(
 ///
 #[no_mangle]
 pub unsafe extern "C" fn rt_spin_unlock_irqrestore(
-    lock: *mut rt_bindings::rt_spinlock,
+    spin: *mut rt_bindings::rt_spinlock,
     level: rt_bindings::rt_base_t,
 ) {
-    (*lock).unlock_irqrestore(level);
+    (*spin).unlock_irqrestore(level);
 }
 
 #[macro_export]

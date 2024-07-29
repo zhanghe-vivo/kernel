@@ -2,8 +2,9 @@ use crate::{
     cpu::{self, Cpu, Cpus},
     error::Error,
     linked_list::ListHead,
-    rt_bindings,
+    println, rt_bindings,
     static_init::UnsafeStaticInit,
+    str::CStr,
     thread::{self, RtThread},
 };
 use core::{
@@ -199,7 +200,7 @@ impl Scheduler {
     #[inline]
     fn sched_lock_mp(&mut self) {
         debug_assert!(self.sched_lock_flag == 0);
-        Cpus::lock_cpus();
+        Cpus::lock_cpus_fast();
         self.sched_lock_flag = 1;
     }
 
@@ -208,7 +209,7 @@ impl Scheduler {
     fn sched_unlock_mp(&mut self) {
         debug_assert!(self.sched_lock_flag == 1);
         self.sched_lock_flag = 0;
-        Cpus::unlock_cpus();
+        Cpus::unlock_cpus_fast();
     }
 
     fn get_highest_priority_thread_locked(&self) -> Option<(NonNull<RtThread>, u32)> {
@@ -258,13 +259,14 @@ impl Scheduler {
             return;
         }
 
-        #[cfg(not(feature = "RT_USING_SMP"))]
-        if thread.is_current_runnung_thread() {
-            // only YIELD -> READY, SUSPEND -> READY is allowed by this API. However,
-            // this is a RUNNING thread. So here we reset it's status and let it go.
-            thread.set_running();
-            return;
-        }
+        // current thread is changed in rt_cpus_lock_status_restore now. cant let it go
+        // #[cfg(not(feature = "RT_USING_SMP"))]
+        // if thread.is_current_runnung_thread() {
+        //     // only YIELD -> READY, SUSPEND -> READY is allowed by this API. However,
+        //     // this is a RUNNING thread. So here we reset it's status and let it go.
+        //     thread.set_running();
+        //     return;
+        // }
 
         thread.set_ready();
 
@@ -325,7 +327,7 @@ impl Scheduler {
             self.remove_thread_locked(thread);
             thread.set_priority(priority);
             thread.set_init_stat();
-            self.insert_ready_locked(thread);
+            self.insert_thread_locked(thread);
         } else {
             thread.set_priority(priority);
         }
@@ -376,32 +378,23 @@ impl Scheduler {
                             cur_th.oncpu = rt_bindings::RT_CPU_DETACHED as u8;
                         }
 
-                        cur_th.stat &= !(rt_bindings::RT_THREAD_STAT_YIELD_MASK as u8);
                         self.insert_thread_locked(cur_th);
+                        /* consume the yield flags after scheduling */
+                        cur_th.stat &= !(rt_bindings::RT_THREAD_STAT_YIELD_MASK as u8);
                     }
 
                     let to_th = unsafe { new_thread.as_mut() };
-
                     #[cfg(feature = "RT_USING_SMP")]
                     {
                         to_th.oncpu = cpu_id;
                     }
-
                     self.current_priority = highest_ready_priority as u8;
-
                     crate::rt_object_hook_call!(RT_SCHEDULER_HOOK, cur_th, to_th);
-
                     self.remove_thread_locked(to_th);
                     to_th.set_running();
-
+                    // TODO: RT_SCHEDULER_STACK_CHECK
                     crate::rt_object_hook_call!(RT_SCHEDULER_SWITCH_HOOK, cur_th);
-                    // _cpus_lock will unlock in rt_cpus_lock_status_restore
-                    unsafe {
-                        rt_bindings::rt_hw_context_switch_to(
-                            to_th.sp_ptr() as rt_bindings::rt_ubase_t,
-                            to_th as *mut _ as *mut rt_bindings::rt_thread,
-                        )
-                    };
+                    return Some(new_thread);
                 }
                 None => unreachable!(),
             }
@@ -418,22 +411,21 @@ impl Scheduler {
         let to_thread = self.get_highest_priority_thread_locked();
 
         match to_thread {
-            Some((mut thread, _prio)) => {
-                let th = unsafe { thread.as_mut() };
-                self.remove_thread_locked(th);
-
+            Some((mut thread, prio)) => {
+                self.current_priority = prio as u8;
+                let to_th = unsafe { thread.as_mut() };
+                self.remove_thread_locked(to_th);
                 #[cfg(feature = "RT_USING_SMP")]
                 {
-                    th.oncpu = self.get_current_id();
+                    to_th.oncpu = self.get_current_id();
                 }
-
-                th.set_running();
-
+                to_th.set_running();
                 // _cpus_lock will unlock in rt_cpus_lock_status_restore
                 unsafe {
+                    println!("switch to {:?}", to_th.get_name());
                     rt_bindings::rt_hw_context_switch_to(
-                        th.sp_ptr() as rt_bindings::rt_ubase_t,
-                        th as *mut RtThread as *mut rt_bindings::rt_thread,
+                        to_th.sp_ptr() as rt_bindings::rt_ubase_t,
+                        to_th as *mut RtThread as *mut rt_bindings::rt_thread,
                     )
                 };
             }
@@ -488,13 +480,14 @@ impl Scheduler {
                 self.sched_lock_flag = 0;
                 if let Some(to_thread) = self.prepare_context_switch_locked() {
                     unsafe {
-                        let sp = self
-                            .get_current_thread()
-                            .unwrap_unchecked()
-                            .as_ref()
-                            .sp_ptr();
+                        let cur_thread = self.get_current_thread().unwrap_unchecked();
+                        println!(
+                            "switch from {:?} to {:?}",
+                            cur_thread.as_ref().get_name(),
+                            to_thread.as_ref().get_name()
+                        );
                         rt_bindings::rt_hw_context_switch(
-                            sp as rt_bindings::rt_ubase_t,
+                            cur_thread.as_ref().sp_ptr() as rt_bindings::rt_ubase_t,
                             to_thread.as_ref().sp_ptr() as rt_bindings::rt_ubase_t,
                             to_thread.as_ptr() as *mut rt_bindings::rt_thread,
                         );
@@ -550,18 +543,23 @@ impl Scheduler {
             #[cfg(feature = "RT_USING_SMP")]
             self.sched_lock_mp();
 
-            let cur_thread = unsafe { self.get_current_thread().unwrap_unchecked() };
             /* pick the highest runnable thread, and pass the control to it */
-            let to_thread = self.prepare_context_switch_locked();
-            match to_thread {
-                Some(new_thread) => {
+            match self.prepare_context_switch_locked() {
+                Some(to_thread) => {
+                    let cur_thread = unsafe { self.get_current_thread().unwrap_unchecked() };
                     // sched_unlock_mp will call in rt_cpus_lock_status_restore
                     unsafe {
+                        println!(
+                            "switch from {:?} to {:?}",
+                            cur_thread.as_ref().get_name(),
+                            to_thread.as_ref().get_name()
+                        );
                         rt_bindings::rt_hw_context_switch(
                             cur_thread.as_ref().sp_ptr() as rt_bindings::rt_ubase_t,
-                            new_thread.as_ref().sp_ptr() as rt_bindings::rt_ubase_t,
-                            new_thread.as_ptr() as *mut rt_bindings::rt_thread,
+                            to_thread.as_ref().sp_ptr() as rt_bindings::rt_ubase_t,
+                            to_thread.as_ptr() as *mut rt_bindings::rt_thread,
                         )
+                        // cur_thread will back here
                     };
                 }
                 None => {
@@ -593,23 +591,23 @@ impl Scheduler {
                 self.irq_switch_flag = 0;
 
                 #[cfg(feature = "RT_USING_SMP")]
-                self.sched_unlock_mp();
+                self.sched_lock_mp();
 
                 /* pick the highest runnable thread, and pass the control to it */
-                let to_thread = self.prepare_context_switch_locked();
-                match to_thread {
-                    Some(new_thread) => {
+                match self.prepare_context_switch_locked() {
+                    Some(to_thread) => {
                         unsafe {
-                            let sp = self
-                                .get_current_thread()
-                                .unwrap_unchecked()
-                                .as_ref()
-                                .sp_ptr();
+                            let cur_thread = self.get_current_thread().unwrap_unchecked();
+                            println!(
+                                "switch in_irq from {:?} to {:?}",
+                                cur_thread.as_ref().get_name(),
+                                to_thread.as_ref().get_name()
+                            );
                             rt_bindings::rt_hw_context_switch_interrupt(
                                 ctx.as_ptr(),
-                                sp as rt_bindings::rt_ubase_t,
-                                new_thread.as_ref().sp_ptr() as rt_bindings::rt_ubase_t,
-                                new_thread.as_ptr() as *mut rt_bindings::rt_thread,
+                                cur_thread.as_ref().sp_ptr() as rt_bindings::rt_ubase_t,
+                                to_thread.as_ref().sp_ptr() as rt_bindings::rt_ubase_t,
+                                to_thread.as_ptr() as *mut rt_bindings::rt_thread,
                             )
                         };
                     }

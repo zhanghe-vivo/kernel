@@ -412,7 +412,7 @@ vector_fiq:
 .globl vector_irq
 vector_irq:
 /* #ifdef RT_USING_SMP */
-    stmfd   sp!, {r0, r1}
+    stmfd   sp!, {r0, r1}   /* save original r0, r1 to sp */
     cps     #Mode_SVC
     mov     r0, sp          /* svc_sp */
     mov     r1, lr          /* svc_lr */
@@ -422,9 +422,9 @@ vector_irq:
     stmfd   r0!, {r1, lr}     /* svc_lr, svc_pc */
     stmfd   r0!, {r2 - r12}
     ldmfd   sp!, {r1, r2}     /* original r0, r1 */
-    stmfd   r0!, {r1 - r2}
+    stmfd   r0!, {r1, r2}
     mrs     r1,  spsr         /* original mode */
-    stmfd   r0!, {r1}
+    stmfd   r0!, {r1}         /* use in rt_hw_context_switch_exit */
 
 #ifdef RT_USING_SMART
     stmfd   r0, {r13, r14}^   /* usr_sp, usr_lr */

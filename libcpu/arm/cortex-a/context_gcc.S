@@ -139,9 +139,9 @@ rt_hw_context_switch:
 .equ I_Bit,           0x80            @ when I bit is set, IRQ is disabled
 .equ F_Bit,           0x40            @ when F bit is set, FIQ is disabled
 
-.globl rt_thread_switch_interrupt_flag
-.globl rt_interrupt_from_thread
-.globl rt_interrupt_to_thread
+/* .globl rt_thread_switch_interrupt_flag
+   .globl rt_interrupt_from_thread
+   .globl rt_interrupt_to_thread */
 .globl rt_hw_context_switch_interrupt
 rt_hw_context_switch_interrupt:
     clrex

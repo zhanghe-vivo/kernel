@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use crate::alloc::boxed::Box;
 use crate::{
     clock,
@@ -62,10 +63,11 @@ static mut RT_THREAD_RESUME_HOOK: Option<RtThreadHook> = None;
 // }
 
 #[repr(C)]
+#[derive(Debug)]
 #[pin_data(PinnedDrop)]
 pub struct RtThread {
     #[pin]
-    parent: rt_bindings::rt_object,
+    pub(crate) parent: rt_bindings::rt_object,
     // start of schedule context
     /// the thread list, used in ready_list\ipc wait_list\...
     #[pin]
@@ -422,69 +424,71 @@ impl RtThread {
 
     #[inline]
     pub(crate) fn get_stat(&self) -> u8 {
-        self.stat & rt_bindings::RT_THREAD_STAT_MASK as u8
+        self.stat & (rt_bindings::RT_THREAD_STAT_MASK as u8)
     }
 
     #[inline]
     pub(crate) fn is_init_stat(&self) -> bool {
-        (self.stat & rt_bindings::RT_THREAD_STAT_MASK as u8) == rt_bindings::RT_THREAD_INIT as u8
+        (self.stat & (rt_bindings::RT_THREAD_STAT_MASK as u8))
+            == (rt_bindings::RT_THREAD_INIT as u8)
     }
 
     #[inline]
     pub(crate) fn is_ready(&self) -> bool {
-        // debug_assert!(Cpu::get_current_scheduler().is_sched_locked());
-        (self.stat & rt_bindings::RT_THREAD_STAT_MASK as u8) == rt_bindings::RT_THREAD_READY as u8
+        debug_assert!(Cpu::get_current_scheduler().is_sched_locked());
+        (self.stat & (rt_bindings::RT_THREAD_STAT_MASK as u8))
+            == (rt_bindings::RT_THREAD_READY as u8)
     }
 
     #[inline]
     pub fn set_ready(&mut self) {
-        // debug_assert!(Cpu::get_current_scheduler().is_sched_locked());
+        debug_assert!(Cpu::get_current_scheduler().is_sched_locked());
         self.stat = rt_bindings::RT_THREAD_READY as u8
             | (self.stat & !(rt_bindings::RT_THREAD_STAT_MASK as u8));
     }
 
     #[inline]
     pub fn is_suspended(&self) -> bool {
-        // debug_assert!(Cpu::get_current_scheduler().is_sched_locked());
-        (self.stat & rt_bindings::RT_THREAD_SUSPEND_MASK as u8)
-            == rt_bindings::RT_THREAD_SUSPEND as u8
+        debug_assert!(Cpu::get_current_scheduler().is_sched_locked());
+        (self.stat & (rt_bindings::RT_THREAD_STAT_MASK as u8))
+            == (rt_bindings::RT_THREAD_SUSPEND as u8)
     }
 
     #[inline]
     pub fn set_suspended(&mut self) {
-        // debug_assert!(Cpu::get_current_scheduler().is_sched_locked());
+        debug_assert!(Cpu::get_current_scheduler().is_sched_locked());
         self.stat = rt_bindings::RT_THREAD_SUSPEND as u8
     }
 
     #[inline]
     pub fn is_yield(&self) -> bool {
-        // debug_assert!(Cpu::get_current_scheduler().is_sched_locked());
+        debug_assert!(Cpu::get_current_scheduler().is_sched_locked());
         (self.stat & rt_bindings::RT_THREAD_STAT_YIELD_MASK as u8) != 0
     }
 
     #[inline]
     pub fn add_yield(&mut self) {
-        // debug_assert!(Cpu::get_current_scheduler().is_sched_locked());
+        debug_assert!(Cpu::get_current_scheduler().is_sched_locked());
         self.stat |= rt_bindings::RT_THREAD_STAT_YIELD as u8;
     }
 
     #[inline]
     pub fn reset_to_yield(&mut self) {
-        // debug_assert!(Cpu::get_current_scheduler().is_sched_locked());
+        debug_assert!(Cpu::get_current_scheduler().is_sched_locked());
         self.remaining_tick = self.init_tick;
         self.stat |= rt_bindings::RT_THREAD_STAT_YIELD as u8;
     }
 
     #[inline]
     pub fn is_running(&self) -> bool {
-        // debug_assert!(Cpu::get_current_scheduler().is_sched_locked());
-        (self.stat & rt_bindings::RT_THREAD_SUSPEND_MASK as u8)
-            == rt_bindings::RT_THREAD_RUNNING as u8
+        debug_assert!(Cpu::get_current_scheduler().is_sched_locked());
+        (self.stat & (rt_bindings::RT_THREAD_STAT_MASK as u8))
+            == (rt_bindings::RT_THREAD_RUNNING as u8)
     }
 
     #[inline]
     pub fn set_running(&mut self) {
-        // debug_assert!(Cpu::get_current_scheduler().is_sched_locked());
+        debug_assert!(Cpu::get_current_scheduler().is_sched_locked());
         self.stat = rt_bindings::RT_THREAD_RUNNING as u8
             | (self.stat & !(rt_bindings::RT_THREAD_STAT_MASK as u8));
     }
@@ -539,6 +543,11 @@ impl RtThread {
     }
 
     #[inline]
+    pub(crate) fn get_name(&self) -> &CStr {
+        unsafe { CStr::from_char_ptr(self.parent.name.as_ptr()) }
+    }
+
+    #[inline]
     pub(crate) fn remove_tlist(&mut self) {
         unsafe { Pin::new_unchecked(&mut self.tlist).remove() };
     }
@@ -573,7 +582,7 @@ impl RtThread {
 
     #[inline]
     pub fn handle_tick_increase(&mut self) -> bool {
-        // debug_assert!(Cpu::get_current_scheduler().is_sched_locked());
+        debug_assert!(Cpu::get_current_scheduler().is_sched_locked());
         debug_assert!(self.is_current_runnung_thread());
         self.remaining_tick -= 1;
         if self.remaining_tick == 0 {
@@ -634,18 +643,26 @@ impl RtThread {
     }
 
     pub fn start(&mut self) {
+        let scheduler = Cpu::get_current_scheduler();
+        let level = scheduler.sched_lock();
+        println!("thread start: {:?}", self.get_name());
+
         self.set_priority(self.current_priority);
         // set to suspend and resume.
         self.stat = rt_bindings::RT_THREAD_SUSPEND as u8;
-        self.resume();
+
+        if scheduler.insert_ready_locked(self) {
+            scheduler.sched_unlock_with_sched(level);
+        } else {
+            scheduler.sched_unlock(level);
+        }
     }
 
     pub fn close(&mut self) {
         assert!(!self.is_current_runnung_thread());
-
         let scheduler = Cpu::get_current_scheduler();
-
         let level = scheduler.sched_lock();
+        println!("thread close: {:?}", self.get_name());
         if self.stat != rt_bindings::RT_THREAD_CLOSE as u8 {
             if self.stat != rt_bindings::RT_THREAD_INIT as u8 {
                 scheduler.remove_thread_locked(self);
@@ -664,6 +681,9 @@ impl RtThread {
         // may be detached from scheduler.
         let scheduler = Cpu::get_current_scheduler();
         scheduler.preempt_disable();
+
+        println!("thread detach: {:?}", self.get_name());
+
         self.close();
 
         #[cfg(feature = "RT_USING_MUTEX")]
@@ -675,7 +695,7 @@ impl RtThread {
     }
 
     pub(crate) fn timer_stop(&mut self) -> bool {
-        // debug_assert!(Cpu::get_current_scheduler().is_sched_locked());
+        debug_assert!(Cpu::get_current_scheduler().is_sched_locked());
         let mut res = true;
         if self.sched_flag_ttmr_set != 0 {
             res = unsafe {
@@ -711,6 +731,8 @@ impl RtThread {
         let thread = crate::current_thread!();
         thread.error = rt_bindings::RT_EOK as i32;
 
+        println!("thread sleep: {:?}", thread.get_name());
+
         if thread.suspend(rt_bindings::RT_INTERRUPTIBLE) {
             unsafe {
                 rt_bindings::rt_timer_control(
@@ -736,15 +758,14 @@ impl RtThread {
     }
 
     pub(crate) fn suspend(&mut self, suspend_flag: u32) -> bool {
-        // parameter check
         assert!(self.is_current_runnung_thread());
-
         let scheduler = Cpu::get_current_scheduler();
 
         let level = scheduler.sched_lock();
+        println!("thread suspend: {:?}", self.get_name());
 
-        if !self.is_ready() && self.is_running() {
-            println!("thread suspend: thread disorder, stat: {}", self.stat);
+        if (!self.is_ready()) && (!self.is_running()) {
+            println!("thread suspend: thread disorder, stat: {:?}", self.stat);
             scheduler.sched_unlock(level);
             return false;
         }
@@ -771,6 +792,8 @@ impl RtThread {
         let scheduler = Cpu::get_current_scheduler();
 
         let level = scheduler.sched_lock();
+        println!("thread resume: {:?}", self.get_name());
+
         let need_schedule = scheduler.insert_ready_locked(self);
         if need_schedule {
             scheduler.sched_unlock_with_sched(level);
@@ -828,6 +851,7 @@ impl RtThread {
 impl PinnedDrop for RtThread {
     fn drop(self: Pin<&mut Self>) {
         let this_th = unsafe { Pin::get_unchecked_mut(self) };
+        println!("drop thread: {:?}", this_th.get_name());
         this_th.detach();
     }
 }
