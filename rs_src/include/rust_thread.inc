@@ -32,6 +32,8 @@ struct rt_thread {
     rt_uint8_t bind_cpu;
     rt_uint8_t oncpu;
 #endif
+
+    rt_err_t error;
 #ifdef RT_USING_MUTEX
     rt_list_t taken_object_list;
     rt_object_t pending_object;
@@ -40,5 +42,4 @@ struct rt_thread {
     rt_uint32_t event_set;
     rt_uint8_t event_info;
 #endif
-    rt_err_t error;
 };

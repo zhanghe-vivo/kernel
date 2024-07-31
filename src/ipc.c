@@ -1855,8 +1855,8 @@ rt_err_t rt_event_send(rt_event_t event, rt_uint32_t set)
                     need_clear_set |= thread->event_set;
 
                 /* resume thread, and thread list breaks out */
-                rt_thread_resume(thread);
                 thread->error = RT_EOK;
+                rt_thread_resume(thread);
 
                 /* need do a scheduling */
                 need_schedule = RT_TRUE;

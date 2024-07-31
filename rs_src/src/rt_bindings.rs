@@ -10,14 +10,14 @@ pub const RT_CPUS_NR: u32 = 1;
 
 #[cfg(not(feature = "RT_USING_SMP"))]
 #[inline(always)]
-pub fn rt_hw_local_irq_disable() -> rt_base_t {
-    unsafe { rt_hw_interrupt_disable() }
+pub unsafe fn rt_hw_local_irq_disable() -> rt_base_t {
+    rt_hw_interrupt_disable()
 }
 
 #[cfg(not(feature = "RT_USING_SMP"))]
 #[inline(always)]
-pub fn rt_hw_local_irq_enable(level: rt_base_t) {
-    unsafe { rt_hw_interrupt_enable(level) };
+pub unsafe fn rt_hw_local_irq_enable(level: rt_base_t) {
+    rt_hw_interrupt_enable(level);
 }
 
 #[inline(always)]

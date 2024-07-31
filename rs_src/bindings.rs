@@ -7,12 +7,12 @@ pub const RT_TICK_PER_SECOND: u32 = 100;
 pub const RT_IDLE_HOOK_LIST_SIZE: u32 = 4;
 pub const IDLE_THREAD_STACK_SIZE: u32 = 4096;
 pub const RT_TIMER_THREAD_PRIO: u32 = 4;
-pub const RT_TIMER_THREAD_STACK_SIZE: u32 = 1024;
+pub const RT_TIMER_THREAD_STACK_SIZE: u32 = 4096;
 pub const RT_PAGE_MAX_ORDER: u32 = 11;
 pub const RT_CONSOLEBUF_SIZE: u32 = 256;
 pub const RT_CONSOLE_DEVICE_NAME: &[u8; 6] = b"uart0\0";
 pub const RT_VER_NUM: u32 = 327682;
-pub const RT_MAIN_THREAD_STACK_SIZE: u32 = 3072;
+pub const RT_MAIN_THREAD_STACK_SIZE: u32 = 4096;
 pub const RT_MAIN_THREAD_PRIORITY: u32 = 10;
 pub const FINSH_THREAD_NAME: &[u8; 7] = b"tshell\0";
 pub const FINSH_THREAD_PRIORITY: u32 = 20;
@@ -665,11 +665,11 @@ pub struct rt_thread {
     pub entry: *mut core::ffi::c_void,
     pub parameter: *mut core::ffi::c_void,
     pub cleanup: *mut core::ffi::c_void,
+    pub error: rt_err_t,
     pub taken_object_list: rt_list_t,
     pub pending_object: rt_object_t,
     pub event_set: rt_uint32_t,
     pub event_info: rt_uint8_t,
-    pub error: rt_err_t,
 }
 #[test]
 fn bindgen_test_layout_rt_thread() {
@@ -866,8 +866,18 @@ fn bindgen_test_layout_rt_thread() {
         )
     );
     assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).taken_object_list) as usize - ptr as usize },
+        unsafe { ::core::ptr::addr_of!((*ptr).error) as usize - ptr as usize },
         116usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_thread),
+            "::",
+            stringify!(error)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).taken_object_list) as usize - ptr as usize },
+        120usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_thread),
@@ -877,7 +887,7 @@ fn bindgen_test_layout_rt_thread() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).pending_object) as usize - ptr as usize },
-        124usize,
+        128usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_thread),
@@ -887,7 +897,7 @@ fn bindgen_test_layout_rt_thread() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).event_set) as usize - ptr as usize },
-        128usize,
+        132usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_thread),
@@ -897,22 +907,12 @@ fn bindgen_test_layout_rt_thread() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).event_info) as usize - ptr as usize },
-        132usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_thread),
-            "::",
-            stringify!(event_info)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).error) as usize - ptr as usize },
         136usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_thread),
             "::",
-            stringify!(error)
+            stringify!(event_info)
         )
     );
 }
