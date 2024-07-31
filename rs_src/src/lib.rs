@@ -33,6 +33,7 @@ pub mod str;
 pub mod sync;
 pub mod thread;
 mod zombie;
+pub mod components;
 
 use core::sync::atomic::{self, Ordering};
 

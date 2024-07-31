@@ -35,7 +35,7 @@ if GetDepend('RT_USING_DM') == False:
     SrcRemove(src, ['driver.c'])
 
 if GetDepend('USE_RUST') == True:
-    SrcRemove(src, ['clock.c', 'cpu.c', 'object.c', 'mem.c', 'irq.c', 'thread.c', 'scheduler_up.c', 'scheduler_mp.c', 'idle.c'])
+    SrcRemove(src, ['clock.c', 'cpu.c', 'object.c', 'mem.c', 'irq.c', 'components.c', 'thread.c', 'scheduler_up.c', 'scheduler_mp.c', 'idle.c'])
 
 group = DefineGroup('Kernel', src, depend = [''], CPPPATH = inc, CPPDEFINES = ['__RTTHREAD__'])
 
