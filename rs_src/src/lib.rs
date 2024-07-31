@@ -28,6 +28,7 @@ mod static_assert;
 pub mod static_init;
 pub mod str;
 pub mod sync;
+pub mod components;
 
 use core::sync::atomic::{self, Ordering};
 
