@@ -327,7 +327,66 @@ fn bindgen_test_layout_rt_slist_node() {
 }
 #[doc = " Single List structure"]
 pub type rt_slist_t = rt_slist_node;
-#[doc = " Base structure of Kernel object"]
+pub type rt_spinlock_t = rt_base_t;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct rt_spinlock {
+    pub lock: rt_spinlock_t,
+}
+#[test]
+fn bindgen_test_layout_rt_spinlock() {
+    const UNINIT: ::core::mem::MaybeUninit<rt_spinlock> = ::core::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(
+        ::core::mem::size_of::<rt_spinlock>(),
+        4usize,
+        concat!("Size of: ", stringify!(rt_spinlock))
+    );
+    assert_eq!(
+        ::core::mem::align_of::<rt_spinlock>(),
+        4usize,
+        concat!("Alignment of ", stringify!(rt_spinlock))
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).lock) as usize - ptr as usize },
+        0usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_spinlock),
+            "::",
+            stringify!(lock)
+        )
+    );
+}
+#[doc = "< The object is a thread."]
+pub const rt_object_class_type_RT_Object_Class_Thread: rt_object_class_type = 0;
+#[doc = "< The object is a semaphore."]
+pub const rt_object_class_type_RT_Object_Class_Semaphore: rt_object_class_type = 1;
+#[doc = "< The object is a mutex."]
+pub const rt_object_class_type_RT_Object_Class_Mutex: rt_object_class_type = 2;
+#[doc = "< The object is a event."]
+pub const rt_object_class_type_RT_Object_Class_Event: rt_object_class_type = 3;
+#[doc = "< The object is a mail box."]
+pub const rt_object_class_type_RT_Object_Class_MailBox: rt_object_class_type = 4;
+#[doc = "< The object is a message queue."]
+pub const rt_object_class_type_RT_Object_Class_MessageQueue: rt_object_class_type = 5;
+#[doc = "< The object is a memory heap."]
+pub const rt_object_class_type_RT_Object_Class_MemHeap: rt_object_class_type = 6;
+#[doc = "< The object is a memory pool."]
+pub const rt_object_class_type_RT_Object_Class_MemPool: rt_object_class_type = 7;
+#[doc = "< The object is a device."]
+pub const rt_object_class_type_RT_Object_Class_Device: rt_object_class_type = 8;
+#[doc = "< The object is a timer."]
+pub const rt_object_class_type_RT_Object_Class_Timer: rt_object_class_type = 9;
+#[doc = "< The object is a memory."]
+pub const rt_object_class_type_RT_Object_Class_Memory: rt_object_class_type = 10;
+#[doc = "< The object is a custom object"]
+pub const rt_object_class_type_RT_Object_Class_Custom: rt_object_class_type = 11;
+#[doc = "< The object is unknown."]
+pub const rt_object_class_type_RT_Object_Class_Unknown: rt_object_class_type = 12;
+#[doc = "< The object is a static object."]
+pub const rt_object_class_type_RT_Object_Class_Static: rt_object_class_type = 128;
+pub type rt_object_class_type = core::ffi::c_uint;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct rt_object {
@@ -396,52 +455,16 @@ fn bindgen_test_layout_rt_object() {
     );
 }
 pub type rt_object_t = *mut rt_object;
-#[doc = "< The object is not used."]
-pub const rt_object_class_type_RT_Object_Class_Null: rt_object_class_type = 0;
-#[doc = "< The object is a thread."]
-pub const rt_object_class_type_RT_Object_Class_Thread: rt_object_class_type = 1;
-#[doc = "< The object is a semaphore."]
-pub const rt_object_class_type_RT_Object_Class_Semaphore: rt_object_class_type = 2;
-#[doc = "< The object is a mutex."]
-pub const rt_object_class_type_RT_Object_Class_Mutex: rt_object_class_type = 3;
-#[doc = "< The object is a event."]
-pub const rt_object_class_type_RT_Object_Class_Event: rt_object_class_type = 4;
-#[doc = "< The object is a mail box."]
-pub const rt_object_class_type_RT_Object_Class_MailBox: rt_object_class_type = 5;
-#[doc = "< The object is a message queue."]
-pub const rt_object_class_type_RT_Object_Class_MessageQueue: rt_object_class_type = 6;
-#[doc = "< The object is a memory heap."]
-pub const rt_object_class_type_RT_Object_Class_MemHeap: rt_object_class_type = 7;
-#[doc = "< The object is a memory pool."]
-pub const rt_object_class_type_RT_Object_Class_MemPool: rt_object_class_type = 8;
-#[doc = "< The object is a device."]
-pub const rt_object_class_type_RT_Object_Class_Device: rt_object_class_type = 9;
-#[doc = "< The object is a timer."]
-pub const rt_object_class_type_RT_Object_Class_Timer: rt_object_class_type = 10;
-#[doc = "< The object is a module."]
-pub const rt_object_class_type_RT_Object_Class_Module: rt_object_class_type = 11;
-#[doc = "< The object is a memory."]
-pub const rt_object_class_type_RT_Object_Class_Memory: rt_object_class_type = 12;
-#[doc = "< The object is a channel"]
-pub const rt_object_class_type_RT_Object_Class_Channel: rt_object_class_type = 13;
-#[doc = "< The object is a custom object"]
-pub const rt_object_class_type_RT_Object_Class_Custom: rt_object_class_type = 14;
-#[doc = "< The object is unknown."]
-pub const rt_object_class_type_RT_Object_Class_Unknown: rt_object_class_type = 15;
-#[doc = "< The object is a static object."]
-pub const rt_object_class_type_RT_Object_Class_Static: rt_object_class_type = 128;
-#[doc = "  The object type can be one of the follows with specific\n  macros enabled:\n  - Thread\n  - Semaphore\n  - Mutex\n  - Event\n  - MailBox\n  - MessageQueue\n  - MemHeap\n  - MemPool\n  - Device\n  - Timer\n  - Module\n  - Unknown\n  - Static"]
-pub type rt_object_class_type = core::ffi::c_uint;
-#[doc = " The information of the kernel object"]
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct rt_object_information {
-    #[doc = "< object class type"]
-    pub type_: rt_object_class_type,
+    pub spinlock: rt_spinlock,
     #[doc = "< object list"]
     pub object_list: rt_list_t,
     #[doc = "< object size"]
     pub object_size: rt_size_t,
+    #[doc = "< object class type"]
+    pub type_: rt_object_class_type,
 }
 #[test]
 fn bindgen_test_layout_rt_object_information() {
@@ -450,7 +473,7 @@ fn bindgen_test_layout_rt_object_information() {
     let ptr = UNINIT.as_ptr();
     assert_eq!(
         ::core::mem::size_of::<rt_object_information>(),
-        16usize,
+        20usize,
         concat!("Size of: ", stringify!(rt_object_information))
     );
     assert_eq!(
@@ -459,13 +482,13 @@ fn bindgen_test_layout_rt_object_information() {
         concat!("Alignment of ", stringify!(rt_object_information))
     );
     assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).type_) as usize - ptr as usize },
+        unsafe { ::core::ptr::addr_of!((*ptr).spinlock) as usize - ptr as usize },
         0usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_object_information),
             "::",
-            stringify!(type_)
+            stringify!(spinlock)
         )
     );
     assert_eq!(
@@ -486,6 +509,16 @@ fn bindgen_test_layout_rt_object_information() {
             stringify!(rt_object_information),
             "::",
             stringify!(object_size)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).type_) as usize - ptr as usize },
+        16usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_object_information),
+            "::",
+            stringify!(type_)
         )
     );
 }
@@ -3053,37 +3086,6 @@ extern "C" {
 extern "C" {
     pub fn rt_hw_cpu_id() -> core::ffi::c_int;
 }
-pub type rt_spinlock_t = rt_base_t;
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct rt_spinlock {
-    pub lock: rt_spinlock_t,
-}
-#[test]
-fn bindgen_test_layout_rt_spinlock() {
-    const UNINIT: ::core::mem::MaybeUninit<rt_spinlock> = ::core::mem::MaybeUninit::uninit();
-    let ptr = UNINIT.as_ptr();
-    assert_eq!(
-        ::core::mem::size_of::<rt_spinlock>(),
-        4usize,
-        concat!("Size of: ", stringify!(rt_spinlock))
-    );
-    assert_eq!(
-        ::core::mem::align_of::<rt_spinlock>(),
-        4usize,
-        concat!("Alignment of ", stringify!(rt_spinlock))
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).lock) as usize - ptr as usize },
-        0usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_spinlock),
-            "::",
-            stringify!(lock)
-        )
-    );
-}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct rt_hw_exp_stack {
@@ -4777,6 +4779,21 @@ extern "C" {
 }
 extern "C" {
     pub fn rt_thread_defunct_dequeue() -> rt_thread_t;
+}
+extern "C" {
+    pub fn rt_spin_lock_init(lock: *mut rt_spinlock);
+}
+extern "C" {
+    pub fn rt_spin_lock(lock: *mut rt_spinlock);
+}
+extern "C" {
+    pub fn rt_spin_unlock(lock: *mut rt_spinlock);
+}
+extern "C" {
+    pub fn rt_spin_lock_irqsave(lock: *mut rt_spinlock) -> rt_base_t;
+}
+extern "C" {
+    pub fn rt_spin_unlock_irqrestore(lock: *mut rt_spinlock, level: rt_base_t);
 }
 extern "C" {
     #[doc = " @addtogroup Device\n @{"]

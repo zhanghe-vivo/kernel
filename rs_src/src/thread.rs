@@ -5,7 +5,9 @@ use crate::{
     cpu::Cpu,
     error::{code, Error},
     linked_list::ListHead,
-    object, println, rt_bindings,
+    object,
+    object::ObjectClassType,
+    println, rt_bindings,
     stack::Stack,
     str::CStr,
     zombie,
@@ -306,13 +308,13 @@ impl RtThread {
             if is_static {
                 object::rt_object_init(
                     slot as *mut rt_bindings::rt_object,
-                    rt_bindings::rt_object_class_type_RT_Object_Class_Thread,
+                    ObjectClassType::ObjectClassThread as u32,
                     name.as_char_ptr(),
                 )
             } else {
                 object::rt_object_init_dyn(
                     slot as *mut rt_bindings::rt_object,
-                    rt_bindings::rt_object_class_type_RT_Object_Class_Thread,
+                    ObjectClassType::ObjectClassThread as u32,
                     name.as_char_ptr(),
                 )
             }
@@ -558,7 +560,7 @@ impl RtThread {
         debug_assert!(para != ptr::null_mut());
         debug_assert!(
             object::rt_object_get_type(para as rt_bindings::rt_object_t)
-                == rt_bindings::rt_object_class_type_RT_Object_Class_Thread as u8
+                == ObjectClassType::ObjectClassThread as u8
         );
 
         let thread = unsafe { &mut *(para as *mut RtThread) };
@@ -600,7 +602,7 @@ impl RtThread {
         let level = unsafe { rt_bindings::rt_hw_local_irq_disable() };
         if self.pending_object != ptr::null_mut()
             && object::rt_object_get_type(self.pending_object)
-                == rt_bindings::rt_object_class_type_RT_Object_Class_Mutex as u8
+                == ObjectClassType::ObjectClassMutex as u8
         {
             unsafe {
                 rt_bindings::rt_mutex_drop_thread(
@@ -813,6 +815,21 @@ impl RtThread {
         return need_schedule;
     }
 
+    pub fn change_priority(&mut self, priority: u8) {
+        let scheduler = Cpu::get_current_scheduler();
+        let level = scheduler.sched_lock();
+        if self.is_ready() {
+            scheduler.remove_thread_locked(self);
+            self.set_priority(priority);
+            self.set_init_stat();
+            // insert thread to schedule queue again
+            scheduler.insert_thread_locked(self);
+        } else {
+            self.set_priority(priority);
+        }
+        scheduler.sched_unlock(level);
+    }
+
     #[cfg(feature = "RT_USING_SMP")]
     pub fn bind_to_cpu(&mut self, cpu: u8) {
         let cpu: u8 = if cpu >= rt_bindings::RT_CPUS_NR as u8 {
@@ -911,7 +928,7 @@ pub extern "C" fn rt_thread_startup(thread: *mut RtThread) -> rt_bindings::rt_er
     assert!(!thread.is_null());
     assert!(
         object::rt_object_get_type(thread as rt_bindings::rt_object_t)
-            == rt_bindings::rt_object_class_type_RT_Object_Class_Thread as u8
+            == ObjectClassType::ObjectClassThread as u8
     );
 
     let th_mut = unsafe { &mut *thread };
@@ -927,7 +944,7 @@ pub extern "C" fn rt_thread_close(thread: *mut RtThread) -> rt_bindings::rt_err_
     assert!(!thread.is_null());
     assert!(
         object::rt_object_get_type(thread as rt_bindings::rt_object_t)
-            == rt_bindings::rt_object_class_type_RT_Object_Class_Thread as u8
+            == ObjectClassType::ObjectClassThread as u8
     );
 
     let th_mut = unsafe { &mut *thread };
@@ -942,7 +959,7 @@ pub extern "C" fn rt_thread_detach(thread: *mut RtThread) -> rt_bindings::rt_err
     assert!(!thread.is_null());
     assert!(
         object::rt_object_get_type(thread as *mut rt_bindings::rt_object)
-            == rt_bindings::rt_object_class_type_RT_Object_Class_Thread as u8
+            == ObjectClassType::ObjectClassThread as u8
     );
 
     unsafe { (*thread).detach() };
@@ -984,7 +1001,7 @@ pub extern "C" fn rt_thread_delete(thread: *mut RtThread) -> rt_bindings::rt_err
     assert!(!thread.is_null());
     assert!(
         object::rt_object_get_type(thread as rt_bindings::rt_object_t)
-            == rt_bindings::rt_object_class_type_RT_Object_Class_Thread as u8
+            == ObjectClassType::ObjectClassThread as u8
     );
     assert!(
         object::rt_object_is_systemobject(thread as rt_bindings::rt_object_t)
@@ -1027,7 +1044,7 @@ pub extern "C" fn rt_thread_control(
     assert!(!thread.is_null());
     assert!(
         object::rt_object_get_type(thread as rt_bindings::rt_object_t)
-            == rt_bindings::rt_object_class_type_RT_Object_Class_Thread as u8
+            == ObjectClassType::ObjectClassThread as u8
     );
     let th = unsafe { &mut *thread };
     match cmd {
@@ -1035,17 +1052,7 @@ pub extern "C" fn rt_thread_control(
             let priority_ptr = NonNull::new(arg as *mut u8);
             if let Some(ptr) = priority_ptr {
                 let priority = unsafe { *ptr.as_ref() };
-                let scheduler = Cpu::get_current_scheduler();
-                let level = scheduler.sched_lock();
-                if th.is_ready() {
-                    scheduler.remove_thread_locked(th);
-                    th.set_priority(priority);
-                    // insert thread to schedule queue again
-                    scheduler.insert_thread_locked(th);
-                } else {
-                    th.set_priority(priority);
-                }
-                scheduler.sched_unlock(level);
+                th.change_priority(priority);
             } else {
                 return -(rt_bindings::RT_EINVAL as i32);
             }
@@ -1078,10 +1085,7 @@ pub extern "C" fn rt_thread_control(
 
 #[no_mangle]
 pub extern "C" fn rt_thread_find(name: *mut ffi::c_char) -> *mut RtThread {
-    return object::rt_object_find(
-        name,
-        rt_bindings::rt_object_class_type_RT_Object_Class_Thread as u8,
-    ) as *mut RtThread;
+    return object::rt_object_find(name, ObjectClassType::ObjectClassThread as u8) as *mut RtThread;
 }
 
 #[no_mangle]
@@ -1105,7 +1109,7 @@ pub extern "C" fn rt_thread_suspend_with_flag(
     assert!(!thread.is_null());
     assert!(
         object::rt_object_get_type(thread as rt_bindings::rt_object_t)
-            == rt_bindings::rt_object_class_type_RT_Object_Class_Thread as u8
+            == ObjectClassType::ObjectClassThread as u8
     );
 
     let th = unsafe { &mut *thread };
@@ -1125,7 +1129,7 @@ pub extern "C" fn rt_thread_resume(thread: *mut RtThread) -> rt_bindings::rt_err
     assert!(!thread.is_null());
     assert!(
         object::rt_object_get_type(thread as rt_bindings::rt_object_t)
-            == rt_bindings::rt_object_class_type_RT_Object_Class_Thread as u8
+            == ObjectClassType::ObjectClassThread as u8
     );
 
     let th = unsafe { &mut *thread };

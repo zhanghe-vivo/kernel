@@ -702,6 +702,14 @@ rt_hw_clz:
     clz r0, r0
     bx lr
 
+#ifdef RT_USING_SMP
+.global rt_hw_cpu_id
+rt_hw_cpu_id:
+    mrc p15, 0, r0, c0, c0, 5   // 读取MPIDR寄存器到r0寄存器
+    and r0, r0, #0xFF           // 屏蔽掉不需要的位，只保留最低的8位
+    bx lr                       // 返回
+#endif
+
 #ifndef RT_CPUS_NR
 #define RT_CPUS_NR 1
 #endif

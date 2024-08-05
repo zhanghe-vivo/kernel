@@ -1,5 +1,4 @@
 use crate::{
-    idle::IdleThread,
     rt_bindings,
     scheduler::{PriorityTableManager, Scheduler},
     static_init::UnsafeStaticInit,
@@ -13,18 +12,15 @@ use core::{
 use pinned_init::*;
 
 pub const CPUS_NUMBER: usize = rt_bindings::RT_CPUS_NR as usize;
-static mut CPUS: UnsafeStaticInit<Cpus, CpusInit> = UnsafeStaticInit::new(CpusInit);
+pub(crate) static mut CPUS: UnsafeStaticInit<Cpus, CpusInit> = UnsafeStaticInit::new(CpusInit);
 
-struct CpusInit;
+pub(crate) struct CpusInit;
 unsafe impl PinInit<Cpus> for CpusInit {
     unsafe fn __pinned_init(self, slot: *mut Cpus) -> Result<(), core::convert::Infallible> {
         let init = Cpus::new();
         unsafe { init.__pinned_init(slot) }
     }
 }
-
-// fix error[E0747]: unresolved item provided when a constant was expected
-const IDLE_STACK_SIZE: usize = rt_bindings::IDLE_THREAD_STACK_SIZE as usize;
 
 #[pin_data]
 pub struct Cpus {
@@ -48,8 +44,6 @@ pub struct Cpu {
 
     interrupt_nest: AtomicU32,
     tick: AtomicU32,
-    #[pin]
-    idle_thread: IdleThread<IDLE_STACK_SIZE>,
 }
 
 impl Cpus {
@@ -75,13 +69,6 @@ impl Cpus {
     #[inline]
     pub(crate) fn is_inited() -> bool {
         unsafe { CPUS.is_inited() }
-    }
-
-    #[inline]
-    pub(crate) fn start_idle_threads() {
-        for i in 0..CPUS_NUMBER {
-            unsafe { CPUS.inner[i].idle_thread.start() };
-        }
     }
 
     #[cfg(feature = "RT_USING_SMP")]
@@ -149,7 +136,6 @@ impl Cpu {
 
             interrupt_nest: AtomicU32::new(0),
             tick: AtomicU32::new(0),
-            idle_thread <- IdleThread::new(cpu),
         })
     }
 
@@ -309,10 +295,4 @@ pub extern "C" fn rt_cpus_lock_status_restore(thread: *mut RtThread) {
         Cpu::set_current_thread(NonNull::new_unchecked(thread));
     }
     Cpu::get_current_scheduler().ctx_switch_unlock();
-}
-
-// need to call before rt_enter_critical/ cpus_lock called
-#[no_mangle]
-pub unsafe extern "C" fn init_cpus() {
-    CPUS.init_once();
 }

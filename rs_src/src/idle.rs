@@ -5,6 +5,7 @@ use core::{
 
 use crate::{
     cpu, rt_bindings,
+    static_init::UnsafeStaticInit,
     str::CStr,
     thread::{ThreadEntryFn, ThreadWithStack},
     zombie,
@@ -70,34 +71,49 @@ impl IdleHooks {
     }
 }
 
+const IDLE_STACK_SIZE: usize = rt_bindings::IDLE_THREAD_STACK_SIZE as usize;
 #[pin_data]
-pub struct IdleThread<const STACK_SIZE: usize> {
+pub struct IdleTheads {
     #[pin]
-    thread: ThreadWithStack<STACK_SIZE>,
+    threads: [ThreadWithStack<IDLE_STACK_SIZE>; cpu::CPUS_NUMBER],
 }
 
-impl<const STACK_SIZE: usize> IdleThread<STACK_SIZE> {
+pub(crate) static mut IDLE_THREADS: UnsafeStaticInit<IdleTheads, IdleTheadsInit> =
+    UnsafeStaticInit::new(IdleTheadsInit);
+
+struct IdleTheadsInit;
+unsafe impl PinInit<IdleTheads> for IdleTheadsInit {
+    unsafe fn __pinned_init(self, slot: *mut IdleTheads) -> Result<(), core::convert::Infallible> {
+        let init = IdleTheads::new();
+        unsafe { init.__pinned_init(slot) }
+    }
+}
+
+impl IdleTheads {
     #[cfg(feature = "RT_USING_SMP")]
     #[inline]
-    pub(crate) fn new(cpu: u8) -> impl PinInit<Self> {
+    pub(crate) fn new() -> impl PinInit<Self> {
         pin_init!(Self {
-            thread <- ThreadWithStack::new_with_bind(IDLE_NAME, Self::idle_thread_entry as ThreadEntryFn,
-                 ptr::null_mut(), (rt_bindings::RT_THREAD_PRIORITY_MAX - 1) as u8, 32, cpu),
+            threads <- pin_init_array_from_fn(|i| ThreadWithStack::new_with_bind(IDLE_NAME, Self::idle_thread_entry as ThreadEntryFn,
+                ptr::null_mut(), (rt_bindings::RT_THREAD_PRIORITY_MAX - 1) as u8, 32, i as u8)),
         })
     }
 
+    // FIXME
     #[cfg(not(feature = "RT_USING_SMP"))]
     #[inline]
-    pub(crate) fn new(_cpu: u8) -> impl PinInit<Self> {
+    pub(crate) fn new() -> impl PinInit<Self> {
         pin_init!(Self {
-            thread <- ThreadWithStack::new(IDLE_NAME, Self::idle_thread_entry as ThreadEntryFn,
-                 ptr::null_mut(), (rt_bindings::RT_THREAD_PRIORITY_MAX - 1) as u8, 32),
+            threads <- pin_init_array_from_fn(|_i| ThreadWithStack::new(IDLE_NAME, Self::idle_thread_entry as ThreadEntryFn,
+                 ptr::null_mut(), (rt_bindings::RT_THREAD_PRIORITY_MAX - 1) as u8, 32)),
         })
     }
 
     #[inline]
-    pub(crate) fn start(&mut self) {
-        self.thread.start();
+    pub(crate) fn start_up(&mut self) {
+        for i in 0..cpu::CPUS_NUMBER {
+            self.threads[i].start();
+        }
     }
 
     extern "C" fn idle_thread_entry(_parameter: *mut ffi::c_void) {
@@ -127,11 +143,11 @@ impl<const STACK_SIZE: usize> IdleThread<STACK_SIZE> {
 
 #[no_mangle]
 pub unsafe extern "C" fn rt_thread_idle_init() {
+    IDLE_THREADS.init_once();
     zombie::ZOMBIE_MANAGER.init_once();
     #[cfg(feature = "RT_USING_SMP")]
     zombie::ZOMBIE_MANAGER.start_up();
-    // idle is inited in cpu init.
-    cpu::Cpus::start_idle_threads();
+    IDLE_THREADS.start_up();
 }
 
 #[cfg(feature = "RT_USING_IDLE_HOOK")]

@@ -8,12 +8,12 @@
 #![feature(c_size_t)]
 
 extern crate alloc;
-
 extern crate self as kernel;
 mod allocator;
 #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
 mod caller_address;
 pub mod clock;
+pub mod components;
 pub mod cpu;
 pub mod error;
 mod ext_types;
@@ -33,10 +33,15 @@ pub mod str;
 pub mod sync;
 pub mod thread;
 mod zombie;
-pub mod components;
+
+// need to call before rt_enter_critical/ cpus_lock called
+#[no_mangle]
+pub unsafe extern "C" fn init_cpus() {
+    object::OBJECT_CONTAINER.init_once();
+    cpu::CPUS.init_once();
+}
 
 use core::sync::atomic::{self, Ordering};
-
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
     cpu::rt_cpus_lock();

@@ -15,15 +15,7 @@
 
 rt_weak int rt_hw_cpu_id(void)
 {
-    int cpu_id = 0;
-#ifdef RT_USING_SMP
-    __asm__ volatile (
-            "mrc p15, 0, %0, c0, c0, 5"
-            :"=r"(cpu_id)
-    );
-    cpu_id &= 0xf;
-#endif
-    return cpu_id;
+    return 0;
 }
 
 #ifdef RT_USING_SMP

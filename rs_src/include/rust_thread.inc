@@ -1,5 +1,3 @@
-// TODO use cxx to auto generate
-
 struct rt_stack {
     rt_ubase_t sp;
     rt_uint8_t* stack_addr;

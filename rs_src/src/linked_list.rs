@@ -298,3 +298,26 @@ impl Link {
         self.0.set(val.0.get());
     }
 }
+
+/// Get the struct for this entry
+#[macro_export]
+macro_rules! list_head_entry {
+    ($node:expr, $type:ty, $($f:tt)*) => {
+        crate::container_of!($node, $type, $($f)*)
+    };
+}
+
+/// Iterate over a list
+#[macro_export]
+macro_rules! list_head_for_each {
+    ($pos:ident, $head:expr, $code:block) => {
+        let mut $pos = $head;
+        while let Some(next) = $pos.next() {
+            $pos = unsafe { &*next.as_ptr() };
+            if core::ptr::eq($pos, $head) {
+                break;
+            }
+            $code
+        }
+    };
+}

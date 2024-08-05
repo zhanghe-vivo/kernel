@@ -499,6 +499,7 @@ typedef struct rt_slist_node rt_slist_t;                /**< Type for single lis
  */
 #define RT_OBJECT_FLAG_MODULE           0x80            /**< is module object. */
 
+#ifndef USE_RUST
 /**
  * Base structure of Kernel object
  */
@@ -571,6 +572,9 @@ struct rt_object_information
     rt_list_t                 object_list;              /**< object list */
     rt_size_t                 object_size;              /**< object size */
 };
+#else
+#include "rust_object.inc"
+#endif
 
 /**
  * The hook function call macro

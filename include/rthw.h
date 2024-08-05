@@ -175,13 +175,6 @@ void rt_hw_ipi_send(int ipi_vector, unsigned int cpu_mask);
 #endif
 
 #ifdef RT_USING_SMP
-#include <cpuport.h> /* for spinlock from arch */
-
-struct rt_spinlock
-{
-    rt_hw_spinlock_t lock;
-};
-
 void rt_hw_spin_lock_init(rt_hw_spinlock_t *lock);
 void rt_hw_spin_lock(rt_hw_spinlock_t *lock);
 void rt_hw_spin_unlock(rt_hw_spinlock_t *lock);
@@ -207,18 +200,11 @@ void rt_hw_secondary_cpu_up(void);
  */
 void rt_hw_secondary_cpu_idle_exec(void);
 #else
-
 #define RT_DEFINE_SPINLOCK(x)    rt_ubase_t x
 #define RT_DECLARE_SPINLOCK(x)
 
 #define rt_hw_spin_lock(lock)     *(lock) = rt_hw_interrupt_disable()
 #define rt_hw_spin_unlock(lock)   rt_hw_interrupt_enable(*(lock))
-
-typedef rt_base_t rt_spinlock_t;
-struct rt_spinlock
-{
-    rt_spinlock_t lock;
-};
 #endif
 
 #ifdef RT_USING_CACHE

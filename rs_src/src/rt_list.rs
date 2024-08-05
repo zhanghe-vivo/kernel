@@ -76,12 +76,12 @@ macro_rules! rt_list_entry {
 #[macro_export]
 macro_rules! rt_list_for_each {
     ($pos:ident, $head:expr, $code:block) => {
-        let mut $pos = (*$head).next;
-        while $pos != $head {
+        let mut $pos = $head.next;
+        while !core::ptr::eq($pos, $head) {
             $code
 
             // Process $pos
-            $pos = (*$pos).next;
+            unsafe { $pos = (*$pos).next};
         }
     };
 }
