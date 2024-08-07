@@ -322,6 +322,8 @@ void rt_hw_trap_irq(void)
         return;
     }
 
+    // rt_kprintf("irq %d\n", ir_real);
+
     /* get interrupt service routine */
     isr_func = isr_table[ir_real].handler;
 #ifdef RT_USING_INTERRUPT_INFO

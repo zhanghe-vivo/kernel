@@ -44,7 +44,7 @@ pub unsafe extern "C" fn init_cpus() {
 use core::sync::atomic::{self, Ordering};
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
-    cpu::rt_cpus_lock();
+    cpu::Cpus::lock_cpus();
     println!("{}", info);
     unsafe {
         rt_bindings::rt_hw_cpu_reset(); // may return

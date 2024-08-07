@@ -655,6 +655,16 @@ void rt_timer_check(void)
     rt_base_t level;
     rt_list_t list;
 
+    RT_ASSERT(rt_interrupt_get_nest() > 0);
+
+#ifdef RT_USING_SMP
+    /* Running on core 0 only */
+    if (rt_hw_cpu_id() != 0)
+    {
+        return;
+    }
+#endif
+
     rt_list_init(&list);
 
     LOG_D("timer check enter");

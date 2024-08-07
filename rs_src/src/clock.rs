@@ -33,9 +33,14 @@ pub extern "C" fn rt_tick_increase() {
         crate::rt_object_hook_call!(RT_TICK_HOOK);
 
         Cpu::tick_inc();
-
         /* check time slice */
-        Cpu::get_current_scheduler().handle_tick_increase();
+        let scheduler = Cpu::get_current_scheduler();
+        scheduler.handle_tick_increase();
+
+        #[cfg(feature = "RT_USING_SMP")]
+        if scheduler.get_current_id() != 0 {
+            return;
+        }
 
         rt_bindings::rt_timer_check();
     }

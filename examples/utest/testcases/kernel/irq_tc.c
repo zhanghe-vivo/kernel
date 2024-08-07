@@ -12,6 +12,8 @@
 #include "utest.h"
 #include "rthw.h"
 
+#ifdef RT_USING_HOOK
+
 #define UTEST_NAME "irq_tc"
 static volatile uint32_t irq_count = 0;
 static volatile uint32_t max_get_nest_count = 0;
@@ -68,11 +70,13 @@ static void interrupt_test(void)
     rt_hw_interrupt_enable(level);
     rt_interrupt_enter_sethook(RT_NULL);
     rt_interrupt_leave_sethook(RT_NULL);
-
 }
 static void testcase(void)
 {
+
     UTEST_UNIT_RUN(irq_test);
     UTEST_UNIT_RUN(interrupt_test);
 }
+
 UTEST_TC_EXPORT(testcase, "testcases.kernel.irq_tc", utest_tc_init, utest_tc_cleanup, 10);
+#endif

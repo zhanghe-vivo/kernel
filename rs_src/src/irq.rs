@@ -62,7 +62,7 @@ impl Drop for IrqLockGuard<'_> {
 #[no_mangle]
 pub unsafe extern "C" fn rt_interrupt_enter() {
     Cpu::interrupt_nest_inc();
-    crate::rt_object_hook_call!(rt_interrupt_enter_hook);
+    //crate::rt_object_hook_call!(rt_interrupt_enter_hook);
 }
 
 /// This function will be invoked by BSP, when leaving interrupt service routine
@@ -73,7 +73,7 @@ pub unsafe extern "C" fn rt_interrupt_enter() {
 #[linkage = "weak"]
 #[no_mangle]
 pub unsafe extern "C" fn rt_interrupt_leave() {
-    crate::rt_object_hook_call!(rt_interrupt_leave_hook);
+    //crate::rt_object_hook_call!(rt_interrupt_leave_hook);
     Cpu::interrupt_nest_dec();
 }
 

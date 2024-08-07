@@ -117,21 +117,23 @@ impl IdleTheads {
     }
 
     extern "C" fn idle_thread_entry(_parameter: *mut ffi::c_void) {
-        #[cfg(RT_USING_SMP)]
-        if rt_bindings::rt_hw_cpu_id() != 0 {
-            loop {
-                rt_bindings::rt_hw_secondary_cpu_idle_exec();
+        #[cfg(feature = "RT_USING_SMP")]
+        unsafe {
+            if rt_bindings::rt_hw_cpu_id() != 0 {
+                loop {
+                    rt_bindings::rt_hw_secondary_cpu_idle_exec();
+                }
             }
         }
 
         loop {
-            #[cfg(feature = "RT_USING_IDLE_HOOK")]
-            IDLE_HOOK_LIST.hook_execute();
-
             #[cfg(not(feature = "RT_USING_SMP"))]
             unsafe {
                 zombie::ZOMBIE_MANAGER.reclaim()
             };
+
+            #[cfg(feature = "RT_USING_IDLE_HOOK")]
+            IDLE_HOOK_LIST.hook_execute();
 
             #[cfg(feature = "RT_USING_PM")]
             unsafe {

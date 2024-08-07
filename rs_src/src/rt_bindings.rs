@@ -110,8 +110,9 @@ pub unsafe fn rt_hw_spin_unlock(lock: *mut rt_spinlock_t) {
 }
 
 #[cfg(not(feature = "RT_USING_HOOK"))]
+#[macro_export]
 macro_rules! rt_object_hook_call {
-    ($func:ident $(, $argv:expr)?) => {};
+    ($func:ident $(, $($argv:expr),* )?) => {};
 }
 
 #[cfg(all(feature = "RT_USING_HOOK", feature = "RT_HOOK_USING_FUNC_PTR"))]
@@ -126,15 +127,6 @@ macro_rules! rt_object_hook_call {
     };
 }
 
-// macro_rules! rt_object_hook_call {
-//     ($func:ident $(, $argv:expr)?) => {
-//         unsafe {
-//             if let Some(hook) = $func {
-//                 hook($(($argv))?);
-//             }
-//         }
-//     };
-// }
 /// Macro to check current context.
 #[cfg(RT_DEBUGING_CONTEXT)]
 #[macro_export]

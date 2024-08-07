@@ -652,7 +652,7 @@ impl RtThread {
     pub fn start(&mut self) {
         let scheduler = Cpu::get_current_scheduler();
         let level = scheduler.sched_lock();
-        // println!("thread start: {:?}", self.get_name());
+        println!("thread start: {:?}", self.get_name());
 
         self.set_priority(self.current_priority);
         // set to suspend and resume.
@@ -669,7 +669,7 @@ impl RtThread {
         // assert!(!self.is_current_runnung_thread());
         let scheduler = Cpu::get_current_scheduler();
         let level = scheduler.sched_lock();
-        // println!("thread close: {:?}", self.get_name());
+        println!("thread close: {:?}", self.get_name());
         if self.stat != rt_bindings::RT_THREAD_CLOSE as u8 {
             if self.stat != rt_bindings::RT_THREAD_INIT as u8 {
                 scheduler.remove_thread_locked(self);
@@ -689,7 +689,7 @@ impl RtThread {
         let scheduler = Cpu::get_current_scheduler();
         scheduler.preempt_disable();
 
-        // println!("thread detach: {:?}", self.get_name());
+        println!("thread detach: {:?}", self.get_name());
 
         self.close();
 
@@ -739,7 +739,7 @@ impl RtThread {
         /* reset thread error */
         thread.error = rt_bindings::RT_EOK as i32;
 
-        // println!("thread sleep: {:?}", thread.get_name());
+        println!("thread sleep: {:?}", thread.get_name());
 
         if thread.suspend(rt_bindings::RT_INTERRUPTIBLE) {
             unsafe {
@@ -752,9 +752,9 @@ impl RtThread {
             }
             thread.error = -(rt_bindings::RT_EINTR as i32);
 
-            /* notify a pending rescheduling */
+            // notify a pending rescheduling
             scheduler.do_task_schedule();
-            /* exit critical and do a rescheduling */
+            // exit critical and do a rescheduling
             scheduler.preempt_enable();
 
             // FIXME
@@ -772,7 +772,7 @@ impl RtThread {
         let scheduler = Cpu::get_current_scheduler();
 
         let level = scheduler.sched_lock();
-        // println!("thread suspend: {:?}", self.get_name());
+        println!("thread suspend: {:?}", self.get_name());
 
         if (!self.is_ready()) && (!self.is_running()) {
             println!("thread suspend: thread disorder, stat: {:?}", self.stat);
@@ -782,6 +782,11 @@ impl RtThread {
 
         // change thread stat
         scheduler.remove_thread_locked(self);
+        #[cfg(feature = "RT_USING_SMP")]
+        {
+            self.oncpu = rt_bindings::RT_CPU_DETACHED as u8;
+        }
+
         let stat = match suspend_flag {
             rt_bindings::RT_INTERRUPTIBLE => rt_bindings::RT_THREAD_SUSPEND_INTERRUPTIBLE,
             rt_bindings::RT_KILLABLE => rt_bindings::RT_THREAD_SUSPEND_KILLABLE,
@@ -802,7 +807,7 @@ impl RtThread {
         let scheduler = Cpu::get_current_scheduler();
 
         let level = scheduler.sched_lock();
-        // println!("thread resume: {:?}", self.get_name());
+        println!("thread resume: {:?}", self.get_name());
 
         let need_schedule = scheduler.insert_ready_locked(self);
         // if need_schedule {
@@ -876,7 +881,7 @@ impl RtThread {
 impl PinnedDrop for RtThread {
     fn drop(self: Pin<&mut Self>) {
         let this_th = unsafe { Pin::get_unchecked_mut(self) };
-        // println!("drop thread: {:?}", this_th.get_name());
+        println!("drop thread: {:?}", this_th.get_name());
         this_th.detach();
     }
 }

@@ -74,15 +74,15 @@ struct ObjectInformation {
 #[derive(Debug)]
 #[repr(C)]
 struct BaseObject {
-    #[doc = "< list node of kernel object"]
-    #[pin]
-    list: ListHead,
     #[doc = "< dynamic name of kernel object"]
     pub name: [u8; RT_NAME_MAX as usize],
     #[doc = "< type of kernel object"]
     pub type_: u8,
     #[doc = "< flag of kernel object"]
     pub flag: u8,
+    #[doc = "< list node of kernel object"]
+    #[pin]
+    list: ListHead,
 }
 
 #[pin_data]

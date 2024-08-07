@@ -126,8 +126,8 @@ void rt_hw_local_irq_enable(rt_base_t level);
 
 void rt_sched_unlock(rt_base_t level);
 rt_base_t rt_sched_lock();
-#define rt_hw_interrupt_disable rt_sched_lock
-#define rt_hw_interrupt_enable rt_sched_unlock
+#define rt_hw_interrupt_disable rt_cpus_lock
+#define rt_hw_interrupt_enable rt_cpus_unlock
 #else
 rt_base_t rt_hw_interrupt_disable(void);
 void rt_hw_interrupt_enable(rt_base_t level);

@@ -231,9 +231,9 @@ pub extern "C" fn rt_components_init() {
         while desc < &rt_init_desc_rti_end {
             unsafe {
                 let fn_name = (*desc).fn_name;
-                kprintf!("initialize %s", fn_name);
+                kprintf!(b"initialize %s", fn_name);
                 let result = ((*desc).fn_ptr)();
-                kprintf!(":%d done\n", result);
+                kprintf!(b":%d done\n", result);
                 desc = desc.add(1);
             }
         }

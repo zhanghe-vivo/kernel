@@ -5,6 +5,7 @@ use crate::{
     println, rt_bindings,
     static_init::UnsafeStaticInit,
     str::CStr,
+    sync::RawSpin,
     thread::{self, RtThread},
 };
 use core::{
@@ -12,26 +13,9 @@ use core::{
     intrinsics::likely,
     pin::{pin, Pin},
     ptr::{self, NonNull},
-    sync::atomic::{AtomicPtr, AtomicU32, Ordering},
+    sync::atomic::{AtomicBool, AtomicPtr, AtomicU32, Ordering},
 };
 use pinned_init::*;
-
-// #[cfg(feature = "RT_USING_SMP")]
-// static GLOBAL_PRIORITY_MANAGER: UnsafeStaticInit<PriorityTableManager, PriorityTableManagerInit> =
-//     UnsafeStaticInit::new(PriorityTableManagerInit);
-
-// #[cfg(feature = "RT_USING_SMP")]
-// struct PriorityTableManagerInit;
-// #[cfg(feature = "RT_USING_SMP")]
-// unsafe impl PinInit<PriorityTableManager> for PriorityTableManagerInit {
-//     unsafe fn __pinned_init(
-//         self,
-//         slot: *mut PriorityTableManager,
-//     ) -> Result<(), core::convert::Infallible> {
-//         let init = PriorityTableManager::new();
-//         unsafe { init.__pinned_init(slot) }
-//     }
-// }
 
 #[cfg(all(feature = "RT_USING_HOOK", feature = "RT_HOOK_USING_FUNC_PTR"))]
 type RtSchedulerHook = extern "C" fn(from: *mut RtThread, to: *mut RtThread);
@@ -63,10 +47,11 @@ pub struct Scheduler {
     priority_manager: PriorityTableManager,
 
     scheduler_lock_nest: AtomicU32,
+    id: u8,
     current_priority: u8,
     irq_switch_flag: u8,
+    critical_switch_flag: u8,
     sched_lock_flag: u8,
-    id: u8,
 }
 
 impl PriorityTableManager {
@@ -152,11 +137,11 @@ impl Scheduler {
             current_thread: AtomicPtr::new(ptr::null_mut()),
             priority_manager <- PriorityTableManager::new(),
             scheduler_lock_nest: AtomicU32::new(0),
-
+            id: index,
             current_priority: (rt_bindings::RT_THREAD_PRIORITY_MAX - 1) as u8,
             irq_switch_flag: 0,
+            critical_switch_flag: 0,
             sched_lock_flag: 0,
-            id: index,
         })
     }
 
@@ -191,9 +176,13 @@ impl Scheduler {
     pub fn preempt_enable(&mut self) {
         if likely(self.is_scheduled()) {
             debug_assert!(self.scheduler_lock_nest.load(Ordering::Relaxed) > 0);
+            let level = unsafe { rt_bindings::rt_hw_local_irq_disable() };
             if self.scheduler_lock_nest.fetch_sub(1, Ordering::Release) == 1 {
-                self.do_task_schedule();
+                if self.critical_switch_flag == 1 {
+                    self.do_task_schedule();
+                }
             }
+            unsafe { rt_bindings::rt_hw_local_irq_enable(level) };
         }
     }
 
@@ -201,7 +190,7 @@ impl Scheduler {
     #[inline]
     fn sched_lock_mp(&mut self) {
         debug_assert!(self.sched_lock_flag == 0);
-        Cpus::lock_cpus_fast();
+        Cpus::lock_sched_fast();
         self.sched_lock_flag = 1;
     }
 
@@ -210,7 +199,7 @@ impl Scheduler {
     fn sched_unlock_mp(&mut self) {
         debug_assert!(self.sched_lock_flag == 1);
         self.sched_lock_flag = 0;
-        Cpus::unlock_cpus_fast();
+        Cpus::unlock_sched_fast();
     }
 
     fn get_highest_priority_thread_locked(&self) -> Option<(NonNull<RtThread>, u32)> {
@@ -385,13 +374,13 @@ impl Scheduler {
                     }
 
                     let to_th = unsafe { new_thread.as_mut() };
+                    self.current_priority = highest_ready_priority as u8;
+                    crate::rt_object_hook_call!(RT_SCHEDULER_HOOK, cur_th, to_th);
+                    self.remove_thread_locked(to_th);
                     #[cfg(feature = "RT_USING_SMP")]
                     {
                         to_th.oncpu = cpu_id;
                     }
-                    self.current_priority = highest_ready_priority as u8;
-                    crate::rt_object_hook_call!(RT_SCHEDULER_HOOK, cur_th, to_th);
-                    self.remove_thread_locked(to_th);
                     to_th.set_running();
                     // TODO: RT_SCHEDULER_STACK_CHECK
                     crate::rt_object_hook_call!(RT_SCHEDULER_SWITCH_HOOK, cur_th);
@@ -423,7 +412,7 @@ impl Scheduler {
                 to_th.set_running();
                 // _cpus_lock will unlock in rt_cpus_lock_status_restore
                 unsafe {
-                    // println!("switch to {:?}", to_th.get_name());
+                    println!("switch to {:?}", to_th.get_name());
                     rt_bindings::rt_hw_context_switch_to(
                         to_th.sp_ptr() as rt_bindings::rt_ubase_t,
                         to_th as *mut RtThread as *mut rt_bindings::rt_thread,
@@ -479,19 +468,17 @@ impl Scheduler {
                 self.irq_switch_flag = 1;
                 self.ctx_switch_unlock();
             } else if self.scheduler_lock_nest.load(Ordering::Relaxed) > 1 {
-                self.sched_lock_flag = 1;
                 self.ctx_switch_unlock();
             } else {
                 // TODO: SCHED_THREAD_PREPROCESS_SIGNAL
-                self.sched_lock_flag = 0;
                 if let Some(to_thread) = self.prepare_context_switch_locked() {
                     unsafe {
                         let cur_thread = self.get_current_thread().unwrap_unchecked();
-                        // println!(
-                        //     "switch from {:?} to {:?}",
-                        //     cur_thread.as_ref().get_name(),
-                        //     to_thread.as_ref().get_name()
-                        // );
+                        println!(
+                            "switch from {:?} to {:?}",
+                            cur_thread.as_ref().get_name(),
+                            to_thread.as_ref().get_name()
+                        );
                         rt_bindings::rt_hw_context_switch(
                             cur_thread.as_ref().sp_ptr() as rt_bindings::rt_ubase_t,
                             to_thread.as_ref().sp_ptr() as rt_bindings::rt_ubase_t,
@@ -513,11 +500,7 @@ impl Scheduler {
 
     #[inline]
     pub fn is_sched_locked(&self) -> bool {
-        #[cfg(not(feature = "RT_USING_SMP"))]
         return self.scheduler_lock_nest.load(Ordering::Relaxed) > 0;
-
-        #[cfg(feature = "RT_USING_SMP")]
-        return self.sched_lock_flag == 1;
     }
 
     #[inline]
@@ -538,27 +521,26 @@ impl Scheduler {
         // TODO: add Signal preprocess.
 
         if lock_nest > 0 {
-            self.sched_lock_flag = 1;
+            self.critical_switch_flag = 1;
             self.scheduler_lock_nest.fetch_sub(1, Ordering::Release);
         } else {
-            self.sched_lock_flag = 0;
             self.irq_switch_flag = 0;
+            self.critical_switch_flag = 0;
 
             /* take the context lock before we do the real scheduling works */
             #[cfg(feature = "RT_USING_SMP")]
             self.sched_lock_mp();
-
             /* pick the highest runnable thread, and pass the control to it */
             match self.prepare_context_switch_locked() {
                 Some(to_thread) => {
                     let cur_thread = unsafe { self.get_current_thread().unwrap_unchecked() };
                     // sched_unlock_mp will call in rt_cpus_lock_status_restore
                     unsafe {
-                        // println!(
-                        //     "switch from {:?} to {:?}",
-                        //     cur_thread.as_ref().get_name(),
-                        //     to_thread.as_ref().get_name()
-                        // );
+                        println!(
+                            "switch from {:?} to {:?}",
+                            cur_thread.as_ref().get_name(),
+                            to_thread.as_ref().get_name()
+                        );
                         rt_bindings::rt_hw_context_switch(
                             cur_thread.as_ref().sp_ptr() as rt_bindings::rt_ubase_t,
                             to_thread.as_ref().sp_ptr() as rt_bindings::rt_ubase_t,
@@ -587,11 +569,11 @@ impl Scheduler {
         if self.irq_switch_flag == 1 {
             let lock_nest = self.scheduler_lock_nest.fetch_add(1, Ordering::Release);
             if lock_nest > 0 {
+                self.critical_switch_flag = 1;
                 self.scheduler_lock_nest.fetch_sub(1, Ordering::Release);
-                self.sched_lock_flag = 1;
             } else if !Cpu::is_in_interrupt() {
-                self.sched_lock_flag = 0;
                 self.irq_switch_flag = 0;
+                self.critical_switch_flag = 0;
 
                 #[cfg(feature = "RT_USING_SMP")]
                 self.sched_lock_mp();
@@ -600,11 +582,11 @@ impl Scheduler {
                 match self.prepare_context_switch_locked() {
                     Some(to_thread) => unsafe {
                         let cur_thread = self.get_current_thread().unwrap_unchecked();
-                        // println!(
-                        //     "switch in_irq from {:?} to {:?}",
-                        //     cur_thread.as_ref().get_name(),
-                        //     to_thread.as_ref().get_name()
-                        // );
+                        println!(
+                            "switch in_irq from {:?} to {:?}",
+                            cur_thread.as_ref().get_name(),
+                            to_thread.as_ref().get_name()
+                        );
                         rt_bindings::rt_hw_context_switch_interrupt(
                             ctx.as_ptr(),
                             cur_thread.as_ref().sp_ptr() as rt_bindings::rt_ubase_t,
