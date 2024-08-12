@@ -7,6 +7,9 @@
 struct rt_spinlock
 {
     rt_hw_spinlock_t lock;
+#ifdef RT_DEBUGING_SPINLOCK
+    void *owner;
+#endif
 };
 #else
 typedef rt_base_t rt_spinlock_t;

@@ -2,6 +2,7 @@
 #![feature(panic_info_message)]
 #![allow(internal_features)]
 #![feature(core_intrinsics)]
+#![feature(link_llvm_intrinsics)]
 #![feature(linkage)]
 #![feature(allocator_api)]
 #![feature(alloc_layout_extra)]

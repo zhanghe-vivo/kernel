@@ -36,7 +36,7 @@ pub const RT_SYSTEM_WORKQUEUE_PRIORITY: u32 = 23;
 pub const RT_SERIAL_RB_BUFSZ: u32 = 256;
 pub const RT_SDIO_STACK_SIZE: u32 = 512;
 pub const RT_SDIO_THREAD_PRIORITY: u32 = 15;
-pub const RT_MMCSD_STACK_SIZE: u32 = 2048;
+pub const RT_MMCSD_STACK_SIZE: u32 = 4096;
 pub const RT_MMCSD_THREAD_PREORITY: u32 = 22;
 pub const RT_MMCSD_MAX_PARTITION: u32 = 16;
 pub const RT_SFUD_SPI_MAX_HZ: u32 = 50000000;
@@ -103,6 +103,7 @@ pub const RT_TIMER_FLAG_ONE_SHOT: u32 = 0;
 pub const RT_TIMER_FLAG_PERIODIC: u32 = 2;
 pub const RT_TIMER_FLAG_HARD_TIMER: u32 = 0;
 pub const RT_TIMER_FLAG_SOFT_TIMER: u32 = 4;
+pub const RT_TIMER_FLAG_THREAD_TIMER: u32 = 16;
 pub const RT_TIMER_CTRL_SET_TIME: u32 = 0;
 pub const RT_TIMER_CTRL_GET_TIME: u32 = 1;
 pub const RT_TIMER_CTRL_SET_ONESHOT: u32 = 2;
@@ -1172,7 +1173,7 @@ fn bindgen_test_layout_rt_stack() {
     );
 }
 #[repr(C)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Copy, Clone)]
 pub struct rt_thread {
     pub parent: rt_object,
     pub tlist: rt_list_t,
@@ -1194,6 +1195,7 @@ pub struct rt_thread {
     pub cleanup: *mut core::ffi::c_void,
     pub bind_cpu: rt_uint8_t,
     pub oncpu: rt_uint8_t,
+    pub spinlock: rt_spinlock,
     pub error: rt_err_t,
     pub taken_object_list: rt_list_t,
     pub pending_object: rt_object_t,
@@ -1206,7 +1208,7 @@ fn bindgen_test_layout_rt_thread() {
     let ptr = UNINIT.as_ptr();
     assert_eq!(
         ::core::mem::size_of::<rt_thread>(),
-        144usize,
+        148usize,
         concat!("Size of: ", stringify!(rt_thread))
     );
     assert_eq!(
@@ -1415,8 +1417,18 @@ fn bindgen_test_layout_rt_thread() {
         )
     );
     assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).error) as usize - ptr as usize },
+        unsafe { ::core::ptr::addr_of!((*ptr).spinlock) as usize - ptr as usize },
         120usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_thread),
+            "::",
+            stringify!(spinlock)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).error) as usize - ptr as usize },
+        124usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_thread),
@@ -1426,7 +1438,7 @@ fn bindgen_test_layout_rt_thread() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).taken_object_list) as usize - ptr as usize },
-        124usize,
+        128usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_thread),
@@ -1436,7 +1448,7 @@ fn bindgen_test_layout_rt_thread() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).pending_object) as usize - ptr as usize },
-        132usize,
+        136usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_thread),
@@ -1446,7 +1458,7 @@ fn bindgen_test_layout_rt_thread() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).event_set) as usize - ptr as usize },
-        136usize,
+        140usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_thread),
@@ -1456,7 +1468,7 @@ fn bindgen_test_layout_rt_thread() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).event_info) as usize - ptr as usize },
-        140usize,
+        144usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_thread),
@@ -4176,6 +4188,31 @@ extern "C" {
     ) -> rt_err_t;
 }
 extern "C" {
+    pub fn rt_object_attach_sethook(
+        hook: ::core::option::Option<unsafe extern "C" fn(object: *mut rt_object)>,
+    );
+}
+extern "C" {
+    pub fn rt_object_detach_sethook(
+        hook: ::core::option::Option<unsafe extern "C" fn(object: *mut rt_object)>,
+    );
+}
+extern "C" {
+    pub fn rt_object_trytake_sethook(
+        hook: ::core::option::Option<unsafe extern "C" fn(object: *mut rt_object)>,
+    );
+}
+extern "C" {
+    pub fn rt_object_take_sethook(
+        hook: ::core::option::Option<unsafe extern "C" fn(object: *mut rt_object)>,
+    );
+}
+extern "C" {
+    pub fn rt_object_put_sethook(
+        hook: ::core::option::Option<unsafe extern "C" fn(object: *mut rt_object)>,
+    );
+}
+extern "C" {
     #[doc = " @addtogroup Clock\n @{"]
     pub fn rt_tick_get() -> rt_tick_t;
 }
@@ -4190,6 +4227,9 @@ extern "C" {
 }
 extern "C" {
     pub fn rt_tick_get_millisecond() -> rt_tick_t;
+}
+extern "C" {
+    pub fn rt_tick_sethook(hook: ::core::option::Option<unsafe extern "C" fn()>);
 }
 extern "C" {
     pub fn rt_system_timer_init();
@@ -4240,6 +4280,16 @@ extern "C" {
 }
 extern "C" {
     pub fn rt_timer_check();
+}
+extern "C" {
+    pub fn rt_timer_enter_sethook(
+        hook: ::core::option::Option<unsafe extern "C" fn(timer: *mut rt_timer)>,
+    );
+}
+extern "C" {
+    pub fn rt_timer_exit_sethook(
+        hook: ::core::option::Option<unsafe extern "C" fn(timer: *mut rt_timer)>,
+    );
 }
 extern "C" {
     #[doc = " @addtogroup Thread\n @{"]
@@ -4315,6 +4365,21 @@ extern "C" {
     ) -> rt_err_t;
 }
 extern "C" {
+    pub fn rt_thread_suspend_sethook(
+        hook: ::core::option::Option<unsafe extern "C" fn(thread: rt_thread_t)>,
+    );
+}
+extern "C" {
+    pub fn rt_thread_resume_sethook(
+        hook: ::core::option::Option<unsafe extern "C" fn(thread: rt_thread_t)>,
+    );
+}
+extern "C" {
+    pub fn rt_thread_inited_sethook(
+        hook: ::core::option::Option<unsafe extern "C" fn(thread: rt_thread_t)>,
+    );
+}
+extern "C" {
     pub fn rt_thread_idle_init();
 }
 extern "C" {
@@ -4353,6 +4418,16 @@ extern "C" {
     pub fn rt_critical_level() -> rt_uint16_t;
 }
 extern "C" {
+    pub fn rt_scheduler_sethook(
+        hook: ::core::option::Option<unsafe extern "C" fn(from: rt_thread_t, to: rt_thread_t)>,
+    );
+}
+extern "C" {
+    pub fn rt_scheduler_switch_sethook(
+        hook: ::core::option::Option<unsafe extern "C" fn(tid: *mut rt_thread)>,
+    );
+}
+extern "C" {
     pub fn rt_secondary_cpu_entry();
 }
 extern "C" {
@@ -4387,6 +4462,20 @@ extern "C" {
     pub fn rt_mp_free(block: *mut core::ffi::c_void);
 }
 extern "C" {
+    pub fn rt_mp_alloc_sethook(
+        hook: ::core::option::Option<
+            unsafe extern "C" fn(mp: *mut rt_mempool, block: *mut core::ffi::c_void),
+        >,
+    );
+}
+extern "C" {
+    pub fn rt_mp_free_sethook(
+        hook: ::core::option::Option<
+            unsafe extern "C" fn(mp: *mut rt_mempool, block: *mut core::ffi::c_void),
+        >,
+    );
+}
+extern "C" {
     pub fn rt_system_heap_init(
         begin_addr: *mut core::ffi::c_void,
         end_addr: *mut core::ffi::c_void,
@@ -4412,6 +4501,18 @@ extern "C" {
 }
 extern "C" {
     pub fn rt_memory_info(total: *mut rt_size_t, used: *mut rt_size_t, max_used: *mut rt_size_t);
+}
+extern "C" {
+    pub fn rt_malloc_sethook(
+        hook: ::core::option::Option<
+            unsafe extern "C" fn(ptr: *mut core::ffi::c_void, size: rt_size_t),
+        >,
+    );
+}
+extern "C" {
+    pub fn rt_free_sethook(
+        hook: ::core::option::Option<unsafe extern "C" fn(ptr: *mut core::ffi::c_void)>,
+    );
 }
 extern "C" {
     #[doc = " memory heap object interface"]
@@ -4933,6 +5034,12 @@ extern "C" {
 }
 extern "C" {
     pub fn rt_interrupt_get_nest() -> rt_uint8_t;
+}
+extern "C" {
+    pub fn rt_interrupt_enter_sethook(hook: ::core::option::Option<unsafe extern "C" fn()>);
+}
+extern "C" {
+    pub fn rt_interrupt_leave_sethook(hook: ::core::option::Option<unsafe extern "C" fn()>);
 }
 extern "C" {
     pub fn rt_components_init();

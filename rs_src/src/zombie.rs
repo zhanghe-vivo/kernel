@@ -1,6 +1,6 @@
 use core::{
     ffi,
-    pin::{pin, Pin},
+    pin::Pin,
     ptr::{self, NonNull},
 };
 
@@ -11,7 +11,7 @@ use crate::{
     static_init::UnsafeStaticInit,
     str::CStr,
     sync::SpinLock,
-    thread::{RtThread, ThreadCleanupFn, ThreadEntryFn, ThreadWithStack},
+    thread::{RtThread, ThreadEntryFn, ThreadWithStack},
 };
 use pinned_init::*;
 

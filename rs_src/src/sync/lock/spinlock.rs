@@ -1,9 +1,23 @@
 #![allow(dead_code)]
-use crate::{cpu::Cpu, rt_bindings};
-use core::{cell::UnsafeCell, fmt, ops::Deref, ops::DerefMut, ptr};
+use crate::{cpu::Cpu, irq::IrqLock, println, rt_bindings, thread::RtThread};
+use core::{
+    cell::{Cell, UnsafeCell},
+    fmt,
+    ops::Deref,
+    ops::DerefMut,
+    ptr::NonNull,
+};
 
-// TODO: impl by rust Atomic later.
-pub type RawSpin = rt_bindings::rt_spinlock;
+pub struct RawSpin {
+    #[cfg(not(feature = "RT_USING_SMP"))]
+    lock: rt_bindings::rt_spinlock_t,
+
+    #[cfg(feature = "RT_USING_SMP")]
+    lock: rt_bindings::rt_hw_spinlock_t,
+
+    #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
+    pub(crate) owner: Cell<Option<NonNull<RtThread>>>,
+}
 
 unsafe impl Sync for RawSpin {}
 unsafe impl Send for RawSpin {}
@@ -11,6 +25,9 @@ unsafe impl Send for RawSpin {}
 impl RawSpin {
     pub const fn new() -> Self {
         Self {
+            #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
+            owner: Cell::new(None),
+
             #[cfg(feature = "RT_USING_SMP")]
             lock: rt_bindings::rt_hw_spinlock_t { slock: 0 },
 
@@ -26,38 +43,59 @@ impl RawSpin {
 
     #[inline]
     pub fn lock_fast(&self) {
+        #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
+        if let Some(thread) = crate::current_thread!() {
+            let irq_lock = IrqLock::new();
+            let _guard = irq_lock.lock();
+            let thread = unsafe { thread.as_ref() };
+            if thread.check_deadlock(self) {
+                println!(
+                    "deadlocked, thread {} acquire lock, but is hold by thread {}",
+                    thread.get_name(),
+                    unsafe { self.owner.get().unwrap().as_ref().get_name() }
+                );
+                assert!(false);
+            }
+            thread.set_wait(self);
+        }
         unsafe {
             rt_bindings::rt_hw_spin_lock((&self.lock) as *const _ as *mut _);
+        }
+
+        #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
+        if let Some(thread) = crate::current_thread!() {
+            self.owner.set(Some(thread));
+            unsafe { thread.as_ref().clear_wait() };
         }
     }
 
     #[inline]
     pub fn unlock_fast(&self) {
+        #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
+        {
+            self.owner.set(None);
+        }
         unsafe {
             rt_bindings::rt_hw_spin_unlock((&self.lock) as *const _ as *mut _);
         }
     }
 
     pub fn lock(&self) {
-        unsafe {
-            Cpu::get_current_scheduler().preempt_disable();
-            rt_bindings::rt_hw_spin_lock((&self.lock) as *const _ as *mut _);
-        }
+        Cpu::get_current_scheduler().preempt_disable();
+        self.lock_fast();
     }
 
     pub fn unlock(&self) {
-        unsafe {
-            rt_bindings::rt_hw_spin_unlock((&self.lock) as *const _ as *mut _);
-            Cpu::get_current_scheduler().preempt_enable();
-        }
+        self.unlock_fast();
+        Cpu::get_current_scheduler().preempt_enable();
     }
 
     pub fn lock_irqsave(&self) -> rt_bindings::rt_base_t {
         #[cfg(feature = "RT_USING_SMP")]
-        unsafe {
+        {
             Cpu::get_current_scheduler().preempt_disable();
-            let level = rt_bindings::rt_hw_local_irq_disable();
-            rt_bindings::rt_hw_spin_lock((&self.lock) as *const _ as *mut _);
+            let level = unsafe { rt_bindings::rt_hw_local_irq_disable() };
+            self.lock_fast();
             level
         }
 
@@ -69,9 +107,9 @@ impl RawSpin {
 
     pub fn unlock_irqrestore(&self, level: rt_bindings::rt_base_t) {
         #[cfg(feature = "RT_USING_SMP")]
-        unsafe {
-            rt_bindings::rt_hw_spin_unlock((&self.lock) as *const _ as *mut _);
-            rt_bindings::rt_hw_local_irq_enable(level);
+        {
+            self.unlock_fast();
+            unsafe { rt_bindings::rt_hw_local_irq_enable(level) };
             Cpu::get_current_scheduler().preempt_enable();
         }
 
@@ -300,7 +338,8 @@ pub unsafe extern "C" fn rt_spin_lock_init(spin: *mut rt_bindings::rt_spinlock) 
 ///
 #[no_mangle]
 pub unsafe extern "C" fn rt_spin_lock(spin: *mut rt_bindings::rt_spinlock) {
-    (*spin).lock();
+    let raw = spin as *mut RawSpin;
+    (*raw).lock();
 }
 
 /// This function will unlock the spinlock, will unlock the thread scheduler.
@@ -311,7 +350,8 @@ pub unsafe extern "C" fn rt_spin_lock(spin: *mut rt_bindings::rt_spinlock) {
 ///
 #[no_mangle]
 pub unsafe extern "C" fn rt_spin_unlock(spin: *mut rt_bindings::rt_spinlock) {
-    (*spin).unlock();
+    let raw = spin as *mut RawSpin;
+    (*raw).unlock();
 }
 
 /// This function will disable the local interrupt and then lock the spinlock, will lock the thread scheduler.
@@ -331,7 +371,8 @@ pub unsafe extern "C" fn rt_spin_unlock(spin: *mut rt_bindings::rt_spinlock) {
 pub unsafe extern "C" fn rt_spin_lock_irqsave(
     spin: *mut rt_bindings::rt_spinlock,
 ) -> rt_bindings::rt_base_t {
-    (*spin).lock_irqsave()
+    let raw = spin as *mut RawSpin;
+    (*raw).lock_irqsave()
 }
 
 /// This function will unlock the spinlock and then restore current CPU interrupt status, will unlock the thread scheduler.
@@ -346,7 +387,8 @@ pub unsafe extern "C" fn rt_spin_unlock_irqrestore(
     spin: *mut rt_bindings::rt_spinlock,
     level: rt_bindings::rt_base_t,
 ) {
-    (*spin).unlock_irqrestore(level);
+    let raw = spin as *mut RawSpin;
+    (*raw).unlock_irqrestore(level);
 }
 
 #[macro_export]

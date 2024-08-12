@@ -31,6 +31,7 @@ struct rt_thread {
     rt_uint8_t oncpu;
 #endif
 
+    struct rt_spinlock spinlock;
     rt_err_t error;
 #ifdef RT_USING_MUTEX
     rt_list_t taken_object_list;
@@ -39,5 +40,11 @@ struct rt_thread {
 #ifdef RT_USING_EVENT
     rt_uint32_t event_set;
     rt_uint8_t event_info;
+#endif
+
+#ifdef RT_DEBUGING_SPINLOCK
+    struct rt_spinlock* wait_lock;
+    struct rt_spinlock* hold_locks[8];
+    rt_ubase_t hold_count;
 #endif
 };

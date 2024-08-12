@@ -6,20 +6,20 @@ use crate::{
     error::{code, Error},
     linked_list::ListHead,
     object,
-    object::ObjectClassType,
+    object::{BaseObject, ObjectClassType},
     println, rt_bindings,
     stack::Stack,
     str::CStr,
+    sync::RawSpin,
     zombie,
 };
 use alloc::alloc;
 use core::{
     alloc::{AllocError, Layout},
-    cell::UnsafeCell,
+    cell::{Cell, UnsafeCell},
     ffi,
     marker::PhantomPinned,
     mem,
-    ops::{Deref, DerefMut},
     pin::Pin,
     ptr::{self, NonNull},
     sync::atomic::Ordering,
@@ -33,12 +33,7 @@ pub type ThreadCleanupFn = extern "C" fn(*mut RtThread);
 #[macro_export]
 macro_rules! current_thread {
     () => {
-        unsafe {
-            $crate::cpu::Cpu::get_current_scheduler()
-                .get_current_thread()
-                .unwrap()
-                .as_mut()
-        }
+        $crate::cpu::Cpu::get_current_scheduler().get_current_thread()
     };
 }
 pub use current_thread;
@@ -58,18 +53,12 @@ static mut RT_THREAD_SUSPEND_HOOK: Option<RtThreadHook> = None;
 #[cfg(all(feature = "RT_USING_HOOK", feature = "RT_HOOK_USING_FUNC_PTR"))]
 static mut RT_THREAD_RESUME_HOOK: Option<RtThreadHook> = None;
 
-// #[derive(Clone)]
-// pub struct Thread {
-//     // 需要被多个线程共享
-//     inner: Arc<RtThread>,
-// }
-
 #[repr(C)]
-#[derive(Debug)]
+// #[derive(Debug)]
 #[pin_data(PinnedDrop)]
 pub struct RtThread {
     #[pin]
-    pub(crate) parent: rt_bindings::rt_object,
+    pub(crate) parent: BaseObject,
     // start of schedule context
     /// the thread list, used in ready_list\ipc wait_list\...
     #[pin]
@@ -96,7 +85,7 @@ pub struct RtThread {
     thread_timer: rt_bindings::rt_timer,
 
     /// stack point and entry
-    stack: Stack,
+    pub(crate) stack: Stack,
     entry: *mut ffi::c_void,
     parameter: *mut ffi::c_void,
     cleanup: *mut ffi::c_void,
@@ -113,7 +102,7 @@ pub struct RtThread {
     // /// cpus lock count
     // #[cfg(feature = "RT_USING_SMP")]
     // cpus_lock_nest: AtomicU32,
-
+    spinlock: RawSpin,
     /// error code
     error: ffi::c_int,
 
@@ -129,6 +118,13 @@ pub struct RtThread {
     event_set: ffi::c_uint,
     #[cfg(feature = "RT_USING_EVENT")]
     event_info: ffi::c_uchar,
+
+    #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
+    wait_lock: Cell<Option<NonNull<RawSpin>>>,
+    #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
+    hold_locks: [Cell<Option<NonNull<RawSpin>>>; 8],
+    #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
+    hold_count: usize,
 
     // signal pthread not used yet.
     #[pin]
@@ -328,7 +324,8 @@ impl RtThread {
                 Some(Self::handle_timeout),
                 cur_ref as *mut _ as *mut ffi::c_void,
                 0,
-                rt_bindings::RT_TIMER_FLAG_ONE_SHOT as u8,
+                (rt_bindings::RT_TIMER_FLAG_ONE_SHOT | rt_bindings::RT_TIMER_FLAG_THREAD_TIMER)
+                    as u8,
             );
 
             cur_ref.stat = rt_bindings::RT_THREAD_INIT as u8;
@@ -357,7 +354,7 @@ impl RtThread {
                 stack_start
                     .offset((stack_size - mem::size_of::<rt_bindings::rt_ubase_t>()) as isize),
                 Self::exit as *mut ffi::c_void,
-            ) as usize;
+            ) as *mut usize;
             cur_ref.stack = Stack::new(stack_start, stack_size);
             cur_ref.stack.set_sp(sp);
             cur_ref.entry = mem::transmute(entry);
@@ -377,13 +374,22 @@ impl RtThread {
                 cur_ref.event_set = 0;
                 cur_ref.event_info = 0;
             }
+            cur_ref.spinlock = RawSpin::new();
             cur_ref.error = rt_bindings::RT_EOK as i32;
+
+            #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
+            {
+                const ARRAY_REPEAT_VALUE: Cell<Option<NonNull<RawSpin>>> = Cell::new(None);
+                cur_ref.wait_lock = ARRAY_REPEAT_VALUE;
+                cur_ref.hold_locks = [ARRAY_REPEAT_VALUE; 8];
+                cur_ref.hold_count = 0;
+            }
             Ok(())
         };
         unsafe { pin_init_from_closure(init) }
     }
 
-    // #[cfg(feature = "RT_USING_HEAP")]
+    #[cfg(feature = "RT_USING_HEAP")]
     pub fn try_new_in_heap(
         name: &'static CStr,
         entry: ThreadEntryFn,
@@ -579,8 +585,8 @@ impl RtThread {
         scheduler.sched_unlock_with_sched(level);
     }
 
-    extern "C" fn exit() {
-        crate::current_thread!().detach();
+    unsafe extern "C" fn exit() {
+        crate::current_thread!().unwrap().as_mut().detach();
     }
 
     #[inline]
@@ -598,8 +604,9 @@ impl RtThread {
     #[cfg(feature = "RT_USING_MUTEX")]
     #[inline]
     fn detach_from_mutex(&mut self) {
-        // scheduler is locked.
-        let level = unsafe { rt_bindings::rt_hw_local_irq_disable() };
+        let level = self.spinlock.lock_irqsave();
+
+        // as rt_mutex_release may use sched_lock.
         if self.pending_object != ptr::null_mut()
             && object::rt_object_get_type(self.pending_object)
                 == ObjectClassType::ObjectClassMutex as u8
@@ -634,7 +641,7 @@ impl RtThread {
             }
         }
 
-        unsafe { rt_bindings::rt_hw_local_irq_enable(level) };
+        self.spinlock.unlock_irqrestore(level);
     }
 
     #[inline]
@@ -652,6 +659,8 @@ impl RtThread {
     pub fn start(&mut self) {
         let scheduler = Cpu::get_current_scheduler();
         let level = scheduler.sched_lock();
+
+        #[cfg(feature = "DEBUG_SCHEDULER")]
         println!("thread start: {:?}", self.get_name());
 
         self.set_priority(self.current_priority);
@@ -669,7 +678,10 @@ impl RtThread {
         // assert!(!self.is_current_runnung_thread());
         let scheduler = Cpu::get_current_scheduler();
         let level = scheduler.sched_lock();
+
+        #[cfg(feature = "DEBUG_SCHEDULER")]
         println!("thread close: {:?}", self.get_name());
+
         if self.stat != rt_bindings::RT_THREAD_CLOSE as u8 {
             if self.stat != rt_bindings::RT_THREAD_INIT as u8 {
                 scheduler.remove_thread_locked(self);
@@ -689,6 +701,7 @@ impl RtThread {
         let scheduler = Cpu::get_current_scheduler();
         scheduler.preempt_disable();
 
+        #[cfg(feature = "DEBUG_SCHEDULER")]
         println!("thread detach: {:?}", self.get_name());
 
         self.close();
@@ -698,6 +711,7 @@ impl RtThread {
 
         unsafe { zombie::ZOMBIE_MANAGER.zombie_enqueue(self) };
 
+        scheduler.do_task_schedule();
         scheduler.preempt_enable();
     }
 
@@ -735,10 +749,11 @@ impl RtThread {
 
         scheduler.preempt_disable();
 
-        let thread = crate::current_thread!();
+        let thread = unsafe { crate::current_thread!().unwrap().as_mut() };
         /* reset thread error */
         thread.error = rt_bindings::RT_EOK as i32;
 
+        #[cfg(feature = "DEBUG_SCHEDULER")]
         println!("thread sleep: {:?}", thread.get_name());
 
         if thread.suspend(rt_bindings::RT_INTERRUPTIBLE) {
@@ -772,6 +787,8 @@ impl RtThread {
         let scheduler = Cpu::get_current_scheduler();
 
         let level = scheduler.sched_lock();
+
+        #[cfg(feature = "DEBUG_SCHEDULER")]
         println!("thread suspend: {:?}", self.get_name());
 
         if (!self.is_ready()) && (!self.is_running()) {
@@ -807,6 +824,8 @@ impl RtThread {
         let scheduler = Cpu::get_current_scheduler();
 
         let level = scheduler.sched_lock();
+
+        #[cfg(feature = "DEBUG_SCHEDULER")]
         println!("thread resume: {:?}", self.get_name());
 
         let need_schedule = scheduler.insert_ready_locked(self);
@@ -849,7 +868,7 @@ impl RtThread {
         if self.is_ready() {
             scheduler.remove_thread_locked(self);
             self.set_bind_cpu(cpu);
-            scheduler.insert_ready_locked(self);
+            scheduler.insert_thread_locked(self);
             scheduler.sched_unlock_with_sched(level);
         } else {
             self.bind_cpu = cpu;
@@ -875,13 +894,47 @@ impl RtThread {
             }
         }
     }
+
+    #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
+    pub(crate) fn check_deadlock(&self, spin: &RawSpin) -> bool {
+        let mut owner: Cell<Option<NonNull<RtThread>>> = spin.owner.clone();
+        while let Some(non_null) = owner.get() {
+            let th = unsafe { non_null.as_ref() };
+            if ptr::eq(self, th) {
+                return true;
+            }
+
+            if let Some(wait_lock) = th.wait_lock.get() {
+                owner = unsafe { wait_lock.as_ref().owner.clone() };
+            } else {
+                break;
+            }
+        }
+        false
+    }
+
+    #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
+    pub(crate) fn set_wait(&self, spin: &RawSpin) {
+        unsafe {
+            self.wait_lock
+                .set(Some(NonNull::new_unchecked(spin as *const _ as *mut _)))
+        };
+    }
+
+    #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
+    pub(crate) fn clear_wait(&self) {
+        self.wait_lock.set(None);
+    }
 }
 
 #[pinned_drop]
 impl PinnedDrop for RtThread {
     fn drop(self: Pin<&mut Self>) {
         let this_th = unsafe { Pin::get_unchecked_mut(self) };
+
+        #[cfg(feature = "DEBUG_SCHEDULER")]
         println!("drop thread: {:?}", this_th.get_name());
+
         this_th.detach();
     }
 }

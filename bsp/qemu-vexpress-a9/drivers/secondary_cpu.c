@@ -30,6 +30,10 @@ static void rt_hw_timer2_isr(int vector, void *param)
     timer_clear_pending(0);
 }
 
+#ifdef RT_SMP_AUTO_BOOT
+    void* secondary_cpu_entry = RT_NULL;
+#endif
+
 void rt_hw_secondary_cpu_up(void)
 {
     volatile void **plat_boot_reg = (volatile void **)0x10000034;
@@ -46,6 +50,11 @@ void rt_hw_secondary_cpu_up(void)
 #endif
     *plat_boot_reg-- = (void *)(size_t)-1;
     *plat_boot_reg = (void *)entry;
+
+#ifdef RT_SMP_AUTO_BOOT
+    secondary_cpu_entry = rt_secondary_cpu_entry;
+#endif
+
     rt_hw_dsb();
     rt_hw_ipi_send(0, 1 << 1);
 }

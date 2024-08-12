@@ -3,7 +3,7 @@ use crate::{
     thread::RtThread,
 };
 use alloc::boxed::Box;
-use core::{ffi, mem, ptr, slice};
+use core::{ffi, mem, pin::Pin, ptr, slice};
 use pinned_init::*;
 
 type DestroyFunc = extern "C" fn(*mut ffi::c_void) -> rt_err_t;
@@ -73,9 +73,9 @@ struct ObjectInformation {
 #[pin_data]
 #[derive(Debug)]
 #[repr(C)]
-struct BaseObject {
+pub struct BaseObject {
     #[doc = "< dynamic name of kernel object"]
-    pub name: [u8; RT_NAME_MAX as usize],
+    pub name: [i8; RT_NAME_MAX as usize],
     #[doc = "< type of kernel object"]
     pub type_: u8,
     #[doc = "< flag of kernel object"]
@@ -214,8 +214,7 @@ impl ObjectInformation {
             let info = unsafe { &OBJECT_CONTAINER.data[(object_type - 1) as usize] };
             info.spinlock.acquire();
             crate::list_head_for_each!(node, &info.object_list, {
-                let node_ptr = node as *const ListHead;
-                let object = unsafe { crate::list_head_entry!(node_ptr, BaseObject, list) };
+                let object = unsafe { crate::list_head_entry!(node.as_ptr(), BaseObject, list) };
                 objects[count] = object as *mut BaseObject;
                 count += 1;
                 if count >= maxlen {
@@ -310,19 +309,18 @@ pub extern "C" fn rt_object_init(
     type_: rt_object_class_type,
     name: *const ffi::c_char,
 ) {
-    let information: *mut rt_object_information = rt_object_get_information(type_) as *mut _;
-    assert!(!information.is_null());
-    let information = unsafe { &mut *information };
+    assert!(!object.is_null());
+    let information = ObjectInformation::get_info_by_type(type_ as u8).unwrap();
 
     #[cfg(feature = "RT_USING_DEBUG")]
     {
         let _guard = information.spinlock.acquire();
-        crate::rt_list_for_each!(node, &information.object_list, {
-            let obj = unsafe { crate::rt_list_entry!(node, rt_object, list) };
-            assert!(!ptr::eq(object as *mut rt_object, obj));
+        crate::list_head_for_each!(node, &information.object_list, {
+            let obj = unsafe { crate::list_head_entry!(node.as_ptr(), BaseObject, list) };
+            assert!(!ptr::eq(object, obj as *const rt_object));
         });
     }
-    let obj_ref = unsafe { &mut *object };
+    let obj_ref = unsafe { &mut *(object as *mut BaseObject) };
     // initialize object's parameters
     // set object type to static
     let type_ = type_ as u8 | OBJECT_CLASS_STATIC;
@@ -335,18 +333,18 @@ pub(crate) fn rt_object_init_dyn(
     type_: rt_object_class_type,
     name: *const ffi::c_char,
 ) {
-    let information: *mut rt_object_information = rt_object_get_information(type_) as *mut _;
-    assert!(!information.is_null());
-    let information = unsafe { &mut *information };
-    let obj_ref = unsafe { &mut *object };
+    assert!(!object.is_null());
+
+    let information = ObjectInformation::get_info_by_type(type_ as u8).unwrap();
+    let obj_ref = unsafe { &mut *(object as *mut BaseObject) };
 
     rt_object_init_internal(information, obj_ref, type_ as u8, name);
 }
 
 #[inline]
 fn rt_object_init_internal(
-    information: &mut rt_object_information,
-    obj_ref: &mut rt_object,
+    information: &ObjectInformation,
+    obj_ref: &mut BaseObject,
     type_: u8,
     name: *const ffi::c_char,
 ) {
@@ -354,7 +352,7 @@ fn rt_object_init_internal(
 
     #[cfg(feature = "RT_NAME_MAX")]
     unsafe {
-        rt_strncpy(obj_ref.name.as_mut_ptr(), name, RT_NAME_MAX);
+        rt_strncpy(obj_ref.name.as_mut_ptr(), name, RT_NAME_MAX - 1);
     }
 
     #[cfg(not(feature = "RT_NAME_MAX"))]
@@ -363,7 +361,7 @@ fn rt_object_init_internal(
     }
 
     unsafe {
-        crate::rt_object_hook_call!(OBJECT_ATTACH_HOOK, obj_ref);
+        crate::rt_object_hook_call!(OBJECT_ATTACH_HOOK, obj_ref as *const _ as *const rt_object);
     }
 
     #[cfg(feature = "RT_USING_MODULE")]
@@ -373,25 +371,19 @@ fn rt_object_init_internal(
     #[cfg(feature = "RT_USING_MODULE")]
     if !module.is_null() {
         unsafe {
-            (*module)
-                .object_list
-                .insert_after(&(obj_ref.list) as *const _ as *mut _);
+            Pin::new_unchecked(&mut obj_ref.list).insert_next(&(*module).object_list);
             obj_ref.module_id = module as *mut ffi::c_void;
         }
     } else {
         // insert object into information object list
         unsafe {
-            information
-                .object_list
-                .insert_after(&(obj_ref.list) as *const _ as *mut _);
+            Pin::new_unchecked(&mut obj_ref.list).insert_next(&information.object_list);
         }
     }
 
     unsafe {
         #[cfg(not(feature = "RT_USING_MODULE"))]
-        information
-            .object_list
-            .insert_after(&(obj_ref.list) as *const _ as *mut _);
+        Pin::new_unchecked(&mut obj_ref.list).insert_next(&information.object_list);
     }
 }
 
@@ -412,8 +404,8 @@ pub extern "C" fn rt_object_detach(object: *mut rt_object) {
         ObjectInformation::get_info_by_type(obj.type_ & (!OBJECT_CLASS_STATIC))
     {
         information.spinlock.acquire();
-        unsafe { obj.list.remove() };
-        obj.type_ = ObjectClassType::ObjectClassUnknown as u8;
+        unsafe { Pin::new_unchecked(&mut obj.list).remove() };
+        obj.type_ = ObjectClassType::ObjectClassUninit as u8;
     } else {
         panic!(
             "object type not find. name: {:?}, type: {:?}",
@@ -437,23 +429,21 @@ pub extern "C" fn rt_object_allocate(
 ) -> rt_object_t {
     // get object information
     use core::ffi::c_void;
-    let information: *mut rt_object_information = rt_object_get_information(type_) as *mut _;
-    assert!(!information.is_null());
-    let information = unsafe { &mut *information };
+    let information = ObjectInformation::get_info_by_type(type_ as u8).unwrap();
 
     crate::rt_debug_not_in_interrupt!();
 
-    let object = unsafe { rt_malloc(information.object_size) as *mut rt_object };
+    let object = unsafe { rt_malloc(information.object_size as u32) as *mut BaseObject };
     if object.is_null() {
-        return object;
+        return ptr::null_mut();
     }
     unsafe {
-        rt_memset(object as *mut c_void, 0x0, information.object_size);
+        rt_memset(object as *mut c_void, 0x0, information.object_size as u32);
     }
 
     let obj_ref = unsafe { &mut *object };
     rt_object_init_internal(information, obj_ref, type_ as u8, name);
-    object
+    object as rt_object_t
 }
 
 /// This function will delete an object and release object memory.
@@ -471,17 +461,15 @@ pub extern "C" fn rt_object_delete(object: rt_object_t) {
     crate::rt_object_hook_call!(OBJECT_DETACH_HOOK, object);
 
     unsafe {
-        let information = rt_object_get_information((*object).type_ as u32);
-        assert!(!information.is_null());
-        let information = &*information;
+        let obj = &mut *object;
+        let information = ObjectInformation::get_info_by_type(obj.type_).unwrap();
         // lock interrupt
         {
             let _guard = information.spinlock.acquire();
-            // remove from old list
-            (*object).list.remove();
+            Pin::new_unchecked(&mut obj.list).remove();
         }
         // reset object type
-        (*object).type_ = ObjectClassType::ObjectClassUnknown as u8;
+        obj.type_ = ObjectClassType::ObjectClassUninit as u8;
         rt_free(object as *mut ffi::c_void);
     }
 }
@@ -611,22 +599,22 @@ pub extern "C" fn rt_object_get_type(object: rt_object_t) -> rt_uint8_t {
 /// This function shall not be invoked in interrupt status.
 #[no_mangle]
 pub extern "C" fn rt_object_find(name: *const ffi::c_char, type_: rt_uint8_t) -> rt_object_t {
-    let information = rt_object_get_information(type_ as u32);
-
     /* parameter check */
-    if name.is_null() || information.is_null() {
+    if name.is_null() {
         return ptr::null_mut();
     }
 
     /* which is invoke in interrupt status */
     crate::rt_debug_not_in_interrupt!();
 
+    let information = ObjectInformation::get_info_by_type(type_ & (!OBJECT_CLASS_STATIC)).unwrap();
+
     unsafe {
         /* enter critical */
         rt_enter_critical();
         /* try to find object */
-        crate::rt_list_for_each!(node, &(*information).object_list, {
-            let object = crate::rt_list_entry!(node, rt_object, list) as *mut rt_object;
+        crate::list_head_for_each!(node, &information.object_list, {
+            let object = crate::list_head_entry!(node.as_ptr(), BaseObject, list);
             if rt_strncmp(
                 (*object).name.as_ptr() as *const ffi::c_char,
                 name,
@@ -635,7 +623,7 @@ pub extern "C" fn rt_object_find(name: *const ffi::c_char, type_: rt_uint8_t) ->
             {
                 /* leave critical */
                 rt_exit_critical();
-                return object;
+                return object as rt_object_t;
             }
         });
 

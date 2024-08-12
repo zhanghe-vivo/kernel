@@ -15,13 +15,13 @@ pub extern "C" fn rt_tick_sethook(hook: unsafe extern "C" fn()) {
 #[doc = "This function will return current tick from operating system startup."]
 #[no_mangle]
 pub extern "C" fn rt_tick_get() -> rt_bindings::rt_tick_t {
-    Cpu::tick_load()
+    Cpu::get_by_id(0).tick_load()
 }
 
 #[doc = "This function will set current tick."]
 #[no_mangle]
 pub extern "C" fn rt_tick_set(tick: rt_bindings::rt_tick_t) {
-    Cpu::tick_store(tick);
+    Cpu::get_by_id(0).tick_store(tick);
 }
 
 #[doc = "This function will notify kernel there is one tick passed."]
@@ -32,15 +32,10 @@ pub extern "C" fn rt_tick_increase() {
 
         crate::rt_object_hook_call!(RT_TICK_HOOK);
 
-        Cpu::tick_inc();
+        Cpu::get_current().tick_inc();
         /* check time slice */
         let scheduler = Cpu::get_current_scheduler();
         scheduler.handle_tick_increase();
-
-        #[cfg(feature = "RT_USING_SMP")]
-        if scheduler.get_current_id() != 0 {
-            return;
-        }
 
         rt_bindings::rt_timer_check();
     }
@@ -63,5 +58,6 @@ pub extern "C" fn rt_tick_get_millisecond() -> rt_bindings::rt_tick_t {
     crate::static_assert!(rt_bindings::RT_TICK_PER_SECOND > 0);
     crate::static_assert!(1000 % rt_bindings::RT_TICK_PER_SECOND == 0);
 
-    Cpu::tick_load() * (1000 / rt_bindings::RT_TICK_PER_SECOND) as rt_bindings::rt_tick_t
+    Cpu::get_by_id(0).tick_load()
+        * (1000 / rt_bindings::RT_TICK_PER_SECOND) as rt_bindings::rt_tick_t
 }

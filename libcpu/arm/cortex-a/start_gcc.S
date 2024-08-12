@@ -32,6 +32,7 @@ init_mtbl:
 .text
 /* reset entry */
 .globl _reset
+.globl secondary_cpu_entry
 _reset:
 #ifdef ARCH_ARMV8
     /* Check for HYP mode */

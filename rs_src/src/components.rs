@@ -8,7 +8,7 @@ use paste::paste;
     not(feature = "RT_MAIN_THREAD_STACK_SIZE"),
     feature = "RT_USING_USER_MAIN"
 ))]
-pub const RT_MAIN_THREAD_STACK_SIZE: u32 = 2048;
+pub const RT_MAIN_THREAD_STACK_SIZE: u32 = 4096;
 
 #[cfg(all(
     not(feature = "RT_MAIN_THREAD_PRIORITY"),

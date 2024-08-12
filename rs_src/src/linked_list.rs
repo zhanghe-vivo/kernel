@@ -243,6 +243,11 @@ impl ListHead {
         }
         size
     }
+
+    #[inline]
+    pub fn as_ptr(&self) -> *const ListHead {
+        self as *const ListHead
+    }
 }
 
 #[pinned_drop]

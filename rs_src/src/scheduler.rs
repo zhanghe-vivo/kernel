@@ -410,9 +410,15 @@ impl Scheduler {
                     to_th.oncpu = self.get_current_id();
                 }
                 to_th.set_running();
+
+                #[cfg(feature = "DEBUG_SCHEDULER")]
+                println!(
+                    "start switch to {:?}, sp {:?}",
+                    to_th.get_name(),
+                    to_th.stack.usage()
+                );
                 // _cpus_lock will unlock in rt_cpus_lock_status_restore
                 unsafe {
-                    println!("switch to {:?}", to_th.get_name());
                     rt_bindings::rt_hw_context_switch_to(
                         to_th.sp_ptr() as rt_bindings::rt_ubase_t,
                         to_th as *mut RtThread as *mut rt_bindings::rt_thread,
@@ -474,11 +480,19 @@ impl Scheduler {
                 if let Some(to_thread) = self.prepare_context_switch_locked() {
                     unsafe {
                         let cur_thread = self.get_current_thread().unwrap_unchecked();
+                        #[cfg(feature = "DEBUG_SCHEDULER")]
                         println!(
-                            "switch from {:?} to {:?}",
+                            "cpu{} switch from {}: usage: {} to {}: usage: {}",
+                            self.id,
                             cur_thread.as_ref().get_name(),
-                            to_thread.as_ref().get_name()
+                            cur_thread.as_ref().stack.usage(),
+                            to_thread.as_ref().get_name(),
+                            to_thread.as_ref().stack.usage(),
                         );
+
+                        #[cfg(feature = "RT_USING_OVERFLOW_CHECK")]
+                        assert!(!cur_thread.as_ref().stack.check_overflow());
+
                         rt_bindings::rt_hw_context_switch(
                             cur_thread.as_ref().sp_ptr() as rt_bindings::rt_ubase_t,
                             to_thread.as_ref().sp_ptr() as rt_bindings::rt_ubase_t,
@@ -536,11 +550,19 @@ impl Scheduler {
                     let cur_thread = unsafe { self.get_current_thread().unwrap_unchecked() };
                     // sched_unlock_mp will call in rt_cpus_lock_status_restore
                     unsafe {
+                        #[cfg(feature = "DEBUG_SCHEDULER")]
                         println!(
-                            "switch from {:?} to {:?}",
+                            "cpu{} switch from {}: usage: {} to {}: usage: {}",
+                            self.id,
                             cur_thread.as_ref().get_name(),
-                            to_thread.as_ref().get_name()
+                            cur_thread.as_ref().stack.usage(),
+                            to_thread.as_ref().get_name(),
+                            to_thread.as_ref().stack.usage(),
                         );
+
+                        #[cfg(feature = "RT_USING_OVERFLOW_CHECK")]
+                        assert!(!cur_thread.as_ref().stack.check_overflow());
+
                         rt_bindings::rt_hw_context_switch(
                             cur_thread.as_ref().sp_ptr() as rt_bindings::rt_ubase_t,
                             to_thread.as_ref().sp_ptr() as rt_bindings::rt_ubase_t,
@@ -582,11 +604,19 @@ impl Scheduler {
                 match self.prepare_context_switch_locked() {
                     Some(to_thread) => unsafe {
                         let cur_thread = self.get_current_thread().unwrap_unchecked();
+                        #[cfg(feature = "DEBUG_SCHEDULER")]
                         println!(
-                            "switch in_irq from {:?} to {:?}",
+                            "cpu{} switch from {}: usage: {} to {}: usage: {}",
+                            self.id,
                             cur_thread.as_ref().get_name(),
-                            to_thread.as_ref().get_name()
+                            cur_thread.as_ref().stack.usage(),
+                            to_thread.as_ref().get_name(),
+                            to_thread.as_ref().stack.usage(),
                         );
+
+                        #[cfg(feature = "RT_USING_OVERFLOW_CHECK")]
+                        assert!(!cur_thread.as_ref().stack.check_overflow());
+
                         rt_bindings::rt_hw_context_switch_interrupt(
                             ctx.as_ptr(),
                             cur_thread.as_ref().sp_ptr() as rt_bindings::rt_ubase_t,

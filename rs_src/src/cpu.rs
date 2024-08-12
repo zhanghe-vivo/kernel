@@ -86,28 +86,24 @@ impl Cpus {
     #[cfg(feature = "RT_USING_SMP")]
     #[inline]
     pub(crate) fn get_highest_priority_from_global() -> u32 {
-        debug_assert!(Cpu::get_current_scheduler().is_sched_locked());
         unsafe { CPUS.global_priority_manager.get_highest_ready_prio() }
     }
 
     #[cfg(feature = "RT_USING_SMP")]
     #[inline]
     pub(crate) fn get_thread_from_global(prio: u32) -> Option<NonNull<RtThread>> {
-        debug_assert!(Cpu::get_current_scheduler().is_sched_locked());
         unsafe { CPUS.global_priority_manager.get_thread_by_prio(prio) }
     }
 
     #[cfg(feature = "RT_USING_SMP")]
     #[inline]
     pub(crate) fn insert_thread_to_global(thread: &mut RtThread) {
-        debug_assert!(Cpu::get_current_scheduler().is_sched_locked());
         unsafe { CPUS.global_priority_manager.insert_thread(thread) };
     }
 
     #[cfg(feature = "RT_USING_SMP")]
     #[inline]
     pub(crate) fn remove_thread_from_global(thread: &mut RtThread) {
-        debug_assert!(Cpu::get_current_scheduler().is_sched_locked());
         unsafe { CPUS.global_priority_manager.remove_thread(thread) };
     }
 
@@ -125,16 +121,28 @@ impl Cpus {
 
     #[inline]
     pub(crate) fn lock_cpus() {
+        #[cfg(feature = "RT_USING_SMP")]
         if Cpu::cpu_lock_nest_inc() == 0 {
             unsafe { CPUS.cpu_lock.lock() };
         }
+
+        #[cfg(not(feature = "RT_USING_SMP"))]
+        unsafe {
+            CPUS.cpu_lock.lock()
+        };
     }
 
     #[inline]
     pub(crate) fn unlock_cpus() {
+        #[cfg(feature = "RT_USING_SMP")]
         if Cpu::cpu_lock_nest_dec() == 1 {
             unsafe { CPUS.cpu_lock.unlock() };
         }
+
+        #[cfg(not(feature = "RT_USING_SMP"))]
+        unsafe {
+            CPUS.cpu_lock.unlock()
+        };
     }
 }
 
@@ -209,23 +217,19 @@ impl Cpu {
     }
 
     #[inline]
-    pub fn tick_store(tick: u32) {
-        Self::get_current().tick.store(tick, Ordering::Release)
+    pub fn tick_store(&self, tick: u32) {
+        self.tick.store(tick, Ordering::Release)
     }
 
     #[inline]
-    pub fn tick_load() -> u32 {
-        Self::get_current().tick.load(Ordering::Relaxed)
+    pub fn tick_load(&self) -> u32 {
+        // read tick on cpu 0 only.
+        self.tick.load(Ordering::Relaxed)
     }
 
     #[inline]
-    pub fn tick_inc() -> u32 {
-        Self::get_current().tick.fetch_add(1, Ordering::Release)
-    }
-
-    #[inline]
-    pub fn tick_dec() -> u32 {
-        Self::get_current().tick.fetch_sub(1, Ordering::Release)
+    pub fn tick_inc(&self) -> u32 {
+        self.tick.fetch_add(1, Ordering::Release)
     }
 
     #[inline]
