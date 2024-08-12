@@ -9,12 +9,12 @@ pub const RT_IDLE_HOOK_LIST_SIZE: u32 = 4;
 pub const IDLE_THREAD_STACK_SIZE: u32 = 4096;
 pub const SYSTEM_THREAD_STACK_SIZE: u32 = 4096;
 pub const RT_TIMER_THREAD_PRIO: u32 = 4;
-pub const RT_TIMER_THREAD_STACK_SIZE: u32 = 1024;
+pub const RT_TIMER_THREAD_STACK_SIZE: u32 = 4096;
 pub const RT_PAGE_MAX_ORDER: u32 = 11;
 pub const RT_CONSOLEBUF_SIZE: u32 = 256;
 pub const RT_CONSOLE_DEVICE_NAME: &[u8; 6] = b"uart0\0";
 pub const RT_VER_NUM: u32 = 327682;
-pub const RT_MAIN_THREAD_STACK_SIZE: u32 = 3072;
+pub const RT_MAIN_THREAD_STACK_SIZE: u32 = 4096;
 pub const RT_MAIN_THREAD_PRIORITY: u32 = 10;
 pub const FINSH_THREAD_NAME: &[u8; 7] = b"tshell\0";
 pub const FINSH_THREAD_PRIORITY: u32 = 20;
@@ -36,7 +36,7 @@ pub const RT_SYSTEM_WORKQUEUE_PRIORITY: u32 = 23;
 pub const RT_SERIAL_RB_BUFSZ: u32 = 256;
 pub const RT_SDIO_STACK_SIZE: u32 = 512;
 pub const RT_SDIO_THREAD_PRIORITY: u32 = 15;
-pub const RT_MMCSD_STACK_SIZE: u32 = 2048;
+pub const RT_MMCSD_STACK_SIZE: u32 = 4096;
 pub const RT_MMCSD_THREAD_PREORITY: u32 = 22;
 pub const RT_MMCSD_MAX_PARTITION: u32 = 16;
 pub const RT_SFUD_SPI_MAX_HZ: u32 = 50000000;
@@ -81,12 +81,29 @@ pub const RT_ENOSPC: u32 = 12;
 pub const RT_EPERM: u32 = 13;
 pub const RT_ETRAP: u32 = 14;
 pub const RT_OBJECT_FLAG_MODULE: u32 = 128;
+pub const USERMODE: u32 = 16;
+pub const FIQMODE: u32 = 17;
+pub const IRQMODE: u32 = 18;
+pub const SVCMODE: u32 = 19;
+pub const MONITORMODE: u32 = 22;
+pub const ABORTMODE: u32 = 23;
+pub const HYPMODE: u32 = 27;
+pub const UNDEFMODE: u32 = 27;
+pub const MODEMASK: u32 = 31;
+pub const NOINT: u32 = 192;
+pub const T_Bit: u32 = 32;
+pub const F_Bit: u32 = 64;
+pub const I_Bit: u32 = 128;
+pub const A_Bit: u32 = 256;
+pub const E_Bit: u32 = 512;
+pub const J_Bit: u32 = 16777216;
 pub const RT_TIMER_FLAG_DEACTIVATED: u32 = 0;
 pub const RT_TIMER_FLAG_ACTIVATED: u32 = 1;
 pub const RT_TIMER_FLAG_ONE_SHOT: u32 = 0;
 pub const RT_TIMER_FLAG_PERIODIC: u32 = 2;
 pub const RT_TIMER_FLAG_HARD_TIMER: u32 = 0;
 pub const RT_TIMER_FLAG_SOFT_TIMER: u32 = 4;
+pub const RT_TIMER_FLAG_THREAD_TIMER: u32 = 16;
 pub const RT_TIMER_CTRL_SET_TIME: u32 = 0;
 pub const RT_TIMER_CTRL_GET_TIME: u32 = 1;
 pub const RT_TIMER_CTRL_SET_ONESHOT: u32 = 2;
@@ -170,22 +187,6 @@ pub const RT_DRIVER_MATCH_DTS: u32 = 1;
 pub const RT_DEVICE_CTRL_CURSOR_SET_POSITION: u32 = 16;
 pub const RT_DEVICE_CTRL_CURSOR_SET_TYPE: u32 = 17;
 pub const RT_CPU_CACHE_LINE_SZ: u32 = 32;
-pub const USERMODE: u32 = 16;
-pub const FIQMODE: u32 = 17;
-pub const IRQMODE: u32 = 18;
-pub const SVCMODE: u32 = 19;
-pub const MONITORMODE: u32 = 22;
-pub const ABORTMODE: u32 = 23;
-pub const HYPMODE: u32 = 27;
-pub const UNDEFMODE: u32 = 27;
-pub const MODEMASK: u32 = 31;
-pub const NOINT: u32 = 192;
-pub const T_Bit: u32 = 32;
-pub const F_Bit: u32 = 64;
-pub const I_Bit: u32 = 128;
-pub const A_Bit: u32 = 256;
-pub const E_Bit: u32 = 512;
-pub const J_Bit: u32 = 16777216;
 pub const RT_VERSION: u32 = 5;
 pub const RT_SUBVERSION: u32 = 0;
 pub const RT_REVISION: u32 = 2;
@@ -333,7 +334,554 @@ fn bindgen_test_layout_rt_slist_node() {
 }
 #[doc = " Single List structure"]
 pub type rt_slist_t = rt_slist_node;
-#[doc = " Base structure of Kernel object"]
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct rt_hw_exp_stack {
+    pub r0: core::ffi::c_ulong,
+    pub r1: core::ffi::c_ulong,
+    pub r2: core::ffi::c_ulong,
+    pub r3: core::ffi::c_ulong,
+    pub r4: core::ffi::c_ulong,
+    pub r5: core::ffi::c_ulong,
+    pub r6: core::ffi::c_ulong,
+    pub r7: core::ffi::c_ulong,
+    pub r8: core::ffi::c_ulong,
+    pub r9: core::ffi::c_ulong,
+    pub r10: core::ffi::c_ulong,
+    pub fp: core::ffi::c_ulong,
+    pub ip: core::ffi::c_ulong,
+    pub sp: core::ffi::c_ulong,
+    pub lr: core::ffi::c_ulong,
+    pub pc: core::ffi::c_ulong,
+    pub cpsr: core::ffi::c_ulong,
+}
+#[test]
+fn bindgen_test_layout_rt_hw_exp_stack() {
+    const UNINIT: ::core::mem::MaybeUninit<rt_hw_exp_stack> = ::core::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(
+        ::core::mem::size_of::<rt_hw_exp_stack>(),
+        68usize,
+        concat!("Size of: ", stringify!(rt_hw_exp_stack))
+    );
+    assert_eq!(
+        ::core::mem::align_of::<rt_hw_exp_stack>(),
+        4usize,
+        concat!("Alignment of ", stringify!(rt_hw_exp_stack))
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).r0) as usize - ptr as usize },
+        0usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_hw_exp_stack),
+            "::",
+            stringify!(r0)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).r1) as usize - ptr as usize },
+        4usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_hw_exp_stack),
+            "::",
+            stringify!(r1)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).r2) as usize - ptr as usize },
+        8usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_hw_exp_stack),
+            "::",
+            stringify!(r2)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).r3) as usize - ptr as usize },
+        12usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_hw_exp_stack),
+            "::",
+            stringify!(r3)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).r4) as usize - ptr as usize },
+        16usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_hw_exp_stack),
+            "::",
+            stringify!(r4)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).r5) as usize - ptr as usize },
+        20usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_hw_exp_stack),
+            "::",
+            stringify!(r5)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).r6) as usize - ptr as usize },
+        24usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_hw_exp_stack),
+            "::",
+            stringify!(r6)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).r7) as usize - ptr as usize },
+        28usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_hw_exp_stack),
+            "::",
+            stringify!(r7)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).r8) as usize - ptr as usize },
+        32usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_hw_exp_stack),
+            "::",
+            stringify!(r8)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).r9) as usize - ptr as usize },
+        36usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_hw_exp_stack),
+            "::",
+            stringify!(r9)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).r10) as usize - ptr as usize },
+        40usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_hw_exp_stack),
+            "::",
+            stringify!(r10)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).fp) as usize - ptr as usize },
+        44usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_hw_exp_stack),
+            "::",
+            stringify!(fp)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).ip) as usize - ptr as usize },
+        48usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_hw_exp_stack),
+            "::",
+            stringify!(ip)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).sp) as usize - ptr as usize },
+        52usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_hw_exp_stack),
+            "::",
+            stringify!(sp)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).lr) as usize - ptr as usize },
+        56usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_hw_exp_stack),
+            "::",
+            stringify!(lr)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).pc) as usize - ptr as usize },
+        60usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_hw_exp_stack),
+            "::",
+            stringify!(pc)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).cpsr) as usize - ptr as usize },
+        64usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_hw_exp_stack),
+            "::",
+            stringify!(cpsr)
+        )
+    );
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct rt_hw_stack {
+    pub cpsr: core::ffi::c_ulong,
+    pub r0: core::ffi::c_ulong,
+    pub r1: core::ffi::c_ulong,
+    pub r2: core::ffi::c_ulong,
+    pub r3: core::ffi::c_ulong,
+    pub r4: core::ffi::c_ulong,
+    pub r5: core::ffi::c_ulong,
+    pub r6: core::ffi::c_ulong,
+    pub r7: core::ffi::c_ulong,
+    pub r8: core::ffi::c_ulong,
+    pub r9: core::ffi::c_ulong,
+    pub r10: core::ffi::c_ulong,
+    pub fp: core::ffi::c_ulong,
+    pub ip: core::ffi::c_ulong,
+    pub lr: core::ffi::c_ulong,
+    pub pc: core::ffi::c_ulong,
+}
+#[test]
+fn bindgen_test_layout_rt_hw_stack() {
+    const UNINIT: ::core::mem::MaybeUninit<rt_hw_stack> = ::core::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(
+        ::core::mem::size_of::<rt_hw_stack>(),
+        64usize,
+        concat!("Size of: ", stringify!(rt_hw_stack))
+    );
+    assert_eq!(
+        ::core::mem::align_of::<rt_hw_stack>(),
+        4usize,
+        concat!("Alignment of ", stringify!(rt_hw_stack))
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).cpsr) as usize - ptr as usize },
+        0usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_hw_stack),
+            "::",
+            stringify!(cpsr)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).r0) as usize - ptr as usize },
+        4usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_hw_stack),
+            "::",
+            stringify!(r0)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).r1) as usize - ptr as usize },
+        8usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_hw_stack),
+            "::",
+            stringify!(r1)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).r2) as usize - ptr as usize },
+        12usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_hw_stack),
+            "::",
+            stringify!(r2)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).r3) as usize - ptr as usize },
+        16usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_hw_stack),
+            "::",
+            stringify!(r3)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).r4) as usize - ptr as usize },
+        20usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_hw_stack),
+            "::",
+            stringify!(r4)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).r5) as usize - ptr as usize },
+        24usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_hw_stack),
+            "::",
+            stringify!(r5)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).r6) as usize - ptr as usize },
+        28usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_hw_stack),
+            "::",
+            stringify!(r6)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).r7) as usize - ptr as usize },
+        32usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_hw_stack),
+            "::",
+            stringify!(r7)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).r8) as usize - ptr as usize },
+        36usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_hw_stack),
+            "::",
+            stringify!(r8)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).r9) as usize - ptr as usize },
+        40usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_hw_stack),
+            "::",
+            stringify!(r9)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).r10) as usize - ptr as usize },
+        44usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_hw_stack),
+            "::",
+            stringify!(r10)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).fp) as usize - ptr as usize },
+        48usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_hw_stack),
+            "::",
+            stringify!(fp)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).ip) as usize - ptr as usize },
+        52usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_hw_stack),
+            "::",
+            stringify!(ip)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).lr) as usize - ptr as usize },
+        56usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_hw_stack),
+            "::",
+            stringify!(lr)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).pc) as usize - ptr as usize },
+        60usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_hw_stack),
+            "::",
+            stringify!(pc)
+        )
+    );
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union rt_hw_spinlock_t {
+    pub slock: core::ffi::c_ulong,
+    pub tickets: rt_hw_spinlock_t___arch_tickets,
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct rt_hw_spinlock_t___arch_tickets {
+    pub owner: core::ffi::c_ushort,
+    pub next: core::ffi::c_ushort,
+}
+#[test]
+fn bindgen_test_layout_rt_hw_spinlock_t___arch_tickets() {
+    const UNINIT: ::core::mem::MaybeUninit<rt_hw_spinlock_t___arch_tickets> =
+        ::core::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(
+        ::core::mem::size_of::<rt_hw_spinlock_t___arch_tickets>(),
+        4usize,
+        concat!("Size of: ", stringify!(rt_hw_spinlock_t___arch_tickets))
+    );
+    assert_eq!(
+        ::core::mem::align_of::<rt_hw_spinlock_t___arch_tickets>(),
+        2usize,
+        concat!("Alignment of ", stringify!(rt_hw_spinlock_t___arch_tickets))
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).owner) as usize - ptr as usize },
+        0usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_hw_spinlock_t___arch_tickets),
+            "::",
+            stringify!(owner)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).next) as usize - ptr as usize },
+        2usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_hw_spinlock_t___arch_tickets),
+            "::",
+            stringify!(next)
+        )
+    );
+}
+#[test]
+fn bindgen_test_layout_rt_hw_spinlock_t() {
+    const UNINIT: ::core::mem::MaybeUninit<rt_hw_spinlock_t> = ::core::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(
+        ::core::mem::size_of::<rt_hw_spinlock_t>(),
+        4usize,
+        concat!("Size of: ", stringify!(rt_hw_spinlock_t))
+    );
+    assert_eq!(
+        ::core::mem::align_of::<rt_hw_spinlock_t>(),
+        4usize,
+        concat!("Alignment of ", stringify!(rt_hw_spinlock_t))
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).slock) as usize - ptr as usize },
+        0usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_hw_spinlock_t),
+            "::",
+            stringify!(slock)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).tickets) as usize - ptr as usize },
+        0usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_hw_spinlock_t),
+            "::",
+            stringify!(tickets)
+        )
+    );
+}
+extern "C" {
+    pub fn _thread_start();
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct rt_spinlock {
+    pub lock: rt_hw_spinlock_t,
+}
+#[test]
+fn bindgen_test_layout_rt_spinlock() {
+    const UNINIT: ::core::mem::MaybeUninit<rt_spinlock> = ::core::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(
+        ::core::mem::size_of::<rt_spinlock>(),
+        4usize,
+        concat!("Size of: ", stringify!(rt_spinlock))
+    );
+    assert_eq!(
+        ::core::mem::align_of::<rt_spinlock>(),
+        4usize,
+        concat!("Alignment of ", stringify!(rt_spinlock))
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).lock) as usize - ptr as usize },
+        0usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_spinlock),
+            "::",
+            stringify!(lock)
+        )
+    );
+}
+#[doc = "< The object is not used."]
+pub const rt_object_class_type_RT_Object_Class_Null: rt_object_class_type = 0;
+#[doc = "< The object is a thread."]
+pub const rt_object_class_type_RT_Object_Class_Thread: rt_object_class_type = 1;
+#[doc = "< The object is a semaphore."]
+pub const rt_object_class_type_RT_Object_Class_Semaphore: rt_object_class_type = 2;
+#[doc = "< The object is a mutex."]
+pub const rt_object_class_type_RT_Object_Class_Mutex: rt_object_class_type = 3;
+#[doc = "< The object is a event."]
+pub const rt_object_class_type_RT_Object_Class_Event: rt_object_class_type = 4;
+#[doc = "< The object is a mail box."]
+pub const rt_object_class_type_RT_Object_Class_MailBox: rt_object_class_type = 5;
+#[doc = "< The object is a message queue."]
+pub const rt_object_class_type_RT_Object_Class_MessageQueue: rt_object_class_type = 6;
+#[doc = "< The object is a memory heap."]
+pub const rt_object_class_type_RT_Object_Class_MemHeap: rt_object_class_type = 7;
+#[doc = "< The object is a memory pool."]
+pub const rt_object_class_type_RT_Object_Class_MemPool: rt_object_class_type = 8;
+#[doc = "< The object is a device."]
+pub const rt_object_class_type_RT_Object_Class_Device: rt_object_class_type = 9;
+#[doc = "< The object is a timer."]
+pub const rt_object_class_type_RT_Object_Class_Timer: rt_object_class_type = 10;
+#[doc = "< The object is a memory."]
+pub const rt_object_class_type_RT_Object_Class_Memory: rt_object_class_type = 11;
+#[doc = "< The object is a custom object"]
+pub const rt_object_class_type_RT_Object_Class_Custom: rt_object_class_type = 12;
+#[doc = "< The object is unknown."]
+pub const rt_object_class_type_RT_Object_Class_Unknown: rt_object_class_type = 13;
+#[doc = "< The object is a static object."]
+pub const rt_object_class_type_RT_Object_Class_Static: rt_object_class_type = 128;
+pub type rt_object_class_type = core::ffi::c_uint;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct rt_object {
@@ -402,52 +950,16 @@ fn bindgen_test_layout_rt_object() {
     );
 }
 pub type rt_object_t = *mut rt_object;
-#[doc = "< The object is not used."]
-pub const rt_object_class_type_RT_Object_Class_Null: rt_object_class_type = 0;
-#[doc = "< The object is a thread."]
-pub const rt_object_class_type_RT_Object_Class_Thread: rt_object_class_type = 1;
-#[doc = "< The object is a semaphore."]
-pub const rt_object_class_type_RT_Object_Class_Semaphore: rt_object_class_type = 2;
-#[doc = "< The object is a mutex."]
-pub const rt_object_class_type_RT_Object_Class_Mutex: rt_object_class_type = 3;
-#[doc = "< The object is a event."]
-pub const rt_object_class_type_RT_Object_Class_Event: rt_object_class_type = 4;
-#[doc = "< The object is a mail box."]
-pub const rt_object_class_type_RT_Object_Class_MailBox: rt_object_class_type = 5;
-#[doc = "< The object is a message queue."]
-pub const rt_object_class_type_RT_Object_Class_MessageQueue: rt_object_class_type = 6;
-#[doc = "< The object is a memory heap."]
-pub const rt_object_class_type_RT_Object_Class_MemHeap: rt_object_class_type = 7;
-#[doc = "< The object is a memory pool."]
-pub const rt_object_class_type_RT_Object_Class_MemPool: rt_object_class_type = 8;
-#[doc = "< The object is a device."]
-pub const rt_object_class_type_RT_Object_Class_Device: rt_object_class_type = 9;
-#[doc = "< The object is a timer."]
-pub const rt_object_class_type_RT_Object_Class_Timer: rt_object_class_type = 10;
-#[doc = "< The object is a module."]
-pub const rt_object_class_type_RT_Object_Class_Module: rt_object_class_type = 11;
-#[doc = "< The object is a memory."]
-pub const rt_object_class_type_RT_Object_Class_Memory: rt_object_class_type = 12;
-#[doc = "< The object is a channel"]
-pub const rt_object_class_type_RT_Object_Class_Channel: rt_object_class_type = 13;
-#[doc = "< The object is a custom object"]
-pub const rt_object_class_type_RT_Object_Class_Custom: rt_object_class_type = 14;
-#[doc = "< The object is unknown."]
-pub const rt_object_class_type_RT_Object_Class_Unknown: rt_object_class_type = 15;
-#[doc = "< The object is a static object."]
-pub const rt_object_class_type_RT_Object_Class_Static: rt_object_class_type = 128;
-#[doc = "  The object type can be one of the follows with specific\n  macros enabled:\n  - Thread\n  - Semaphore\n  - Mutex\n  - Event\n  - MailBox\n  - MessageQueue\n  - MemHeap\n  - MemPool\n  - Device\n  - Timer\n  - Module\n  - Unknown\n  - Static"]
-pub type rt_object_class_type = core::ffi::c_uint;
-#[doc = " The information of the kernel object"]
 #[repr(C)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Copy, Clone)]
 pub struct rt_object_information {
-    #[doc = "< object class type"]
-    pub type_: rt_object_class_type,
+    pub spinlock: rt_spinlock,
     #[doc = "< object list"]
     pub object_list: rt_list_t,
     #[doc = "< object size"]
     pub object_size: rt_size_t,
+    #[doc = "< object class type"]
+    pub type_: rt_object_class_type,
 }
 #[test]
 fn bindgen_test_layout_rt_object_information() {
@@ -456,7 +968,7 @@ fn bindgen_test_layout_rt_object_information() {
     let ptr = UNINIT.as_ptr();
     assert_eq!(
         ::core::mem::size_of::<rt_object_information>(),
-        16usize,
+        20usize,
         concat!("Size of: ", stringify!(rt_object_information))
     );
     assert_eq!(
@@ -465,13 +977,13 @@ fn bindgen_test_layout_rt_object_information() {
         concat!("Alignment of ", stringify!(rt_object_information))
     );
     assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).type_) as usize - ptr as usize },
+        unsafe { ::core::ptr::addr_of!((*ptr).spinlock) as usize - ptr as usize },
         0usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_object_information),
             "::",
-            stringify!(type_)
+            stringify!(spinlock)
         )
     );
     assert_eq!(
@@ -492,6 +1004,16 @@ fn bindgen_test_layout_rt_object_information() {
             stringify!(rt_object_information),
             "::",
             stringify!(object_size)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).type_) as usize - ptr as usize },
+        16usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_object_information),
+            "::",
+            stringify!(type_)
         )
     );
 }
@@ -592,168 +1114,93 @@ pub const RT_INTERRUPTIBLE: _bindgen_ty_1 = 0;
 pub const RT_KILLABLE: _bindgen_ty_1 = 1;
 pub const RT_UNINTERRUPTIBLE: _bindgen_ty_1 = 2;
 pub type _bindgen_ty_1 = core::ffi::c_uint;
-#[doc = " CPUs definitions\n"]
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct rt_cpu {
-    pub current_thread: *mut rt_thread,
-    pub irq_nest: rt_uint16_t,
-    pub irq_switch_flag: rt_uint8_t,
-    pub current_priority: rt_uint8_t,
-    pub priority_table: [rt_list_t; 256usize],
-    pub priority_group: rt_uint32_t,
-    pub ready_table: [rt_uint8_t; 32usize],
-    pub tick: rt_tick_t,
+    _unused: [u8; 0],
+}
+pub type rt_thread_cleanup_t = ::core::option::Option<unsafe extern "C" fn(tid: *mut rt_thread)>;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct rt_stack {
+    pub sp: rt_ubase_t,
+    pub stack_addr: *mut rt_uint8_t,
+    pub size: rt_size_t,
 }
 #[test]
-fn bindgen_test_layout_rt_cpu() {
-    const UNINIT: ::core::mem::MaybeUninit<rt_cpu> = ::core::mem::MaybeUninit::uninit();
+fn bindgen_test_layout_rt_stack() {
+    const UNINIT: ::core::mem::MaybeUninit<rt_stack> = ::core::mem::MaybeUninit::uninit();
     let ptr = UNINIT.as_ptr();
     assert_eq!(
-        ::core::mem::size_of::<rt_cpu>(),
-        2096usize,
-        concat!("Size of: ", stringify!(rt_cpu))
+        ::core::mem::size_of::<rt_stack>(),
+        12usize,
+        concat!("Size of: ", stringify!(rt_stack))
     );
     assert_eq!(
-        ::core::mem::align_of::<rt_cpu>(),
+        ::core::mem::align_of::<rt_stack>(),
         4usize,
-        concat!("Alignment of ", stringify!(rt_cpu))
+        concat!("Alignment of ", stringify!(rt_stack))
     );
     assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).current_thread) as usize - ptr as usize },
+        unsafe { ::core::ptr::addr_of!((*ptr).sp) as usize - ptr as usize },
         0usize,
         concat!(
             "Offset of field: ",
-            stringify!(rt_cpu),
+            stringify!(rt_stack),
             "::",
-            stringify!(current_thread)
+            stringify!(sp)
         )
     );
     assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).irq_nest) as usize - ptr as usize },
+        unsafe { ::core::ptr::addr_of!((*ptr).stack_addr) as usize - ptr as usize },
         4usize,
         concat!(
             "Offset of field: ",
-            stringify!(rt_cpu),
+            stringify!(rt_stack),
             "::",
-            stringify!(irq_nest)
+            stringify!(stack_addr)
         )
     );
     assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).irq_switch_flag) as usize - ptr as usize },
-        6usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_cpu),
-            "::",
-            stringify!(irq_switch_flag)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).current_priority) as usize - ptr as usize },
-        7usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_cpu),
-            "::",
-            stringify!(current_priority)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).priority_table) as usize - ptr as usize },
+        unsafe { ::core::ptr::addr_of!((*ptr).size) as usize - ptr as usize },
         8usize,
         concat!(
             "Offset of field: ",
-            stringify!(rt_cpu),
+            stringify!(rt_stack),
             "::",
-            stringify!(priority_table)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).priority_group) as usize - ptr as usize },
-        2056usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_cpu),
-            "::",
-            stringify!(priority_group)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).ready_table) as usize - ptr as usize },
-        2060usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_cpu),
-            "::",
-            stringify!(ready_table)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).tick) as usize - ptr as usize },
-        2092usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_cpu),
-            "::",
-            stringify!(tick)
+            stringify!(size)
         )
     );
 }
-pub type rt_thread_cleanup_t = ::core::option::Option<unsafe extern "C" fn(tid: *mut rt_thread)>;
-#[doc = " Thread structure"]
 #[repr(C)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Copy, Clone)]
 pub struct rt_thread {
     pub parent: rt_object,
-    #[doc = "< the thread list"]
     pub tlist: rt_list_t,
-    #[doc = "< stack point"]
-    pub sp: *mut core::ffi::c_void,
-    #[doc = "< entry"]
-    pub entry: *mut core::ffi::c_void,
-    #[doc = "< parameter"]
-    pub parameter: *mut core::ffi::c_void,
-    #[doc = "< stack address"]
-    pub stack_addr: *mut core::ffi::c_void,
-    #[doc = "< stack size"]
-    pub stack_size: rt_uint32_t,
-    #[doc = "< error code"]
-    pub error: rt_err_t,
-    #[doc = "< thread status"]
     pub stat: rt_uint8_t,
-    #[doc = "< thread is bind to cpu"]
-    pub bind_cpu: rt_uint8_t,
-    #[doc = "< process on cpu"]
-    pub oncpu: rt_uint8_t,
-    #[doc = "< scheduler lock count"]
-    pub scheduler_lock_nest: rt_uint16_t,
-    #[doc = "< cpus lock count"]
-    pub cpus_lock_nest: rt_int16_t,
-    #[doc = "< critical lock count"]
-    pub critical_lock_nest: rt_uint16_t,
-    #[doc = "< current priority"]
+    pub sched_flag_ttmr_set: rt_uint8_t,
     pub current_priority: rt_uint8_t,
-    #[doc = "< initialized priority"]
     pub init_priority: rt_uint8_t,
     pub number: rt_uint8_t,
     pub high_mask: rt_uint8_t,
-    #[doc = "< priority number mask"]
     pub number_mask: rt_uint32_t,
+    pub init_tick: rt_tick_t,
+    pub remaining_tick: rt_tick_t,
+    pub thread_timer: rt_timer,
+    pub sp: rt_ubase_t,
+    pub stack_addr: *mut rt_uint8_t,
+    pub stack_size: rt_size_t,
+    pub entry: *mut core::ffi::c_void,
+    pub parameter: *mut core::ffi::c_void,
+    pub cleanup: *mut core::ffi::c_void,
+    pub bind_cpu: rt_uint8_t,
+    pub oncpu: rt_uint8_t,
+    pub spinlock: rt_spinlock,
+    pub error: rt_err_t,
     pub taken_object_list: rt_list_t,
     pub pending_object: rt_object_t,
     pub event_set: rt_uint32_t,
     pub event_info: rt_uint8_t,
-    #[doc = "< thread's initialized tick"]
-    pub init_tick: rt_ubase_t,
-    #[doc = "< remaining tick"]
-    pub remaining_tick: rt_ubase_t,
-    #[doc = "< built-in thread timer"]
-    pub thread_timer: rt_timer,
-    #[doc = "< cleanup function when thread exit"]
-    pub cleanup: rt_thread_cleanup_t,
-    #[doc = "< private user data beyond this thread"]
-    pub user_data: rt_ubase_t,
 }
 #[test]
 fn bindgen_test_layout_rt_thread() {
@@ -761,7 +1208,7 @@ fn bindgen_test_layout_rt_thread() {
     let ptr = UNINIT.as_ptr();
     assert_eq!(
         ::core::mem::size_of::<rt_thread>(),
-        152usize,
+        148usize,
         concat!("Size of: ", stringify!(rt_thread))
     );
     assert_eq!(
@@ -790,68 +1237,8 @@ fn bindgen_test_layout_rt_thread() {
         )
     );
     assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).sp) as usize - ptr as usize },
-        28usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_thread),
-            "::",
-            stringify!(sp)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).entry) as usize - ptr as usize },
-        32usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_thread),
-            "::",
-            stringify!(entry)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).parameter) as usize - ptr as usize },
-        36usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_thread),
-            "::",
-            stringify!(parameter)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).stack_addr) as usize - ptr as usize },
-        40usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_thread),
-            "::",
-            stringify!(stack_addr)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).stack_size) as usize - ptr as usize },
-        44usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_thread),
-            "::",
-            stringify!(stack_size)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).error) as usize - ptr as usize },
-        48usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_thread),
-            "::",
-            stringify!(error)
-        )
-    );
-    assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).stat) as usize - ptr as usize },
-        52usize,
+        28usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_thread),
@@ -860,58 +1247,18 @@ fn bindgen_test_layout_rt_thread() {
         )
     );
     assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).bind_cpu) as usize - ptr as usize },
-        53usize,
+        unsafe { ::core::ptr::addr_of!((*ptr).sched_flag_ttmr_set) as usize - ptr as usize },
+        29usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_thread),
             "::",
-            stringify!(bind_cpu)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).oncpu) as usize - ptr as usize },
-        54usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_thread),
-            "::",
-            stringify!(oncpu)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).scheduler_lock_nest) as usize - ptr as usize },
-        56usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_thread),
-            "::",
-            stringify!(scheduler_lock_nest)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).cpus_lock_nest) as usize - ptr as usize },
-        58usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_thread),
-            "::",
-            stringify!(cpus_lock_nest)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).critical_lock_nest) as usize - ptr as usize },
-        60usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_thread),
-            "::",
-            stringify!(critical_lock_nest)
+            stringify!(sched_flag_ttmr_set)
         )
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).current_priority) as usize - ptr as usize },
-        62usize,
+        30usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_thread),
@@ -921,7 +1268,7 @@ fn bindgen_test_layout_rt_thread() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).init_priority) as usize - ptr as usize },
-        63usize,
+        31usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_thread),
@@ -931,7 +1278,7 @@ fn bindgen_test_layout_rt_thread() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).number) as usize - ptr as usize },
-        64usize,
+        32usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_thread),
@@ -941,7 +1288,7 @@ fn bindgen_test_layout_rt_thread() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).high_mask) as usize - ptr as usize },
-        65usize,
+        33usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_thread),
@@ -951,7 +1298,7 @@ fn bindgen_test_layout_rt_thread() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).number_mask) as usize - ptr as usize },
-        68usize,
+        36usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_thread),
@@ -960,48 +1307,8 @@ fn bindgen_test_layout_rt_thread() {
         )
     );
     assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).taken_object_list) as usize - ptr as usize },
-        72usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_thread),
-            "::",
-            stringify!(taken_object_list)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).pending_object) as usize - ptr as usize },
-        80usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_thread),
-            "::",
-            stringify!(pending_object)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).event_set) as usize - ptr as usize },
-        84usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_thread),
-            "::",
-            stringify!(event_set)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).event_info) as usize - ptr as usize },
-        88usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_thread),
-            "::",
-            stringify!(event_info)
-        )
-    );
-    assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).init_tick) as usize - ptr as usize },
-        92usize,
+        40usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_thread),
@@ -1011,7 +1318,7 @@ fn bindgen_test_layout_rt_thread() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).remaining_tick) as usize - ptr as usize },
-        96usize,
+        44usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_thread),
@@ -1021,7 +1328,7 @@ fn bindgen_test_layout_rt_thread() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).thread_timer) as usize - ptr as usize },
-        100usize,
+        48usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_thread),
@@ -1030,8 +1337,58 @@ fn bindgen_test_layout_rt_thread() {
         )
     );
     assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).sp) as usize - ptr as usize },
+        92usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_thread),
+            "::",
+            stringify!(sp)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).stack_addr) as usize - ptr as usize },
+        96usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_thread),
+            "::",
+            stringify!(stack_addr)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).stack_size) as usize - ptr as usize },
+        100usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_thread),
+            "::",
+            stringify!(stack_size)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).entry) as usize - ptr as usize },
+        104usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_thread),
+            "::",
+            stringify!(entry)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).parameter) as usize - ptr as usize },
+        108usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_thread),
+            "::",
+            stringify!(parameter)
+        )
+    );
+    assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).cleanup) as usize - ptr as usize },
-        144usize,
+        112usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_thread),
@@ -1040,13 +1397,83 @@ fn bindgen_test_layout_rt_thread() {
         )
     );
     assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).user_data) as usize - ptr as usize },
-        148usize,
+        unsafe { ::core::ptr::addr_of!((*ptr).bind_cpu) as usize - ptr as usize },
+        116usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_thread),
             "::",
-            stringify!(user_data)
+            stringify!(bind_cpu)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).oncpu) as usize - ptr as usize },
+        117usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_thread),
+            "::",
+            stringify!(oncpu)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).spinlock) as usize - ptr as usize },
+        120usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_thread),
+            "::",
+            stringify!(spinlock)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).error) as usize - ptr as usize },
+        124usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_thread),
+            "::",
+            stringify!(error)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).taken_object_list) as usize - ptr as usize },
+        128usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_thread),
+            "::",
+            stringify!(taken_object_list)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).pending_object) as usize - ptr as usize },
+        136usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_thread),
+            "::",
+            stringify!(pending_object)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).event_set) as usize - ptr as usize },
+        140usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_thread),
+            "::",
+            stringify!(event_set)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).event_info) as usize - ptr as usize },
+        144usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_thread),
+            "::",
+            stringify!(event_info)
         )
     );
 }
@@ -3149,6 +3576,12 @@ extern "C" {
     pub fn rt_hw_local_irq_enable(level: rt_base_t);
 }
 extern "C" {
+    pub fn rt_sched_unlock(level: rt_base_t);
+}
+extern "C" {
+    pub fn rt_sched_lock() -> rt_base_t;
+}
+extern "C" {
     pub fn rt_hw_interrupt_is_disabled() -> rt_bool_t;
 }
 extern "C" {
@@ -3191,523 +3624,6 @@ extern "C" {
     #[doc = "  ipi function"]
     pub fn rt_hw_ipi_send(ipi_vector: core::ffi::c_int, cpu_mask: core::ffi::c_uint);
 }
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct rt_hw_exp_stack {
-    pub r0: core::ffi::c_ulong,
-    pub r1: core::ffi::c_ulong,
-    pub r2: core::ffi::c_ulong,
-    pub r3: core::ffi::c_ulong,
-    pub r4: core::ffi::c_ulong,
-    pub r5: core::ffi::c_ulong,
-    pub r6: core::ffi::c_ulong,
-    pub r7: core::ffi::c_ulong,
-    pub r8: core::ffi::c_ulong,
-    pub r9: core::ffi::c_ulong,
-    pub r10: core::ffi::c_ulong,
-    pub fp: core::ffi::c_ulong,
-    pub ip: core::ffi::c_ulong,
-    pub sp: core::ffi::c_ulong,
-    pub lr: core::ffi::c_ulong,
-    pub pc: core::ffi::c_ulong,
-    pub cpsr: core::ffi::c_ulong,
-}
-#[test]
-fn bindgen_test_layout_rt_hw_exp_stack() {
-    const UNINIT: ::core::mem::MaybeUninit<rt_hw_exp_stack> = ::core::mem::MaybeUninit::uninit();
-    let ptr = UNINIT.as_ptr();
-    assert_eq!(
-        ::core::mem::size_of::<rt_hw_exp_stack>(),
-        68usize,
-        concat!("Size of: ", stringify!(rt_hw_exp_stack))
-    );
-    assert_eq!(
-        ::core::mem::align_of::<rt_hw_exp_stack>(),
-        4usize,
-        concat!("Alignment of ", stringify!(rt_hw_exp_stack))
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).r0) as usize - ptr as usize },
-        0usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_hw_exp_stack),
-            "::",
-            stringify!(r0)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).r1) as usize - ptr as usize },
-        4usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_hw_exp_stack),
-            "::",
-            stringify!(r1)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).r2) as usize - ptr as usize },
-        8usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_hw_exp_stack),
-            "::",
-            stringify!(r2)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).r3) as usize - ptr as usize },
-        12usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_hw_exp_stack),
-            "::",
-            stringify!(r3)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).r4) as usize - ptr as usize },
-        16usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_hw_exp_stack),
-            "::",
-            stringify!(r4)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).r5) as usize - ptr as usize },
-        20usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_hw_exp_stack),
-            "::",
-            stringify!(r5)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).r6) as usize - ptr as usize },
-        24usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_hw_exp_stack),
-            "::",
-            stringify!(r6)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).r7) as usize - ptr as usize },
-        28usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_hw_exp_stack),
-            "::",
-            stringify!(r7)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).r8) as usize - ptr as usize },
-        32usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_hw_exp_stack),
-            "::",
-            stringify!(r8)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).r9) as usize - ptr as usize },
-        36usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_hw_exp_stack),
-            "::",
-            stringify!(r9)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).r10) as usize - ptr as usize },
-        40usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_hw_exp_stack),
-            "::",
-            stringify!(r10)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).fp) as usize - ptr as usize },
-        44usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_hw_exp_stack),
-            "::",
-            stringify!(fp)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).ip) as usize - ptr as usize },
-        48usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_hw_exp_stack),
-            "::",
-            stringify!(ip)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).sp) as usize - ptr as usize },
-        52usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_hw_exp_stack),
-            "::",
-            stringify!(sp)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).lr) as usize - ptr as usize },
-        56usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_hw_exp_stack),
-            "::",
-            stringify!(lr)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).pc) as usize - ptr as usize },
-        60usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_hw_exp_stack),
-            "::",
-            stringify!(pc)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).cpsr) as usize - ptr as usize },
-        64usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_hw_exp_stack),
-            "::",
-            stringify!(cpsr)
-        )
-    );
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct rt_hw_stack {
-    pub cpsr: core::ffi::c_ulong,
-    pub r0: core::ffi::c_ulong,
-    pub r1: core::ffi::c_ulong,
-    pub r2: core::ffi::c_ulong,
-    pub r3: core::ffi::c_ulong,
-    pub r4: core::ffi::c_ulong,
-    pub r5: core::ffi::c_ulong,
-    pub r6: core::ffi::c_ulong,
-    pub r7: core::ffi::c_ulong,
-    pub r8: core::ffi::c_ulong,
-    pub r9: core::ffi::c_ulong,
-    pub r10: core::ffi::c_ulong,
-    pub fp: core::ffi::c_ulong,
-    pub ip: core::ffi::c_ulong,
-    pub lr: core::ffi::c_ulong,
-    pub pc: core::ffi::c_ulong,
-}
-#[test]
-fn bindgen_test_layout_rt_hw_stack() {
-    const UNINIT: ::core::mem::MaybeUninit<rt_hw_stack> = ::core::mem::MaybeUninit::uninit();
-    let ptr = UNINIT.as_ptr();
-    assert_eq!(
-        ::core::mem::size_of::<rt_hw_stack>(),
-        64usize,
-        concat!("Size of: ", stringify!(rt_hw_stack))
-    );
-    assert_eq!(
-        ::core::mem::align_of::<rt_hw_stack>(),
-        4usize,
-        concat!("Alignment of ", stringify!(rt_hw_stack))
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).cpsr) as usize - ptr as usize },
-        0usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_hw_stack),
-            "::",
-            stringify!(cpsr)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).r0) as usize - ptr as usize },
-        4usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_hw_stack),
-            "::",
-            stringify!(r0)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).r1) as usize - ptr as usize },
-        8usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_hw_stack),
-            "::",
-            stringify!(r1)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).r2) as usize - ptr as usize },
-        12usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_hw_stack),
-            "::",
-            stringify!(r2)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).r3) as usize - ptr as usize },
-        16usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_hw_stack),
-            "::",
-            stringify!(r3)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).r4) as usize - ptr as usize },
-        20usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_hw_stack),
-            "::",
-            stringify!(r4)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).r5) as usize - ptr as usize },
-        24usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_hw_stack),
-            "::",
-            stringify!(r5)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).r6) as usize - ptr as usize },
-        28usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_hw_stack),
-            "::",
-            stringify!(r6)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).r7) as usize - ptr as usize },
-        32usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_hw_stack),
-            "::",
-            stringify!(r7)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).r8) as usize - ptr as usize },
-        36usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_hw_stack),
-            "::",
-            stringify!(r8)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).r9) as usize - ptr as usize },
-        40usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_hw_stack),
-            "::",
-            stringify!(r9)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).r10) as usize - ptr as usize },
-        44usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_hw_stack),
-            "::",
-            stringify!(r10)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).fp) as usize - ptr as usize },
-        48usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_hw_stack),
-            "::",
-            stringify!(fp)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).ip) as usize - ptr as usize },
-        52usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_hw_stack),
-            "::",
-            stringify!(ip)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).lr) as usize - ptr as usize },
-        56usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_hw_stack),
-            "::",
-            stringify!(lr)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).pc) as usize - ptr as usize },
-        60usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_hw_stack),
-            "::",
-            stringify!(pc)
-        )
-    );
-}
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub union rt_hw_spinlock_t {
-    pub slock: core::ffi::c_ulong,
-    pub tickets: rt_hw_spinlock_t___arch_tickets,
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct rt_hw_spinlock_t___arch_tickets {
-    pub owner: core::ffi::c_ushort,
-    pub next: core::ffi::c_ushort,
-}
-#[test]
-fn bindgen_test_layout_rt_hw_spinlock_t___arch_tickets() {
-    const UNINIT: ::core::mem::MaybeUninit<rt_hw_spinlock_t___arch_tickets> =
-        ::core::mem::MaybeUninit::uninit();
-    let ptr = UNINIT.as_ptr();
-    assert_eq!(
-        ::core::mem::size_of::<rt_hw_spinlock_t___arch_tickets>(),
-        4usize,
-        concat!("Size of: ", stringify!(rt_hw_spinlock_t___arch_tickets))
-    );
-    assert_eq!(
-        ::core::mem::align_of::<rt_hw_spinlock_t___arch_tickets>(),
-        2usize,
-        concat!("Alignment of ", stringify!(rt_hw_spinlock_t___arch_tickets))
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).owner) as usize - ptr as usize },
-        0usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_hw_spinlock_t___arch_tickets),
-            "::",
-            stringify!(owner)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).next) as usize - ptr as usize },
-        2usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_hw_spinlock_t___arch_tickets),
-            "::",
-            stringify!(next)
-        )
-    );
-}
-#[test]
-fn bindgen_test_layout_rt_hw_spinlock_t() {
-    const UNINIT: ::core::mem::MaybeUninit<rt_hw_spinlock_t> = ::core::mem::MaybeUninit::uninit();
-    let ptr = UNINIT.as_ptr();
-    assert_eq!(
-        ::core::mem::size_of::<rt_hw_spinlock_t>(),
-        4usize,
-        concat!("Size of: ", stringify!(rt_hw_spinlock_t))
-    );
-    assert_eq!(
-        ::core::mem::align_of::<rt_hw_spinlock_t>(),
-        4usize,
-        concat!("Alignment of ", stringify!(rt_hw_spinlock_t))
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).slock) as usize - ptr as usize },
-        0usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_hw_spinlock_t),
-            "::",
-            stringify!(slock)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).tickets) as usize - ptr as usize },
-        0usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_hw_spinlock_t),
-            "::",
-            stringify!(tickets)
-        )
-    );
-}
-extern "C" {
-    pub fn _thread_start();
-}
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct rt_spinlock {
-    pub lock: rt_hw_spinlock_t,
-}
-#[test]
-fn bindgen_test_layout_rt_spinlock() {
-    const UNINIT: ::core::mem::MaybeUninit<rt_spinlock> = ::core::mem::MaybeUninit::uninit();
-    let ptr = UNINIT.as_ptr();
-    assert_eq!(
-        ::core::mem::size_of::<rt_spinlock>(),
-        4usize,
-        concat!("Size of: ", stringify!(rt_spinlock))
-    );
-    assert_eq!(
-        ::core::mem::align_of::<rt_spinlock>(),
-        4usize,
-        concat!("Alignment of ", stringify!(rt_spinlock))
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).lock) as usize - ptr as usize },
-        0usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_spinlock),
-            "::",
-            stringify!(lock)
-        )
-    );
-}
 extern "C" {
     pub fn rt_hw_spin_lock_init(lock: *mut rt_hw_spinlock_t);
 }
@@ -3716,12 +3632,6 @@ extern "C" {
 }
 extern "C" {
     pub fn rt_hw_spin_unlock(lock: *mut rt_hw_spinlock_t);
-}
-extern "C" {
-    pub static mut _cpus_lock: rt_hw_spinlock_t;
-}
-extern "C" {
-    pub static mut _rt_critical_lock: rt_hw_spinlock_t;
 }
 extern "C" {
     #[doc = " boot secondary cpu"]
@@ -4426,9 +4336,6 @@ extern "C" {
     pub fn rt_thread_delay(tick: rt_tick_t) -> rt_err_t;
 }
 extern "C" {
-    pub fn rt_thread_delay_until(tick: *mut rt_tick_t, inc_tick: rt_tick_t) -> rt_err_t;
-}
-extern "C" {
     pub fn rt_thread_mdelay(ms: rt_int32_t) -> rt_err_t;
 }
 extern "C" {
@@ -4442,10 +4349,7 @@ extern "C" {
     pub fn rt_thread_suspend(thread: rt_thread_t) -> rt_err_t;
 }
 extern "C" {
-    pub fn rt_thread_suspend_with_flag(
-        thread: rt_thread_t,
-        suspend_flag: core::ffi::c_int,
-    ) -> rt_err_t;
+    pub fn rt_thread_suspend_with_flag(thread: rt_thread_t, suspend_flag: rt_uint32_t) -> rt_err_t;
 }
 extern "C" {
     pub fn rt_thread_resume(thread: rt_thread_t) -> rt_err_t;
@@ -5127,12 +5031,6 @@ extern "C" {
 }
 extern "C" {
     pub fn rt_cpus_unlock(level: rt_base_t);
-}
-extern "C" {
-    pub fn rt_cpu_self() -> *mut rt_cpu;
-}
-extern "C" {
-    pub fn rt_cpu_index(index: core::ffi::c_int) -> *mut rt_cpu;
 }
 extern "C" {
     pub fn rt_interrupt_get_nest() -> rt_uint8_t;

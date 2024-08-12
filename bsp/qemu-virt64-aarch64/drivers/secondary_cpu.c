@@ -19,7 +19,8 @@ extern unsigned long MMUTable[];
 
 void rt_hw_secondary_cpu_bsp_start(void)
 {
-    rt_hw_spin_lock(&_cpus_lock);
+    //rt_hw_spin_lock(&_cpus_lock);
+    rt_cpus_lock();
 
     rt_hw_mmu_ktbl_set((unsigned long)MMUTable);
 

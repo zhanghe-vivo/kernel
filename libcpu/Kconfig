@@ -210,7 +210,3 @@ config ARCH_RISCV64
 
 config ARCH_HOST_SIMULATOR
     bool
-
-config ARCH_CPU_STACK_GROWS_UPWARD
-    bool
-    default n

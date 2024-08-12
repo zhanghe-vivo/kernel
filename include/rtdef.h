@@ -499,6 +499,7 @@ typedef struct rt_slist_node rt_slist_t;                /**< Type for single lis
  */
 #define RT_OBJECT_FLAG_MODULE           0x80            /**< is module object. */
 
+#ifndef USE_RUST
 /**
  * Base structure of Kernel object
  */
@@ -571,6 +572,9 @@ struct rt_object_information
     rt_list_t                 object_list;              /**< object list */
     rt_size_t                 object_size;              /**< object size */
 };
+#else
+#include "rust_object.inc"
+#endif
 
 /**
  * The hook function call macro
@@ -616,6 +620,8 @@ struct rt_object_information
 
 #define RT_TIMER_FLAG_HARD_TIMER        0x0             /**< hard timer,the timer's callback function will be called in tick isr. */
 #define RT_TIMER_FLAG_SOFT_TIMER        0x4             /**< soft timer,the timer's callback function will be called in timer thread. */
+#define RT_TIMER_FLAG_THREAD_TIMER \
+    (0x10 | RT_TIMER_FLAG_HARD_TIMER)                    /**< thread timer that cooperates with scheduler directly */
 
 #define RT_TIMER_CTRL_SET_TIME          0x0             /**< set timer control command */
 #define RT_TIMER_CTRL_GET_TIME          0x1             /**< get timer control command */
@@ -738,30 +744,9 @@ enum
 #define RT_STOP_IPI                     1
 #endif /* RT_STOP_IPI */
 
-/**
- * CPUs definitions
- *
- */
-struct rt_cpu
-{
-    struct rt_thread *current_thread;
-
-    rt_uint16_t irq_nest;
-    rt_uint8_t  irq_switch_flag;
-
-    rt_uint8_t current_priority;
-    rt_list_t priority_table[RT_THREAD_PRIORITY_MAX];
-#if RT_THREAD_PRIORITY_MAX > 32
-    rt_uint32_t priority_group;
-    rt_uint8_t ready_table[32];
-#else
-    rt_uint32_t priority_group;
-#endif /* RT_THREAD_PRIORITY_MAX > 32 */
-
-    rt_tick_t tick;
-};
-
 #endif /* RT_USING_SMP */
+
+struct rt_cpu;
 
 struct rt_thread;
 
@@ -841,6 +826,7 @@ struct rt_user_context
 
 typedef void (*rt_thread_cleanup_t)(struct rt_thread *tid);
 
+#ifndef USE_RUST
 /**
  * Thread structure
  */
@@ -853,22 +839,11 @@ struct rt_thread
     void                        *sp;                    /**< stack point */
     void                        *entry;                 /**< entry */
     void                        *parameter;             /**< parameter */
+    rt_thread_cleanup_t         cleanup;                /**< cleanup function when thread exit */
     void                        *stack_addr;            /**< stack address */
     rt_uint32_t                 stack_size;             /**< stack size */
 
-    /* error code */
-    rt_err_t                    error;                  /**< error code */
-
-    rt_uint8_t                  stat;                   /**< thread status */
-
-#ifdef RT_USING_SMP
-    rt_uint8_t                  bind_cpu;               /**< thread is bind to cpu */
-    rt_uint8_t                  oncpu;                  /**< process on cpu */
-
-    rt_uint16_t                 scheduler_lock_nest;    /**< scheduler lock count */
-    rt_int16_t                  cpus_lock_nest;         /**< cpus lock count */
-    rt_uint16_t                 critical_lock_nest;     /**< critical lock count */
-#endif /*RT_USING_SMP*/
+    rt_uint16_t                  stat;                   /**< thread status */
 
     /* priority */
     rt_uint8_t                  current_priority;       /**< current priority */
@@ -878,6 +853,23 @@ struct rt_thread
     rt_uint8_t                  high_mask;
 #endif /* RT_THREAD_PRIORITY_MAX > 32 */
     rt_uint32_t                 number_mask;            /**< priority number mask */
+
+    rt_tick_t                   init_tick;              /**< thread's initialized tick */
+    rt_tick_t                   remaining_tick;         /**< remaining tick */
+
+    struct rt_timer             thread_timer;           /**< built-in thread timer */
+
+    /* error code */
+    rt_err_t                    error;                  /**< error code */  
+
+#ifdef RT_USING_SMP
+    rt_uint8_t                  bind_cpu;               /**< thread is bind to cpu */
+    rt_uint8_t                  oncpu;                  /**< process on cpu */
+
+    // rt_uint16_t                 scheduler_lock_nest;    /**< scheduler lock count */
+    // rt_int16_t                  cpus_lock_nest;         /**< cpus lock count */
+    rt_uint16_t                 critical_lock_nest;     /**< critical lock count */
+#endif /*RT_USING_SMP*/
 
 #ifdef RT_USING_MUTEX
     /* object for IPC */
@@ -902,9 +894,6 @@ struct rt_thread
     void                        *si_list;               /**< the signal infor list */
 #endif /* RT_USING_SIGNALS */
 
-    rt_ubase_t                  init_tick;              /**< thread's initialized tick */
-    rt_ubase_t                  remaining_tick;         /**< remaining tick */
-
 #ifdef RT_USING_CPU_USAGE
     rt_uint64_t                 duration_tick;          /**< cpu usage tick */
 #endif /* RT_USING_CPU_USAGE */
@@ -912,10 +901,6 @@ struct rt_thread
 #ifdef RT_USING_PTHREADS
     void                        *pthread_data;          /**< the handle of pthread data, adapt 32/64bit */
 #endif /* RT_USING_PTHREADS */
-
-    struct rt_timer             thread_timer;           /**< built-in thread timer */
-
-    rt_thread_cleanup_t         cleanup;                /**< cleanup function when thread exit */
 
     /* light weight process if present */
 #ifdef RT_USING_SMART
@@ -948,8 +933,12 @@ struct rt_thread
 #endif /* ARCH_MM_MMU */
 #endif /* RT_USING_SMART */
 
-    rt_ubase_t                  user_data;              /**< private user data beyond this thread */
+    // rt_ubase_t                  user_data;              /**< private user data beyond this thread */
 };
+#else
+#include "rust_thread.inc"
+#endif
+
 typedef struct rt_thread *rt_thread_t;
 
 /**@}*/

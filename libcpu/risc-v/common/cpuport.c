@@ -16,11 +16,11 @@
 #include "cpuport.h"
 #include "rt_hw_stack_frame.h"
 
-#ifndef RT_USING_SMP
-volatile rt_ubase_t  rt_interrupt_from_thread = 0;
-volatile rt_ubase_t  rt_interrupt_to_thread   = 0;
-volatile rt_uint32_t rt_thread_switch_interrupt_flag = 0;
-#endif
+// #ifndef RT_USING_SMP
+// volatile rt_ubase_t  rt_interrupt_from_thread = 0;
+// volatile rt_ubase_t  rt_interrupt_to_thread   = 0;
+// volatile rt_uint32_t rt_thread_switch_interrupt_flag = 0;
+// #endif
 
 /**
  * This function will initialize thread stack

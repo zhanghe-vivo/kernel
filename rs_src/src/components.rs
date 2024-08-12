@@ -1,4 +1,5 @@
 use crate::c_str;
+use crate::cpu::Cpus;
 use crate::kprintf;
 use crate::rt_bindings::*;
 use paste::paste;
@@ -7,7 +8,7 @@ use paste::paste;
     not(feature = "RT_MAIN_THREAD_STACK_SIZE"),
     feature = "RT_USING_USER_MAIN"
 ))]
-pub const RT_MAIN_THREAD_STACK_SIZE: u32 = 2048;
+pub const RT_MAIN_THREAD_STACK_SIZE: u32 = 4096;
 
 #[cfg(all(
     not(feature = "RT_MAIN_THREAD_PRIORITY"),
@@ -230,9 +231,9 @@ pub extern "C" fn rt_components_init() {
         while desc < &rt_init_desc_rti_end {
             unsafe {
                 let fn_name = (*desc).fn_name;
-                kprintf!("initialize %s", fn_name);
+                kprintf!(b"initialize %s", fn_name);
                 let result = ((*desc).fn_ptr)();
-                kprintf!(":%d done\n", result);
+                kprintf!(b":%d done\n", result);
                 desc = desc.add(1);
             }
         }
@@ -317,7 +318,7 @@ pub extern "C" fn rt_application_init() {
 #[no_mangle]
 pub extern "C" fn rtthread_startup() -> i32 {
     unsafe {
-        rt_hw_interrupt_disable();
+        rt_hw_local_irq_disable();
         rt_hw_board_init();
         rt_show_version();
         rt_system_timer_init();
@@ -331,7 +332,7 @@ pub extern "C" fn rtthread_startup() -> i32 {
         rt_thread_idle_init();
         #[cfg(feature = "RT_USING_SMP")]
         {
-            rt_hw_spin_lock(&mut _cpus_lock);
+            Cpus::lock_cpus();
         }
         rt_system_scheduler_start();
     }

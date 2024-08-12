@@ -32,6 +32,7 @@ init_mtbl:
 .text
 /* reset entry */
 .globl _reset
+.globl secondary_cpu_entry
 _reset:
 #ifdef ARCH_ARMV8
     /* Check for HYP mode */
@@ -218,6 +219,11 @@ bss_loop:
     mcr p15, 0, r1, c1, c0, 1   /* enable smp */
 #endif
 
+#ifdef USE_RUST
+    /* init static struct before mutex is used below. */
+    bl init_cpus
+#endif
+
     /**
      * void rt_hw_init_mmu_table(struct mem_desc *mdesc, rt_uint32_t size)
      * initialize the mmu table and enable mmu
@@ -400,15 +406,13 @@ vector_fiq:
 .globl      rt_interrupt_from_thread
 .globl      rt_interrupt_to_thread
 
-.globl      rt_current_thread
 .globl      vmm_thread
 .globl      vmm_virq_check
 
     .align  5
 .globl vector_irq
 vector_irq:
-#ifdef RT_USING_SMP
-    stmfd   sp!, {r0, r1}
+    stmfd   sp!, {r0, r1}   /* save original r0, r1 to sp */
     cps     #Mode_SVC
     mov     r0, sp          /* svc_sp */
     mov     r1, lr          /* svc_lr */
@@ -418,9 +422,9 @@ vector_irq:
     stmfd   r0!, {r1, lr}     /* svc_lr, svc_pc */
     stmfd   r0!, {r2 - r12}
     ldmfd   sp!, {r1, r2}     /* original r0, r1 */
-    stmfd   r0!, {r1 - r2}
+    stmfd   r0!, {r1, r2}
     mrs     r1,  spsr         /* original mode */
-    stmfd   r0!, {r1}
+    stmfd   r0!, {r1}         /* use in rt_hw_context_switch_exit */
 
 #ifdef RT_USING_SMART
     stmfd   r0, {r13, r14}^   /* usr_sp, usr_lr */
@@ -455,140 +459,6 @@ vector_irq:
     bl      rt_scheduler_do_irq_switch
 
     b       rt_hw_context_switch_exit
-
-#else
-    stmfd   sp!, {r0-r12,lr}
-
-    bl      rt_interrupt_enter
-    bl      rt_hw_trap_irq
-    bl      rt_interrupt_leave
-
-    /* if rt_thread_switch_interrupt_flag set, jump to
-     * rt_hw_context_switch_interrupt_do and don't return */
-    ldr     r0, =rt_thread_switch_interrupt_flag
-    ldr     r1, [r0]
-    cmp     r1, #1
-    beq     rt_hw_context_switch_interrupt_do
-
-#ifdef RT_USING_SMART
-    ldmfd   sp!, {r0-r12,lr}
-    cps     #Mode_SVC
-    push    {r0-r12}
-    mov     r7, lr
-    cps     #Mode_IRQ
-    mrs     r4, spsr
-    sub     r5, lr, #4
-    cps     #Mode_SVC
-    and     r6, r4, #0x1f
-    cmp     r6, #0x10
-    bne     1f
-    msr     spsr_csxf, r4
-    mov     lr, r5
-    pop     {r0-r12}
-    b       arch_ret_to_user
-1:
-    mov     lr, r7
-    cps     #Mode_IRQ
-    msr     spsr_csxf, r4
-    mov     lr, r5
-    cps     #Mode_SVC
-    pop     {r0-r12}
-    cps     #Mode_IRQ
-    movs    pc, lr
-#else
-    ldmfd   sp!, {r0-r12,lr}
-    subs    pc,  lr, #4
-#endif
-
-rt_hw_context_switch_interrupt_do:
-    mov     r1,  #0             /* clear flag */
-    str     r1,  [r0]
-
-    mov     r1, sp              /* r1 point to {r0-r3} in stack */
-    add     sp, sp, #4*4
-    ldmfd   sp!, {r4-r12,lr}    /* reload saved registers */
-    mrs     r0,  spsr           /* get cpsr of interrupt thread */
-    sub     r2,  lr, #4         /* save old task's pc to r2 */
-
-    /* Switch to SVC mode with no interrupt. If the usr mode guest is
-     * interrupted, this will just switch to the stack of kernel space.
-     * save the registers in kernel space won't trigger data abort. */
-    msr     cpsr_c, #I_Bit|F_Bit|Mode_SVC
-
-    stmfd   sp!, {r2}           /* push old task's pc */
-    stmfd   sp!, {r4-r12,lr}    /* push old task's lr,r12-r4 */
-    ldmfd   r1,  {r1-r4}        /* restore r0-r3 of the interrupt thread */
-    stmfd   sp!, {r1-r4}        /* push old task's r0-r3 */
-    stmfd   sp!, {r0}           /* push old task's cpsr */
-
-#ifdef RT_USING_SMART
-    stmfd   sp, {r13, r14}^     /*push usr_sp, usr_lr */
-    sub     sp, #8
-#endif
-
-#ifdef RT_USING_FPU
-    /* fpu context */
-    vmrs r6, fpexc
-    tst  r6, #(1<<30)
-    beq 1f
-    vstmdb sp!, {d0-d15}
-    vstmdb sp!, {d16-d31}
-    vmrs r5, fpscr
-    stmfd sp!, {r5}
-1:
-    stmfd sp!, {r6}
-#endif
-
-    ldr     r4,  =rt_interrupt_from_thread
-    ldr     r5,  [r4]
-    str     sp,  [r5]       /* store sp in preempted tasks's TCB */
-
-    ldr     r6,  =rt_interrupt_to_thread
-    ldr     r6,  [r6]
-    ldr     sp,  [r6]       /* get new task's stack pointer */
-
-#ifdef RT_USING_SMART
-    bl      rt_thread_self
-    mov     r4, r0
-    bl      lwp_aspace_switch
-    mov     r0, r4
-    bl      lwp_user_setting_restore
-#endif
-
-#ifdef RT_USING_FPU
-    /* fpu context */
-    ldmfd sp!, {r6}
-    vmsr fpexc, r6
-    tst  r6, #(1<<30)
-    beq 1f
-    ldmfd sp!, {r5}
-    vmsr fpscr, r5
-    vldmia sp!, {d16-d31}
-    vldmia sp!, {d0-d15}
-1:
-#endif
-
-#ifdef RT_USING_SMART
-    ldmfd sp, {r13, r14}^    /*pop usr_sp, usr_lr */
-    add sp, #8
-#endif
-
-    ldmfd   sp!, {r4}        /* pop new task's cpsr to spsr */
-    msr     spsr_cxsf, r4
-
-#ifdef RT_USING_SMART
-    and     r4, #0x1f
-    cmp     r4, #0x10
-    bne     1f
-    ldmfd   sp!, {r0-r12,lr}
-    ldmfd   sp!, {lr}
-    b       arch_ret_to_user
-1:
-#endif
-    /* pop new task's r0-r12,lr & pc, copy spsr to cpsr */
-    ldmfd   sp!, {r0-r12,lr,pc}^
-
-#endif
 
 .macro push_svc_reg
     sub     sp, sp, #17 * 4         /* Sizeof(struct rt_hw_exp_stack)  */
@@ -697,6 +567,14 @@ vector_resv:
 rt_hw_clz:
     clz r0, r0
     bx lr
+
+#ifdef RT_USING_SMP
+.global rt_hw_cpu_id
+rt_hw_cpu_id:
+    mrc p15, 0, r0, c0, c0, 5   // 读取MPIDR寄存器到r0寄存器
+    and r0, r0, #0xFF           // 屏蔽掉不需要的位，只保留最低的8位
+    bx lr                       // 返回
+#endif
 
 #ifndef RT_CPUS_NR
 #define RT_CPUS_NR 1

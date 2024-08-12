@@ -235,7 +235,7 @@ void rt_application_init(void)
  */
 int rtthread_startup(void)
 {
-    rt_hw_interrupt_disable();
+    rt_hw_local_irq_disable();
 
     /* board level initialization
      * NOTE: please initialize heap inside board initialization.
@@ -266,7 +266,8 @@ int rtthread_startup(void)
     rt_thread_idle_init();
 
 #ifdef RT_USING_SMP
-    rt_hw_spin_lock(&_cpus_lock);
+    //rt_hw_spin_lock(&_cpus_lock);
+    rt_cpus_lock();
 #endif /* RT_USING_SMP */
 
     /* start scheduler */

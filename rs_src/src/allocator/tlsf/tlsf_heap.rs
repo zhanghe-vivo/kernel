@@ -8,7 +8,7 @@ use core::{
     marker::PhantomData,
     mem::{self, MaybeUninit},
     num::NonZeroUsize,
-    ptr::{addr_of, NonNull},
+    ptr::NonNull,
 };
 use pinned_init::*;
 

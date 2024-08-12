@@ -44,7 +44,7 @@ codegen-units = 16
 rpath = false
 
 [features]
-default = ["tlsf", "alloc", "allocator_api"]
+default = ["tlsf", "alloc", "allocator_api",]
 slab = []
 buddy = []
 llff = []
@@ -53,6 +53,7 @@ alloc = []
 allocator_api = []
 # RT-thread config
 RT_USING_SMP = []
+RT_SMP_AUTO_BOOT = []
 RT_USING_HOOK = []
 USE_RUST = []
 RT_HOOK_USING_FUNC_PTR = []

@@ -30,6 +30,10 @@ static void rt_hw_timer2_isr(int vector, void *param)
     timer_clear_pending(0);
 }
 
+#ifdef RT_SMP_AUTO_BOOT
+    void* secondary_cpu_entry = RT_NULL;
+#endif
+
 void rt_hw_secondary_cpu_up(void)
 {
     volatile void **plat_boot_reg = (volatile void **)0x10000034;
@@ -46,6 +50,11 @@ void rt_hw_secondary_cpu_up(void)
 #endif
     *plat_boot_reg-- = (void *)(size_t)-1;
     *plat_boot_reg = (void *)entry;
+
+#ifdef RT_SMP_AUTO_BOOT
+    secondary_cpu_entry = rt_secondary_cpu_entry;
+#endif
+
     rt_hw_dsb();
     rt_hw_ipi_send(0, 1 << 1);
 }
@@ -55,7 +64,8 @@ void rt_hw_secondary_cpu_bsp_start(void)
 {
     rt_hw_vector_init();
 
-    rt_hw_spin_lock(&_cpus_lock);
+    //rt_hw_spin_lock(&_cpus_lock);
+    rt_cpus_lock();
 
     arm_gic_cpu_init(0, 0);
     arm_gic_set_cpu(0, IRQ_PBA8_TIMER0_1, 0x2);

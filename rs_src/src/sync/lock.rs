@@ -4,7 +4,7 @@
 //!
 //! It contains a generic Rust lock and guard that allow for different backends (e.g., mutexes,
 //! spinlocks, raw spinlocks) to be provided with minimal effort.
-
+#![allow(dead_code)]
 use crate::{
     ext_types::{Opaque, ScopeGuard},
     str::CStr,
