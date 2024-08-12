@@ -1571,6 +1571,8 @@ RTM_EXPORT(rt_mutex_control);
 /**@}*/
 #endif /* RT_USING_MUTEX */
 
+#ifndef USE_RUST
+
 #ifdef RT_USING_EVENT
 /**
  * @addtogroup event
@@ -3884,3 +3886,4 @@ RTM_EXPORT(rt_mq_control);
 /**@}*/
 #endif /* RT_USING_MESSAGEQUEUE */
 /**@}*/
+#endif /* USE_RUST */

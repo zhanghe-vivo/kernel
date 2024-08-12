@@ -57,6 +57,7 @@ pub unsafe extern "C" fn rt_mb_create (name : * const core :: ffi :: c_char , si
     rt_debug_not_in_interrupt!();
 
     let mb = rt_object_allocate(rt_object_class_type_RT_Object_Class_MailBox as u32, name) as rt_mailbox_t;
+
     if mb == RT_NULL as rt_mailbox_t {
         return mb;
     }
