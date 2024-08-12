@@ -14,6 +14,7 @@ mod allocator;
 #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
 mod caller_address;
 pub mod clock;
+pub mod components;
 pub mod cpu;
 pub mod error;
 mod ext_types;
@@ -28,7 +29,6 @@ mod static_assert;
 pub mod static_init;
 pub mod str;
 pub mod sync;
-pub mod components;
 
 use core::sync::atomic::{self, Ordering};
 

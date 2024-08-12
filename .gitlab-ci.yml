@@ -26,7 +26,7 @@ up-build:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
   artifacts:
         name: "rtthread.bin"
-        untracked: true
+        untracked: false
         expire_in: 5 mins
         paths:
             - /data01/runner/gitlab-runner/builds/y1GSVydi/0/11154271/rt-thread/bsp/qemu-vexpress-a9/rtthread.bin
@@ -59,7 +59,7 @@ mp-build:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
   artifacts:
         name: "rtthread.bin"
-        untracked: true
+        untracked: false
         expire_in: 5 mins
         paths:
             - /data01/runner/gitlab-runner/builds/y1GSVydi/0/11154271/rt-thread/bsp/qemu-vexpress-a9/rtthread.bin    

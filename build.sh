@@ -92,6 +92,7 @@ else
     scons --clean
     cd ../../rs_src
     cargo clean
+    cargo fmt
     cd ../bsp/$path
     
     parse_config
