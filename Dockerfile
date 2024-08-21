@@ -7,7 +7,8 @@ RUN rustup default nightly && \
     rustup target add armv7a-none-eabi && \
     cargo install cargo-binutils && \
     rustup component add llvm-tools-preview && \
-    rustup component add rust-src
+    rustup component add rust-src \
+    rustup component add rustfmt \
 ADD sources.list /etc/apt/
 RUN DEBIAN_FRONTEND=noninteractive apt-get update -y && \
     apt-get install git   wget bzip2 \
