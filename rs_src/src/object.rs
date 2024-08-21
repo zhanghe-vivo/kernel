@@ -1,5 +1,5 @@
-use crate::{container_of, rt_bindings, rt_list_init};
 use crate::rt_bindings::*;
+use crate::{container_of, rt_bindings, rt_list_init};
 use core::{ffi, ptr};
 
 type DestroyFunc = extern "C" fn(*mut ffi::c_void) -> rt_err_t;

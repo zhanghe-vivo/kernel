@@ -1,26 +1,44 @@
 use crate::{
+    container_of,
+    error::Error,
+    object::{
+        rt_object_allocate, rt_object_delete, rt_object_detach, rt_object_get_type, rt_object_init,
+        rt_object_is_systemobject, *,
+    },
     rt_bindings::*,
-    object::{*, rt_object_get_type, rt_object_allocate, rt_object_delete, rt_object_is_systemobject,
-             rt_object_detach, rt_object_init},
-    sync::ipc_common::*, error::Error,
-    rt_debug_not_in_interrupt, rt_list_entry, container_of};
-use kernel::{rt_bindings::{rt_hw_interrupt_disable, rt_hw_interrupt_enable}, rt_debug_scheduler_available, rt_object_hook_call};
+    rt_debug_not_in_interrupt, rt_list_entry,
+    sync::ipc_common::*,
+};
+use kernel::{
+    rt_bindings::{rt_hw_interrupt_disable, rt_hw_interrupt_enable},
+    rt_debug_scheduler_available, rt_object_hook_call,
+};
 
 use core::{
-    cell::UnsafeCell, mem::MaybeUninit, ffi::{c_char, c_void},
-    ptr::null_mut,
+    cell::UnsafeCell,
+    ffi::{c_char, c_void},
     marker::PhantomPinned,
+    mem::MaybeUninit,
+    ptr::null_mut,
 };
 
 use pinned_init::*;
 
 #[cfg(feature = "RT_USING_EVENT")]
 #[no_mangle]
-pub unsafe extern "C" fn rt_event_init(event : rt_event_t , name: *const core::ffi::c_char, flag: rt_uint8_t) -> rt_err_t {
+pub unsafe extern "C" fn rt_event_init(
+    event: rt_event_t,
+    name: *const core::ffi::c_char,
+    flag: rt_uint8_t,
+) -> rt_err_t {
     assert!(event != null_mut());
     assert!((flag == RT_IPC_FLAG_FIFO as rt_uint8_t) || (flag == RT_IPC_FLAG_PRIO as rt_uint8_t));
 
-    rt_object_init(&mut ((*event).parent.parent), rt_object_class_type_RT_Object_Class_Event as u32, name);
+    rt_object_init(
+        &mut ((*event).parent.parent),
+        rt_object_class_type_RT_Object_Class_Event as u32,
+        name,
+    );
 
     (*event).parent.parent.flag = flag;
 
@@ -35,7 +53,10 @@ pub unsafe extern "C" fn rt_event_init(event : rt_event_t , name: *const core::f
 #[no_mangle]
 pub unsafe extern "C" fn rt_event_detach(event: rt_event_t) -> rt_err_t {
     assert!(event != null_mut());
-    assert!(rt_object_get_type(&mut (*event).parent.parent) == rt_object_class_type_RT_Object_Class_Event as u8);
+    assert!(
+        rt_object_get_type(&mut (*event).parent.parent)
+            == rt_object_class_type_RT_Object_Class_Event as u8
+    );
     assert!(rt_object_is_systemobject(&mut (*event).parent.parent) == RT_TRUE as i32);
 
     _rt_ipc_list_resume_all(&mut ((*event).parent.suspend_thread));
@@ -47,12 +68,15 @@ pub unsafe extern "C" fn rt_event_detach(event: rt_event_t) -> rt_err_t {
 
 #[cfg(all(feature = "RT_USING_EVENT", feature = "RT_USING_HEAP"))]
 #[no_mangle]
-pub unsafe extern "C" fn rt_event_create(name : *const core::ffi::c_char, flag: rt_uint8_t) -> rt_event_t
-{
+pub unsafe extern "C" fn rt_event_create(
+    name: *const core::ffi::c_char,
+    flag: rt_uint8_t,
+) -> rt_event_t {
     assert!((flag == RT_IPC_FLAG_FIFO as rt_uint8_t) || (flag == RT_IPC_FLAG_PRIO as rt_uint8_t));
     rt_debug_not_in_interrupt!();
 
-    let event = rt_object_allocate(rt_object_class_type_RT_Object_Class_Event as u32, name) as rt_event_t;
+    let event =
+        rt_object_allocate(rt_object_class_type_RT_Object_Class_Event as u32, name) as rt_event_t;
     if event == RT_NULL as rt_event_t {
         return event;
     }
@@ -68,10 +92,12 @@ pub unsafe extern "C" fn rt_event_create(name : *const core::ffi::c_char, flag: 
 
 #[cfg(all(feature = "RT_USING_EVENT", feature = "RT_USING_HEAP"))]
 #[no_mangle]
-pub unsafe extern "C" fn rt_event_delete(event: rt_event_t) -> rt_err_t
-{
+pub unsafe extern "C" fn rt_event_delete(event: rt_event_t) -> rt_err_t {
     assert!(event != null_mut());
-    assert!(rt_object_get_type(&mut (*event).parent.parent) == rt_object_class_type_RT_Object_Class_Event as u8);
+    assert!(
+        rt_object_get_type(&mut (*event).parent.parent)
+            == rt_object_class_type_RT_Object_Class_Event as u8
+    );
     assert!(rt_object_is_systemobject(&mut (*event).parent.parent) == RT_FALSE as i32);
 
     rt_debug_not_in_interrupt!();
@@ -85,13 +111,15 @@ pub unsafe extern "C" fn rt_event_delete(event: rt_event_t) -> rt_err_t
 
 #[cfg(feature = "RT_USING_EVENT")]
 #[no_mangle]
-pub unsafe extern "C" fn rt_event_send( event: rt_event_t, set: rt_uint32_t ) -> rt_err_t
-{
+pub unsafe extern "C" fn rt_event_send(event: rt_event_t, set: rt_uint32_t) -> rt_err_t {
     let mut need_schedule = RT_FALSE;
     let mut need_clear_set = 0u32;
 
     assert!(event != null_mut());
-    assert!(rt_object_get_type(&mut (*event).parent.parent) == rt_object_class_type_RT_Object_Class_Event as u8);
+    assert!(
+        rt_object_get_type(&mut (*event).parent.parent)
+            == rt_object_class_type_RT_Object_Class_Event as u8
+    );
 
     if set == 0 {
         return -(RT_ERROR as rt_err_t);
@@ -150,11 +178,19 @@ pub unsafe extern "C" fn rt_event_send( event: rt_event_t, set: rt_uint32_t ) ->
 
 #[cfg(feature = "RT_USING_EVENT")]
 #[no_mangle]
-unsafe extern "C" fn _rt_event_recv(event : rt_event_t, set : rt_uint32_t,option : rt_uint8_t, timeout : rt_int32_t,
-                            recved: * mut rt_uint32_t,
-                            suspend_flag : i32) -> rt_err_t {
+unsafe extern "C" fn _rt_event_recv(
+    event: rt_event_t,
+    set: rt_uint32_t,
+    option: rt_uint8_t,
+    timeout: rt_int32_t,
+    recved: *mut rt_uint32_t,
+    suspend_flag: i32,
+) -> rt_err_t {
     assert!(event != null_mut());
-    assert!(rt_object_get_type(&mut (*event).parent.parent) == rt_object_class_type_RT_Object_Class_Event as u8);
+    assert!(
+        rt_object_get_type(&mut (*event).parent.parent)
+            == rt_object_class_type_RT_Object_Class_Event as u8
+    );
 
     rt_debug_scheduler_available!(RT_TRUE);
 
@@ -204,18 +240,23 @@ unsafe extern "C" fn _rt_event_recv(event : rt_event_t, set : rt_uint32_t,option
         (*thread).event_set = set;
         (*thread).event_info = option;
 
-        let ret = _rt_ipc_list_suspend(&mut (*event).parent.suspend_thread, thread,
-                                       (*event).parent.parent.flag,
-                                       suspend_flag);
+        let ret = _rt_ipc_list_suspend(
+            &mut (*event).parent.suspend_thread,
+            thread,
+            (*event).parent.parent.flag,
+            suspend_flag,
+        );
         if ret != RT_EOK as rt_err_t {
             rt_hw_interrupt_enable(level);
             return ret;
         }
 
         if timeout > 0 {
-            rt_timer_control(&mut (*thread).thread_timer,
-                             RT_TIMER_CTRL_SET_TIME as i32,
-                             (&mut time_out) as *mut i32 as *mut c_void);
+            rt_timer_control(
+                &mut (*thread).thread_timer,
+                RT_TIMER_CTRL_SET_TIME as i32,
+                (&mut time_out) as *mut i32 as *mut c_void,
+            );
             rt_timer_start(&mut (*thread).thread_timer);
         }
 
@@ -243,30 +284,61 @@ unsafe extern "C" fn _rt_event_recv(event : rt_event_t, set : rt_uint32_t,option
 
 #[cfg(feature = "RT_USING_EVENT")]
 #[no_mangle]
-pub unsafe extern "C" fn rt_event_recv(event : rt_event_t, set : rt_uint32_t , option: rt_uint8_t, timeout: rt_int32_t, recved : *mut rt_uint32_t) -> rt_err_t {
-    _rt_event_recv(event, set, option, timeout, recved, RT_UNINTERRUPTIBLE as i32)
+pub unsafe extern "C" fn rt_event_recv(
+    event: rt_event_t,
+    set: rt_uint32_t,
+    option: rt_uint8_t,
+    timeout: rt_int32_t,
+    recved: *mut rt_uint32_t,
+) -> rt_err_t {
+    _rt_event_recv(
+        event,
+        set,
+        option,
+        timeout,
+        recved,
+        RT_UNINTERRUPTIBLE as i32,
+    )
 }
 
 #[cfg(feature = "RT_USING_EVENT")]
 #[no_mangle]
-pub unsafe extern "C" fn rt_event_recv_interruptible(event: rt_event_t, set : rt_uint32_t, option: rt_uint8_t,  timeout: rt_int32_t, recved : *mut rt_uint32_t) -> rt_err_t {
-    return _rt_event_recv(event, set, option, timeout, recved, RT_INTERRUPTIBLE as i32)
+pub unsafe extern "C" fn rt_event_recv_interruptible(
+    event: rt_event_t,
+    set: rt_uint32_t,
+    option: rt_uint8_t,
+    timeout: rt_int32_t,
+    recved: *mut rt_uint32_t,
+) -> rt_err_t {
+    return _rt_event_recv(event, set, option, timeout, recved, RT_INTERRUPTIBLE as i32);
 }
 
 #[cfg(feature = "RT_USING_EVENT")]
 #[no_mangle]
-pub unsafe extern "C" fn rt_event_recv_killable(event : rt_event_t, set : rt_uint32_t,  option : rt_uint8_t, timeout : rt_int32_t, recved: *mut rt_uint32_t) -> rt_err_t {
+pub unsafe extern "C" fn rt_event_recv_killable(
+    event: rt_event_t,
+    set: rt_uint32_t,
+    option: rt_uint8_t,
+    timeout: rt_int32_t,
+    recved: *mut rt_uint32_t,
+) -> rt_err_t {
     _rt_event_recv(event, set, option, timeout, recved, RT_KILLABLE as i32)
 }
 
 #[cfg(feature = "RT_USING_EVENT")]
 #[no_mangle]
-pub unsafe extern "C" fn rt_event_control(event : rt_event_t, cmd : i32, _arg : *const c_void) -> rt_err_t {
+pub unsafe extern "C" fn rt_event_control(
+    event: rt_event_t,
+    cmd: i32,
+    _arg: *const c_void,
+) -> rt_err_t {
     assert!(event != null_mut());
-    assert!(rt_object_get_type(&mut (*event).parent.parent) == rt_object_class_type_RT_Object_Class_Event as u8);
+    assert!(
+        rt_object_get_type(&mut (*event).parent.parent)
+            == rt_object_class_type_RT_Object_Class_Event as u8
+    );
 
-    if cmd == RT_IPC_CMD_RESET as i32
-    {
+    if cmd == RT_IPC_CMD_RESET as i32 {
         let level = rt_hw_interrupt_disable();
 
         _rt_ipc_list_resume_all(&mut (*event).parent.suspend_thread);
@@ -296,11 +368,15 @@ unsafe impl Sync for Event {}
 
 impl Event {
     pub fn new(name: &str) -> Result<Self, Error> {
-        let result = unsafe { rt_event_create(name.as_ptr() as *const c_char, RT_IPC_FLAG_PRIO as u8) };
-        if result == RT_NULL as rt_event_t{
+        let result =
+            unsafe { rt_event_create(name.as_ptr() as *const c_char, RT_IPC_FLAG_PRIO as u8) };
+        if result == RT_NULL as rt_event_t {
             Err(Error::from_errno(RT_ERROR as i32))
         } else {
-            Ok( Self {event_ptr: result, _pin: PhantomPinned {} })
+            Ok(Self {
+                event_ptr: result,
+                _pin: PhantomPinned {},
+            })
         }
     }
 
@@ -322,9 +398,10 @@ impl Event {
         }
     }
 
-    pub fn receive(&self, set: u32, option : u32, timeout: i32) -> Result<u32, Error>{
+    pub fn receive(&self, set: u32, option: u32, timeout: i32) -> Result<u32, Error> {
         let mut retmsg = 0u32;
-        let result = unsafe { rt_event_recv(self.event_ptr, set, option as u8, timeout, &mut retmsg) };
+        let result =
+            unsafe { rt_event_recv(self.event_ptr, set, option as u8, timeout, &mut retmsg) };
         if result == RT_EOK as i32 {
             Ok(retmsg)
         } else {
@@ -332,9 +409,11 @@ impl Event {
         }
     }
 
-    pub fn receive_interruptible(&self, set: u32, option : u32, timeout: i32) -> Result<u32, Error>{
+    pub fn receive_interruptible(&self, set: u32, option: u32, timeout: i32) -> Result<u32, Error> {
         let mut retmsg = 0u32;
-        let result = unsafe { rt_event_recv_interruptible(self.event_ptr, set, option as u8, timeout, &mut retmsg) };
+        let result = unsafe {
+            rt_event_recv_interruptible(self.event_ptr, set, option as u8, timeout, &mut retmsg)
+        };
         if result == RT_EOK as i32 {
             Ok(retmsg)
         } else {
@@ -342,9 +421,11 @@ impl Event {
         }
     }
 
-    pub fn receive_killable(&self, set: u32, option : u32, timeout: i32) -> Result<u32, Error>{
+    pub fn receive_killable(&self, set: u32, option: u32, timeout: i32) -> Result<u32, Error> {
         let mut retmsg = 0u32;
-        let result = unsafe { rt_event_recv_killable(self.event_ptr, set, option as u8, timeout, &mut retmsg) };
+        let result = unsafe {
+            rt_event_recv_killable(self.event_ptr, set, option as u8, timeout, &mut retmsg)
+        };
         if result == RT_EOK as i32 {
             Ok(retmsg)
         } else {
@@ -372,8 +453,14 @@ impl EventStatic {
         }
     }
     pub fn init(&'static self, name: &str) -> Result<(), Error> {
-        let result = unsafe { rt_event_init(self.event_.get().cast(), name.as_ptr() as *const c_char, RT_IPC_FLAG_PRIO as u8) };
-        if result == RT_EOK as i32{
+        let result = unsafe {
+            rt_event_init(
+                self.event_.get().cast(),
+                name.as_ptr() as *const c_char,
+                RT_IPC_FLAG_PRIO as u8,
+            )
+        };
+        if result == RT_EOK as i32 {
             Ok(())
         } else {
             Err(Error::from_errno(result))
@@ -382,17 +469,17 @@ impl EventStatic {
 
     pub fn detach(&'static self) -> Result<(), Error> {
         let result = unsafe { rt_event_detach(self.event_.get().cast()) };
-        if result == RT_EOK as i32{
+        if result == RT_EOK as i32 {
             Ok(())
         } else {
             Err(Error::from_errno(result))
         }
     }
 
-    pub fn get(&'static self) -> Event{
+    pub fn get(&'static self) -> Event {
         Event {
             event_ptr: self.event_.get().cast(),
-            _pin: PhantomPinned {}
+            _pin: PhantomPinned {},
         }
     }
 }
