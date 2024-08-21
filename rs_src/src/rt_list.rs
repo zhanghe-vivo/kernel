@@ -59,9 +59,9 @@ impl rt_list_node {
 /// init the rt_list status
 #[macro_export]
 macro_rules! rt_list_init {
-    ($node:expr) => {
-        $node.prev = $node;
-        $node.next = $node;
+    ($node_ptr:expr) => {
+        (*$node_ptr).prev = $node_ptr;
+        (*$node_ptr).next = $node_ptr;
     };
 }
 
@@ -70,7 +70,7 @@ macro_rules! container_of {
     ($ptr:expr, $type:ty, $($f:tt)*) => {{
         let temp_ptr = $ptr as *const _ as *const u8;
         let temp_offset: usize = core::mem::offset_of!($type, $($f)*);
-        temp_ptr.sub(temp_offset) as *const $type
+        temp_ptr.sub(temp_offset * core::mem::size_of::<u8>()) as *const $type
     }}
 }
 

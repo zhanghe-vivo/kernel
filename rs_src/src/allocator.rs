@@ -51,6 +51,10 @@ static mut RT_MALLOC_HOOK: Option<extern "C" fn(*mut ffi::c_void, usize)> = None
 #[cfg(feature = "RT_USING_HOOK")]
 static mut RT_FREE_HOOK: Option<extern "C" fn(*mut ffi::c_void)> = None;
 
+/// rt_align!(size, align)
+///
+/// the most contiguous size aligned at specified width.
+///
 #[macro_export]
 macro_rules! rt_align {
     ($size:expr, $align:expr) => {

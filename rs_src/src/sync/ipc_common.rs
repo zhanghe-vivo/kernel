@@ -1,4 +1,4 @@
-use core::{ffi, ptr};
+use core::ffi;
 use crate::rt_bindings::*;
 use crate::{rt_list_init, rt_list_entry, container_of};
 #[macro_export]
@@ -67,8 +67,7 @@ unsafe {
             {
                 let s_thread = rt_list_entry!(n, rt_thread, tlist) as *mut rt_thread;
 
-                if ((*thread).current_priority < (*s_thread).current_priority)
-                {
+                if (*thread).current_priority < (*s_thread).current_priority {
                     let insert_to = &mut ((*s_thread).tlist);
                     insert_to.insert_before(&mut ((*thread).tlist));
                 }

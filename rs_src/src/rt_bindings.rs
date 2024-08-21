@@ -5,6 +5,8 @@
 
 include!(concat!(env!("CARGO_MANIFEST_DIR"), "/bindings.rs"));
 
+pub type uint16_t = rt_uint16_t;
+
 #[inline(always)]
 pub fn rt_atomic_load(ptr: *mut rt_atomic_t) -> rt_atomic_t {
     unsafe { rt_hw_atomic_load(ptr) }

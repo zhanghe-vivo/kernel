@@ -4,7 +4,7 @@ use crate::{
              rt_object_detach, rt_object_init},
     sync::ipc_common::*, error::Error,
     rt_debug_not_in_interrupt, rt_list_entry, container_of};
-use kernel::{rt_bindings::{rt_hw_interrupt_disable, rt_hw_interrupt_enable,rt_int16_t}, rt_debug_scheduler_available, rt_object_hook_call};
+use kernel::{rt_bindings::{rt_hw_interrupt_disable, rt_hw_interrupt_enable}, rt_debug_scheduler_available, rt_object_hook_call};
 
 use core::{
     cell::UnsafeCell, mem::MaybeUninit, ffi::{c_char, c_void},
@@ -16,91 +16,82 @@ use pinned_init::*;
 
 #[cfg(feature = "RT_USING_EVENT")]
 #[no_mangle]
-pub extern "C" fn rt_event_init(event : rt_event_t , name: *const core::ffi::c_char, flag: rt_uint8_t) -> rt_err_t {
-    unsafe {
-        assert!(event != null_mut());
-        assert!((flag == RT_IPC_FLAG_FIFO as rt_uint8_t) || (flag == RT_IPC_FLAG_PRIO as rt_uint8_t));
+pub unsafe extern "C" fn rt_event_init(event : rt_event_t , name: *const core::ffi::c_char, flag: rt_uint8_t) -> rt_err_t {
+    assert!(event != null_mut());
+    assert!((flag == RT_IPC_FLAG_FIFO as rt_uint8_t) || (flag == RT_IPC_FLAG_PRIO as rt_uint8_t));
 
-        rt_object_init(&mut ((*event).parent.parent), RtObjectInfoType::RTObjectInfoEvent as u32, name);
+    rt_object_init(&mut ((*event).parent.parent), rt_object_class_type_RT_Object_Class_Event as u32, name);
 
-        (*event).parent.parent.flag = flag;
+    (*event).parent.parent.flag = flag;
 
-        _rt_ipc_object_init(&mut ((*event).parent));
+    _rt_ipc_object_init(&mut ((*event).parent));
 
-        (*event).set = 0;
+    (*event).set = 0;
 
-        RT_EOK as rt_err_t
-    }
+    RT_EOK as rt_err_t
 }
 
 #[cfg(feature = "RT_USING_EVENT")]
 #[no_mangle]
-pub extern "C" fn rt_event_detach(event: rt_event_t) -> rt_err_t {
-    unsafe {
-        assert!(event != null_mut());
-        assert!(rt_object_get_type(&mut (*event).parent.parent) == RtObjectInfoType::RTObjectInfoEvent as u8);
-        assert!(rt_object_is_systemobject(&mut (*event).parent.parent) == RT_TRUE as i32);
+pub unsafe extern "C" fn rt_event_detach(event: rt_event_t) -> rt_err_t {
+    assert!(event != null_mut());
+    assert!(rt_object_get_type(&mut (*event).parent.parent) == rt_object_class_type_RT_Object_Class_Event as u8);
+    assert!(rt_object_is_systemobject(&mut (*event).parent.parent) == RT_TRUE as i32);
 
-        _rt_ipc_list_resume_all(&mut ((*event).parent.suspend_thread));
+    _rt_ipc_list_resume_all(&mut ((*event).parent.suspend_thread));
 
-        rt_object_detach(&mut ((*event).parent.parent));
+    rt_object_detach(&mut ((*event).parent.parent));
 
-        RT_EOK as rt_err_t
-    }
+    RT_EOK as rt_err_t
 }
 
 #[cfg(all(feature = "RT_USING_EVENT", feature = "RT_USING_HEAP"))]
 #[no_mangle]
-pub extern "C" fn rt_event_create(name : *const core::ffi::c_char, flag: rt_uint8_t) -> rt_event_t
+pub unsafe extern "C" fn rt_event_create(name : *const core::ffi::c_char, flag: rt_uint8_t) -> rt_event_t
 {
-    unsafe {
-        assert!((flag == RT_IPC_FLAG_FIFO as rt_uint8_t) || (flag == RT_IPC_FLAG_PRIO as rt_uint8_t));
-        rt_debug_not_in_interrupt!();
+    assert!((flag == RT_IPC_FLAG_FIFO as rt_uint8_t) || (flag == RT_IPC_FLAG_PRIO as rt_uint8_t));
+    rt_debug_not_in_interrupt!();
 
-        let event = rt_object_allocate(RtObjectInfoType::RTObjectInfoEvent as u32, name) as rt_event_t;
-        if event == RT_NULL as rt_event_t {
-            return event;
-        }
-
-        (*event).parent.parent.flag = flag;
-
-        _rt_ipc_object_init(&mut ((*event).parent));
-
-        (*event).set = 0;
-
-        event
+    let event = rt_object_allocate(rt_object_class_type_RT_Object_Class_Event as u32, name) as rt_event_t;
+    if event == RT_NULL as rt_event_t {
+        return event;
     }
+
+    (*event).parent.parent.flag = flag;
+
+    _rt_ipc_object_init(&mut ((*event).parent));
+
+    (*event).set = 0;
+
+    event
 }
 
 #[cfg(all(feature = "RT_USING_EVENT", feature = "RT_USING_HEAP"))]
 #[no_mangle]
-pub extern "C" fn rt_event_delete(event: rt_event_t) -> rt_err_t
+pub unsafe extern "C" fn rt_event_delete(event: rt_event_t) -> rt_err_t
 {
-    unsafe {
-        assert!(event != null_mut());
-        assert!(rt_object_get_type(&mut (*event).parent.parent) == RtObjectInfoType::RTObjectInfoEvent as u8);
-        assert!(rt_object_is_systemobject(&mut (*event).parent.parent) == RT_FALSE as i32);
+    assert!(event != null_mut());
+    assert!(rt_object_get_type(&mut (*event).parent.parent) == rt_object_class_type_RT_Object_Class_Event as u8);
+    assert!(rt_object_is_systemobject(&mut (*event).parent.parent) == RT_FALSE as i32);
 
-        rt_debug_not_in_interrupt!();
+    rt_debug_not_in_interrupt!();
 
-        _rt_ipc_list_resume_all(&mut ((*event).parent.suspend_thread));
+    _rt_ipc_list_resume_all(&mut ((*event).parent.suspend_thread));
 
-        rt_object_delete(&mut ((*event).parent.parent));
+    rt_object_delete(&mut ((*event).parent.parent));
 
-        RT_EOK as rt_err_t
-    }
+    RT_EOK as rt_err_t
 }
 
 #[cfg(feature = "RT_USING_EVENT")]
 #[no_mangle]
-pub extern "C" fn rt_event_send( event: rt_event_t, set: rt_uint32_t ) -> rt_err_t
+pub unsafe extern "C" fn rt_event_send( event: rt_event_t, set: rt_uint32_t ) -> rt_err_t
 {
-unsafe {
     let mut need_schedule = RT_FALSE;
     let mut need_clear_set = 0u32;
 
     assert!(event != null_mut());
-    assert!(rt_object_get_type(&mut (*event).parent.parent) == RtObjectInfoType::RTObjectInfoEvent as u8);
+    assert!(rt_object_get_type(&mut (*event).parent.parent) == rt_object_class_type_RT_Object_Class_Event as u8);
 
     if set == 0 {
         return -(RT_ERROR as rt_err_t);
@@ -125,24 +116,24 @@ unsafe {
                 if (*thread).event_set & (*event).set > 0u32 {
                     (*thread).event_set = (*thread).event_set & (*event).set;
                     status = RT_EOK as rt_err_t;
-                } else {
-                    rt_hw_interrupt_enable(level);
-                    return -(RT_EINVAL as rt_err_t);
+                }
+            } else {
+                rt_hw_interrupt_enable(level);
+                return -(RT_EINVAL as rt_err_t);
+            }
+
+            n = (*n).next;
+
+            if status == RT_EOK as rt_err_t {
+                if (*thread).event_info as u32 & RT_EVENT_FLAG_CLEAR > 0u32 {
+                    need_clear_set |= (*thread).event_set;
                 }
 
-                n = (*n).next;
+                rt_thread_resume(thread);
+                (*thread).error = RT_EOK as rt_err_t;
 
-                if status == RT_EOK as rt_err_t {
-                    if (*thread).event_info as u32 & RT_EVENT_FLAG_CLEAR > 0u32 {
-                        need_clear_set |= (*thread).event_set;
-                    }
-
-                    rt_thread_resume(thread);
-                    (*thread).error = RT_EOK as rt_err_t;
-
-                    need_schedule = RT_TRUE;
-                }
-            };
+                need_schedule = RT_TRUE;
+            }
         }
         if need_clear_set > 0 {
             (*event).set &= !need_clear_set;
@@ -155,17 +146,15 @@ unsafe {
     }
 
     RT_EOK as rt_err_t
-    }
 }
 
 #[cfg(feature = "RT_USING_EVENT")]
 #[no_mangle]
-extern "C" fn _rt_event_recv(event : rt_event_t, set : rt_uint32_t,option : rt_uint8_t, timeout : rt_int32_t,
+unsafe extern "C" fn _rt_event_recv(event : rt_event_t, set : rt_uint32_t,option : rt_uint8_t, timeout : rt_int32_t,
                             recved: * mut rt_uint32_t,
                             suspend_flag : i32) -> rt_err_t {
-unsafe {
     assert!(event != null_mut());
-    assert!(rt_object_get_type(&mut (*event).parent.parent) == RtObjectInfoType::RTObjectInfoEvent as u8);
+    assert!(rt_object_get_type(&mut (*event).parent.parent) == rt_object_class_type_RT_Object_Class_Event as u8);
 
     rt_debug_scheduler_available!(RT_TRUE);
 
@@ -223,7 +212,7 @@ unsafe {
             return ret;
         }
 
-        if (timeout > 0) {
+        if timeout > 0 {
             rt_timer_control(&mut (*thread).thread_timer,
                              RT_TIMER_CTRL_SET_TIME as i32,
                              (&mut time_out) as *mut i32 as *mut c_void);
@@ -250,35 +239,33 @@ unsafe {
     rt_object_hook_call!(rt_object_take_hook, (&mut (*event).parent.parent));
 
     (*thread).error
-    }
 }
 
 #[cfg(feature = "RT_USING_EVENT")]
 #[no_mangle]
-pub extern "C" fn rt_event_recv(event : rt_event_t, set : rt_uint32_t , option: rt_uint8_t, timeout: rt_int32_t, recved : *mut rt_uint32_t) -> rt_err_t {
+pub unsafe extern "C" fn rt_event_recv(event : rt_event_t, set : rt_uint32_t , option: rt_uint8_t, timeout: rt_int32_t, recved : *mut rt_uint32_t) -> rt_err_t {
     _rt_event_recv(event, set, option, timeout, recved, RT_UNINTERRUPTIBLE as i32)
 }
 
 #[cfg(feature = "RT_USING_EVENT")]
 #[no_mangle]
-pub extern "C" fn rt_event_recv_interruptible(event: rt_event_t, set : rt_uint32_t, option: rt_uint8_t,  timeout: rt_int32_t, recved : *mut rt_uint32_t) -> rt_err_t {
+pub unsafe extern "C" fn rt_event_recv_interruptible(event: rt_event_t, set : rt_uint32_t, option: rt_uint8_t,  timeout: rt_int32_t, recved : *mut rt_uint32_t) -> rt_err_t {
     return _rt_event_recv(event, set, option, timeout, recved, RT_INTERRUPTIBLE as i32)
 }
 
 #[cfg(feature = "RT_USING_EVENT")]
 #[no_mangle]
-pub extern "C" fn rt_event_recv_killable(event : rt_event_t, set : rt_uint32_t,  option : rt_uint8_t, timeout : rt_int32_t, recved: *mut rt_uint32_t) -> rt_err_t {
+pub unsafe extern "C" fn rt_event_recv_killable(event : rt_event_t, set : rt_uint32_t,  option : rt_uint8_t, timeout : rt_int32_t, recved: *mut rt_uint32_t) -> rt_err_t {
     _rt_event_recv(event, set, option, timeout, recved, RT_KILLABLE as i32)
 }
 
 #[cfg(feature = "RT_USING_EVENT")]
 #[no_mangle]
-pub extern "C" fn rt_event_control(event : rt_event_t, cmd : i32, arg : *const c_void) -> rt_err_t {
-unsafe {
+pub unsafe extern "C" fn rt_event_control(event : rt_event_t, cmd : i32, _arg : *const c_void) -> rt_err_t {
     assert!(event != null_mut());
-    assert!(rt_object_get_type(&mut (*event).parent.parent) == RtObjectInfoType::RTObjectInfoEvent as u8);
+    assert!(rt_object_get_type(&mut (*event).parent.parent) == rt_object_class_type_RT_Object_Class_Event as u8);
 
-    if (cmd == RT_IPC_CMD_RESET as i32)
+    if cmd == RT_IPC_CMD_RESET as i32
     {
         let level = rt_hw_interrupt_disable();
 
@@ -294,7 +281,6 @@ unsafe {
     }
 
     -(RT_ERROR as rt_err_t)
-    }
 }
 
 #[pin_data]
@@ -309,7 +295,7 @@ unsafe impl Send for Event {}
 unsafe impl Sync for Event {}
 
 impl Event {
-    pub fn new(name: &str, value: u32) -> Result<Self, Error> {
+    pub fn new(name: &str) -> Result<Self, Error> {
         let result = unsafe { rt_event_create(name.as_ptr() as *const c_char, RT_IPC_FLAG_PRIO as u8) };
         if result == RT_NULL as rt_event_t{
             Err(Error::from_errno(RT_ERROR as i32))
@@ -385,7 +371,7 @@ impl EventStatic {
             pinned_: PhantomPinned {},
         }
     }
-    pub fn init(&'static self, name: &str, value: u32) -> Result<(), Error> {
+    pub fn init(&'static self, name: &str) -> Result<(), Error> {
         let result = unsafe { rt_event_init(self.event_.get().cast(), name.as_ptr() as *const c_char, RT_IPC_FLAG_PRIO as u8) };
         if result == RT_EOK as i32{
             Ok(())

@@ -4,9 +4,9 @@ use crate::{
              rt_object_detach, rt_object_init},
     sync::ipc_common::*, error::Error,
     allocator::{rt_malloc, rt_free},
-    rt_debug_not_in_interrupt, rt_list_init, rt_list_entry, container_of};
-use kernel::{rt_bindings::{rt_hw_interrupt_disable, rt_hw_interrupt_enable,rt_int16_t}, rt_debug_scheduler_available, rt_object_hook_call};
-
+    rt_debug_not_in_interrupt, rt_list_init};
+use kernel::{rt_bindings::{rt_hw_interrupt_disable, rt_hw_interrupt_enable}, rt_debug_scheduler_available, rt_object_hook_call};
+#[allow(unused_imports)]
 use core::{cell::UnsafeCell, mem::MaybeUninit, ffi::{c_char, c_void}, ptr::null_mut, marker::PhantomPinned, mem};
 
 use pinned_init::*;
@@ -17,7 +17,7 @@ pub unsafe extern "C" fn rt_mb_init (mb : rt_mailbox_t , name : * const core :: 
     assert!(mb != null_mut());
     assert!((flag == RT_IPC_FLAG_FIFO as rt_uint8_t) || (flag == RT_IPC_FLAG_PRIO as rt_uint8_t));
 
-    rt_object_init(&mut (*mb).parent.parent, RtObjectInfoType::RTObjectInfoEvent as u32, name);
+    rt_object_init(&mut (*mb).parent.parent, rt_object_class_type_RT_Object_Class_MailBox as u32, name);
 
     (*mb).parent.parent.flag = flag;
 
@@ -38,7 +38,7 @@ pub unsafe extern "C" fn rt_mb_init (mb : rt_mailbox_t , name : * const core :: 
 #[no_mangle]
 pub unsafe extern "C" fn rt_mb_detach (mb : rt_mailbox_t) -> rt_err_t {
     assert!(mb != null_mut());
-    assert!(rt_object_get_type(&mut (*mb).parent.parent) == RtObjectInfoType::RTObjectInfoMailBox as u8);
+    assert!(rt_object_get_type(&mut (*mb).parent.parent) == rt_object_class_type_RT_Object_Class_MailBox as u8);
     assert!(rt_object_is_systemobject(&mut (*mb).parent.parent) == RT_TRUE as i32);
 
     _rt_ipc_list_resume_all(&mut ((*mb).parent.suspend_thread));
@@ -56,7 +56,7 @@ pub unsafe extern "C" fn rt_mb_create (name : * const core :: ffi :: c_char , si
     assert!((flag == RT_IPC_FLAG_FIFO as rt_uint8_t) || (flag == RT_IPC_FLAG_PRIO as rt_uint8_t));
     rt_debug_not_in_interrupt!();
 
-    let mb = rt_object_allocate(RtObjectInfoType::RTObjectInfoEvent as u32, name) as (rt_mailbox_t);
+    let mb = rt_object_allocate(rt_object_class_type_RT_Object_Class_MailBox as u32, name) as rt_mailbox_t;
     if mb == RT_NULL as rt_mailbox_t {
         return mb;
     }
@@ -66,9 +66,9 @@ pub unsafe extern "C" fn rt_mb_create (name : * const core :: ffi :: c_char , si
     _rt_ipc_object_init(&mut (*mb).parent);
 
     (*mb).size = size as rt_uint16_t;
-    (*mb).msg_pool = rt_malloc((*mb).size as usize * mem::size_of::<rt_ubase_t>()) as *mut rt_ubase_t;
-    if ((*mb).msg_pool == null_mut())
-    {
+    let ptr = rt_malloc((*mb).size as usize * mem::size_of::<rt_ubase_t>()) as *mut rt_ubase_t;
+    (*mb).msg_pool = ptr;
+    if (*mb).msg_pool == null_mut() {
         rt_object_delete(&mut (*mb).parent.parent);
         return RT_NULL as rt_mailbox_t;
     }
@@ -86,7 +86,7 @@ pub unsafe extern "C" fn rt_mb_create (name : * const core :: ffi :: c_char , si
 #[no_mangle]
 pub unsafe extern "C" fn rt_mb_delete (mb : rt_mailbox_t) -> rt_err_t {
     assert!(mb != null_mut());
-    assert!(rt_object_get_type(&mut (*mb).parent.parent) == RtObjectInfoType::RTObjectInfoMailBox as u8);
+    assert!(rt_object_get_type(&mut (*mb).parent.parent) == rt_object_class_type_RT_Object_Class_MailBox as u8);
     assert!(rt_object_is_systemobject(&mut (*mb).parent.parent) == RT_FALSE as i32);
 
     rt_debug_not_in_interrupt!();
@@ -107,9 +107,10 @@ pub unsafe extern "C" fn rt_mb_delete (mb : rt_mailbox_t) -> rt_err_t {
 unsafe extern "C" fn _rt_mb_send_wait (mb : rt_mailbox_t , value : rt_ubase_t , timeout : rt_int32_t, suspend_flag : i32) -> rt_err_t {
 
     assert!(mb != null_mut());
-    assert!(rt_object_get_type(&mut (*mb).parent.parent) == RtObjectInfoType::RTObjectInfoMailBox as u8);
+    assert!(rt_object_get_type(&mut (*mb).parent.parent) == rt_object_class_type_RT_Object_Class_MailBox as u8);
 
     let mut timeout = timeout;
+    #[allow(unused_variables)]
     let scheduler = timeout != 0;
     rt_debug_scheduler_available!(scheduler);
 
@@ -120,7 +121,7 @@ unsafe extern "C" fn _rt_mb_send_wait (mb : rt_mailbox_t , value : rt_ubase_t , 
 
     let mut level = rt_hw_interrupt_disable();
 
-    if ((*mb).entry == (*mb).size && timeout == 0) {
+    if (*mb).entry == (*mb).size && timeout == 0 {
         rt_hw_interrupt_enable(level);
         return -(RT_EFULL as rt_err_t);
     }
@@ -160,7 +161,7 @@ unsafe extern "C" fn _rt_mb_send_wait (mb : rt_mailbox_t , value : rt_ubase_t , 
 
         level = rt_hw_interrupt_disable();
 
-        if (timeout > 0) {
+        if timeout > 0 {
             tick_delta = rt_tick_get() - tick_delta;
             timeout -= tick_delta as rt_int32_t;
             if timeout < 0 {
@@ -242,7 +243,7 @@ pub unsafe extern "C" fn rt_mb_send_killable(mb: rt_mailbox_t , value: rt_ubase_
 pub unsafe extern "C" fn rt_mb_urgent (mb : rt_mailbox_t , value : rt_ubase_t) -> rt_err_t {
 
     assert!(mb != null_mut());
-    assert!(rt_object_get_type(&mut (*mb).parent.parent) == RtObjectInfoType::RTObjectInfoMailBox as u8);
+    assert!(rt_object_get_type(&mut (*mb).parent.parent) == rt_object_class_type_RT_Object_Class_MailBox as u8);
 
     rt_object_hook_call!(rt_object_put_hook, (&mut (*mb).parent.parent));
 
@@ -283,9 +284,10 @@ pub unsafe extern "C" fn rt_mb_urgent (mb : rt_mailbox_t , value : rt_ubase_t) -
 unsafe extern "C" fn _rt_mb_recv (mb : rt_mailbox_t , value : * mut core::ffi::c_ulong , timeout : rt_int32_t, suspend_flag: i32) -> rt_err_t {
 
     assert!(mb != null_mut());
-    assert!(rt_object_get_type(&mut (*mb).parent.parent) == RtObjectInfoType::RTObjectInfoMailBox as u8);
+    assert!(rt_object_get_type(&mut (*mb).parent.parent) == rt_object_class_type_RT_Object_Class_MailBox as u8);
 
     let mut timeout = timeout;
+    #[allow(unused_variables)]
     let scheduler = timeout != 0;
     rt_debug_scheduler_available!(scheduler);
 
@@ -304,7 +306,7 @@ unsafe extern "C" fn _rt_mb_recv (mb : rt_mailbox_t , value : * mut core::ffi::c
     while (*mb).entry == 0 {
         (*thread).error = -(RT_EINTR as rt_err_t);
 
-        if (timeout == 0) {
+        if timeout == 0 {
             rt_hw_interrupt_enable(level);
             (*thread).error = -(RT_ETIMEOUT as rt_err_t);
 
@@ -336,7 +338,7 @@ unsafe extern "C" fn _rt_mb_recv (mb : rt_mailbox_t , value : * mut core::ffi::c
 
         level = rt_hw_interrupt_disable();
 
-        if (timeout > 0) {
+        if timeout > 0 {
             tick_delta = rt_tick_get() - tick_delta;
             timeout -= tick_delta as rt_int32_t;
             if timeout < 0 {
@@ -397,10 +399,10 @@ pub unsafe extern "C" fn rt_mb_recv_killable (mb : rt_mailbox_t , value : * mut 
 
 #[cfg(feature = "RT_USING_MAILBOX")]
 #[no_mangle]
-pub unsafe extern "C" fn rt_mb_control (mb : rt_mailbox_t , cmd : core::ffi::c_int , arg : * mut core :: ffi :: c_void) -> rt_err_t {
+pub unsafe extern "C" fn rt_mb_control (mb : rt_mailbox_t , cmd : core::ffi::c_int , _arg : * mut core :: ffi :: c_void) -> rt_err_t {
 
     assert!(mb != null_mut());
-    assert!(rt_object_get_type(&mut (*mb).parent.parent) == RtObjectInfoType::RTObjectInfoMailBox as u8);
+    assert!(rt_object_get_type(&mut (*mb).parent.parent) == rt_object_class_type_RT_Object_Class_MailBox as u8);
 
     if cmd == RT_IPC_CMD_RESET as i32 {
 
