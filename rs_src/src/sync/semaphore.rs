@@ -102,7 +102,8 @@ unsafe extern "C" fn _rt_sem_take(sem : rt_sem_t, timeout : rt_int32_t, suspend_
         if timeout == 0 {
             rt_hw_interrupt_enable(level);
 
-            return -(RT_ETIMEOUT as rt_err_t);
+            /* FIXME: -2 is as expected, while C -RT_ETIMEOUT is -116. */
+            return -116;//(RT_ETIMEOUT as rt_err_t);
         } else {
             let thread = rt_thread_self();
 
@@ -174,7 +175,7 @@ pub unsafe extern "C" fn rt_sem_release(sem : rt_sem_t ) -> rt_err_t {
     let mut need_schedule = RT_FALSE;
     let level = rt_hw_interrupt_disable();
 
-    if (*sem).parent.suspend_thread.is_empty() {
+    if (*sem).parent.suspend_thread.is_empty() == false {
         _rt_ipc_list_resume(&mut ((*sem).parent.suspend_thread));
         need_schedule = RT_TRUE;
     } else {
