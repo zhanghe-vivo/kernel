@@ -19,21 +19,21 @@
 
 #define K_SSTATUS_DEFAULT (SSTATUS_SPP | SSTATUS_SPIE | SSTATUS_SUM | SSTATUS_FS)
 
-/**
- * @brief from thread used interrupt context switch
- *
- */
-volatile rt_ubase_t rt_interrupt_from_thread = 0;
-/**
- * @brief to thread used interrupt context switch
- *
- */
-volatile rt_ubase_t rt_interrupt_to_thread = 0;
-/**
- * @brief flag to indicate context switch in interrupt or not
- *
- */
-volatile rt_ubase_t rt_thread_switch_interrupt_flag = 0;
+// /**
+//  * @brief from thread used interrupt context switch
+//  *
+//  */
+// volatile rt_ubase_t rt_interrupt_from_thread = 0;
+// /**
+//  * @brief to thread used interrupt context switch
+//  *
+//  */
+// volatile rt_ubase_t rt_interrupt_to_thread = 0;
+// /**
+//  * @brief flag to indicate context switch in interrupt or not
+//  *
+//  */
+// volatile rt_ubase_t rt_thread_switch_interrupt_flag = 0;
 
 void *_rt_hw_stack_init(rt_ubase_t *sp, rt_ubase_t ra, rt_ubase_t sstatus)
 {

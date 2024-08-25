@@ -1,8 +1,5 @@
-use crate::rt_bindings::*;
-use crate::rt_object_hook_call;
-use core::ptr::addr_of_mut;
-use core::ptr::read_volatile;
-use core::ptr::write_volatile;
+use crate::cpu::Cpu;
+use crate::rt_bindings;
 
 #[cfg(all(feature = "RT_USING_HOOK", feature = "RT_HOOK_USING_FUNC_PTR"))]
 static mut RT_TICK_HOOK: Option<unsafe extern "C" fn()> = None;
@@ -15,84 +12,52 @@ pub extern "C" fn rt_tick_sethook(hook: unsafe extern "C" fn()) {
     }
 }
 
-#[cfg(not(feature = "RT_USING_SMP"))]
-static mut RT_TICK: rt_tick_t = 0;
-
-fn tick_addr_mut() -> *mut rt_tick_t {
-    unsafe {
-        #[cfg(feature = "RT_USING_SMP")]
-        return addr_of_mut!((*rt_cpu_index(0)).tick);
-
-        #[cfg(not(feature = "RT_USING_SMP"))]
-        return addr_of_mut!(RT_TICK);
-    }
-}
-
 #[doc = "This function will return current tick from operating system startup."]
 #[no_mangle]
-pub extern "C" fn rt_tick_get() -> rt_tick_t {
-    unsafe {
-        return read_volatile(tick_addr_mut() as *const u32);
-    }
+pub extern "C" fn rt_tick_get() -> rt_bindings::rt_tick_t {
+    Cpu::get_by_id(0).tick_load()
 }
 
 #[doc = "This function will set current tick."]
 #[no_mangle]
-pub extern "C" fn rt_tick_set(tick: rt_tick_t) {
-    unsafe {
-        let level = rt_hw_interrupt_disable();
-        write_volatile(tick_addr_mut() as *mut u32, tick);
-        rt_hw_interrupt_enable(level);
-    }
+pub extern "C" fn rt_tick_set(tick: rt_bindings::rt_tick_t) {
+    Cpu::get_by_id(0).tick_store(tick);
 }
 
 #[doc = "This function will notify kernel there is one tick passed."]
 #[no_mangle]
 pub extern "C" fn rt_tick_increase() {
     unsafe {
-        assert!(rt_interrupt_get_nest() > 0);
+        assert!(Cpu::interrupt_nest_load() > 0);
 
-        rt_object_hook_call!(RT_TICK_HOOK);
+        crate::rt_object_hook_call!(RT_TICK_HOOK);
 
-        let level = rt_hw_interrupt_disable();
-
-        /* increase the global tick */
-        let tick = read_volatile(tick_addr_mut() as *const u32) + 1;
-        write_volatile(tick_addr_mut(), tick);
-
+        Cpu::get_current().tick_inc();
         /* check time slice */
-        let current_thread = rt_thread_self();
-        (*current_thread).remaining_tick -= 1;
-        if (*current_thread).remaining_tick == 0 {
-            /* change to initialized tick */
-            (*current_thread).remaining_tick = (*current_thread).init_tick;
-            (*current_thread).stat |= RT_THREAD_STAT_YIELD as u8;
-            rt_hw_interrupt_enable(level);
-            rt_schedule();
-        } else {
-            rt_hw_interrupt_enable(level);
-        }
+        let scheduler = Cpu::get_current_scheduler();
+        scheduler.handle_tick_increase();
 
-        rt_timer_check();
+        rt_bindings::rt_timer_check();
     }
 }
 
 #[doc = "This function will calculate the tick from millisecond."]
 #[no_mangle]
-pub extern "C" fn rt_tick_from_millisecond(ms: rt_int32_t) -> rt_tick_t {
+pub extern "C" fn rt_tick_from_millisecond(ms: rt_bindings::rt_int32_t) -> rt_bindings::rt_tick_t {
     if ms < 0 {
-        RT_WAITING_FOREVER as rt_tick_t
+        rt_bindings::RT_WAITING_FOREVER as rt_bindings::rt_tick_t
     } else {
-        let tick = RT_TICK_PER_SECOND * (ms as u32 / 1000);
-        tick + (RT_TICK_PER_SECOND * (ms as u32 % 1000) + 999) / 1000
+        let tick = rt_bindings::RT_TICK_PER_SECOND * (ms as u32 / 1000);
+        tick + (rt_bindings::RT_TICK_PER_SECOND * (ms as u32 % 1000) + 999) / 1000
     }
 }
 
 #[doc = "This function will return the passed millisecond from boot."]
 #[no_mangle]
-pub extern "C" fn rt_tick_get_millisecond() -> rt_tick_t {
-    crate::static_assert!(RT_TICK_PER_SECOND > 0);
-    crate::static_assert!(1000 % RT_TICK_PER_SECOND == 0);
+pub extern "C" fn rt_tick_get_millisecond() -> rt_bindings::rt_tick_t {
+    crate::static_assert!(rt_bindings::RT_TICK_PER_SECOND > 0);
+    crate::static_assert!(1000 % rt_bindings::RT_TICK_PER_SECOND == 0);
 
-    rt_tick_get() * (1000 / RT_TICK_PER_SECOND) as rt_tick_t
+    Cpu::get_by_id(0).tick_load()
+        * (1000 / rt_bindings::RT_TICK_PER_SECOND) as rt_bindings::rt_tick_t
 }
