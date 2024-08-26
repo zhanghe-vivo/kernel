@@ -33,6 +33,7 @@ pub mod static_init;
 pub mod str;
 pub mod sync;
 pub mod thread;
+pub mod timer;
 mod zombie;
 
 // need to call before rt_enter_critical/ cpus_lock called
