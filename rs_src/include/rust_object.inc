@@ -75,6 +75,10 @@ struct rt_object
     rt_uint8_t  type;                                    /**< type of kernel object */
     rt_uint8_t  flag;                                    /**< flag of kernel object */
 
+#ifdef RT_USING_MODULE
+    void      * module_id;                               /**< id of application module */
+#endif /* RT_USING_MODULE */
+
     rt_list_t   list;                                    /**< list node of kernel object */
 };
 

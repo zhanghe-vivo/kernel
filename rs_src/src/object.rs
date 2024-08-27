@@ -1,9 +1,5 @@
 use crate::{
-<<<<<<< HEAD
-    linked_list::ListHead, println, rt_bindings::*, static_init::UnsafeStaticInit, sync::RawSpin,
-=======
     linked_list::ListHead, rt_bindings::*, static_init::UnsafeStaticInit, sync::RawSpin,
->>>>>>> origin/master
     thread::RtThread,
 };
 
