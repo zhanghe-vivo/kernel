@@ -43,23 +43,12 @@ rt_hw_context_switch_to:
     clrex
     ldr sp, [r0]            @ get new task stack pointer
 
-#ifdef RT_USING_SMP
     mov     r0, r1
     bl      rt_cpus_lock_status_restore
 #ifdef RT_USING_SMART
     bl      rt_thread_self
     bl      lwp_user_setting_restore
 #endif
-#else
-#ifdef RT_USING_SMART
-    bl      rt_thread_self
-    mov     r4, r0
-    bl      lwp_aspace_switch
-    mov     r0, r4
-    bl      lwp_user_setting_restore
-#endif
-#endif /*RT_USING_SMP*/
-
     b       rt_hw_context_switch_exit
 
 .section .bss.share.isr
@@ -107,22 +96,12 @@ rt_hw_context_switch:
     str sp, [r0]            @ store sp in preempted tasks TCB
     ldr sp, [r1]            @ get new task stack pointer
 
-#ifdef RT_USING_SMP
     mov     r0, r2
     bl      rt_cpus_lock_status_restore
 #ifdef RT_USING_SMART
     bl      rt_thread_self
     bl      lwp_user_setting_restore
 #endif
-#else
-#ifdef RT_USING_SMART
-    bl      rt_thread_self
-    mov     r4, r0
-    bl      lwp_aspace_switch
-    mov     r0, r4
-    bl      lwp_user_setting_restore
-#endif
-#endif /*RT_USING_SMP*/
 
     b       rt_hw_context_switch_exit
 
@@ -140,13 +119,12 @@ rt_hw_context_switch:
 .equ I_Bit,           0x80            @ when I bit is set, IRQ is disabled
 .equ F_Bit,           0x40            @ when F bit is set, FIQ is disabled
 
-.globl rt_thread_switch_interrupt_flag
-.globl rt_interrupt_from_thread
-.globl rt_interrupt_to_thread
+/* .globl rt_thread_switch_interrupt_flag
+   .globl rt_interrupt_from_thread
+   .globl rt_interrupt_to_thread */
 .globl rt_hw_context_switch_interrupt
 rt_hw_context_switch_interrupt:
     clrex
-#ifdef RT_USING_SMP
     /* r0 :svc_mod context
      * r1 :addr of from_thread's sp
      * r2 :addr of to_thread's sp
@@ -160,10 +138,10 @@ rt_hw_context_switch_interrupt:
 #endif
     pop {r0 - r3, lr}
 #endif
-    str     r0, [r1]
+    str     r0, [r1]  /* context store to current_thread->sp */
 
-    ldr     sp, [r2]
-    mov     r0, r3
+    ldr     sp, [r2]  /* load to_thread->sp to sp register */
+    mov     r0, r3    /* to_thread pointer to r0 for first parameter */
 #ifdef RT_USING_SMART
     mov     r4, r0
 #endif
@@ -173,49 +151,6 @@ rt_hw_context_switch_interrupt:
     bl      lwp_user_setting_restore
 #endif
     b       rt_hw_context_switch_exit
-
-#else /*RT_USING_SMP*/
-    /* r0 :addr of from_thread's sp
-     * r1 :addr of to_thread's sp
-     * r2 :from_thread's tcb
-     * r3 :to_thread's tcb
-     */
-#ifdef RT_USING_SMART
-    /* now to_thread(r3) not used */
-    ldr ip, =rt_thread_switch_interrupt_flag
-    ldr r3, [ip]
-    cmp r3, #1
-    beq _reswitch
-    ldr r3, =rt_interrupt_from_thread   @ set rt_interrupt_from_thread
-    str r0, [r3]
-    mov r3, #1              @ set rt_thread_switch_interrupt_flag to 1
-    str r3, [ip]
-#ifdef RT_USING_SMART
-    push {r1, lr}
-    mov r0, r2
-    bl lwp_user_setting_save
-    pop {r1, lr}
-#endif
-_reswitch:
-    ldr ip, =rt_interrupt_to_thread     @ set rt_interrupt_to_thread
-    str r1, [ip]
-    bx  lr
-#else
-    /* now from_thread(r2) to_thread(r3) not used */
-    ldr ip, =rt_thread_switch_interrupt_flag
-    ldr r3, [ip]
-    cmp r3, #1
-    beq _reswitch
-    ldr r3, =rt_interrupt_from_thread   @ set rt_interrupt_from_thread
-    str r0, [r3]
-    mov r3, #1              @ set rt_thread_switch_interrupt_flag to 1
-    str r3, [ip]
-_reswitch:
-    ldr ip, =rt_interrupt_to_thread     @ set rt_interrupt_to_thread
-    str r1, [ip]
-    bx  lr
-#endif
-#endif /*RT_USING_SMP*/
 
 .global rt_hw_context_switch_exit
 rt_hw_context_switch_exit:

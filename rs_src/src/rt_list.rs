@@ -67,30 +67,30 @@ macro_rules! rt_list_init {
 
 #[macro_export]
 macro_rules! container_of {
-    ($ptr:expr, $type:ty, $($f:tt)*) => {{
-        let temp_ptr = $ptr as *const _ as *const u8;
-        let temp_offset: usize = core::mem::offset_of!($type, $($f)*);
-        temp_ptr.sub(temp_offset * core::mem::size_of::<u8>()) as *const $type
-    }}
+    ($ptr:expr, $type:path, $field:ident) => {
+        $ptr.cast::<u8>()
+            .sub(core::mem::offset_of!($type, $field))
+            .cast::<$type>()
+    };
 }
 
 /// Get the struct for this entry
 #[macro_export]
 macro_rules! rt_list_entry {
     ($node:expr, $type:ty, $($f:tt)*) => {
-        container_of!($node, $type, $($f)*)
+        crate::container_of!($node, $type, $($f)*)
     };
 }
 /// Iterate over a list
 #[macro_export]
 macro_rules! rt_list_for_each {
     ($pos:ident, $head:expr, $code:block) => {
-        let mut $pos = (*$head).next;
-        while $pos != $head {
+        let mut $pos = $head.next;
+        while !core::ptr::eq($pos, $head) {
             $code
 
             // Process $pos
-            $pos = (*$pos).next;
+            unsafe { $pos = (*$pos).next};
         }
     };
 }
@@ -106,7 +106,6 @@ macro_rules! rt_list_for_each_safe {
             // Process $pos
             $n = (*$pos).next;
             $pos = $n;
-
         }
     };
 }

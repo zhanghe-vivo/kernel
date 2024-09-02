@@ -1,7 +1,14 @@
-//! Provide the intrusive LinkedList
+//! Provide the intrusive LinkedList and ListHead
 #![allow(dead_code)]
-use core::marker::PhantomData;
-use core::{fmt, ptr};
+use core::{
+    cell::Cell,
+    convert::Infallible,
+    fmt,
+    marker::{PhantomData, PhantomPinned},
+    pin::Pin,
+    ptr::{self, NonNull},
+};
+use pinned_init::*;
 
 /// An intrusive linked list
 ///
@@ -94,7 +101,6 @@ impl<'a> Iterator for Iter<'a> {
 }
 
 /// Represent a mutable node in `LinkedList`
-#[repr(C)]
 pub struct ListNode {
     prev: *mut usize,
     curr: *mut usize,
@@ -139,4 +145,184 @@ impl<'a> Iterator for IterMut<'a> {
             Some(res)
         }
     }
+}
+
+#[pin_data(PinnedDrop)]
+#[repr(C)]
+#[derive(Debug)]
+pub struct ListHead {
+    pub(crate) next: Link,
+    pub(crate) prev: Link,
+    #[pin]
+    pin: PhantomPinned,
+}
+
+impl ListHead {
+    #[inline]
+    pub fn new() -> impl PinInit<Self, Infallible> {
+        try_pin_init!(&this in Self {
+            next: unsafe { Link::new_unchecked(this) },
+            prev: unsafe { Link::new_unchecked(this) },
+            pin: PhantomPinned,
+        }? Infallible)
+    }
+
+    #[inline]
+    pub fn insert_next(self: Pin<&mut Self>, list: &ListHead) {
+        // SAFETY: We do not move `self`.
+        let this: &mut Self = unsafe { self.get_unchecked_mut() };
+        this.prev = list
+            .next
+            .prev()
+            .replace(unsafe { Link::new_unchecked(NonNull::new_unchecked(this)) });
+        this.next = list
+            .next
+            .replace(unsafe { Link::new_unchecked(NonNull::new_unchecked(this)) });
+    }
+
+    #[inline]
+    pub fn insert_prev(self: Pin<&mut Self>, list: &ListHead) {
+        // SAFETY: We do not move `self`.
+        let this: &mut Self = unsafe { self.get_unchecked_mut() };
+        this.next = list
+            .prev
+            .next()
+            .replace(unsafe { Link::new_unchecked(NonNull::new_unchecked(this)) });
+        this.prev = list
+            .prev
+            .replace(unsafe { Link::new_unchecked(NonNull::new_unchecked(this)) });
+    }
+
+    #[inline]
+    pub fn reinit(self: Pin<&mut Self>) {
+        let this: &mut Self = unsafe { self.get_unchecked_mut() };
+        let ptr: *mut ListHead = this;
+        unsafe {
+            (*ptr)
+                .prev
+                .replace(Link::new_unchecked(NonNull::new_unchecked(ptr)));
+            (*ptr)
+                .next
+                .replace(Link::new_unchecked(NonNull::new_unchecked(ptr)));
+        }
+    }
+
+    #[inline]
+    pub fn remove(self: Pin<&mut Self>) {
+        if !ptr::eq(self.next.as_ptr(), &*self) {
+            let next = unsafe { &*self.next.as_ptr() };
+            let prev = unsafe { &*self.prev.as_ptr() };
+            next.prev.set(&self.prev);
+            prev.next.set(&self.next);
+            // set self as empty.
+            self.reinit();
+        }
+    }
+
+    #[inline]
+    pub fn next(&self) -> Option<NonNull<Self>> {
+        if ptr::eq(self.next.as_ptr(), self) {
+            None
+        } else {
+            Some(unsafe { NonNull::new_unchecked(self.next.as_ptr() as *mut Self) })
+        }
+    }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        ptr::eq(self.next.as_ptr(), self)
+    }
+
+    #[allow(dead_code)]
+    pub fn size(&self) -> usize {
+        let mut size = 1;
+        let mut cur = self.next.clone();
+        while !ptr::eq(self, cur.cur()) {
+            cur = cur.next().clone();
+            size += 1;
+        }
+        size
+    }
+
+    #[inline]
+    pub fn as_ptr(&self) -> *const ListHead {
+        self as *const ListHead
+    }
+}
+
+#[pinned_drop]
+impl PinnedDrop for ListHead {
+    //#[inline]
+    fn drop(self: Pin<&mut Self>) {
+        if !ptr::eq(self.next.as_ptr(), &*self) {
+            let next = unsafe { &*self.next.as_ptr() };
+            let prev = unsafe { &*self.prev.as_ptr() };
+            next.prev.set(&self.prev);
+            prev.next.set(&self.next);
+        }
+    }
+}
+
+#[repr(transparent)]
+#[derive(Clone, Debug)]
+struct Link(Cell<NonNull<ListHead>>);
+
+impl Link {
+    #[inline]
+    unsafe fn new_unchecked(ptr: NonNull<ListHead>) -> Self {
+        Self(Cell::new(ptr))
+    }
+
+    #[inline]
+    fn next(&self) -> &Link {
+        unsafe { &(*self.0.get().as_ptr()).next }
+    }
+
+    #[inline]
+    fn prev(&self) -> &Link {
+        unsafe { &(*self.0.get().as_ptr()).prev }
+    }
+
+    #[allow(dead_code)]
+    fn cur(&self) -> &ListHead {
+        unsafe { &*self.0.get().as_ptr() }
+    }
+
+    #[inline]
+    fn replace(&self, other: Link) -> Link {
+        unsafe { Link::new_unchecked(self.0.replace(other.0.get())) }
+    }
+
+    #[inline]
+    fn as_ptr(&self) -> *const ListHead {
+        self.0.get().as_ptr()
+    }
+
+    #[inline]
+    fn set(&self, val: &Link) {
+        self.0.set(val.0.get());
+    }
+}
+
+/// Get the struct for this entry
+#[macro_export]
+macro_rules! list_head_entry {
+    ($node:expr, $type:ty, $($f:tt)*) => {
+        crate::container_of!($node, $type, $($f)*)
+    };
+}
+
+/// Iterate over a list
+#[macro_export]
+macro_rules! list_head_for_each {
+    ($pos:ident, $head:expr, $code:block) => {
+        let mut $pos = $head;
+        while let Some(next) = $pos.next() {
+            $pos = unsafe { &*next.as_ptr() };
+            if core::ptr::eq($pos, $head) {
+                break;
+            }
+            $code
+        }
+    };
 }

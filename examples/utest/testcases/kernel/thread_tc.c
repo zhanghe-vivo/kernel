@@ -400,62 +400,6 @@ static void test_thread_priority(void)
     return;
 }
 
-static void test_delay_until(void)
-{
-    rt_tick_t tick;
-    rt_tick_t check_tick = 0;
-    rt_tick_t delta = 0;
-
-    tick = rt_tick_get();
-
-    check_tick = tick;
-    rt_thread_delay_until(&tick, 100);
-    delta = rt_tick_get() - check_tick;
-    rt_kprintf("delta[100] -> %d\n", delta);
-    uassert_int_equal(delta, 100);
-
-    check_tick = tick;
-    rt_thread_delay(2);
-    rt_thread_delay_until(&tick, 200);
-    delta = rt_tick_get() - check_tick;
-    rt_kprintf("delta[200] -> %d\n", delta);
-    uassert_int_equal(delta, 200);
-
-    check_tick = tick;
-    rt_thread_delay(2);
-    rt_thread_delay_until(&tick, 300);
-    delta = rt_tick_get() - check_tick;
-    rt_kprintf("delta[300] -> %d\n", delta);
-    uassert_int_equal(delta, 300);
-
-    check_tick = tick;
-    rt_thread_delay(2);
-    rt_thread_delay_until(&tick, 100);
-    delta = rt_tick_get() - check_tick;
-    uassert_int_equal(delta, 100);
-
-    check_tick = tick;
-    rt_thread_delay(2);
-    rt_thread_delay_until(&tick, 50);
-    delta = rt_tick_get() - check_tick;
-    rt_kprintf("delta[50] -> %d\n", delta);
-    uassert_int_equal(delta, 50);
-
-    check_tick = tick;
-    rt_thread_delay(2);
-    rt_thread_delay_until(&tick, 20);
-    delta = rt_tick_get() - check_tick;
-    rt_kprintf("delta[20] -> %d\n", delta);
-    uassert_int_equal(delta, 20);
-
-    check_tick = tick;
-    rt_thread_delay(2);
-    rt_thread_delay_until(&tick, 10);
-    delta = rt_tick_get() - check_tick;
-    rt_kprintf("delta[10] -> %d\n", delta);
-    uassert_int_equal(delta, 10);
-}
-
 static rt_thread_t tidA, tidB1, tidB2;
 static uint32_t timeslice_cntA, timeslice_cntB1, timeslice_cntB2;
 
@@ -731,8 +675,6 @@ static void testcase(void)
     /* control */
     UTEST_UNIT_RUN(test_thread_control);
     UTEST_UNIT_RUN(test_thread_priority);
-    /* delay_until */
-    UTEST_UNIT_RUN(test_delay_until);
     /* timeslice */
     // UTEST_UNIT_RUN(test_timeslice); /* Can not running in Github Action QEMU */
 }

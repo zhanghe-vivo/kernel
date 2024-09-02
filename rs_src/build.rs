@@ -12,6 +12,7 @@ fn main() {
     let target_build_include_path =
         env::var("INCLUDE_PATH").expect("Failed to get target build include path");
     let include_path = vec![
+        current_dir.join("./include"),
         current_dir.join("../include"),
         current_dir.join("../components/drivers/include"),
         current_dir.join("../components/finsh"),

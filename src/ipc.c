@@ -934,6 +934,7 @@ rt_err_t rt_mutex_detach(rt_mutex_t mutex)
     /* remove mutex from thread's taken list */
     rt_list_remove(&mutex->taken_list);
     rt_hw_interrupt_enable(level);
+    rt_schedule();
 
     /* detach mutex object */
     rt_object_detach(&(mutex->parent.parent));
@@ -1857,8 +1858,8 @@ rt_err_t rt_event_send(rt_event_t event, rt_uint32_t set)
                     need_clear_set |= thread->event_set;
 
                 /* resume thread, and thread list breaks out */
-                rt_thread_resume(thread);
                 thread->error = RT_EOK;
+                rt_thread_resume(thread);
 
                 /* need do a scheduling */
                 need_schedule = RT_TRUE;

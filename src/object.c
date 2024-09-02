@@ -307,7 +307,7 @@ RTM_EXPORT(rt_object_get_length);
  *
  * @return the copied number of object pointers.
  */
-int rt_object_get_pointers(enum rt_object_class_type type, rt_object_t *pointers, int maxlen)
+int rt_object_get_pointers(enum rt_object_class_type type, rt_object_t *pointers, rt_size_t maxlen)
 {
     int index = 0;
     rt_base_t level;

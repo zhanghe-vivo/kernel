@@ -6,6 +6,21 @@
 include!(concat!(env!("CARGO_MANIFEST_DIR"), "/bindings.rs"));
 
 pub type uint16_t = rt_uint16_t;
+#[cfg(not(feature = "RT_USING_SMP"))]
+pub const RT_CPUS_NR: u32 = 1;
+
+#[cfg(not(feature = "RT_USING_SMP"))]
+#[inline(always)]
+pub unsafe fn rt_hw_local_irq_disable() -> rt_base_t {
+    rt_hw_interrupt_disable()
+}
+
+#[cfg(not(feature = "RT_USING_SMP"))]
+#[inline(always)]
+pub unsafe fn rt_hw_local_irq_enable(level: rt_base_t) {
+    rt_hw_interrupt_enable(level);
+}
+>>>>>>> master
 
 #[inline(always)]
 pub fn rt_atomic_load(ptr: *mut rt_atomic_t) -> rt_atomic_t {
@@ -84,20 +99,34 @@ pub fn rt_hw_interrupt_enable(level: rt_base_t) {
     }
 }
 
+#[cfg(not(feature = "RT_USING_SMP"))]
+#[inline(always)]
+pub unsafe fn rt_hw_spin_lock(lock: *mut rt_spinlock_t) {
+    *lock = rt_hw_interrupt_disable();
+}
+
+#[cfg(not(feature = "RT_USING_SMP"))]
+#[inline(always)]
+pub unsafe fn rt_hw_spin_unlock(lock: *mut rt_spinlock_t) {
+    rt_hw_interrupt_enable(*lock)
+}
+
 #[cfg(not(feature = "RT_USING_HOOK"))]
+#[macro_export]
 macro_rules! rt_object_hook_call {
-    ($func:ident $(, $argv:expr)?) => {};
+    ($func:ident $(, $($argv:expr),* )?) => {};
 }
 
 #[cfg(all(feature = "RT_USING_HOOK", feature = "RT_HOOK_USING_FUNC_PTR"))]
 #[macro_export]
 macro_rules! rt_object_hook_call {
-    ($func:ident $(, $argv:expr)?) => {
+    ($func:ident $(, $($argv:expr),* )?) => {
         if let Some(hook) = $func {
-            hook($(($argv))?);
+            hook($($($argv),*)?);
         }
     };
 }
+
 /// Macro to check current context.
 #[cfg(RT_DEBUGING_CONTEXT)]
 #[macro_export]

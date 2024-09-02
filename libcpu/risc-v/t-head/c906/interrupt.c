@@ -15,9 +15,9 @@
 #include "riscv.h"
 #include "plic.h"
 
-extern rt_uint32_t rt_interrupt_nest;
-extern rt_uint32_t rt_interrupt_from_thread, rt_interrupt_to_thread;
-extern rt_uint32_t rt_thread_switch_interrupt_flag;
+// #define rt_interrupt_nest rt_cpu_self()->irq_nest
+// extern rt_uint32_t rt_interrupt_from_thread, rt_interrupt_to_thread;
+// extern rt_uint32_t rt_thread_switch_interrupt_flag;
 
 struct rt_irq_desc isr_table[INTERRUPTS_MAX];
 
@@ -43,10 +43,10 @@ void rt_hw_interrupt_init(void)
     }
 
     /* init interrupt nest, and context in thread sp */
-    rt_interrupt_nest               = 0;
-    rt_interrupt_from_thread        = 0;
-    rt_interrupt_to_thread          = 0;
-    rt_thread_switch_interrupt_flag = 0;
+    // rt_interrupt_nest               = 0;
+    // rt_interrupt_from_thread        = 0;
+    // rt_interrupt_to_thread          = 0;
+    // rt_thread_switch_interrupt_flag = 0;
 }
 
 /**

@@ -103,6 +103,9 @@ static void test_static_mutex_take(void)
     if (RT_EOK != result)
         uassert_true(RT_FALSE);
 
+    /* let system schedule */
+    rt_thread_mdelay(5);
+
     uassert_true(RT_TRUE);
 }
 
@@ -164,6 +167,9 @@ static void test_static_mutex_release(void)
     if (RT_EOK != result)
         uassert_true(RT_FALSE);
 
+    /* let system schedule */
+    rt_thread_mdelay(5);
+
     uassert_true(RT_TRUE);
 }
 
@@ -218,6 +224,9 @@ static void test_static_mutex_trytake(void)
     result = rt_mutex_detach(&static_mutex);
     if (RT_EOK != result)
         uassert_true(RT_FALSE);
+
+    /* let system schedule */
+    rt_thread_mdelay(5);
 
     uassert_true(RT_TRUE);
 }
@@ -326,6 +335,9 @@ static void test_static_pri_reverse(void)
     if (RT_EOK != result)
         uassert_true(RT_FALSE);
 
+    /* let system schedule */
+    rt_thread_mdelay(5);
+
     uassert_true(RT_TRUE);
 }
 
@@ -416,6 +428,9 @@ static void test_dynamic_mutex_take(void)
     if (RT_EOK != result)
         uassert_true(RT_FALSE);
 
+    /* let system schedule */
+    rt_thread_mdelay(5);
+
     uassert_true(RT_TRUE);
 }
 
@@ -477,6 +492,9 @@ static void test_dynamic_mutex_release(void)
     if (RT_EOK != result)
         uassert_true(RT_FALSE);
 
+    /* let system schedule */
+    rt_thread_mdelay(5);
+
     uassert_true(RT_TRUE);
 }
 
@@ -531,6 +549,9 @@ static void test_dynamic_mutex_trytake(void)
     result = rt_mutex_delete(dynamic_mutex);
     if (RT_EOK != result)
         uassert_true(RT_FALSE);
+
+    /* let system schedule */
+    rt_thread_mdelay(5);
 
     uassert_true(RT_TRUE);
 }
@@ -634,6 +655,9 @@ static void test_dynamic_pri_reverse(void)
     result = rt_mutex_delete(dynamic_mutex);
     if (RT_EOK != result)
         uassert_true(RT_FALSE);
+
+    /* let system schedule */
+    rt_thread_mdelay(5);
 
     uassert_true(RT_TRUE);
 }
