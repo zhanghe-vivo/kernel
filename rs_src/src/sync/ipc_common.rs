@@ -52,7 +52,7 @@ pub extern "C" fn _rt_ipc_list_suspend(
 ) -> rt_err_t {
     unsafe {
         if ((*thread).stat as u32 & RT_THREAD_SUSPEND_MASK) != RT_THREAD_SUSPEND_MASK {
-            let ret = rt_thread_suspend_with_flag(thread, suspend_flag);
+            let ret = rt_thread_suspend_with_flag(thread, suspend_flag as rt_uint32_t);
 
             if ret != RT_EOK as rt_err_t {
                 return ret;

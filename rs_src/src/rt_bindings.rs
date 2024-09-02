@@ -20,7 +20,6 @@ pub unsafe fn rt_hw_local_irq_disable() -> rt_base_t {
 pub unsafe fn rt_hw_local_irq_enable(level: rt_base_t) {
     rt_hw_interrupt_enable(level);
 }
->>>>>>> master
 
 #[inline(always)]
 pub fn rt_atomic_load(ptr: *mut rt_atomic_t) -> rt_atomic_t {
