@@ -1,4 +1,9 @@
+pub mod event;
+pub mod ipc_common;
 pub mod lock;
+pub mod mailbox;
+pub mod message_queue;
+pub mod semaphore;
 
 pub use lock::heaplock::{new_heaplock, HeapLock};
 pub use lock::mutex::{new_mutex, Mutex};
