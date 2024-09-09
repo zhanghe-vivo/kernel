@@ -11,6 +11,7 @@ use crate::{
     thread::RtThread,
     thread::ThreadWithStack,
 };
+use alloc::ffi;
 use core::{
     ffi::c_char, ffi::c_void, intrinsics::wrapping_sub, pin::Pin, ptr, sync::atomic::AtomicUsize,
     sync::atomic::Ordering,
@@ -71,14 +72,16 @@ static mut SOFT_TIMER_STATUS: u8 = RT_SOFT_TIMER_IDLE;
 struct TimerWheel {
     current_ptr: AtomicUsize,
     #[pin]
-    row: SpinLock<[ListHead; TIMER_WHEEL_SIZE]>,
+    row: [ListHead; TIMER_WHEEL_SIZE],
+    timer_wheel_lock: RawSpin,
 }
 
 impl TimerWheel {
     pub fn new() -> impl PinInit<Self> {
         pin_init!(Self {
             current_ptr: AtomicUsize::new(0),
-            row <- new_spinlock!(pin_init_array_from_fn(|_| ListHead::new())),
+            row <- pin_init_array_from_fn(|_| ListHead::new()),
+            timer_wheel_lock: RawSpin::new(),
         })
     }
 
@@ -97,18 +100,11 @@ impl TimerWheel {
             ptr = 0;
         }
         let current_tick = Cpu::get_by_id(0).tick_load();
-        loop {
-            let locked_row = self.row.lock();
-            let list = &locked_row[ptr];
-            let timer;
-            match list.next() {
-                None => {
-                    break;
-                }
-                Some(timer_node) => {
-                    timer = unsafe { &mut *crate::container_of!(timer_node.as_ptr(), Timer, node) };
-                }
-            }
+        self.timer_wheel_lock.lock();
+        crate::list_head_for_each!(time_node, &self.row[ptr], {
+            let timer = unsafe {
+                &mut *crate::container_of!(time_node.as_ptr() as *mut ListHead, Timer, node)
+            };
             if current_tick.wrapping_sub(timer.timeout_tick) < rt_bindings::RT_TICK_MAX / 2 {
                 unsafe {
                     crate::rt_object_hook_call!(
@@ -116,29 +112,13 @@ impl TimerWheel {
                         &timer as *const _ as *const rt_bindings::rt_timer
                     )
                 };
-
-                unsafe {
-                    let thread = &mut *crate::container_of!(
-                        timer as *mut Timer,
-                        crate::thread::RtThread,
-                        thread_timer
-                    );
-                    println!("thread name = {}", (*thread).get_name());
-                };
-                drop(locked_row);
+                self.timer_wheel_lock.unlock();
                 timer.timer_remove();
-                {
-                    let a = &self.row.lock()[ptr];
-                    println!("list size = {}", a.size());
-                }
-
-                timer.timer_lock.lock();
                 if (timer.parent.flag & rt_bindings::RT_TIMER_FLAG_PERIODIC as u8) == 0 {
                     timer.parent.flag &= !rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8;
                 }
-                timer.timer_lock.unlock();
                 (timer.timeout_func)(timer.parameter);
-                let timer_lock = timer.timer_lock.acquire();
+                self.timer_wheel_lock.lock();
                 unsafe {
                     crate::rt_object_hook_call!(
                         TIMER_EXIT_HOOK,
@@ -149,31 +129,27 @@ impl TimerWheel {
                     && ((timer.parent.flag & rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8) != 0)
                 {
                     timer.parent.flag &= !rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8;
-                    drop(timer_lock);
+                    self.timer_wheel_lock.unlock();
                     timer.timer_start();
+                    self.timer_wheel_lock.lock();
                 }
             } else {
                 break;
             }
-        }
+        });
+        self.timer_wheel_lock.unlock();
     }
 
     #[cfg(feature = "RT_USING_TIMER_SOFT")]
     fn soft_timer_check(&mut self) {
         let ptr = self.current_ptr.load(Ordering::SeqCst);
         let current_tick = Cpu::get_by_id(0).tick_load();
-        loop {
-            let locked_row = self.row.lock();
-            let list = &locked_row[ptr];
-            let timer;
-            match list.next() {
-                None => {
-                    break;
-                }
-                Some(timer_node) => {
-                    timer = unsafe { &mut *crate::container_of!(timer_node.as_ptr(), Timer, node) };
-                }
-            }
+        println!("soft_timer_check");
+        self.timer_wheel_lock.lock();
+        crate::list_head_for_each!(time_node, &self.row[ptr], {
+            let timer = unsafe {
+                &mut *crate::container_of!(time_node.as_ptr() as *mut ListHead, Timer, node)
+            };
             if current_tick.wrapping_sub(timer.timeout_tick) < rt_bindings::RT_TICK_MAX / 2 {
                 unsafe {
                     crate::rt_object_hook_call!(
@@ -181,16 +157,14 @@ impl TimerWheel {
                         &timer as *const _ as *const rt_bindings::rt_timer
                     )
                 };
+                self.timer_wheel_lock.unlock();
                 timer.timer_remove();
-                drop(locked_row);
-                timer.timer_lock.lock();
                 if (timer.parent.flag & rt_bindings::RT_TIMER_FLAG_PERIODIC as u8) == 0 {
                     timer.parent.flag &= !rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8;
                 }
-                timer.timer_lock.unlock();
                 (timer.timeout_func)(timer.parameter);
+                self.timer_wheel_lock.lock();
                 unsafe { SOFT_TIMER_STATUS = RT_SOFT_TIMER_BUSY };
-                timer.timer_lock.acquire();
                 unsafe {
                     SOFT_TIMER_STATUS = RT_SOFT_TIMER_IDLE;
                     crate::rt_object_hook_call!(
@@ -202,19 +176,22 @@ impl TimerWheel {
                     && ((timer.parent.flag & rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8) != 0)
                 {
                     timer.parent.flag &= !rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8;
+                    self.timer_wheel_lock.unlock();
                     timer.timer_start();
+                    self.timer_wheel_lock.lock();
                 }
             } else {
                 break;
             }
-        }
+        });
+        self.timer_wheel_lock.unlock();
     }
 
     fn next_timeout_tick(&mut self) -> u32 {
         let mut next_timeout_tick = rt_bindings::RT_TICK_MAX;
-        let row = self.row.lock();
+        self.timer_wheel_lock.acquire();
         for i in 0..TIMER_WHEEL_SIZE - 1 {
-            if let Some(timer_node) = row[i].next() {
+            if let Some(timer_node) = self.row[i].next() {
                 unsafe {
                     let timer = crate::container_of!(timer_node.as_ptr(), Timer, node);
                     if (*timer).timeout_tick < next_timeout_tick {
@@ -223,6 +200,7 @@ impl TimerWheel {
                 }
             }
         }
+        println!("next timeout {}", next_timeout_tick);
         next_timeout_tick
     }
 }
@@ -237,7 +215,6 @@ pub struct Timer {
     timeout_tick: u32,
     #[pin]
     node: ListHead,
-    timer_lock: RawSpin,
 }
 
 impl Timer {
@@ -294,7 +271,6 @@ impl Timer {
             cur_ref.timeout_func = timeout_func;
             cur_ref.parameter = parameter;
             let _ = ListHead::new().__pinned_init(&mut cur_ref.node as *mut ListHead);
-            cur_ref.timer_lock = RawSpin::new();
             Ok(())
         };
         unsafe { pin_init_from_closure(init) }
@@ -324,16 +300,9 @@ impl Timer {
             unsafe {
                 (*thread).sched_flag_ttmr_set = 1;
             }
-            println!(
-                "thread name = {} cureent_tick = {}; init_tick = {}",
-                unsafe { (*thread).get_name() },
-                Cpu::get_by_id(0).tick_load(),
-                self.init_tick
-            );
         }
         self.timer_remove();
-        self.timer_lock.lock();
-        let mut row = time_wheel.row.lock();
+        time_wheel.timer_wheel_lock.acquire();
         self.parent.flag &= !rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8;
         unsafe {
             crate::rt_object_hook_call!(
@@ -348,28 +317,35 @@ impl Timer {
         if insert_ptr >= TIMER_WHEEL_SIZE {
             insert_ptr = insert_ptr & (TIMER_WHEEL_SIZE - 1);
         }
-        println!(
-            "insert_ptr = {} timeout_tick = {}",
-            insert_ptr, self.timeout_tick
-        );
-        let mut list = unsafe { Pin::new_unchecked(&mut row[insert_ptr]) };
+        if self.parent.flag & rt_bindings::RT_TIMER_FLAG_SOFT_TIMER as u8 != 0 {
+            println!("insert_ptr = {}", insert_ptr);
+        }
+        let mut list = &mut time_wheel.row[insert_ptr];
+        let head = list.as_ptr() as *mut ListHead;
         loop {
             match list.next() {
                 None => {
-                    list.insert_next(&self.node);
+                    unsafe { Pin::new_unchecked(&mut self.node).insert_next(list) }
                     break;
                 }
                 Some(mut timer_node) => {
                     let timer = unsafe { &*crate::container_of!(timer_node.as_ptr(), Timer, node) };
                     if timeout_tick <= timer.timeout_tick {
-                        list.insert_next(&self.node);
+                        unsafe {
+                            Pin::new_unchecked(&mut self.node).insert_prev(timer_node.as_mut())
+                        };
                         break;
                     }
-                    list = unsafe { Pin::new_unchecked(timer_node.as_mut()) };
+                    if core::ptr::eq(head, timer_node.as_ptr()) {
+                        unsafe {
+                            Pin::new_unchecked(&mut self.node).insert_next(timer_node.as_mut())
+                        };
+                        break;
+                    }
+                    list = unsafe { timer_node.as_mut() };
                 }
             }
         }
-
         self.parent.flag |= rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8;
         if self.parent.flag & rt_bindings::RT_TIMER_FLAG_SOFT_TIMER as u8 != 0 {
             unsafe {
@@ -382,8 +358,6 @@ impl Timer {
                 }
             }
         }
-        self.timer_lock.unlock();
-        drop(row);
         if is_thread_timer {
             Cpu::get_current_scheduler().sched_unlock(level);
         }
@@ -405,26 +379,31 @@ impl Timer {
 
     fn timer_remove(&mut self) {
         let time_wheel;
-        self.timer_lock.acquire();
         if self.parent.flag & rt_bindings::RT_TIMER_FLAG_SOFT_TIMER as u8 != 0 {
             time_wheel = unsafe { &mut SOFT_TIMER_WHEEL };
         } else {
             time_wheel = unsafe { &mut TIMER_WHEEL };
         }
-        let _ = time_wheel.row.lock();
+        let _ = time_wheel.timer_wheel_lock.acquire();
         unsafe { Pin::new_unchecked(&mut self.node).remove() };
         self.parent.flag &= !rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8;
     }
 
     fn timer_control(&mut self, cmd: u32, arg: *mut c_void) {
-        self.timer_lock.lock();
+        let time_wheel;
+        if self.parent.flag & rt_bindings::RT_TIMER_FLAG_SOFT_TIMER as u8 != 0 {
+            time_wheel = unsafe { &mut SOFT_TIMER_WHEEL };
+        } else {
+            time_wheel = unsafe { &mut TIMER_WHEEL };
+        }
+        time_wheel.timer_wheel_lock.lock();
         match cmd {
             rt_bindings::RT_TIMER_CTRL_GET_TIME => unsafe { *(arg as *mut u32) = self.init_tick },
             rt_bindings::RT_TIMER_CTRL_SET_TIME => {
                 if (self.parent.flag & rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8) != 0 {
-                    self.timer_lock.unlock();
+                    time_wheel.timer_wheel_lock.unlock();
                     self.timer_remove();
-                    self.timer_lock.lock();
+                    time_wheel.timer_wheel_lock.lock();
                     self.parent.flag &= !rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8;
                 }
                 self.init_tick = unsafe { *(arg as *mut u32) };
@@ -459,13 +438,13 @@ impl Timer {
             },
             _ => {}
         }
-        self.timer_lock.unlock();
+        time_wheel.timer_wheel_lock.unlock();
     }
 
     #[cfg(feature = "RT_USING_TIMER_SOFT")]
     extern "C" fn timer_thread_entry(_parameter: *mut c_void) {
         let timer_wheel = unsafe { &mut SOFT_TIMER_WHEEL };
-        while true {
+        loop {
             let mut next_timeout = timer_wheel.next_timeout_tick();
             if next_timeout == rt_bindings::RT_TICK_MAX {
                 let thread = match Cpu::get_current_thread() {
@@ -473,7 +452,6 @@ impl Timer {
                     None => ptr::null_mut(),
                 };
                 assert!(!thread.is_null());
-                println!("thread schedule ...");
                 assert!(
                     rt_object_get_type(thread as rt_bindings::rt_object_t)
                         == ObjectClassType::ObjectClassThread as u8
@@ -485,7 +463,6 @@ impl Timer {
                     < rt_bindings::RT_TICK_MAX / 2
                 {
                     next_timeout = next_timeout - Cpu::get_by_id(0).tick_load();
-                    println!("sleep {}", next_timeout);
                     RtThread::sleep(next_timeout);
                     let index = next_timeout as usize & (TIMER_WHEEL_SIZE - 1);
                     timer_wheel.current_ptr.fetch_add(index, Ordering::SeqCst);
@@ -494,6 +471,10 @@ impl Timer {
                         let new_ptr = ptr & (TIMER_WHEEL_SIZE - 1);
                         timer_wheel.current_ptr.store(new_ptr, Ordering::SeqCst);
                     }
+                    println!(
+                        "current_ptr = {}",
+                        timer_wheel.current_ptr.load(Ordering::SeqCst)
+                    );
                 }
             }
             timer_wheel.soft_timer_check()
@@ -529,7 +510,7 @@ pub extern "C" fn rt_timer_detach(timer: *mut Timer) -> rt_bindings::rt_err_t {
     );
     assert!(
         rt_object_is_systemobject(timer as rt_bindings::rt_object_t)
-            == rt_bindings::RT_FALSE as i32
+            != rt_bindings::RT_FALSE as core::ffi::c_int
     );
     unsafe {
         (*timer).timer_remove();
@@ -643,6 +624,7 @@ pub extern "C" fn rt_timer_check() {
 
 #[no_mangle]
 pub extern "C" fn rt_timer_next_timeout_tick() -> rt_bindings::rt_tick_t {
+    println!("rt_timer_next_timeout_tick");
     unsafe { TIMER_WHEEL.next_timeout_tick() as rt_bindings::rt_tick_t }
 }
 

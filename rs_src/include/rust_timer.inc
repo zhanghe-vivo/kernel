@@ -5,5 +5,5 @@ struct rt_timer {
     rt_tick_t init_tick;
     rt_tick_t timeout_tick;
     rt_list_t node;
-    struct rt_spinlock timer_lock;
+  //  struct rt_spinlock timer_lock;
 };
