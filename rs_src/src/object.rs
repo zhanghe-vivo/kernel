@@ -320,6 +320,7 @@ pub extern "C" fn rt_object_init(
             assert!(!ptr::eq(object, obj as *const rt_object));
         });
     }
+
     let obj_ref = unsafe { &mut *(object as *mut BaseObject) };
     // initialize object's parameters
     // set object type to static
@@ -366,7 +367,7 @@ fn rt_object_init_internal(
 
     #[cfg(feature = "RT_USING_MODULE")]
     let module = unsafe { dlmodule_self() };
-
+    let _ = unsafe { ListHead::new().__pinned_init(&mut obj_ref.list as *mut ListHead) };
     let _guard = information.spinlock.acquire();
     #[cfg(feature = "RT_USING_MODULE")]
     if !module.is_null() {
