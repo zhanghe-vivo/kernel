@@ -265,7 +265,7 @@ impl PinnedDrop for ListHead {
 
 #[repr(transparent)]
 #[derive(Clone, Debug)]
-struct Link(Cell<NonNull<ListHead>>);
+pub struct Link(Cell<NonNull<ListHead>>);
 
 impl Link {
     #[inline]
@@ -294,7 +294,7 @@ impl Link {
     }
 
     #[inline]
-    fn as_ptr(&self) -> *const ListHead {
+    pub fn as_ptr(&self) -> *const ListHead {
         self.0.get().as_ptr()
     }
 
