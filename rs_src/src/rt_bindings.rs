@@ -5,6 +5,7 @@
 
 include!(concat!(env!("CARGO_MANIFEST_DIR"), "/bindings.rs"));
 
+pub type uint16_t = rt_uint16_t;
 #[cfg(not(feature = "RT_USING_SMP"))]
 pub const RT_CPUS_NR: u32 = 1;
 
@@ -206,5 +207,5 @@ macro_rules! rt_debug_in_thread_context {
 #[cfg(not(RT_DEBUGING_CONTEXT))]
 #[macro_export]
 macro_rules! rt_debug_scheduler_available {
-    () => {};
+    ($need_check:expr) => {};
 }
