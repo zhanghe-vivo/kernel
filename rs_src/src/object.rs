@@ -14,6 +14,8 @@ use pinned_init::*;
 
 type DestroyFunc = extern "C" fn(*mut ffi::c_void) -> rt_err_t;
 
+pub const NAME_MAX: usize = 8;
+
 #[repr(u8)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ObjectClassType {
@@ -81,7 +83,7 @@ pub struct ObjectInformation {
 #[repr(C)]
 pub struct BaseObject {
     #[doc = "< dynamic name of kernel object"]
-    pub name: [i8; RT_NAME_MAX as usize],
+    pub name: [i8; NAME_MAX],
     #[doc = "< type of kernel object"]
     pub type_: u8,
     #[doc = "< flag of kernel object"]
@@ -359,7 +361,7 @@ fn rt_object_init_internal(
 
     #[cfg(feature = "RT_NAME_MAX")]
     unsafe {
-        rt_strncpy(obj_ref.name.as_mut_ptr(), name, (RT_NAME_MAX - 1) as usize);
+        rt_strncpy(obj_ref.name.as_mut_ptr(), name, (NAME_MAX - 1) as usize);
     }
 
     #[cfg(not(feature = "RT_NAME_MAX"))]
@@ -643,7 +645,7 @@ pub extern "C" fn rt_object_find(name: *const ffi::c_char, type_: rt_uint8_t) ->
             if rt_strncmp(
                 (*object).name.as_ptr() as *const ffi::c_char,
                 name,
-                RT_NAME_MAX as usize,
+                NAME_MAX,
             ) == 0
             {
                 /* leave critical */
@@ -776,3 +778,20 @@ pub extern "C" fn rt_object_put_sethook(hook: unsafe extern "C" fn(*const rt_obj
     unsafe { rt_object_put_hook = Some(hook) };
 }
 
+/// bindgen for object
+#[no_mangle]
+pub extern "C" fn bindgen_object_information(_obj: ObjectInformation) {
+    0;
+}
+
+/// bindgen for ObjectClassType
+#[no_mangle]
+pub extern "C" fn bindgen_object_class_type(_obj: ObjectClassType) {
+    0;
+}
+
+/// bindgen for ObjectClassType
+#[no_mangle]
+pub extern "C" fn bindgen_base_object(_obj: BaseObject) {
+    0;
+}

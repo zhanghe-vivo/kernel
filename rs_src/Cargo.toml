@@ -12,6 +12,7 @@ path = "src/lib.rs"
 
 [build-dependencies]
 bindgen = "0.69.4"
+cbindgen = "0.24.0"
 
 [dependencies]
 log = "0.4"

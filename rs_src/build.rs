@@ -1,4 +1,5 @@
 use bindgen::Builder;
+use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
 
@@ -20,6 +21,37 @@ fn main() {
         current_dir.join(target_build_include_path),
         current_dir.join("../libcpu/arm/cortex-a"),
     ];
+
+    let mut config = cbindgen::Config::default();
+
+    config.export.item_types = vec![cbindgen::ItemType::Structs, cbindgen::ItemType::Enums];
+
+    config.export.exclude = vec!["ListHead".to_string()];
+
+    let rename_list = HashMap::from([
+        ("BaseObject".to_string(), "rt_object".to_string()),
+        ("Stack".to_string(), "rt_stack".to_string()),
+        ("RtThread".to_string(), "rt_thread".to_string()),
+        ("Timer".to_string(), "rt_timer".to_string()),
+        ("ListHead".to_string(), "rt_list_t".to_string()),
+        (
+            "ObjectInformation".to_string(),
+            "rt_object_information".to_string(),
+        ),
+    ]);
+
+    config.export.rename = rename_list;
+
+    let crate_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+
+    cbindgen::Builder::new()
+        .with_config(config)
+        .with_crate(crate_dir)
+        .with_no_includes()
+        .with_language(cbindgen::Language::C)
+        .generate()
+        .expect("Unable to generate bindings")
+        .write_to_file("include/rust_wrapper.inc");
 
     let mut builder = Builder::default();
     for path in &include_path {

@@ -388,7 +388,7 @@ int unwind_frame(struct stackframe *frame, const struct unwind_idx **origin_idx,
     /* store the highest address on the stack to avoid crossing it*/
     low = frame->sp;
     rt_c_thread = rt_thread_self();
-    ctrl.sp_high = (unsigned long)((char*)rt_c_thread->stack_addr + rt_c_thread->stack_size);
+    ctrl.sp_high = (unsigned long)((char*)rt_c_thread->stack.bottom + rt_c_thread->stack.size);
 
     LOG_D("%s(pc = %08lx lr = %08lx sp = %08lx)", __func__,
             frame->pc, frame->lr, frame->sp);

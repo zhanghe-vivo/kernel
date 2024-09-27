@@ -573,7 +573,7 @@ struct rt_object_information
     rt_size_t                 object_size;              /**< object size */
 };
 #else
-#include "rust_object.inc"
+#include "rt_thread_wrapper.inc"
 #endif
 
 /**
@@ -659,8 +659,6 @@ struct rt_timer
     rt_tick_t        init_tick;                         /**< timer timeout tick */
     rt_tick_t        timeout_tick;                      /**< timeout tick */
 };
-#else
-#include "rust_timer.inc"
 #endif
 typedef struct rt_timer *rt_timer_t;
 
@@ -939,8 +937,6 @@ struct rt_thread
 
     // rt_ubase_t                  user_data;              /**< private user data beyond this thread */
 };
-#else
-#include "rust_thread.inc"
 #endif
 
 typedef struct rt_thread *rt_thread_t;

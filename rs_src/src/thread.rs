@@ -82,7 +82,7 @@ pub struct RtThread {
 
     /// built-in thread timer, used for wait timeout
     #[pin]
-    pub thread_timer: rt_bindings::rt_timer,
+    pub thread_timer: timer::Timer,
 
     /// stack point and entry
     pub(crate) stack: Stack,
@@ -112,7 +112,7 @@ pub struct RtThread {
     taken_object_list: ListHead,
     /// mutex object
     #[cfg(feature = "RT_USING_MUTEX")]
-    pending_object: *mut rt_bindings::rt_object,
+    pending_object: *mut BaseObject,
 
     #[cfg(feature = "RT_USING_EVENT")]
     pub event_set: ffi::c_uint,
@@ -608,7 +608,7 @@ impl RtThread {
 
         // as rt_mutex_release may use sched_lock.
         if self.pending_object != ptr::null_mut()
-            && object::rt_object_get_type(self.pending_object)
+            && object::rt_object_get_type(self.pending_object as *mut rt_bindings::rt_object)
                 == ObjectClassType::ObjectClassMutex as u8
         {
             unsafe {

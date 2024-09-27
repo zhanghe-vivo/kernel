@@ -122,7 +122,7 @@ static rt_list_t *list_get_next(rt_list_t *current, list_get_next_t *arg)
         struct rt_object *obj;
         /* The node in the list? */
         obj = rt_list_entry(node, struct rt_object, list);
-        if ((obj->type & ~RT_Object_Class_Static) != arg->type)
+        if ((obj->type_ & ~RT_Object_Class_Static) != arg->type)
         {
             rt_hw_interrupt_enable(level);
             return (rt_list_t *)RT_NULL;
@@ -196,7 +196,7 @@ long list_thread(void)
                 obj = rt_list_entry(obj_list[i], struct rt_object, list);
                 level = rt_hw_interrupt_disable();
 
-                if ((obj->type & ~RT_Object_Class_Static) != find_arg.type)
+                if ((obj->type_ & ~RT_Object_Class_Static) != find_arg.type)
                 {
                     rt_hw_interrupt_enable(level);
                     continue;
@@ -228,23 +228,23 @@ long list_thread(void)
                     else if (stat == RT_THREAD_RUNNING) rt_kprintf(" running");
 
 #if defined(ARCH_CPU_STACK_GROWS_UPWARD)
-                    ptr = (rt_uint8_t *)thread->stack_addr + thread->stack_size - 1;
+                    ptr = (rt_uint8_t *)thread->stack.bottom + thread->stack.size - 1;
                     while (*ptr == '#')ptr --;
 
                     rt_kprintf(" 0x%08x 0x%08x    %02d%%   0x%08x %03d\n",
-                               ((rt_ubase_t)thread->sp - (rt_ubase_t)thread->stack_addr),
-                               thread->stack_size,
-                               ((rt_ubase_t)ptr - (rt_ubase_t)thread->stack_addr) * 100 / thread->stack_size,
+                               ((rt_ubase_t)thread->stack.sp - (rt_ubase_t)thread->stack.bottom),
+                               thread->stack.size,
+                               ((rt_ubase_t)ptr - (rt_ubase_t)thread->stack.bottom) * 100 / thread->stack.size,
                                thread->remaining_tick,
                                thread->error);
 #else
-                    ptr = (rt_uint8_t *)thread->stack_addr;
+                    ptr = (rt_uint8_t *)thread->stack.bottom;
                     while (*ptr == '#') ptr ++;
                     rt_kprintf(" 0x%08x 0x%08x    %02d%%   0x%08x %s\n",
-                               thread->stack_size + ((rt_ubase_t)thread->stack_addr - (rt_ubase_t)thread->sp),
-                               thread->stack_size,
-                               (thread->stack_size - ((rt_ubase_t) ptr - (rt_ubase_t) thread->stack_addr)) * 100
-                               / thread->stack_size,
+                               thread->stack.size + ((rt_ubase_t)thread->stack.bottom - (rt_ubase_t)thread->stack.sp),
+                               thread->stack.size,
+                               (thread->stack.size - ((rt_ubase_t) ptr - (rt_ubase_t) thread->stack.bottom)) * 100
+                               / thread->stack.size,
                                thread->remaining_tick,
                                rt_strerror(thread->error));
 #endif
@@ -303,7 +303,7 @@ long list_sem(void)
 
                 obj = rt_list_entry(obj_list[i], struct rt_object, list);
                 level = rt_hw_interrupt_disable();
-                if ((obj->type & ~RT_Object_Class_Static) != find_arg.type)
+                if ((obj->type_ & ~RT_Object_Class_Static) != find_arg.type)
                 {
                     rt_hw_interrupt_enable(level);
                     continue;
@@ -369,7 +369,7 @@ long list_event(void)
 
                 obj = rt_list_entry(obj_list[i], struct rt_object, list);
                 level = rt_hw_interrupt_disable();
-                if ((obj->type & ~RT_Object_Class_Static) != find_arg.type)
+                if ((obj->type_ & ~RT_Object_Class_Static) != find_arg.type)
                 {
                     rt_hw_interrupt_enable(level);
                     continue;
@@ -433,7 +433,7 @@ long list_mutex(void)
 
                 obj = rt_list_entry(obj_list[i], struct rt_object, list);
                 level = rt_hw_interrupt_disable();
-                if ((obj->type & ~RT_Object_Class_Static) != find_arg.type)
+                if ((obj->type_ & ~RT_Object_Class_Static) != find_arg.type)
                 {
                     rt_hw_interrupt_enable(level);
                     continue;
@@ -506,7 +506,7 @@ long list_mailbox(void)
 
                 obj = rt_list_entry(obj_list[i], struct rt_object, list);
                 level = rt_hw_interrupt_disable();
-                if ((obj->type & ~RT_Object_Class_Static) != find_arg.type)
+                if ((obj->type_ & ~RT_Object_Class_Static) != find_arg.type)
                 {
                     rt_hw_interrupt_enable(level);
                     continue;
@@ -575,7 +575,7 @@ long list_msgqueue(void)
 
                 obj = rt_list_entry(obj_list[i], struct rt_object, list);
                 level = rt_hw_interrupt_disable();
-                if ((obj->type & ~RT_Object_Class_Static) != find_arg.type)
+                if ((obj->type_ & ~RT_Object_Class_Static) != find_arg.type)
                 {
                     rt_hw_interrupt_enable(level);
                     continue;
@@ -641,7 +641,7 @@ long list_memheap(void)
 
                 obj = rt_list_entry(obj_list[i], struct rt_object, list);
                 level = rt_hw_interrupt_disable();
-                if ((obj->type & ~RT_Object_Class_Static) != find_arg.type)
+                if ((obj->type_ & ~RT_Object_Class_Static) != find_arg.type)
                 {
                     rt_hw_interrupt_enable(level);
                     continue;
@@ -699,7 +699,7 @@ long list_mempool(void)
 
                 obj = rt_list_entry(obj_list[i], struct rt_object, list);
                 level = rt_hw_interrupt_disable();
-                if ((obj->type & ~RT_Object_Class_Static) != find_arg.type)
+                if ((obj->type_ & ~RT_Object_Class_Static) != find_arg.type)
                 {
                     rt_hw_interrupt_enable(level);
                     continue;
@@ -775,7 +775,7 @@ long list_timer(void)
 
                 obj = rt_list_entry(obj_list[i], struct rt_object, list);
                 level = rt_hw_interrupt_disable();
-                if ((obj->type & ~RT_Object_Class_Static) != find_arg.type)
+                if ((obj->type_ & ~RT_Object_Class_Static) != find_arg.type)
                 {
                     rt_hw_interrupt_enable(level);
                     continue;
@@ -874,7 +874,7 @@ long list_device(void)
 
                 obj = rt_list_entry(obj_list[i], struct rt_object, list);
                 level = rt_hw_interrupt_disable();
-                if ((obj->type & ~RT_Object_Class_Static) != find_arg.type)
+                if ((obj->type_ & ~RT_Object_Class_Static) != find_arg.type)
                 {
                     rt_hw_interrupt_enable(level);
                     continue;
