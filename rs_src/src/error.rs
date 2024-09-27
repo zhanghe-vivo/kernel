@@ -1,8 +1,7 @@
-use crate::{irq, rt_bindings, str::CStr};
+use crate::{irq, rt_bindings, str::CStr, thread};
 
 use alloc::alloc::{AllocError, LayoutError};
 
-use core::convert::From;
 use core::num::TryFromIntError;
 use core::str::Utf8Error;
 
@@ -131,7 +130,7 @@ pub unsafe extern "C" fn rt_get_errno() -> i32 {
         return RT_ERRNO.to_errno();
     }
 
-    let tid = rt_bindings::rt_thread_self();
+    let tid = thread::rt_thread_self();
     if tid.is_null() {
         return RT_ERRNO.to_errno();
     }
@@ -147,7 +146,7 @@ pub unsafe extern "C" fn rt_set_errno(error: i32) {
         return;
     }
 
-    let tid = rt_bindings::rt_thread_self();
+    let tid = thread::rt_thread_self();
     if tid.is_null() {
         RT_ERRNO = Error::from_errno(error);
         return;
@@ -163,7 +162,7 @@ pub unsafe extern "C" fn _rt_errno() -> *mut i32 {
         return &RT_ERRNO.0 as *const i32 as *mut i32;
     }
 
-    let tid = rt_bindings::rt_thread_self();
+    let tid = thread::rt_thread_self();
     if tid.is_null() {
         return &RT_ERRNO.0 as *const i32 as *mut i32;
     }

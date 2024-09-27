@@ -1,5 +1,4 @@
 use crate::{
-    container_of,
     error::Error,
     object::{
         rt_object_allocate, rt_object_delete, rt_object_detach, rt_object_get_type, rt_object_init,
@@ -7,12 +6,11 @@ use crate::{
     },
     rt_bindings::*,
     rt_debug_not_in_interrupt, rt_list_entry,
+    scheduler::rt_schedule,
     sync::ipc_common::*,
+    thread, timer,
 };
-use kernel::{
-    rt_bindings::{rt_hw_interrupt_disable, rt_hw_interrupt_enable},
-    rt_debug_scheduler_available, rt_object_hook_call,
-};
+use kernel::{rt_debug_scheduler_available, rt_object_hook_call};
 
 use core::{
     cell::UnsafeCell,
@@ -129,7 +127,7 @@ pub unsafe extern "C" fn rt_event_send(event: rt_event_t, set: rt_uint32_t) -> r
 
     (*event).set |= set;
 
-    rt_object_hook_call!(rt_object_put_hook, (&mut ((*event).parent.parent)));
+    rt_object_hook_call!(rt_object_put_hook, &mut ((*event).parent.parent));
 
     if (*event).parent.suspend_thread.is_empty() == false {
         let mut n = (*event).parent.suspend_thread.next;
@@ -157,7 +155,7 @@ pub unsafe extern "C" fn rt_event_send(event: rt_event_t, set: rt_uint32_t) -> r
                     need_clear_set |= (*thread).event_set;
                 }
 
-                rt_thread_resume(thread);
+                thread::rt_thread_resume(thread as *mut thread::RtThread);
                 (*thread).error = RT_EOK as rt_err_t;
 
                 need_schedule = RT_TRUE;
@@ -200,10 +198,10 @@ unsafe extern "C" fn _rt_event_recv(
 
     let mut time_out = timeout;
     let mut status = -(RT_ERROR as rt_err_t);
-    let thread = rt_thread_self();
+    let thread = thread::rt_thread_self();
     (*thread).error = -(RT_EINTR as rt_err_t);
 
-    rt_object_hook_call!(rt_object_trytake_hook, (&mut ((*event).parent.parent)));
+    rt_object_hook_call!(rt_object_trytake_hook, &mut ((*event).parent.parent));
 
     let mut level = rt_hw_interrupt_disable();
 
@@ -242,7 +240,7 @@ unsafe extern "C" fn _rt_event_recv(
 
         let ret = _rt_ipc_list_suspend(
             &mut (*event).parent.suspend_thread,
-            thread,
+            thread as *mut rt_thread,
             (*event).parent.parent.flag,
             suspend_flag,
         );
@@ -252,12 +250,12 @@ unsafe extern "C" fn _rt_event_recv(
         }
 
         if timeout > 0 {
-            rt_timer_control(
-                &mut (*thread).thread_timer,
+            timer::rt_timer_control(
+                &mut (*thread).thread_timer as *const _ as *mut timer::Timer,
                 RT_TIMER_CTRL_SET_TIME as i32,
                 (&mut time_out) as *mut i32 as *mut c_void,
             );
-            rt_timer_start(&mut (*thread).thread_timer);
+            timer::rt_timer_start(&mut (*thread).thread_timer as *const _ as *mut timer::Timer);
         }
 
         rt_hw_interrupt_enable(level);
@@ -277,7 +275,7 @@ unsafe extern "C" fn _rt_event_recv(
 
     rt_hw_interrupt_enable(level);
 
-    rt_object_hook_call!(rt_object_take_hook, (&mut (*event).parent.parent));
+    rt_object_hook_call!(rt_object_take_hook, &mut (*event).parent.parent);
 
     (*thread).error
 }

@@ -1,5 +1,6 @@
 use crate::{
     allocator::{rt_free, rt_malloc},
+    clock::rt_tick_get,
     error::Error,
     object::{
         rt_object_allocate, rt_object_delete, rt_object_detach, rt_object_get_type, rt_object_init,
@@ -7,7 +8,10 @@ use crate::{
     },
     rt_bindings::*,
     rt_debug_not_in_interrupt, rt_list_init,
+    scheduler::rt_schedule,
     sync::ipc_common::*,
+    thread::rt_thread_self,
+    timer::{rt_timer_control, rt_timer_start, Timer},
 };
 #[allow(unused_imports)]
 use core::{
@@ -18,10 +22,7 @@ use core::{
     mem::MaybeUninit,
     ptr::null_mut,
 };
-use kernel::{
-    rt_bindings::{rt_hw_interrupt_disable, rt_hw_interrupt_enable},
-    rt_debug_scheduler_available, rt_object_hook_call,
-};
+use kernel::{rt_debug_scheduler_available, rt_object_hook_call};
 
 use pinned_init::*;
 
@@ -159,7 +160,7 @@ unsafe extern "C" fn _rt_mb_send_wait(
     let mut tick_delta = 0;
     let thread = rt_thread_self();
 
-    rt_object_hook_call!(rt_object_put_hook, (&mut (*mb).parent.parent));
+    rt_object_hook_call!(rt_object_put_hook, &mut (*mb).parent.parent);
 
     let mut level = rt_hw_interrupt_disable();
 
@@ -179,7 +180,7 @@ unsafe extern "C" fn _rt_mb_send_wait(
 
         let ret = _rt_ipc_list_suspend(
             &mut (*mb).suspend_sender_thread,
-            thread,
+            thread as *mut rt_thread,
             (*mb).parent.parent.flag,
             suspend_flag,
         );
@@ -193,11 +194,11 @@ unsafe extern "C" fn _rt_mb_send_wait(
             tick_delta = rt_tick_get();
 
             rt_timer_control(
-                &mut (*thread).thread_timer,
+                &mut (*thread).thread_timer as *const _ as *mut Timer,
                 RT_TIMER_CTRL_SET_TIME as i32,
                 (&mut timeout) as *mut i32 as *mut c_void,
             );
-            rt_timer_start(&mut (*thread).thread_timer);
+            rt_timer_start(&mut (*thread).thread_timer as *const _ as *mut Timer);
         }
 
         rt_hw_interrupt_enable(level);
@@ -305,7 +306,7 @@ pub unsafe extern "C" fn rt_mb_urgent(mb: rt_mailbox_t, value: rt_ubase_t) -> rt
             == rt_object_class_type_RT_Object_Class_MailBox as u8
     );
 
-    rt_object_hook_call!(rt_object_put_hook, (&mut (*mb).parent.parent));
+    rt_object_hook_call!(rt_object_put_hook, &mut (*mb).parent.parent);
 
     let level = rt_hw_interrupt_disable();
 
@@ -361,7 +362,7 @@ unsafe extern "C" fn _rt_mb_recv(
     let mut tick_delta = 0;
     let thread = rt_thread_self();
 
-    rt_object_hook_call!(rt_object_trytake_hook, (&mut (*mb).parent.parent));
+    rt_object_hook_call!(rt_object_trytake_hook, &mut (*mb).parent.parent);
 
     let mut level = rt_hw_interrupt_disable();
 
@@ -382,7 +383,7 @@ unsafe extern "C" fn _rt_mb_recv(
 
         let ret = _rt_ipc_list_suspend(
             &mut (*mb).parent.suspend_thread,
-            thread,
+            thread as *mut rt_thread,
             (*mb).parent.parent.flag,
             suspend_flag,
         );
@@ -395,11 +396,11 @@ unsafe extern "C" fn _rt_mb_recv(
             tick_delta = rt_tick_get();
 
             rt_timer_control(
-                &mut (*thread).thread_timer,
+                &mut (*thread).thread_timer as *const _ as *mut Timer,
                 RT_TIMER_CTRL_SET_TIME as i32,
                 (&mut timeout) as *mut i32 as *mut c_void,
             );
-            rt_timer_start(&mut (*thread).thread_timer);
+            rt_timer_start(&mut (*thread).thread_timer as *const _ as *mut Timer);
         }
 
         rt_hw_interrupt_enable(level);
@@ -438,7 +439,7 @@ unsafe extern "C" fn _rt_mb_recv(
 
         rt_hw_interrupt_enable(level);
 
-        rt_object_hook_call!(rt_object_take_hook, (&mut (*mb).parent.parent));
+        rt_object_hook_call!(rt_object_take_hook, &mut (*mb).parent.parent);
 
         rt_schedule();
 
@@ -447,7 +448,7 @@ unsafe extern "C" fn _rt_mb_recv(
 
     rt_hw_interrupt_enable(level);
 
-    rt_object_hook_call!(rt_object_take_hook, (&mut (*mb).parent.parent));
+    rt_object_hook_call!(rt_object_take_hook, &mut (*mb).parent.parent);
 
     RT_EOK as rt_err_t
 }

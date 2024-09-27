@@ -6,7 +6,10 @@ use crate::{
     },
     rt_bindings::*,
     rt_debug_not_in_interrupt,
+    scheduler::rt_schedule,
     sync::ipc_common::*,
+    thread::rt_thread_self,
+    timer,
 };
 use core::{
     cell::UnsafeCell,
@@ -15,10 +18,7 @@ use core::{
     mem::MaybeUninit,
     ptr::null_mut,
 };
-use kernel::{
-    rt_bindings::{rt_hw_interrupt_disable, rt_hw_interrupt_enable},
-    rt_debug_scheduler_available, rt_object_hook_call,
-};
+use kernel::{rt_debug_scheduler_available, rt_object_hook_call};
 
 use pinned_init::*;
 
@@ -118,7 +118,7 @@ unsafe extern "C" fn _rt_sem_take(
             == rt_object_class_type_RT_Object_Class_Semaphore as u8
     );
 
-    rt_object_hook_call!(rt_object_trytake_hook, (&mut ((*sem).parent.parent)));
+    rt_object_hook_call!(rt_object_trytake_hook, &mut ((*sem).parent.parent));
 
     #[allow(unused_variables)]
     let check = (*sem).value == 0 && timeout != 0;
@@ -142,7 +142,7 @@ unsafe extern "C" fn _rt_sem_take(
 
             let ret = _rt_ipc_list_suspend(
                 &mut ((*sem).parent.suspend_thread),
-                thread,
+                thread as *mut rt_thread,
                 (*sem).parent.parent.flag,
                 suspend_flag,
             );
@@ -153,12 +153,14 @@ unsafe extern "C" fn _rt_sem_take(
             }
 
             if timeout > 0 {
-                rt_timer_control(
-                    &mut ((*thread).thread_timer),
+                timer::rt_timer_control(
+                    &mut (*thread).thread_timer as *const _ as *mut timer::Timer,
                     RT_TIMER_CTRL_SET_TIME as i32,
                     (&mut time_out) as *mut i32 as *mut c_void,
                 );
-                rt_timer_start(&mut ((*thread).thread_timer));
+                timer::rt_timer_start(
+                    &mut ((*thread).thread_timer) as *const _ as *mut timer::Timer,
+                );
             }
 
             rt_hw_interrupt_enable(level);
@@ -171,7 +173,7 @@ unsafe extern "C" fn _rt_sem_take(
         }
     }
 
-    rt_object_hook_call!(rt_object_take_hook, (&mut ((*sem).parent.parent)));
+    rt_object_hook_call!(rt_object_take_hook, &mut ((*sem).parent.parent));
 
     RT_EOK as rt_err_t
 }
@@ -208,7 +210,7 @@ pub unsafe extern "C" fn rt_sem_release(sem: rt_sem_t) -> rt_err_t {
         rt_object_get_type(&mut (*sem).parent.parent)
             == rt_object_class_type_RT_Object_Class_Semaphore as u8
     );
-    rt_object_hook_call!(rt_object_put_hook, (&mut ((*sem).parent.parent)));
+    rt_object_hook_call!(rt_object_put_hook, &mut ((*sem).parent.parent));
 
     let mut need_schedule = RT_FALSE;
     let level = rt_hw_interrupt_disable();

@@ -1,5 +1,11 @@
 use crate::{
-    linked_list::ListHead, rt_bindings::*, static_init::UnsafeStaticInit, sync::RawSpin,
+    allocator::{rt_free, rt_malloc},
+    klibc::{rt_memset, rt_strncmp, rt_strncpy},
+    linked_list::ListHead,
+    rt_bindings::*,
+    scheduler::{rt_enter_critical, rt_exit_critical},
+    static_init::UnsafeStaticInit,
+    sync::RawSpin,
     thread::RtThread,
 };
 
@@ -61,7 +67,7 @@ const OBJECT_CLASS_STATIC: u8 = 0x80;
 #[pin_data]
 //#[derive(Debug)]
 #[repr(C)]
-struct ObjectInformation {
+pub struct ObjectInformation {
     pub(crate) spinlock: RawSpin,
     #[pin]
     pub(crate) object_list: ListHead,
@@ -353,7 +359,7 @@ fn rt_object_init_internal(
 
     #[cfg(feature = "RT_NAME_MAX")]
     unsafe {
-        rt_strncpy(obj_ref.name.as_mut_ptr(), name, RT_NAME_MAX - 1);
+        rt_strncpy(obj_ref.name.as_mut_ptr(), name, (RT_NAME_MAX - 1) as usize);
     }
 
     #[cfg(not(feature = "RT_NAME_MAX"))]
@@ -382,28 +388,28 @@ fn rt_object_init_internal(
         }
     }
 
+    #[cfg(not(feature = "RT_USING_MODULE"))]
     unsafe {
-        #[cfg(not(feature = "RT_USING_MODULE"))]
         Pin::new_unchecked(&mut obj_ref.list).insert_next(&information.object_list);
-        #[cfg(feature = "RT_USING_DEBUG")]
-        {
-            assert!(ptr::eq(
-                &obj_ref.list,
-                information.object_list.next.as_ptr()
-            ));
-            assert!(ptr::eq(
-                obj_ref.list.prev.as_ptr(),
-                &information.object_list
-            ));
-            let mut count: u32 = 0;
-            crate::list_head_for_each!(node, &information.object_list, {
-                if count > 1 {
-                    assert!(!ptr::eq(node.next.as_ptr(), node.prev.as_ptr()));
-                }
-                count += 1;
-                assert!(count < 100);
-            });
-        }
+    }
+    #[cfg(feature = "RT_USING_DEBUG")]
+    {
+        assert!(ptr::eq(
+            &obj_ref.list,
+            information.object_list.next.as_ptr()
+        ));
+        assert!(ptr::eq(
+            obj_ref.list.prev.as_ptr(),
+            &information.object_list
+        ));
+        let mut count: u32 = 0;
+        crate::list_head_for_each!(node, &information.object_list, {
+            if count > 1 {
+                assert!(!ptr::eq(node.next.as_ptr(), node.prev.as_ptr()));
+            }
+            count += 1;
+            assert!(count < 100);
+        });
     }
 }
 
@@ -453,12 +459,12 @@ pub extern "C" fn rt_object_allocate(
 
     crate::rt_debug_not_in_interrupt!();
 
-    let object = unsafe { rt_malloc(information.object_size as u32) as *mut BaseObject };
+    let object = unsafe { rt_malloc(information.object_size) as *mut BaseObject };
     if object.is_null() {
         return ptr::null_mut();
     }
     unsafe {
-        rt_memset(object as *mut c_void, 0x0, information.object_size as u32);
+        rt_memset(object as *mut c_void, 0x0, information.object_size);
     }
 
     let obj_ref = unsafe { &mut *object };
@@ -628,28 +634,27 @@ pub extern "C" fn rt_object_find(name: *const ffi::c_char, type_: rt_uint8_t) ->
     crate::rt_debug_not_in_interrupt!();
 
     let information = ObjectInformation::get_info_by_type(type_ & (!OBJECT_CLASS_STATIC)).unwrap();
-
-    unsafe {
-        /* enter critical */
-        rt_enter_critical();
-        /* try to find object */
-        crate::list_head_for_each!(node, &information.object_list, {
+    /* enter critical */
+    rt_enter_critical();
+    /* try to find object */
+    crate::list_head_for_each!(node, &information.object_list, {
+        unsafe {
             let object = crate::list_head_entry!(node.as_ptr(), BaseObject, list);
             if rt_strncmp(
                 (*object).name.as_ptr() as *const ffi::c_char,
                 name,
-                RT_NAME_MAX,
+                RT_NAME_MAX as usize,
             ) == 0
             {
                 /* leave critical */
                 rt_exit_critical();
                 return object as rt_object_t;
             }
-        });
+        }
+    });
 
-        /* leave critical */
-        rt_exit_critical();
-    }
+    /* leave critical */
+    rt_exit_critical();
 
     ptr::null_mut()
 }
@@ -678,7 +683,7 @@ pub extern "C" fn rt_object_get_name(
     let mut result: rt_err_t = -(RT_EINVAL as i32);
     if !object.is_null() && !name.is_null() && name_size != 0 {
         let obj_name = (unsafe { *object }).name;
-        unsafe { rt_strncpy(name as *mut _, obj_name.as_ptr(), name_size as rt_size_t) };
+        unsafe { rt_strncpy(name as *mut _, obj_name.as_ptr(), name_size as usize) };
         result = RT_EOK as rt_err_t;
     }
 
@@ -770,3 +775,4 @@ pub extern "C" fn rt_object_take_sethook(hook: unsafe extern "C" fn(*const rt_ob
 pub extern "C" fn rt_object_put_sethook(hook: unsafe extern "C" fn(*const rt_object)) {
     unsafe { rt_object_put_hook = Some(hook) };
 }
+

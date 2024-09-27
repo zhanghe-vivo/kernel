@@ -1,4 +1,4 @@
-use crate::rt_bindings;
+use crate::{rt_bindings, thread};
 
 #[cfg(feature = "RT_USING_HEAP_ISR")]
 pub type HeapLock<T> = super::Lock<T, SpinLockBackend>;
@@ -36,7 +36,7 @@ unsafe impl super::Backend for HeapLockBackend {
         // SAFETY: The safety requirements of this function ensure that `ptr` points to valid
         // memory, and that it has been initialised before.
         unsafe {
-            if !rt_bindings::rt_thread_self().is_null() {
+            if !thread::rt_thread_self().is_null() {
                 rt_bindings::rt_mutex_take(ptr, rt_bindings::RT_WAITING_FOREVER)
             } else {
                 rt_bindings::RT_EOK as i32
@@ -48,7 +48,7 @@ unsafe impl super::Backend for HeapLockBackend {
         // SAFETY: The safety requirements of this function ensure that `ptr` is valid and that the
         // caller is the owner of the mutex.
         unsafe {
-            if !rt_bindings::rt_thread_self().is_null() {
+            if !thread::rt_thread_self().is_null() {
                 rt_bindings::rt_mutex_release(ptr);
             }
         }

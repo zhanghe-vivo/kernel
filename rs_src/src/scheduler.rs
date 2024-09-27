@@ -2,7 +2,6 @@ use crate::{
     cpu::{self, Cpu, Cpus},
     linked_list::ListHead,
     rt_bindings,
-    sync::RawSpin,
     thread::RtThread,
 };
 #[cfg(feature = "DEBUG_SCHEDULER")]

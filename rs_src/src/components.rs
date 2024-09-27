@@ -46,9 +46,11 @@ macro_rules! init_export {
     ($func: ident, $level: expr) => {
         paste! {
             static [<"rti" $level>]: &str = concat!(".rti_fn.", $level);
+            #[allow(non_upper_case_globals)]
             static [<"fuc" $func>]: &str = stringify!($func);
             #[link_section = concat!(".rti_fn.", level_to_string!($level))]
             #[used]
+            #[allow(non_upper_case_globals)]
             static [<"rt_init_desc_msc_" $func>]: RtInitDesc = RtInitDesc {
                 level: [<"rti" $level>].as_ptr() as *const core::ffi::c_char,
                 fn_ptr: $func,
@@ -83,9 +85,11 @@ unsafe impl Sync for RtInitDesc {}
 macro_rules! init_export {
     ($func: ident, $level: expr) => {
         paste! {
+            #[allow(non_upper_case_globals)]
             static [<"rti" $level>]: &str = concat!(".rti_fn.", $level);
             #[link_section = concat!(".rti_fn.", level_to_string!($level)) ]
             #[used]
+            #[allow(non_upper_case_globals)]
             static [<"rt_init_desc_msc_" $func>]: RtInitDesc = RtInitDesc {
                 level: [<"rti" $level>].as_ptr() as *const core::ffi::c_char,
                 fn_ptr: $func,
@@ -134,10 +138,11 @@ macro_rules! level_to_string {
 macro_rules! init_export {
     ($func: ident, $level: ident) => {
         paste! {
-            static [<"rti" $level>]: &str = concat!(".rti_fn.", level_to_string!($level));
+            #[allow(non_upper_case_globals)]
             static [<"fuc" $func>]: &str = stringify!($func);
             #[link_section = concat!(".rti_fn.", level_to_string!($level))]
             #[used]
+            #[allow(non_upper_case_globals)]
             static [<"rt_init_desc_" $func>]: RtInitDesc = RtInitDesc {
                 fn_name: [<"fuc" $func>].as_ptr() as *const core::ffi::c_char,
                 fn_ptr: $func,
@@ -154,9 +159,11 @@ macro_rules! init_export {
 macro_rules! init_export {
     ($func: ident, $level: expr) => {
         paste! {
+            #[allow(non_upper_case_globals)]
             static [<"rti" $level>]: &str = concat!(".rti_fn.", $level);
             #[link_section = concat!(".rti_fn.", level_to_string!($level))]
             #[used]
+            #[allow(non_upper_case_globals)]
             static [<"init_fn_" $func>]: InitFn = $func;
         }
     };
@@ -201,13 +208,12 @@ pub extern "C" fn rt_components_board_init() {
     {
         let mut desc: *const RtInitDesc = &rt_init_desc_rti_board_start;
         while desc < &rt_init_desc_rti_board_end {
-            unsafe {
-                let fn_name = (*desc).fn_name;
-                kprintf!("initialize %s", fn_name);
-                let result = ((*desc).fn_ptr)();
-                kprintf!(":%d done\n", result);
-                desc = desc.add(1);
-            }
+            let desc_ptr = unsafe { &(*desc) };
+            let fn_name = desc_ptr.fn_name;
+            kprintf!(b"initialize %s", fn_name);
+            let result = (desc_ptr.fn_ptr)();
+            kprintf!(b":%d done\n", result);
+            desc = unsafe { desc.add(1) };
         }
     }
     #[cfg(not(feature = "RT_DEBUGING_INIT"))]
@@ -229,13 +235,12 @@ pub extern "C" fn rt_components_init() {
     {
         let mut desc: *const RtInitDesc = &rt_init_desc_rti_board_end;
         while desc < &rt_init_desc_rti_end {
-            unsafe {
-                let fn_name = (*desc).fn_name;
-                kprintf!(b"initialize %s", fn_name);
-                let result = ((*desc).fn_ptr)();
-                kprintf!(b":%d done\n", result);
-                desc = desc.add(1);
-            }
+            let desc_ptr = unsafe { &(*desc) };
+            let fn_name = desc_ptr.fn_name;
+            kprintf!(b"initialize %s", fn_name);
+            let result = (desc_ptr.fn_ptr)();
+            kprintf!(b":%d done\n", result);
+            desc = unsafe { desc.add(1) };
         }
     }
     #[cfg(not(feature = "RT_DEBUGING_INIT"))]
@@ -266,7 +271,7 @@ static mut MAIN_THREAD: RtThread = RtThread {};
 
 #[cfg(feature = "RT_USING_USER_MAIN")]
 #[no_mangle]
-pub extern "C" fn main_thread_entry(parameter: *mut core::ffi::c_void) {
+pub extern "C" fn main_thread_entry(_parameter: *mut core::ffi::c_void) {
     unsafe {
         #[cfg(feature = "RT_USING_COMPONENTS_INIT")]
         {

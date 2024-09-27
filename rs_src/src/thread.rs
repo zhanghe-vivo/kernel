@@ -104,7 +104,7 @@ pub struct RtThread {
     // cpus_lock_nest: AtomicU32,
     spinlock: RawSpin,
     /// error code
-    error: ffi::c_int,
+    pub error: ffi::c_int,
 
     /// mutexes holded by this thread
     #[cfg(feature = "RT_USING_MUTEX")]
@@ -115,9 +115,9 @@ pub struct RtThread {
     pending_object: *mut rt_bindings::rt_object,
 
     #[cfg(feature = "RT_USING_EVENT")]
-    event_set: ffi::c_uint,
+    pub event_set: ffi::c_uint,
     #[cfg(feature = "RT_USING_EVENT")]
-    event_info: ffi::c_uchar,
+    pub event_info: ffi::c_uchar,
 
     #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
     wait_lock: Cell<Option<NonNull<RawSpin>>>,
@@ -686,9 +686,7 @@ impl RtThread {
             if self.stat != rt_bindings::RT_THREAD_INIT as u8 {
                 scheduler.remove_thread_locked(self);
             }
-
-            unsafe { rt_bindings::rt_timer_detach(&mut self.thread_timer) };
-
+            timer::rt_timer_detach(&mut self.thread_timer as *const _ as *mut timer::Timer);
             self.stat = rt_bindings::RT_THREAD_CLOSE as u8;
         }
 
@@ -719,9 +717,8 @@ impl RtThread {
         debug_assert!(Cpu::get_current_scheduler().is_sched_locked());
         let mut res = true;
         if self.sched_flag_ttmr_set != 0 {
-            res = unsafe {
-                rt_bindings::rt_timer_stop(&mut self.thread_timer) == rt_bindings::RT_EOK as i32
-            };
+            res = timer::rt_timer_stop(&mut self.thread_timer as *const _ as *mut timer::Timer)
+                == rt_bindings::RT_EOK as i32;
             self.sched_flag_ttmr_set = 0;
         }
         res
@@ -757,14 +754,12 @@ impl RtThread {
         println!("thread sleep: {:?}", thread.get_name());
 
         if thread.suspend(rt_bindings::RT_INTERRUPTIBLE) {
-            unsafe {
-                rt_bindings::rt_timer_control(
-                    &mut thread.thread_timer as *mut rt_bindings::rt_timer,
-                    rt_bindings::RT_TIMER_CTRL_SET_TIME as i32,
-                    &tick as *const _ as *mut ffi::c_void,
-                );
-                rt_bindings::rt_timer_start(&mut thread.thread_timer as *mut rt_bindings::rt_timer);
-            }
+            timer::rt_timer_control(
+                &mut thread.thread_timer as *const _ as *mut timer::Timer,
+                rt_bindings::RT_TIMER_CTRL_SET_TIME as i32,
+                &tick as *const _ as *mut ffi::c_void,
+            );
+            timer::rt_timer_start(&mut thread.thread_timer as *const _ as *mut timer::Timer);
             thread.error = -(rt_bindings::RT_EINTR as i32);
 
             // notify a pending rescheduling

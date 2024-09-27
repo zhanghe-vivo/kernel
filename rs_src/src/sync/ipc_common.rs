@@ -1,5 +1,8 @@
 use crate::rt_bindings::*;
-use crate::{container_of, rt_list_entry, rt_list_init};
+use crate::{
+    rt_list_entry, rt_list_init,
+    thread::{rt_thread_resume, rt_thread_suspend_with_flag, RtThread},
+};
 use core::ffi;
 #[macro_export]
 macro_rules! rt_get_message_addr {
@@ -22,7 +25,7 @@ pub extern "C" fn _rt_ipc_list_resume(list: *mut rt_list_t) -> rt_err_t {
     unsafe {
         let thread = rt_list_entry!((*list).next, rt_thread, tlist) as *mut rt_thread;
         (*thread).error = RT_EOK as rt_err_t;
-        rt_thread_resume(thread);
+        rt_thread_resume(thread as *mut RtThread);
     }
 
     RT_EOK as rt_err_t
@@ -35,7 +38,7 @@ pub extern "C" fn _rt_ipc_list_resume_all(list: *mut rt_list_t) -> rt_err_t {
             let level = rt_hw_interrupt_disable();
             let thread = rt_list_entry!((*list).next, rt_thread, tlist) as *mut rt_thread;
             (*thread).error = -(RT_ERROR as rt_err_t);
-            rt_thread_resume(thread);
+            rt_thread_resume(thread as *mut RtThread);
             rt_hw_interrupt_enable(level);
         }
     }
@@ -52,7 +55,8 @@ pub extern "C" fn _rt_ipc_list_suspend(
 ) -> rt_err_t {
     unsafe {
         if ((*thread).stat as u32 & RT_THREAD_SUSPEND_MASK) != RT_THREAD_SUSPEND_MASK {
-            let ret = rt_thread_suspend_with_flag(thread, suspend_flag as rt_uint32_t);
+            let ret =
+                rt_thread_suspend_with_flag(thread as *mut RtThread, suspend_flag as rt_uint32_t);
 
             if ret != RT_EOK as rt_err_t {
                 return ret;
