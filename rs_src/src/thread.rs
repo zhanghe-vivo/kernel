@@ -297,7 +297,7 @@ impl RtThread {
         stack_size: usize,
         priority: u8,
         tick: u32,
-        cpu: u8,
+        _cpu: u8,
         is_static: bool,
     ) -> impl PinInit<Self> {
         let init = move |slot: *mut Self| unsafe {
@@ -342,7 +342,7 @@ impl RtThread {
 
             #[cfg(feature = "RT_USING_SMP")]
             {
-                cur_ref.bind_cpu = cpu;
+                cur_ref.bind_cpu = _cpu;
                 cur_ref.oncpu = rt_bindings::RT_CPU_DETACHED as u8;
                 // cur_ref.critical_lock_nest = 0;
                 // cur_ref.cpus_lock_nest = AtomicU32::new(0);

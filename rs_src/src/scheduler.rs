@@ -1,11 +1,10 @@
-use crate::{
-    cpu::{self, Cpu, Cpus},
-    linked_list::ListHead,
-    rt_bindings,
-    thread::RtThread,
-};
+use crate::{cpu::Cpu, linked_list::ListHead, rt_bindings, thread::RtThread};
 #[cfg(feature = "DEBUG_SCHEDULER")]
-use crate::{println, str::CStr};
+use crate::{
+    cpu::{self, Cpus},
+    println,
+    str::CStr,
+};
 
 use core::{
     ffi,

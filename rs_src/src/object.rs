@@ -779,6 +779,7 @@ pub extern "C" fn rt_object_put_sethook(hook: unsafe extern "C" fn(*const rt_obj
 }
 
 /// bindgen for object
+#[allow(improper_ctypes_definitions)]
 #[no_mangle]
 pub extern "C" fn bindgen_object_information(_obj: ObjectInformation) {
     0;
@@ -791,6 +792,7 @@ pub extern "C" fn bindgen_object_class_type(_obj: ObjectClassType) {
 }
 
 /// bindgen for ObjectClassType
+#[allow(improper_ctypes_definitions)]
 #[no_mangle]
 pub extern "C" fn bindgen_base_object(_obj: BaseObject) {
     0;

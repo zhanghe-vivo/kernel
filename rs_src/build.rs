@@ -42,6 +42,25 @@ fn main() {
 
     config.export.rename = rename_list;
 
+    config.defines = HashMap::from([
+        (
+            "feature = RT_USING_SMP".to_string(),
+            "RT_USING_SMP".to_string(),
+        ),
+        (
+            "feature = RT_USING_MUTEX".to_string(),
+            "RT_USING_MUTEX".to_string(),
+        ),
+        (
+            "feature = RT_USING_EVENT".to_string(),
+            "RT_USING_EVENT".to_string(),
+        ),
+        (
+            "feature = RT_DEBUGING_SPINLOCK".to_string(),
+            "RT_DEBUGING_SPINLOCK".to_string(),
+        ),
+    ]);
+
     let crate_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
 
     cbindgen::Builder::new()

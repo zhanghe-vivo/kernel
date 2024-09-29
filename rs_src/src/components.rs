@@ -1,14 +1,8 @@
-use crate::c_str;
+#[cfg(feature = "RT_USING_SMP")]
 use crate::cpu::Cpus;
-use crate::kprintf;
-use crate::rt_bindings::*;
-use paste::paste;
+use crate::{c_str, idle, kprintf, rt_bindings::*, scheduler, thread, timer};
 
-#[cfg(all(
-    not(feature = "RT_MAIN_THREAD_STACK_SIZE"),
-    feature = "RT_USING_USER_MAIN"
-))]
-pub const RT_MAIN_THREAD_STACK_SIZE: u32 = 4096;
+use paste::paste;
 
 #[cfg(all(
     not(feature = "RT_MAIN_THREAD_PRIORITY"),
@@ -37,6 +31,7 @@ struct RtInitDesc {
 ))]
 unsafe impl Sync for RtInitDesc {}
 
+/// initialization export
 #[cfg(all(
     feature = "RT_USING_COMPONENTS_INIT",
     feature = "_MSC_VER",
@@ -70,6 +65,7 @@ struct RtInitDesc {
     level: *const core::ffi::c_char,
     fn_ptr: InitFn,
 }
+
 #[cfg(all(
     feature = "RT_USING_COMPONENTS_INIT",
     feature = "_MSC_VER",
@@ -77,6 +73,7 @@ struct RtInitDesc {
 ))]
 unsafe impl Sync for RtInitDesc {}
 
+/// initialization export
 #[cfg(all(
     feature = "RT_USING_COMPONENTS_INIT",
     feature = "_MSC_VER",
@@ -108,6 +105,7 @@ struct RtInitDesc {
     fn_name: *const core::ffi::c_char,
     fn_ptr: InitFn,
 }
+
 #[cfg(all(
     feature = "RT_USING_COMPONENTS_INIT",
     feature = "RT_DEBUGING_INIT",
@@ -115,6 +113,7 @@ struct RtInitDesc {
 ))]
 unsafe impl Sync for RtInitDesc {}
 
+/// convert to string type
 macro_rules! level_to_string {
     (level0) => {
         "0"
@@ -130,6 +129,7 @@ macro_rules! level_to_string {
     };
 }
 
+/// initialization export
 #[cfg(all(
     feature = "RT_USING_COMPONENTS_INIT",
     feature = "RT_DEBUGING_INIT",
@@ -151,6 +151,7 @@ macro_rules! init_export {
     };
 }
 
+/// initialization export
 #[cfg(all(
     feature = "RT_USING_COMPONENTS_INIT",
     not(feature = "RT_DEBUGING_INIT"),
@@ -169,6 +170,7 @@ macro_rules! init_export {
     };
 }
 
+///initialize some driver and components
 #[cfg(feature = "RT_USING_COMPONENTS_INIT")]
 #[no_mangle]
 pub extern "C" fn rti_start() -> i32 {
@@ -201,6 +203,8 @@ pub extern "C" fn rti_end() -> i32 {
 #[cfg(feature = "RT_USING_COMPONENTS_INIT")]
 init_export!(rti_end, level6_end);
 
+///Onboard components initialization.
+/// This funtion will be called to complete the initialization of the on-board peripherals.
 #[cfg(feature = "RT_USING_COMPONENTS_INIT")]
 #[no_mangle]
 pub extern "C" fn rt_components_board_init() {
@@ -228,6 +232,7 @@ pub extern "C" fn rt_components_board_init() {
     }
 }
 
+///kernel components Initialization.
 #[cfg(feature = "RT_USING_COMPONENTS_INIT")]
 #[no_mangle]
 pub extern "C" fn rt_components_init() {
@@ -269,6 +274,7 @@ static mut MAIN_THREAD_STACK: [u8; RT_MAIN_THREAD_STACK_SIZE] = [0; RT_MAIN_THRE
 #[no_mangle]
 static mut MAIN_THREAD: RtThread = RtThread {};
 
+///The system main thread. In this thread will call the rt_components_init()
 #[cfg(feature = "RT_USING_USER_MAIN")]
 #[no_mangle]
 pub extern "C" fn main_thread_entry(_parameter: *mut core::ffi::c_void) {
@@ -285,40 +291,42 @@ pub extern "C" fn main_thread_entry(_parameter: *mut core::ffi::c_void) {
     }
 }
 
+///This function will create and start the main thread
 #[cfg(feature = "RT_USING_USER_MAIN")]
 #[no_mangle]
 pub extern "C" fn rt_application_init() {
     let tid;
-    unsafe {
-        #[cfg(feature = "RT_USING_HEAP")]
-        {
-            tid = rt_thread_create(
-                c_str!("main").as_ptr() as *const i8,
-                core::option::Option::Some(main_thread_entry),
-                RT_NULL as *mut core::ffi::c_void,
-                RT_MAIN_THREAD_STACK_SIZE,
-                RT_MAIN_THREAD_PRIORITY as u8,
-                20 as u32,
-            );
-        }
-        #[cfg(not(feature = "RT_USING_HEAP"))]
-        {
-            tid = &MAIN_THREAD;
-            let result: rt_err_t = rt_thread_init(
-                tid,
-                c_str!("main").as_ptr() as *const i8,
-                core::option::Option::Some(main_thread_entry),
-                RT_NULL as *mut core::ffi::c_void,
-                MAIN_THREAD_STACK.as_mut_ptr(),
-                MAIN_THREAD_STACK.len(),
-                RT_MAIN_THREAD_PRIORITY as u8,
-                20 as u32,
-            );
-        }
-        rt_thread_startup(tid);
+    #[cfg(feature = "RT_USING_HEAP")]
+    {
+        tid = thread::rt_thread_create(
+            c_str!("main").as_ptr() as *const i8,
+            main_thread_entry,
+            RT_NULL as *mut core::ffi::c_void,
+            RT_MAIN_THREAD_STACK_SIZE,
+            RT_MAIN_THREAD_PRIORITY as u8,
+            20 as u32,
+        );
+        assert!(!tid.is_null());
     }
+    #[cfg(not(feature = "RT_USING_HEAP"))]
+    {
+        tid = &MAIN_THREAD;
+        let result: rt_err_t = thread::rt_thread_init(
+            tid,
+            c_str!("main").as_ptr() as *const i8,
+            main_thread_entry,
+            RT_NULL as *mut core::ffi::c_void,
+            MAIN_THREAD_STACK.as_mut_ptr(),
+            MAIN_THREAD_STACK.len(),
+            RT_MAIN_THREAD_PRIORITY as u8,
+            20 as u32,
+        );
+        assert!(result == RT_EOK)
+    }
+    thread::rt_thread_startup(tid);
 }
 
+///This function will call all levels of initialization functions to complete the initialization of the system, and finally start the scheduler.
 #[cfg(feature = "RT_USING_USER_MAIN")]
 #[no_mangle]
 pub extern "C" fn rtthread_startup() -> i32 {
@@ -326,20 +334,20 @@ pub extern "C" fn rtthread_startup() -> i32 {
         rt_hw_local_irq_disable();
         rt_hw_board_init();
         rt_show_version();
-        rt_system_timer_init();
-        rt_system_scheduler_init();
+        timer::rt_system_timer_init();
+        scheduler::rt_system_scheduler_init();
         #[cfg(feature = "RT_USING_SIGNALS")]
         {
             rt_system_signal_init();
         }
         rt_application_init();
-        rt_system_timer_thread_init();
-        rt_thread_idle_init();
+        timer::rt_system_timer_thread_init();
+        idle::rt_thread_idle_init();
         #[cfg(feature = "RT_USING_SMP")]
         {
             Cpus::lock_cpus();
         }
-        rt_system_scheduler_start();
+        scheduler::rt_system_scheduler_start();
     }
     0
 }

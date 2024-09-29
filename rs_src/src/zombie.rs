@@ -1,17 +1,19 @@
+#[cfg(feature = "RT_USING_SMP")]
 use core::{
     ffi,
-    pin::Pin,
-    ptr::{self, NonNull},
+    ptr::{self},
 };
+use core::{pin::Pin, ptr::NonNull};
 
+#[cfg(feature = "RT_USING_SMP")]
 use crate::{
     c_str,
-    linked_list::ListHead,
-    new_spinlock, object, rt_bindings,
-    static_init::UnsafeStaticInit,
     str::CStr,
-    sync::SpinLock,
-    thread::{RtThread, ThreadEntryFn, ThreadWithStack},
+    thread::{ThreadEntryFn, ThreadWithStack},
+};
+use crate::{
+    linked_list::ListHead, new_spinlock, object, rt_bindings, static_init::UnsafeStaticInit,
+    sync::SpinLock, thread::RtThread,
 };
 use pinned_init::*;
 
