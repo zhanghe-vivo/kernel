@@ -257,7 +257,7 @@ unsafe extern "C" fn _rt_mq_send_wait(
     let mut tick_delta = 0;
     let thread = rt_thread_self();
 
-    rt_object_hook_call!(rt_object_put_hook, (&mut (*mq).parent.parent));
+    rt_object_hook_call!(rt_object_put_hook, &mut (*mq).parent.parent);
 
     let mut level = rt_hw_interrupt_disable();
 
@@ -426,7 +426,7 @@ pub unsafe extern "C" fn rt_mq_urgent(
         return -(RT_ERROR as rt_err_t);
     }
 
-    rt_object_hook_call!(rt_object_put_hook, (&mut (*mq).parent.parent));
+    rt_object_hook_call!(rt_object_put_hook, &mut (*mq).parent.parent);
 
     let mut level = rt_hw_interrupt_disable();
 
@@ -500,7 +500,7 @@ unsafe extern "C" fn _rt_mq_recv(
     rt_debug_scheduler_available!(scheduler);
 
     let thread = rt_thread_self();
-    rt_object_hook_call!(rt_object_trytake_hook, (&mut (*mq).parent.parent));
+    rt_object_hook_call!(rt_object_trytake_hook, &mut (*mq).parent.parent);
 
     let mut level = rt_hw_interrupt_disable();
 
@@ -598,7 +598,7 @@ unsafe extern "C" fn _rt_mq_recv(
 
         rt_hw_interrupt_enable(level);
 
-        rt_object_hook_call!(rt_object_take_hook, (&mut (*mq).parent.parent));
+        rt_object_hook_call!(rt_object_take_hook, &mut (*mq).parent.parent);
 
         rt_schedule();
 
@@ -607,7 +607,7 @@ unsafe extern "C" fn _rt_mq_recv(
 
     rt_hw_interrupt_enable(level);
 
-    rt_object_hook_call!(rt_object_take_hook, (&mut (*mq).parent.parent));
+    rt_object_hook_call!(rt_object_take_hook, &mut (*mq).parent.parent);
 
     len as rt_ssize_t
 }

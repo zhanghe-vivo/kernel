@@ -1,5 +1,5 @@
 use crate::rt_bindings::*;
-use crate::{container_of, rt_list_entry, rt_list_init};
+use crate::{rt_list_entry, rt_list_init};
 use core::ffi;
 #[macro_export]
 macro_rules! rt_get_message_addr {

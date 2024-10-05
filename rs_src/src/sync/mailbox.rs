@@ -17,6 +17,7 @@ use core::{
     mem,
     mem::MaybeUninit,
     ptr::null_mut,
+    sync::atomic::{AtomicUsize, Ordering},
 };
 use kernel::{
     rt_bindings::{rt_hw_interrupt_disable, rt_hw_interrupt_enable},
@@ -159,7 +160,7 @@ unsafe extern "C" fn _rt_mb_send_wait(
     let mut tick_delta = 0;
     let thread = rt_thread_self();
 
-    rt_object_hook_call!(rt_object_put_hook, (&mut (*mb).parent.parent));
+    rt_object_hook_call!(rt_object_put_hook, &mut (*mb).parent.parent);
 
     let mut level = rt_hw_interrupt_disable();
 
@@ -305,7 +306,7 @@ pub unsafe extern "C" fn rt_mb_urgent(mb: rt_mailbox_t, value: rt_ubase_t) -> rt
             == rt_object_class_type_RT_Object_Class_MailBox as u8
     );
 
-    rt_object_hook_call!(rt_object_put_hook, (&mut (*mb).parent.parent));
+    rt_object_hook_call!(rt_object_put_hook, &mut (*mb).parent.parent);
 
     let level = rt_hw_interrupt_disable();
 
@@ -361,7 +362,7 @@ unsafe extern "C" fn _rt_mb_recv(
     let mut tick_delta = 0;
     let thread = rt_thread_self();
 
-    rt_object_hook_call!(rt_object_trytake_hook, (&mut (*mb).parent.parent));
+    rt_object_hook_call!(rt_object_trytake_hook, &mut (*mb).parent.parent);
 
     let mut level = rt_hw_interrupt_disable();
 
@@ -438,7 +439,7 @@ unsafe extern "C" fn _rt_mb_recv(
 
         rt_hw_interrupt_enable(level);
 
-        rt_object_hook_call!(rt_object_take_hook, (&mut (*mb).parent.parent));
+        rt_object_hook_call!(rt_object_take_hook, &mut (*mb).parent.parent);
 
         rt_schedule();
 
@@ -447,7 +448,7 @@ unsafe extern "C" fn _rt_mb_recv(
 
     rt_hw_interrupt_enable(level);
 
-    rt_object_hook_call!(rt_object_take_hook, (&mut (*mb).parent.parent));
+    rt_object_hook_call!(rt_object_take_hook, &mut (*mb).parent.parent);
 
     RT_EOK as rt_err_t
 }

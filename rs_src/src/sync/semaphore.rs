@@ -118,7 +118,7 @@ unsafe extern "C" fn _rt_sem_take(
             == rt_object_class_type_RT_Object_Class_Semaphore as u8
     );
 
-    rt_object_hook_call!(rt_object_trytake_hook, (&mut ((*sem).parent.parent)));
+    rt_object_hook_call!(rt_object_trytake_hook, &mut ((*sem).parent.parent));
 
     #[allow(unused_variables)]
     let check = (*sem).value == 0 && timeout != 0;
@@ -171,7 +171,7 @@ unsafe extern "C" fn _rt_sem_take(
         }
     }
 
-    rt_object_hook_call!(rt_object_take_hook, (&mut ((*sem).parent.parent)));
+    rt_object_hook_call!(rt_object_take_hook, &mut ((*sem).parent.parent));
 
     RT_EOK as rt_err_t
 }
@@ -208,7 +208,7 @@ pub unsafe extern "C" fn rt_sem_release(sem: rt_sem_t) -> rt_err_t {
         rt_object_get_type(&mut (*sem).parent.parent)
             == rt_object_class_type_RT_Object_Class_Semaphore as u8
     );
-    rt_object_hook_call!(rt_object_put_hook, (&mut ((*sem).parent.parent)));
+    rt_object_hook_call!(rt_object_put_hook, &mut ((*sem).parent.parent));
 
     let mut need_schedule = RT_FALSE;
     let level = rt_hw_interrupt_disable();
