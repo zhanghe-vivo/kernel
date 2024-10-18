@@ -29,7 +29,7 @@ fn main() {
     config.export.exclude = vec!["ListHead".to_string()];
 
     let rename_list = HashMap::from([
-        ("BaseObject".to_string(), "rt_object".to_string()),
+        ("KObjectBase".to_string(), "rt_object".to_string()),
         ("Stack".to_string(), "rt_stack".to_string()),
         ("RtThread".to_string(), "rt_thread".to_string()),
         ("Timer".to_string(), "rt_timer".to_string()),

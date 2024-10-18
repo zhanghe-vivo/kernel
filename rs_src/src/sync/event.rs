@@ -38,7 +38,7 @@ pub unsafe extern "C" fn rt_event_init(
         name,
     );
 
-    (*event).parent.parent.flag = flag;
+    (*event).parent.flag = flag;
 
     _rt_ipc_object_init(&mut ((*event).parent));
 
@@ -79,7 +79,7 @@ pub unsafe extern "C" fn rt_event_create(
         return event;
     }
 
-    (*event).parent.parent.flag = flag;
+    (*event).parent.flag = flag;
 
     _rt_ipc_object_init(&mut ((*event).parent));
 
@@ -241,7 +241,7 @@ unsafe extern "C" fn _rt_event_recv(
         let ret = _rt_ipc_list_suspend(
             &mut (*event).parent.suspend_thread,
             thread as *mut rt_thread,
-            (*event).parent.parent.flag,
+            (*event).parent.flag,
             suspend_flag,
         );
         if ret != RT_EOK as rt_err_t {

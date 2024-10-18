@@ -4,6 +4,7 @@ use crate::{
         rt_object_allocate, rt_object_delete, rt_object_detach, rt_object_get_type, rt_object_init,
         rt_object_is_systemobject, *,
     },
+    print, println,
     rt_bindings::*,
     rt_debug_not_in_interrupt,
     scheduler::rt_schedule,
@@ -42,7 +43,7 @@ pub unsafe extern "C" fn rt_sem_init(
     _rt_ipc_object_init(&mut ((*sem).parent));
 
     (*sem).value = value as rt_uint16_t;
-    (*sem).parent.parent.flag = flag;
+    (*sem).parent.flag = flag;
 
     RT_EOK as rt_err_t
 }
@@ -80,7 +81,7 @@ pub unsafe extern "C" fn rt_sem_create(
     _rt_ipc_object_init(&mut (*sem).parent);
 
     (*sem).value = value as u16;
-    (*sem).parent.parent.flag = flag;
+    (*sem).parent.flag = flag;
 
     sem
 }
@@ -143,7 +144,7 @@ unsafe extern "C" fn _rt_sem_take(
             let ret = _rt_ipc_list_suspend(
                 &mut ((*sem).parent.suspend_thread),
                 thread as *mut rt_thread,
-                (*sem).parent.parent.flag,
+                (*sem).parent.flag,
                 suspend_flag,
             );
 

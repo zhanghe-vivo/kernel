@@ -44,7 +44,7 @@ pub unsafe extern "C" fn rt_mb_init(
         name,
     );
 
-    (*mb).parent.parent.flag = flag;
+    (*mb).parent.flag = flag;
 
     _rt_ipc_object_init(&mut (*mb).parent);
 
@@ -94,7 +94,7 @@ pub unsafe extern "C" fn rt_mb_create(
         return mb;
     }
 
-    (*mb).parent.parent.flag = flag;
+    (*mb).parent.flag = flag;
 
     _rt_ipc_object_init(&mut (*mb).parent);
 
@@ -181,7 +181,7 @@ unsafe extern "C" fn _rt_mb_send_wait(
         let ret = _rt_ipc_list_suspend(
             &mut (*mb).suspend_sender_thread,
             thread as *mut rt_thread,
-            (*mb).parent.parent.flag,
+            (*mb).parent.flag,
             suspend_flag,
         );
 
@@ -384,7 +384,7 @@ unsafe extern "C" fn _rt_mb_recv(
         let ret = _rt_ipc_list_suspend(
             &mut (*mb).parent.suspend_thread,
             thread as *mut rt_thread,
-            (*mb).parent.parent.flag,
+            (*mb).parent.flag,
             suspend_flag,
         );
         if ret != RT_EOK as rt_err_t {

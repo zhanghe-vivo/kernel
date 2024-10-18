@@ -1,6 +1,7 @@
 use crate::{
-    cpu::Cpu, linked_list::ListHead, object::*, rt_bindings, static_init::UnsafeStaticInit,
-    str::CStr, sync::RawSpin, thread::RtThread, thread::ThreadWithStack,
+    cpu::Cpu, linked_list::ListHead, object::*, print, println, rt_bindings,
+    static_init::UnsafeStaticInit, str::CStr, sync::RawSpin, thread::RtThread,
+    thread::ThreadWithStack,
 };
 use core::{ffi::c_char, ffi::c_void, pin::Pin, ptr, ptr::addr_of_mut};
 use pinned_init::*;
@@ -103,8 +104,8 @@ impl TimerWheel {
                     )
                 };
                 timer.timer_remove();
-                if (timer.parent.flag & rt_bindings::RT_TIMER_FLAG_PERIODIC as u8) == 0 {
-                    timer.parent.flag &= !rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8;
+                if (timer.flag & rt_bindings::RT_TIMER_FLAG_PERIODIC as u8) == 0 {
+                    timer.flag &= !rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8;
                 }
                 if is_soft {
                     unsafe { SOFT_TIMER_STATUS = TimerStatus::Busy };
@@ -121,10 +122,10 @@ impl TimerWheel {
                         &timer as *const _ as *const rt_bindings::rt_timer
                     )
                 };
-                if ((timer.parent.flag & rt_bindings::RT_TIMER_FLAG_PERIODIC as u8) != 0)
-                    && ((timer.parent.flag & rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8) != 0)
+                if ((timer.flag & rt_bindings::RT_TIMER_FLAG_PERIODIC as u8) != 0)
+                    && ((timer.flag & rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8) != 0)
                 {
-                    timer.parent.flag &= !rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8;
+                    timer.flag &= !rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8;
                     timer.timer_start();
                 }
             } else {
@@ -156,20 +157,23 @@ impl TimerWheel {
 #[repr(C)]
 #[pin_data]
 pub struct Timer {
-    parent: BaseObject,
+    parent: KObjectBase,
     timeout_func: TimeoutFn,
     parameter: *mut c_void,
     init_tick: u32,
     timeout_tick: u32,
+    flag: u8,
     #[pin]
     node: ListHead,
 }
+
+crate::impl_kobject!(Timer);
 
 impl Timer {
     /// The init funtion of the global timer
     #[inline]
     pub fn static_init(
-        name: &'static CStr,
+        name: *const c_char,
         timeout_func: TimeoutFn,
         parameter: *mut c_void,
         time: u32,
@@ -181,7 +185,7 @@ impl Timer {
     /// The init funtion of the local timer
     #[inline]
     pub fn dyn_init(
-        name: &'static CStr,
+        name: *const c_char,
         timeout_func: TimeoutFn,
         parameter: *mut c_void,
         time: u32,
@@ -191,7 +195,7 @@ impl Timer {
     }
 
     fn new_internal(
-        name: &'static CStr,
+        name: *const c_char,
         timeout_func: TimeoutFn,
         parameter: *mut c_void,
         time: u32,
@@ -203,11 +207,11 @@ impl Timer {
                 rt_object_init(
                     slot as *mut rt_bindings::rt_object,
                     ObjectClassType::ObjectClassTimer as u32,
-                    name.as_char_ptr(),
+                    name,
                 );
             }
             let cur_ref = &mut *slot;
-            cur_ref.parent.flag = flag & !rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8;
+            cur_ref.flag = flag & !rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8;
             cur_ref.init_tick = time;
             cur_ref.timeout_tick = 0;
             cur_ref.timeout_func = timeout_func;
@@ -224,7 +228,7 @@ impl Timer {
         let mut need_schedule = false;
         let mut level = 0;
         let time_wheel = self.get_timer_wheel();
-        if self.parent.flag & rt_bindings::RT_TIMER_FLAG_THREAD_TIMER as u8 != 0 {
+        if self.flag & rt_bindings::RT_TIMER_FLAG_THREAD_TIMER as u8 != 0 {
             is_thread_timer = true;
             level = Cpu::get_current_scheduler().sched_lock();
             let thread = unsafe {
@@ -239,7 +243,7 @@ impl Timer {
             }
         }
         self.timer_remove();
-        self.parent.flag &= !rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8;
+        self.flag &= !rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8;
         unsafe {
             crate::rt_object_hook_call!(
                 rt_object_take_hook,
@@ -276,8 +280,8 @@ impl Timer {
                 }
             }
         }
-        self.parent.flag |= rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8;
-        if self.parent.flag & rt_bindings::RT_TIMER_FLAG_SOFT_TIMER as u8 != 0 {
+        self.flag |= rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8;
+        if self.flag & rt_bindings::RT_TIMER_FLAG_SOFT_TIMER as u8 != 0 {
             unsafe {
                 if !Cpu::get_current_scheduler().is_sched_locked() {
                     level = Cpu::get_current_scheduler().sched_lock();
@@ -306,7 +310,7 @@ impl Timer {
             )
         }
         self.timer_remove();
-        self.parent.flag &= !rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8;
+        self.flag &= !rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8;
     }
 
     /// This function will remove the timer
@@ -321,20 +325,20 @@ impl Timer {
         match cmd {
             rt_bindings::RT_TIMER_CTRL_GET_TIME => unsafe { *(arg as *mut u32) = self.init_tick },
             rt_bindings::RT_TIMER_CTRL_SET_TIME => {
-                if (self.parent.flag & rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8) != 0 {
+                if (self.flag & rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8) != 0 {
                     self.timer_remove();
-                    self.parent.flag &= !rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8;
+                    self.flag &= !rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8;
                 }
                 self.init_tick = unsafe { *(arg as *mut u32) };
             }
             rt_bindings::RT_TIMER_CTRL_SET_ONESHOT => {
-                self.parent.flag &= !rt_bindings::RT_TIMER_FLAG_PERIODIC as u8;
+                self.flag &= !rt_bindings::RT_TIMER_FLAG_PERIODIC as u8;
             }
             rt_bindings::RT_TIMER_CTRL_SET_PERIODIC => {
-                self.parent.flag |= rt_bindings::RT_TIMER_FLAG_PERIODIC as u8;
+                self.flag |= rt_bindings::RT_TIMER_FLAG_PERIODIC as u8;
             }
             rt_bindings::RT_TIMER_CTRL_GET_STATE => {
-                if (self.parent.flag & rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8) != 0 {
+                if (self.flag & rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8) != 0 {
                     unsafe { *(arg as *mut u32) = rt_bindings::RT_TIMER_FLAG_ACTIVATED };
                 } else {
                     unsafe { *(arg as *mut u32) = rt_bindings::RT_TIMER_FLAG_DEACTIVATED };
@@ -385,7 +389,7 @@ impl Timer {
     /// This function will get the type of timer whell
     fn get_timer_wheel(&mut self) -> &'static mut UnsafeStaticInit<TimerWheel, TimerWheelInit> {
         let time_wheel;
-        if self.parent.flag & rt_bindings::RT_TIMER_FLAG_SOFT_TIMER as u8 != 0 {
+        if self.flag & rt_bindings::RT_TIMER_FLAG_SOFT_TIMER as u8 != 0 {
             unsafe {
                 time_wheel = &mut *addr_of_mut!(SOFT_TIMER_WHEEL);
             }
@@ -410,8 +414,7 @@ pub extern "C" fn rt_timer_init(
     assert!(!timer.is_null());
     assert!(!Some(timeout).is_none());
     assert!(time < rt_bindings::RT_TICK_MAX / 2);
-    let name_cstr = unsafe { CStr::from_char_ptr(name) };
-    let init = Timer::static_init(name_cstr, timeout, parameter, time, flag);
+    let init = Timer::static_init(name, timeout, parameter, time, flag);
     unsafe {
         let _ = init.__pinned_init(timer);
     }
@@ -420,21 +423,14 @@ pub extern "C" fn rt_timer_init(
 #[no_mangle]
 pub extern "C" fn rt_timer_detach(timer: *mut Timer) -> rt_bindings::rt_err_t {
     assert!(!timer.is_null());
-    assert!(
-        rt_object_get_type(timer as rt_bindings::rt_object_t)
-            == ObjectClassType::ObjectClassTimer as u8
-    );
-    assert!(
-        rt_object_is_systemobject(timer as rt_bindings::rt_object_t)
-            != rt_bindings::RT_FALSE as core::ffi::c_int
-    );
-    unsafe {
-        let time_wheel = (*timer).get_timer_wheel();
-        let _ = time_wheel.timer_wheel_lock.acquire();
-        (*timer).timer_remove();
-        (*timer).parent.flag &= !rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8;
-    }
-    rt_object_detach(unsafe { (&mut (*timer).parent) as *mut _ as *mut rt_bindings::rt_object });
+    let timer_ref = unsafe { &mut *timer };
+    assert!(timer_ref.type_name() == ObjectClassType::ObjectClassTimer as u8);
+    assert!(timer_ref.is_systemobject() != false);
+    let time_wheel = timer_ref.get_timer_wheel();
+    let _ = time_wheel.timer_wheel_lock.acquire();
+    timer_ref.timer_remove();
+    timer_ref.flag &= !rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8;
+    rt_object_detach((&mut timer_ref.parent) as *mut _ as *mut rt_bindings::rt_object);
     rt_bindings::RT_EOK as i32
 }
 
@@ -452,8 +448,7 @@ pub extern "C" fn rt_timer_create(
     if timer.is_null() {
         return ptr::null_mut();
     }
-    let name_cstr = unsafe { CStr::from_char_ptr(name) };
-    let init = Timer::dyn_init(name_cstr, timeout, parameter, time, flag);
+    let init = Timer::dyn_init(name, timeout, parameter, time, flag);
     unsafe {
         let _ = init.__pinned_init(timer);
     }
@@ -463,20 +458,13 @@ pub extern "C" fn rt_timer_create(
 #[no_mangle]
 pub extern "C" fn rt_timer_delete(timer: *mut Timer) -> rt_bindings::rt_err_t {
     assert!(!timer.is_null());
-    assert!(
-        rt_object_get_type(timer as rt_bindings::rt_object_t)
-            == ObjectClassType::ObjectClassTimer as u8
-    );
-    assert!(
-        rt_object_is_systemobject(timer as rt_bindings::rt_object_t)
-            == rt_bindings::RT_FALSE as i32
-    );
-    unsafe {
-        let time_wheel = (*timer).get_timer_wheel();
-        let _ = time_wheel.timer_wheel_lock.acquire();
-        (*timer).timer_remove();
-        (*timer).parent.flag &= !rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8;
-    }
+    let timer_ref = unsafe { &mut *timer };
+    assert!(timer_ref.type_name() == ObjectClassType::ObjectClassTimer as u8);
+    assert!(timer_ref.is_systemobject() == false);
+    let time_wheel = timer_ref.get_timer_wheel();
+    let _ = time_wheel.timer_wheel_lock.acquire();
+    timer_ref.timer_remove();
+    timer_ref.flag &= !rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8;
     rt_object_delete(unsafe { (&mut (*timer).parent) as *mut _ as *mut rt_bindings::rt_object });
     rt_bindings::RT_EOK as i32
 }
@@ -500,33 +488,25 @@ pub extern "C" fn rt_system_timer_thread_init() {
 #[no_mangle]
 pub extern "C" fn rt_timer_start(timer: *mut Timer) -> rt_bindings::rt_err_t {
     assert!(!timer.is_null());
-    assert!(
-        rt_object_get_type(timer as rt_bindings::rt_object_t)
-            == ObjectClassType::ObjectClassTimer as u8
-    );
-    unsafe {
-        let time_wheel = (*timer).get_timer_wheel();
-        let _ = time_wheel.timer_wheel_lock.acquire();
-        (*timer).timer_start()
-    };
+    let timer_ref = unsafe { &mut *timer };
+    assert!(timer_ref.type_name() == ObjectClassType::ObjectClassTimer as u8);
+    let time_wheel = timer_ref.get_timer_wheel();
+    let _ = time_wheel.timer_wheel_lock.acquire();
+    timer_ref.timer_start();
     rt_bindings::RT_EOK as i32
 }
 
 #[no_mangle]
 pub extern "C" fn rt_timer_stop(timer: *mut Timer) -> rt_bindings::rt_err_t {
     assert!(!timer.is_null());
-    assert!(
-        rt_object_get_type(timer as rt_bindings::rt_object_t)
-            == ObjectClassType::ObjectClassTimer as u8
-    );
-    unsafe {
-        let time_wheel = (*timer).get_timer_wheel();
-        let _ = time_wheel.timer_wheel_lock.acquire();
-        if ((*timer).parent.flag & rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8) == 0 {
-            return rt_bindings::RT_ERROR as i32;
-        }
-        (*timer).timer_stop();
+    let timer_ref = unsafe { &mut *timer };
+    assert!(timer_ref.type_name() == ObjectClassType::ObjectClassTimer as u8);
+    let time_wheel = timer_ref.get_timer_wheel();
+    let _ = time_wheel.timer_wheel_lock.acquire();
+    if (timer_ref.flag & rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8) == 0 {
+        return rt_bindings::RT_ERROR as i32;
     }
+    timer_ref.timer_stop();
     rt_bindings::RT_EOK as i32
 }
 
@@ -537,11 +517,9 @@ pub extern "C" fn rt_timer_control(
     arg: *mut c_void,
 ) -> rt_bindings::rt_err_t {
     assert!(!timer.is_null());
-    assert!(
-        rt_object_get_type(timer as rt_bindings::rt_object_t)
-            == ObjectClassType::ObjectClassTimer as u8
-    );
-    unsafe { (*timer).timer_control(cmd as u32, arg) };
+    let timer_ref = unsafe { &mut *timer };
+    assert!(timer_ref.type_name() == ObjectClassType::ObjectClassTimer as u8);
+    timer_ref.timer_control(cmd as u32, arg);
     rt_bindings::RT_EOK as i32
 }
 
@@ -590,4 +568,38 @@ pub extern "C" fn rt_timer_enter_sethook(hook: unsafe extern "C" fn(*const rt_bi
 #[no_mangle]
 pub extern "C" fn rt_timer_exit_sethook(hook: unsafe extern "C" fn(*const rt_bindings::rt_timer)) {
     unsafe { TIMER_EXIT_HOOK = Some(hook) };
+}
+
+#[no_mangle]
+pub extern "C" fn rt_timer_info() {
+    let callback_forword = || {
+        println!("timer     periodic   timeout    activated     mode");
+        println!("-------- ---------- ---------- ----------- ---------");
+    };
+    let callback = |node: &ListHead| unsafe {
+        let timer = &*crate::list_head_entry!(node.as_ptr(), Timer, node);
+        // let _ = crate::format_name!(&timer.parent.name);
+        let _ = rt_bindings::rt_print_name(timer.parent.name.as_ptr() as *const core::ffi::c_char);
+        let ptr = timer.parent.name.as_ptr();
+        let str = CStr::from_char_ptr(timer.parent.name.as_ptr());
+        let _ = print!("{}", str);
+        let init_tick = timer.init_tick;
+        let time_out = timer.timeout_tick;
+        print!(" 0x{:08x} 0x{:08x} ", init_tick, time_out);
+        if timer.flag & rt_bindings::RT_TIMER_FLAG_PERIODIC as u8 != 0 {
+            print!("activated   ");
+        } else {
+            print!("deactivated ");
+        }
+        if timer.flag & rt_bindings::RT_TIMER_FLAG_PERIODIC as u8 != 0 {
+            println!("periodic");
+        } else {
+            println!("one shot");
+        }
+    };
+    let _ = Timer::foreach(
+        callback_forword,
+        callback,
+        ObjectClassType::ObjectClassTimer as u8,
+    );
 }

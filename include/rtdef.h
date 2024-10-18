@@ -968,7 +968,7 @@ typedef struct rt_thread *rt_thread_t;
 struct rt_ipc_object
 {
     struct rt_object parent;                            /**< inherit from rt_object */
-
+    rt_uint8_t  flag;
     rt_list_t        suspend_thread;                    /**< threads pended on this resource */
 };
 

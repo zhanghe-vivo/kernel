@@ -25,6 +25,7 @@ struct rt_ktime_hrtimer
     void               *parameter;
     unsigned long       init_cnt;
     unsigned long       timeout_cnt;
+    uint8_t             flag;
     rt_err_t            error;
     struct rt_semaphore sem;
     void (*timeout_func)(void *parameter);

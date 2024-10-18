@@ -1,13 +1,14 @@
 #![allow(dead_code)]
 use crate::alloc::boxed::Box;
+use crate::object::KernelObject;
 use crate::{
     clock,
     cpu::Cpu,
     error::{code, Error},
     linked_list::ListHead,
     object,
-    object::{BaseObject, ObjectClassType},
-    println, rt_bindings,
+    object::{KObjectBase, ObjectClassType},
+    print, println, rt_bindings,
     stack::Stack,
     str::CStr,
     sync::RawSpin,
@@ -58,7 +59,7 @@ static mut RT_THREAD_RESUME_HOOK: Option<RtThreadHook> = None;
 #[pin_data(PinnedDrop)]
 pub struct RtThread {
     #[pin]
-    pub(crate) parent: BaseObject,
+    pub(crate) parent: KObjectBase,
     // start of schedule context
     /// the thread list, used in ready_list\ipc wait_list\...
     #[pin]
@@ -112,7 +113,7 @@ pub struct RtThread {
     taken_object_list: ListHead,
     /// mutex object
     #[cfg(feature = "RT_USING_MUTEX")]
-    pending_object: *mut BaseObject,
+    pending_object: *mut KObjectBase,
 
     #[cfg(feature = "RT_USING_EVENT")]
     pub event_set: ffi::c_uint,
@@ -308,9 +309,10 @@ impl RtThread {
                     name.as_char_ptr(),
                 )
             } else {
-                object::rt_object_init_dyn(
-                    slot as *mut rt_bindings::rt_object,
-                    ObjectClassType::ObjectClassThread as u32,
+                assert!(!slot.is_null());
+                object::KObjectBase::init(
+                    &mut *(slot as *mut KObjectBase),
+                    ObjectClassType::ObjectClassThread as u8,
                     name.as_char_ptr(),
                 )
             }
@@ -552,7 +554,7 @@ impl RtThread {
 
     #[inline]
     pub(crate) fn get_name(&self) -> &CStr {
-        unsafe { CStr::from_char_ptr(self.parent.name.as_ptr()) }
+        unsafe { CStr::from_char_ptr(self.name()) }
     }
 
     #[inline]
@@ -934,6 +936,8 @@ impl PinnedDrop for RtThread {
     }
 }
 
+crate::impl_kobject!(RtThread);
+
 #[no_mangle]
 pub extern "C" fn rt_thread_init(
     thread: *mut RtThread,
@@ -1208,4 +1212,74 @@ pub extern "C" fn rt_thread_resume_sethook(hook: RtThreadHook) {
     unsafe {
         RT_THREAD_RESUME_HOOK = Some(hook);
     }
+}
+
+#[no_mangle]
+pub extern "C" fn rt_thread_info() {
+    let callback_forword = || {
+        #[cfg(feature = "RT_USING_SMP")]
+        println!("rt_thread_ thread   cpu bind pri  status      sp     stack size max used left tick  error");
+        #[cfg(feature = "RT_USING_SMP")]
+        println!("---------- -------- --- ---- ---  ------- ---------- ----------  ------  ---------- ---");
+        #[cfg(not(feature = "RT_USING_SMP"))]
+        println!(
+            "rt_thread_ thread   pri  status      sp     stack size max used left tick  error"
+        );
+        #[cfg(not(feature = "RT_USING_SMP"))]
+        println!("---------- -------- ---  ------- ---------- ----------  ------  ---------- ---");
+    };
+    let callback = |node: &ListHead| unsafe {
+        let thread = &*crate::list_head_entry!(node.as_ptr(), RtThread, tlist);
+        let _ = crate::format_name!(thread.parent.name.as_ptr());
+        let oncpu = thread.oncpu;
+        let bind_cpu = thread.bind_cpu;
+        let current_priority = thread.current_priority;
+        print!("{:p} ", thread);
+        #[cfg(feature = "RT_USING_SMP")]
+        {
+            if oncpu != rt_bindings::RT_CPU_DETACHED as u8 {
+                print!(" {} {} {} ", oncpu, bind_cpu, current_priority);
+            } else {
+                print!(" N/A {} {} ", bind_cpu, current_priority);
+            }
+        }
+        #[cfg(not(feature = "RT_USING_SMP"))]
+        {
+            print!(" {} ", current_priority);
+        }
+        let stat = thread.stat & (rt_bindings::RT_THREAD_STAT_MASK as u8);
+        match stat as u32 {
+            rt_bindings::RT_THREAD_READY => println!(" ready  "),
+            _ if (stat as u32 & rt_bindings::RT_THREAD_SUSPEND_MASK)
+                == rt_bindings::RT_THREAD_SUSPEND_MASK =>
+            {
+                println!(" suspend")
+            }
+            rt_bindings::RT_THREAD_INIT => println!(" init   "),
+            rt_bindings::RT_THREAD_CLOSE => println!(" close  "),
+            rt_bindings::RT_THREAD_RUNNING => println!(" running"),
+            _ => {}
+        }
+        let mut ptr = thread.stack.bottom_ptr();
+        while *ptr == b'#' {
+            ptr = ptr.add(1);
+        }
+        println!(
+            " {:p} 0x{:08x}    {:02}%   0x{:08x} {}",
+            thread
+                .stack
+                .bottom_ptr()
+                .sub(thread.stack.sp() as usize)
+                .add(thread.stack.size()),
+            thread.stack.size(),
+            thread.stack.size() - (ptr.sub(thread.stack.bottom_ptr() as usize) as usize) * 100,
+            thread.remaining_tick,
+            thread.error
+        );
+    };
+    let _ = RtThread::foreach(
+        callback_forword,
+        callback,
+        ObjectClassType::ObjectClassThread as u8,
+    );
 }

@@ -56,7 +56,7 @@ rt_weak rt_err_t rt_ktime_hrtimer_settimeout(unsigned long cnt, void (*timeout)(
     {
         if (timer != RT_NULL)
         {
-            if (timer->parent.flag & RT_TIMER_FLAG_ACTIVATED)
+            if (timer->flag & RT_TIMER_FLAG_ACTIVATED)
             {
                 rt_timer_stop(timer);
             }
@@ -79,7 +79,7 @@ rt_weak rt_err_t rt_ktime_hrtimer_settimeout(unsigned long cnt, void (*timeout)(
         rt_timer_control(timer, RT_TIMER_CTRL_SET_PARM, param);
     }
 
-    if (timer->parent.flag & RT_TIMER_FLAG_ACTIVATED)
+    if (timer->flag & RT_TIMER_FLAG_ACTIVATED)
     {
         rt_timer_stop(timer);
     }
@@ -121,7 +121,7 @@ static void _timeout_callback(void *parameter)
     level     = rt_spin_lock_irqsave(&_spinlock);
     _nowtimer = RT_NULL;
     rt_list_remove(&(timer->row));
-    if (timer->parent.flag & RT_TIMER_FLAG_ACTIVATED)
+    if (timer->flag & RT_TIMER_FLAG_ACTIVATED)
     {
         rt_spin_unlock_irqrestore(&_spinlock, level);
         timer->timeout_func(timer->parameter);
@@ -184,10 +184,10 @@ void rt_ktime_hrtimer_init(rt_ktime_hrtimer_t timer,
     RT_ASSERT(cnt < (_HRTIMER_MAX_CNT / 2));
 
     /* set flag */
-    timer->parent.flag = flag;
+    timer->flag = flag;
 
     /* set deactivated */
-    timer->parent.flag &= ~RT_TIMER_FLAG_ACTIVATED;
+    timer->flag &= ~RT_TIMER_FLAG_ACTIVATED;
     timer->timeout_func = timeout;
     timer->parameter    = parameter;
     timer->timeout_cnt  = cnt + rt_ktime_cputimer_getcnt();
@@ -208,7 +208,7 @@ rt_err_t rt_ktime_hrtimer_start(rt_ktime_hrtimer_t timer)
     level = rt_spin_lock_irqsave(&_spinlock);
     rt_list_remove(&timer->row); /* remove timer from list */
     /* change status of timer */
-    timer->parent.flag &= ~RT_TIMER_FLAG_ACTIVATED;
+    timer->flag &= ~RT_TIMER_FLAG_ACTIVATED;
     timer_list = &_timer_list;
     for (; timer_list != _timer_list.prev; timer_list = timer_list->next)
     {
@@ -227,7 +227,7 @@ rt_err_t rt_ktime_hrtimer_start(rt_ktime_hrtimer_t timer)
         }
     }
     rt_list_insert_after(timer_list, &(timer->row));
-    timer->parent.flag |= RT_TIMER_FLAG_ACTIVATED;
+    timer->flag |= RT_TIMER_FLAG_ACTIVATED;
     rt_spin_unlock_irqrestore(&_spinlock, level);
 
     _set_next_timeout();
@@ -242,14 +242,14 @@ rt_err_t rt_ktime_hrtimer_stop(rt_ktime_hrtimer_t timer)
     RT_ASSERT(timer != RT_NULL); /* timer check */
 
     level = rt_spin_lock_irqsave(&_spinlock);
-    if (!(timer->parent.flag & RT_TIMER_FLAG_ACTIVATED))
+    if (!(timer->flag & RT_TIMER_FLAG_ACTIVATED))
     {
         rt_spin_unlock_irqrestore(&_spinlock, level);
         return -RT_ERROR;
     }
     _nowtimer = RT_NULL;
     rt_list_remove(&timer->row);
-    timer->parent.flag &= ~RT_TIMER_FLAG_ACTIVATED; /* change status */
+    timer->flag &= ~RT_TIMER_FLAG_ACTIVATED; /* change status */
     rt_spin_unlock_irqrestore(&_spinlock, level);
 
     _set_next_timeout();
@@ -278,15 +278,15 @@ rt_err_t rt_ktime_hrtimer_control(rt_ktime_hrtimer_t timer, int cmd, void *arg)
             break;
 
         case RT_TIMER_CTRL_SET_ONESHOT:
-            timer->parent.flag &= ~RT_TIMER_FLAG_PERIODIC;
+            timer->flag &= ~RT_TIMER_FLAG_PERIODIC;
             break;
 
         case RT_TIMER_CTRL_SET_PERIODIC:
-            timer->parent.flag |= RT_TIMER_FLAG_PERIODIC;
+            timer->flag |= RT_TIMER_FLAG_PERIODIC;
             break;
 
         case RT_TIMER_CTRL_GET_STATE:
-            if (timer->parent.flag & RT_TIMER_FLAG_ACTIVATED)
+            if (timer->flag & RT_TIMER_FLAG_ACTIVATED)
             {
                 /*timer is start and run*/
                 *(rt_uint32_t *)arg = RT_TIMER_FLAG_ACTIVATED;
@@ -335,7 +335,7 @@ rt_err_t rt_ktime_hrtimer_detach(rt_ktime_hrtimer_t timer)
     level = rt_spin_lock_irqsave(&_spinlock);
 
     /* stop timer */
-    timer->parent.flag &= ~RT_TIMER_FLAG_ACTIVATED;
+    timer->flag &= ~RT_TIMER_FLAG_ACTIVATED;
     /* when interrupted */
     if (timer->error == -RT_EINTR || timer->error == RT_EINTR)
     {

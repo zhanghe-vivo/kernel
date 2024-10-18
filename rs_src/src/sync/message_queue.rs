@@ -95,7 +95,7 @@ pub unsafe extern "C" fn rt_mq_init(
         name,
     );
 
-    (*mq).parent.parent.flag = flag;
+    (*mq).parent.flag = flag;
 
     _rt_ipc_object_init(&mut (*mq).parent);
 
@@ -168,7 +168,7 @@ pub unsafe extern "C" fn rt_mq_create(
         return mq;
     }
 
-    (*mq).parent.parent.flag = flag;
+    (*mq).parent.flag = flag;
 
     _rt_ipc_object_init(&mut (*mq).parent);
 
@@ -283,7 +283,7 @@ unsafe extern "C" fn _rt_mq_send_wait(
         let ret = _rt_ipc_list_suspend(
             &mut (*mq).suspend_sender_thread,
             thread as *mut rt_thread,
-            (*mq).parent.parent.flag,
+            (*mq).parent.flag,
             suspend_flag,
         );
 
@@ -522,7 +522,7 @@ unsafe extern "C" fn _rt_mq_recv(
         let ret = _rt_ipc_list_suspend(
             &mut (*mq).parent.suspend_thread,
             thread as *mut rt_thread,
-            (*mq).parent.parent.flag,
+            (*mq).parent.flag,
             suspend_flag,
         );
         if ret != RT_EOK as rt_err_t {
