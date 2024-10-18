@@ -460,7 +460,7 @@ pub extern "C" fn rt_timer_create(
     flag: rt_bindings::rt_uint8_t,
 ) -> *mut Timer {
     assert!(!Some(timeout).is_none());
-    assert!(time < rt_bindings::RT_TICK_MAX / 2 && time > 0);
+    assert!(time < rt_bindings::RT_TICK_MAX / 2);
     let timer = rt_object_allocate(ObjectClassType::ObjectClassTimer as u32, name) as *mut Timer;
     if timer.is_null() {
         return ptr::null_mut();
