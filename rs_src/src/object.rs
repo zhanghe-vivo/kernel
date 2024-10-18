@@ -320,6 +320,7 @@ pub extern "C" fn rt_object_init(
             assert!(!ptr::eq(object, obj as *const rt_object));
         });
     }
+
     let obj_ref = unsafe { &mut *(object as *mut BaseObject) };
     // initialize object's parameters
     // set object type to static
@@ -366,7 +367,7 @@ fn rt_object_init_internal(
 
     #[cfg(feature = "RT_USING_MODULE")]
     let module = unsafe { dlmodule_self() };
-
+    // let _ = unsafe { ListHead::new().__pinned_init(&mut obj_ref.list as *mut ListHead) };
     let _guard = information.spinlock.acquire();
     #[cfg(feature = "RT_USING_MODULE")]
     if !module.is_null() {
@@ -384,6 +385,25 @@ fn rt_object_init_internal(
     unsafe {
         #[cfg(not(feature = "RT_USING_MODULE"))]
         Pin::new_unchecked(&mut obj_ref.list).insert_next(&information.object_list);
+        #[cfg(feature = "RT_USING_DEBUG")]
+        {
+            assert!(ptr::eq(
+                &obj_ref.list,
+                information.object_list.next.as_ptr()
+            ));
+            assert!(ptr::eq(
+                obj_ref.list.prev.as_ptr(),
+                &information.object_list
+            ));
+            let mut count: u32 = 0;
+            crate::list_head_for_each!(node, &information.object_list, {
+                if count > 1 {
+                    assert!(!ptr::eq(node.next.as_ptr(), node.prev.as_ptr()));
+                }
+                count += 1;
+                assert!(count < 100);
+            });
+        }
     }
 }
 
@@ -399,7 +419,7 @@ pub extern "C" fn rt_object_detach(object: *mut rt_object) {
     unsafe { crate::rt_object_hook_call!(OBJECT_DETACH_HOOK, object) };
 
     //let obj = unsafe { Box::leak(Box::from_raw(object as *mut BaseObject)) };
-    let obj = unsafe { &mut *object };
+    let obj = unsafe { &mut *(object as *mut BaseObject) };
     if let Some(information) =
         ObjectInformation::get_info_by_type(obj.type_ & (!OBJECT_CLASS_STATIC))
     {

@@ -11,7 +11,7 @@ use crate::{
     stack::Stack,
     str::CStr,
     sync::RawSpin,
-    zombie,
+    timer, zombie,
 };
 use alloc::alloc;
 use core::{
@@ -82,7 +82,7 @@ pub struct RtThread {
 
     /// built-in thread timer, used for wait timeout
     #[pin]
-    thread_timer: rt_bindings::rt_timer,
+    pub thread_timer: rt_bindings::rt_timer,
 
     /// stack point and entry
     pub(crate) stack: Stack,
@@ -318,10 +318,10 @@ impl RtThread {
             let cur_ref = &mut *slot;
             let _ = ListHead::new().__pinned_init(&mut cur_ref.tlist as *mut ListHead);
 
-            rt_bindings::rt_timer_init(
-                &mut cur_ref.thread_timer as *mut _,
+            timer::rt_timer_init(
+                &mut cur_ref.thread_timer as *mut _ as *mut timer::Timer,
                 name.as_char_ptr(),
-                Some(Self::handle_timeout),
+                Self::handle_timeout,
                 cur_ref as *mut _ as *mut ffi::c_void,
                 0,
                 (rt_bindings::RT_TIMER_FLAG_ONE_SHOT | rt_bindings::RT_TIMER_FLAG_THREAD_TIMER)

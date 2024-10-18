@@ -643,6 +643,7 @@ struct rt_object_information
 #define RT_TIMER_SKIP_LIST_MASK         0x3             /**< Timer skips the list mask */
 #endif
 
+#ifndef USE_RUST
 /**
  * timer structure
  */
@@ -658,6 +659,9 @@ struct rt_timer
     rt_tick_t        init_tick;                         /**< timer timeout tick */
     rt_tick_t        timeout_tick;                      /**< timeout tick */
 };
+#else
+#include "rust_timer.inc"
+#endif
 typedef struct rt_timer *rt_timer_t;
 
 /**@}*/
