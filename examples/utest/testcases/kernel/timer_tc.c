@@ -80,7 +80,7 @@ static void test_static_timer_init(void)
     int rand_num = rand() % 10;
 
     /* one shot timer test */
-    for (int time_out = 1; time_out < rand_num; time_out++)
+    for (int time_out = 0; time_out < rand_num; time_out++)
     {
         for (int i = 0; i < sizeof(timer_flag_oneshot); i++)
         {
@@ -122,7 +122,7 @@ static void test_static_timer_init(void)
     }
 
     /* periodic timer test */
-    for (int time_out = 1; time_out < rand_num; time_out++)
+    for (int time_out = 0; time_out < rand_num; time_out++)
     {
         for (int i = 0; i < sizeof(timer_flag_periodic); i++)
         {
@@ -307,7 +307,7 @@ static void test_dynamic_timer_create(void)
     int rand_num = rand() % 10;
 
     /* one shot timer test */
-    for (int time_out = 1; time_out < rand_num; time_out++)
+    for (int time_out = 0; time_out < rand_num; time_out++)
     {
         for (int i = 0; i < sizeof(timer_flag_oneshot); i++)
         {
@@ -348,7 +348,7 @@ static void test_dynamic_timer_create(void)
     }
 
     /* periodic timer test */
-    for (int time_out = 1; time_out < rand_num; time_out++)
+    for (int time_out = 0; time_out < rand_num; time_out++)
     {
         for (int i = 0; i < sizeof(timer_flag_periodic); i++)
         {
