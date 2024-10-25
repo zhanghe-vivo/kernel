@@ -1,9 +1,11 @@
 use crate::{
     error::Error,
+    linked_list::ListHead,
     object::{
         rt_object_allocate, rt_object_delete, rt_object_detach, rt_object_get_type, rt_object_init,
-        rt_object_is_systemobject, *,
+        rt_object_is_systemobject, ObjectClassType, *,
     },
+    print, println,
     rt_bindings::*,
     rt_debug_not_in_interrupt, rt_list_entry,
     scheduler::rt_schedule,
@@ -480,4 +482,41 @@ impl EventStatic {
             _pin: PhantomPinned {},
         }
     }
+}
+
+#[no_mangle]
+#[allow(unused_unsafe)]
+pub extern "C" fn rt_event_info() {
+    let callback_forword = || {
+        println!("event         set    suspend thread");
+        println!("--------  ---------- --------------");
+    };
+    let callback = |node: &ListHead| unsafe {
+        let event =
+            &*(crate::list_head_entry!(node.as_ptr(), KObjectBase, list) as *const rt_event);
+        let _ = crate::format_name!(event.parent.parent.name.as_ptr(), 8);
+        print!(" 0x{:08x} ", event.set);
+        if event.parent.suspend_thread.is_empty() {
+            println!("000");
+        } else {
+            print!("{}:", event.parent.suspend_thread.len());
+            let head = &event.parent.suspend_thread;
+            let mut list = head.next;
+            loop {
+                let thread_node = list;
+                if thread_node == head as *const _ as *mut rt_list_node {
+                    break;
+                }
+                let thread = &*crate::container_of!(thread_node, thread::RtThread, tlist);
+                let _ = crate::format_name!(thread.parent.name.as_ptr(), 8);
+                list = (*list).next;
+            }
+            print!("\n");
+        }
+    };
+    let _ = KObjectBase::get_info(
+        callback_forword,
+        callback,
+        ObjectClassType::ObjectClassEvent as u8,
+    );
 }

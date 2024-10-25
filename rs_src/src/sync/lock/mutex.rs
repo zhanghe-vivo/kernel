@@ -1,4 +1,8 @@
-use crate::rt_bindings;
+use crate::{
+    linked_list::ListHead,
+    object::{KObjectBase, KernelObject, ObjectClassType},
+    print, println, rt_bindings, thread,
+};
 
 #[macro_export]
 macro_rules! new_mutex {
@@ -36,4 +40,47 @@ unsafe impl super::Backend for MutexBackend {
         // caller is the owner of the mutex.
         unsafe { rt_bindings::rt_mutex_release(ptr) };
     }
+}
+
+#[no_mangle]
+#[allow(unused_unsafe)]
+pub extern "C" fn rt_mutex_info() {
+    let callback_forword = || {
+        println!("mutex      owner  hold priority suspend thread");
+        println!("-------- -------- ---- -------- --------------");
+    };
+    let callback = |node: &ListHead| unsafe {
+        let mutex = &*(crate::list_head_entry!(node.as_ptr(), KObjectBase, list)
+            as *const rt_bindings::rt_mutex);
+        let _ = crate::format_name!(mutex.parent.parent.name.as_ptr(), 8);
+        if mutex.owner.is_null() {
+            print!(" (NULL)   ");
+        } else {
+            let _ = crate::format_name!((*mutex.owner).parent.name.as_ptr(), 8);
+        }
+        print!("{:04}", mutex.hold);
+        print!("{:>8}  ", mutex.priority);
+        if mutex.parent.suspend_thread.is_empty() {
+            println!("0000");
+        } else {
+            print!("{}:", mutex.parent.suspend_thread.len());
+            let head = &mutex.parent.suspend_thread;
+            let mut list = head.next;
+            loop {
+                let thread_node = list;
+                if thread_node == head as *const _ as *mut rt_bindings::rt_list_node {
+                    break;
+                }
+                let thread = &*crate::container_of!(thread_node, thread::RtThread, tlist);
+                let _ = crate::format_name!(thread.parent.name.as_ptr(), 8);
+                list = (*list).next;
+            }
+            print!("\n");
+        }
+    };
+    let _ = KObjectBase::get_info(
+        callback_forword,
+        callback,
+        ObjectClassType::ObjectClassMutex as u8,
+    );
 }

@@ -1,16 +1,13 @@
 use crate::{
     allocator::{rt_free, rt_malloc},
-    klibc::{rt_memset, rt_strncmp, rt_strncpy},
+    klibc::{rt_memset, rt_strncpy},
     linked_list::ListHead,
-    println,
+    process::*,
     rt_bindings::*,
-    scheduler::{rt_enter_critical, rt_exit_critical},
-    static_init::UnsafeStaticInit,
-    sync::RawSpin,
     thread::RtThread,
 };
 
-use core::{ffi, fmt::Debug, mem, pin::Pin, ptr, ptr::addr_of_mut, slice};
+use core::{ffi, fmt::Debug, mem, ptr, slice};
 use {
     downcast_rs::{impl_downcast, Downcast},
     pinned_init::*,
@@ -28,7 +25,7 @@ pub struct KObjectBase {
     pub type_: u8,
     /// list node of kernel object
     #[pin]
-    list: ListHead,
+    pub list: ListHead,
 }
 
 impl KObjectBase {
@@ -39,33 +36,12 @@ impl KObjectBase {
             rt_strncpy(object.name.as_mut_ptr(), name, (NAME_MAX - 1) as usize);
             crate::rt_object_hook_call!(OBJECT_ATTACH_HOOK, object as *const _ as *const rt_object);
         }
-
-        let obj_container = unsafe { &mut *addr_of_mut!(OBJECT_CONTAINER) };
-        let _ = obj_container.obj_lock.acquire();
-        let obj_list = &obj_container.data[(type_ & (!OBJECT_CLASS_STATIC)) as usize];
-        unsafe {
-            Pin::new_unchecked(&mut object.list).insert_next(obj_list);
-        }
-        #[cfg(feature = "RT_USING_DEBUG")]
-        {
-            assert!(ptr::eq(&object.list, obj_list.next.as_ptr()));
-            assert!(ptr::eq(object.list.prev.as_ptr(), obj_list));
-            let mut count: u32 = 0;
-            crate::list_head_for_each!(node, obj_list, {
-                if count > 1 {
-                    assert!(!ptr::eq(node.next.as_ptr(), node.prev.as_ptr()));
-                }
-                count += 1;
-                assert!(count < 100);
-            });
+        if type_ != ObjectClassType::ObjectClassProcess as u8 {
+            insert(type_, &mut object.list);
         }
     }
 
-    fn remove(&mut self) {
-        unsafe { Pin::new_unchecked(&mut self.list).remove() };
-    }
-
-    fn new(type_: u8, name: *const i8) -> *mut KObjectBase {
+    pub(crate) fn new(type_: u8, name: *const i8) -> *mut KObjectBase {
         use core::ffi::c_void;
         let object_size = ObjectClassType::get_object_size(type_ as u8);
 
@@ -83,54 +59,6 @@ impl KObjectBase {
         KObjectBase::init(obj_ref, type_ as u8, name);
         object
     }
-
-    #[cfg(feature = "RT_USING_DEBUG")]
-    fn addr_detect(&self, type_: u8) {
-        let obj_container = unsafe { &mut *addr_of_mut!(OBJECT_CONTAINER) };
-        let _ = obj_container.obj_lock.acquire();
-        let obj_list = &obj_container.data[type_ as usize];
-        crate::list_head_for_each!(node, obj_list, {
-            let obj = unsafe { crate::list_head_entry!(node.as_ptr(), KObjectBase, list) };
-            assert!(!ptr::eq(self, obj));
-        });
-    }
-
-    /// TODO: remove this fuction
-    /// Find the kernel object by name
-    fn find_object(type_: u8, name: *const i8) -> *const KObjectBase {
-        if name.is_null() {
-            return ptr::null_mut();
-        }
-
-        /* which is invoke in interrupt status */
-        crate::rt_debug_not_in_interrupt!();
-
-        let object_container = unsafe { &mut *addr_of_mut!(OBJECT_CONTAINER) };
-        let _ = object_container.obj_lock.acquire();
-        let obj_list = &object_container.data[(type_ & (!OBJECT_CLASS_STATIC)) as usize];
-        /* enter critical */
-        rt_enter_critical();
-        /* try to find object */
-        crate::list_head_for_each!(node, obj_list, {
-            unsafe {
-                let object = crate::list_head_entry!(node.as_ptr(), KObjectBase, list);
-                if rt_strncmp(
-                    (*object).name.as_ptr() as *const ffi::c_char,
-                    name,
-                    NAME_MAX,
-                ) == 0
-                {
-                    /* leave critical */
-                    rt_exit_critical();
-                    return object;
-                }
-            }
-        });
-        /* leave critical */
-        rt_exit_critical();
-
-        ptr::null_mut()
-    }
 }
 
 pub const NAME_MAX: usize = 8;
@@ -139,7 +67,9 @@ pub const NAME_MAX: usize = 8;
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ObjectClassType {
     ObjectClassUninit = 0,
-    ObjectClassThread = 1,
+    ObjectClassProcess = 1,
+    //< The object is a process.
+    ObjectClassThread,
     //< The object is a thread.
     #[cfg(feature = "RT_USING_SEMAPHORE")]
     ObjectClassSemaphore,
@@ -183,8 +113,13 @@ pub trait KernelObject: Downcast {
     fn set_name(&mut self, name: *const i8);
     /// Checks whether the object is a system object.
     fn is_systemobject(&self) -> bool;
-    // /// get the Kernel Object.
-    fn foreach<FF, F>(callback_forword: FF, callback: F, type_: u8) -> Result<(), i32>
+    /// This function is used to iterate all kernel objects.
+    fn foreach<F>(callback: F, type_: u8) -> Result<(), i32>
+    where
+        F: Fn(&ListHead),
+        Self: Sized;
+    /// Get the kernel object info.
+    fn get_info<FF, F>(callback_forword: FF, callback: F, type_: u8) -> Result<(), i32>
     where
         FF: Fn(),
         F: Fn(&ListHead),
@@ -217,92 +152,33 @@ impl KernelObject for KObjectBase {
         return false;
     }
 
-    fn foreach<FF, F>(callback_forword: FF, callback: F, type_: u8) -> Result<(), i32>
+    fn foreach<F>(callback: F, type_: u8) -> Result<(), i32>
+    where
+        F: Fn(&ListHead),
+        Self: Sized,
+    {
+        foreach(callback, type_)
+    }
+
+    fn get_info<FF, F>(callback_forword: FF, callback: F, type_: u8) -> Result<(), i32>
     where
         FF: Fn(),
         F: Fn(&ListHead),
         Self: Sized,
     {
         callback_forword();
-        let object_container = unsafe { &mut *addr_of_mut!(OBJECT_CONTAINER) };
-        let _ = object_container.obj_lock.lock();
-        let obj_list = &object_container.data[(type_ & (!OBJECT_CLASS_STATIC)) as usize];
-        crate::list_head_for_each!(node, obj_list, {
-            let _ = object_container.obj_lock.unlock();
-            callback(node);
-            let _ = object_container.obj_lock.lock();
-        });
-        let _ = object_container.obj_lock.unlock();
-        Ok(())
+        Self::foreach(callback, type_)
     }
 }
 
 /// The object is a static object.
-const OBJECT_CLASS_STATIC: u8 = 0x80;
-
-#[pin_data]
-pub(crate) struct ObjectContainer {
-    #[pin]
-    data: [ListHead; ObjectClassType::ObjectClassUnknown as usize - 1],
-    obj_lock: RawSpin,
-}
-
-pub(crate) static mut OBJECT_CONTAINER: UnsafeStaticInit<ObjectContainer, ObjectContainerInit> =
-    UnsafeStaticInit::new(ObjectContainerInit);
-
-pub(crate) struct ObjectContainerInit;
-unsafe impl PinInit<ObjectContainer> for ObjectContainerInit {
-    unsafe fn __pinned_init(
-        self,
-        slot: *mut ObjectContainer,
-    ) -> Result<(), core::convert::Infallible> {
-        let init = ObjectContainer::new();
-        unsafe { init.__pinned_init(slot) }
-    }
-}
-
-impl ObjectContainer {
-    fn new() -> impl PinInit<Self> {
-        pin_init!(Self {
-            data <- pin_init_array_from_fn(|_| ListHead::new()),
-            obj_lock: RawSpin::new(),
-        })
-    }
-    fn size(type_: u32) -> usize {
-        let obj_container = unsafe { &mut *addr_of_mut!(OBJECT_CONTAINER) };
-        let _ = obj_container.obj_lock.acquire();
-        let size = obj_container.data[type_ as usize].size();
-        size
-    }
-
-    fn get_objects_by_type(object_type: u8, objects: &mut [*mut KObjectBase]) -> usize {
-        if object_type > ObjectClassType::ObjectClassUninit as u8
-            && object_type < ObjectClassType::ObjectClassUnknown as u8
-        {
-            let mut count: usize = 0;
-            let maxlen: usize = objects.len();
-            let obj_container = unsafe { &mut *addr_of_mut!(OBJECT_CONTAINER) };
-            let _ = obj_container.obj_lock.acquire();
-            let list = &obj_container.data[(object_type - 1) as usize];
-            crate::list_head_for_each!(node, list, {
-                let object = unsafe { crate::list_head_entry!(node.as_ptr(), KObjectBase, list) };
-                objects[count] = object as *mut KObjectBase;
-                count += 1;
-                if count >= maxlen {
-                    break;
-                }
-            });
-            count
-        } else {
-            0
-        }
-    }
-}
+pub(crate) const OBJECT_CLASS_STATIC: u8 = 0x80;
 
 impl ObjectClassType {
     // 为枚举类型添加方法
     fn get_object_size(index: u8) -> usize {
         match index {
+            x if x == Self::ObjectClassProcess as u8 => mem::size_of::<Kprocess>(),
             x if x == Self::ObjectClassThread as u8 => mem::size_of::<RtThread>(),
             //< The object is a thread.
             #[cfg(feature = "RT_USING_SEMAPHORE")]
@@ -350,7 +226,7 @@ impl ObjectClassType {
 /// The length of object list.
 #[no_mangle]
 pub extern "C" fn rt_object_get_length(object_type: rt_object_class_type) -> usize {
-    ObjectContainer::size(object_type)
+    size(object_type as u8)
 }
 
 /// This function will copy the object pointer of the specified type, with the maximum size specified by maxlen.
@@ -376,7 +252,7 @@ pub unsafe extern "C" fn rt_object_get_pointers(
 
     let object_slice: &mut [*mut KObjectBase] =
         slice::from_raw_parts_mut(pointers as *mut *mut KObjectBase, maxlen);
-    ObjectContainer::get_objects_by_type(object_type as u8, object_slice)
+    get_objects_by_type(object_type as u8, object_slice)
 }
 
 /// This function will initialize an object and add it to object system
@@ -401,7 +277,7 @@ pub extern "C" fn rt_object_init(
     assert!(!object.is_null());
     let obj_ref = unsafe { &mut *(object as *mut KObjectBase) };
     #[cfg(feature = "RT_USING_DEBUG")]
-    obj_ref.addr_detect(type_ as u8);
+    object_addr_detect(type_ as u8, obj_ref);
     // initialize object's parameters
     // set object type to static
     let type_ = type_ as u8 | OBJECT_CLASS_STATIC;
@@ -419,8 +295,7 @@ pub extern "C" fn rt_object_detach(object: *mut rt_object) {
     assert!(!object.is_null());
     unsafe { crate::rt_object_hook_call!(OBJECT_DETACH_HOOK, object) };
     let obj = unsafe { &mut *(object as *mut KObjectBase) };
-    let _ = unsafe { OBJECT_CONTAINER.obj_lock.acquire() };
-    obj.remove();
+    remove(obj);
     obj.type_ = ObjectClassType::ObjectClassUninit as u8;
 }
 
@@ -456,12 +331,9 @@ pub extern "C" fn rt_object_delete(object: rt_object_t) {
 
     unsafe {
         let obj = &mut *(object as *mut KObjectBase);
-        let object_container = &mut *addr_of_mut!(OBJECT_CONTAINER);
-        let _ = object_container.obj_lock.lock();
-        obj.remove();
+        remove(obj);
         // reset object type
         obj.type_ = ObjectClassType::ObjectClassUninit as u8;
-        object_container.obj_lock.unlock();
         rt_free(object as *mut ffi::c_void);
     }
 }
@@ -532,7 +404,7 @@ pub extern "C" fn rt_object_get_type(object: rt_object_t) -> rt_uint8_t {
 /// This function shall not be invoked in interrupt status.
 #[no_mangle]
 pub extern "C" fn rt_object_find(name: *const ffi::c_char, type_: rt_uint8_t) -> rt_object_t {
-    KObjectBase::find_object(type_, name) as rt_object_t
+    find_object(type_, name) as rt_object_t
 }
 
 /// This function will return the name of the specified object container
@@ -665,22 +537,6 @@ pub extern "C" fn bindgen_base_object(_obj: KObjectBase) {
     0;
 }
 
-#[no_mangle]
-pub extern "C" fn print_list() {
-    let callback_forword = || {
-        println!("callback_forword");
-    };
-    let callback = |node: &ListHead| unsafe {
-        let obj = crate::list_head_entry!(node.as_ptr(), KObjectBase, list);
-        println!("name = {}", (*obj).type_);
-    };
-    let _ = KObjectBase::foreach(
-        callback_forword,
-        callback,
-        ObjectClassType::ObjectClassTimer as u8,
-    );
-}
-
 #[macro_export]
 macro_rules! impl_kobject {
     ($class:ident $( $fn:tt )*) => {
@@ -697,13 +553,20 @@ macro_rules! impl_kobject {
             fn is_systemobject(&self) -> bool{
                 self.parent.is_systemobject()
             }
-            fn foreach<FF,F>(callback_forword: FF, callback: F, type_: u8) -> Result<(), i32>
+            fn foreach<F>(callback: F, type_: u8) -> Result<(), i32>
+            where
+                F: Fn(&ListHead),
+                Self: Sized
+            {
+                KObjectBase::foreach(callback, type_)
+            }
+            fn get_info<FF,F>(callback_forword: FF, callback: F, type_: u8) -> Result<(), i32>
             where
                 FF: Fn(),
                 F: Fn(&ListHead),
                 Self: Sized
             {
-                KObjectBase::foreach(callback_forword,callback, type_)
+                KObjectBase::get_info(callback_forword,callback, type_)
             }
             $( $fn )*
         }
@@ -712,11 +575,16 @@ macro_rules! impl_kobject {
 
 #[macro_export]
 macro_rules! format_name {
-    ($name:expr) => {{
-        // use crate::alloc::{format, string::ToString};
-        // use crate::kprintf;
-        // use core::ffi::c_char;
-        // kprintf!(b"%p", $name.as_ptr());
-        // kprintf!(b"%s", $name.as_ptr() as *const c_char);
+    ($name:expr,$width:expr) => {{
+        use crate::str::CStr;
+        let name_cstr = CStr::from_char_ptr($name);
+        match name_cstr.to_str() {
+            Ok(name) => {
+                print!("{:<1$}", name, $width);
+            }
+            Err(_) => {
+                println!("Error when converting C string to UTF-8");
+            }
+        }
     }};
 }

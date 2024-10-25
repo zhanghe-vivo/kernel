@@ -1,7 +1,8 @@
 typedef void (*TimeoutFn)(void *);
 enum rt_object_class_type
 {
-    RT_Object_Class_Null   = 0x00,  /**< The object is not used. */
+    RT_Object_Class_Null   = 0,  /**< The object is not used. */
+    RT_Object_Class_Process = 1,         /**< The object is a process. */
     RT_Object_Class_Thread,         /**< The object is a thread. */
 #ifdef RT_USING_SEMAPHORE
     RT_Object_Class_Semaphore,      /**< The object is a semaphore. */
@@ -41,7 +42,6 @@ enum rt_object_class_type
     RT_Object_Class_Custom,         /**< The object is a custom object */
 #endif
     RT_Object_Class_Unknown,        /**< The object is unknown. */
-    RT_Object_Class_Static = 0x80   /**< The object is a static object. */
 };
 #ifdef RT_USING_SMP
 #include <cpuport.h> /* for spinlock from arch */
@@ -62,7 +62,7 @@ struct rt_spinlock
 #define RawSpin rt_spinlock
 #define uint8_t rt_uint8_t
 #define uint32_t rt_uint32_t
-#define uint32_t rt_uint32_t
+#define uint64_t rt_uint64_t
 #define uintptr_t rt_size_t
 #define int8_t rt_int8_t
 #define NAME_MAX 8

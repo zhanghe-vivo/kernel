@@ -1,15 +1,16 @@
 use crate::{
     error::Error,
+    linked_list::ListHead,
     object::{
         rt_object_allocate, rt_object_delete, rt_object_detach, rt_object_get_type, rt_object_init,
-        rt_object_is_systemobject, *,
+        rt_object_is_systemobject, ObjectClassType, *,
     },
     print, println,
     rt_bindings::*,
     rt_debug_not_in_interrupt,
     scheduler::rt_schedule,
     sync::ipc_common::*,
-    thread::rt_thread_self,
+    thread::{rt_thread_self, RtThread},
     timer,
 };
 use core::{
@@ -383,4 +384,41 @@ impl SemaphoreStatic {
             _pin: PhantomPinned {},
         }
     }
+}
+
+#[no_mangle]
+#[allow(unused_unsafe)]
+pub extern "C" fn rt_sem_info() {
+    let callback_forword = || {
+        println!("semaphor v   suspend thread");
+        println!("-------- --- --------------");
+    };
+    let callback = |node: &ListHead| unsafe {
+        let sem =
+            &*(crate::list_head_entry!(node.as_ptr(), KObjectBase, list) as *const rt_semaphore);
+        let _ = crate::format_name!(sem.parent.parent.name.as_ptr(), 8);
+        print!(" {:03} ", sem.value);
+        if sem.parent.suspend_thread.is_empty() {
+            println!("{}", sem.parent.suspend_thread.len());
+        } else {
+            print!("{}:", sem.parent.suspend_thread.len());
+            let head = &sem.parent.suspend_thread;
+            let mut list = head.next;
+            loop {
+                let thread_node = list;
+                if thread_node == head as *const _ as *mut rt_list_node {
+                    break;
+                }
+                let thread = &*crate::container_of!(thread_node, RtThread, tlist);
+                let _ = crate::format_name!(thread.parent.name.as_ptr(), 8);
+                list = (*list).next;
+            }
+            print!("\n");
+        }
+    };
+    let _ = KObjectBase::get_info(
+        callback_forword,
+        callback,
+        ObjectClassType::ObjectClassSemaphore as u8,
+    );
 }

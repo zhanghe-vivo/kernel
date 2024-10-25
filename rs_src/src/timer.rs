@@ -1,7 +1,6 @@
 use crate::{
     cpu::Cpu, linked_list::ListHead, object::*, print, println, rt_bindings,
-    static_init::UnsafeStaticInit, str::CStr, sync::RawSpin, thread::RtThread,
-    thread::ThreadWithStack,
+    static_init::UnsafeStaticInit, sync::RawSpin, thread::RtThread, thread::ThreadWithStack,
 };
 use core::{ffi::c_char, ffi::c_void, pin::Pin, ptr, ptr::addr_of_mut};
 use pinned_init::*;
@@ -164,7 +163,7 @@ pub struct Timer {
     timeout_tick: u32,
     flag: u8,
     #[pin]
-    node: ListHead,
+    pub node: ListHead,
 }
 
 crate::impl_kobject!(Timer);
@@ -577,12 +576,8 @@ pub extern "C" fn rt_timer_info() {
         println!("-------- ---------- ---------- ----------- ---------");
     };
     let callback = |node: &ListHead| unsafe {
-        let timer = &*crate::list_head_entry!(node.as_ptr(), Timer, node);
-        // let _ = crate::format_name!(&timer.parent.name);
-        let _ = rt_bindings::rt_print_name(timer.parent.name.as_ptr() as *const core::ffi::c_char);
-        let ptr = timer.parent.name.as_ptr();
-        let str = CStr::from_char_ptr(timer.parent.name.as_ptr());
-        let _ = print!("{}", str);
+        let timer = &*(crate::list_head_entry!(node.as_ptr(), KObjectBase, list) as *const Timer);
+        let _ = crate::format_name!(timer.parent.name.as_ptr(), 8);
         let init_tick = timer.init_tick;
         let time_out = timer.timeout_tick;
         print!(" 0x{:08x} 0x{:08x} ", init_tick, time_out);
@@ -597,7 +592,7 @@ pub extern "C" fn rt_timer_info() {
             println!("one shot");
         }
     };
-    let _ = Timer::foreach(
+    let _ = Timer::get_info(
         callback_forword,
         callback,
         ObjectClassType::ObjectClassTimer as u8,

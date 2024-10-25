@@ -2,16 +2,17 @@ use crate::{
     allocator::{rt_free, rt_malloc},
     clock::rt_tick_get,
     error::Error,
+    linked_list::ListHead,
     object::{
         rt_object_allocate, rt_object_delete, rt_object_detach, rt_object_get_type, rt_object_init,
-        rt_object_is_systemobject, *,
+        rt_object_is_systemobject, ObjectClassType, *,
     },
-    rt_align,
+    print, println, rt_align,
     rt_bindings::*,
     rt_debug_not_in_interrupt, rt_get_message_addr, rt_list_init,
     scheduler::rt_schedule,
     sync::ipc_common::*,
-    thread::rt_thread_self,
+    thread::{rt_thread_self, RtThread},
     timer::{rt_timer_control, rt_timer_start, Timer},
 };
 #[allow(unused_imports)]
@@ -873,4 +874,41 @@ impl MessageQueue {
             Err(Error::from_errno(result))
         }
     }
+}
+
+#[no_mangle]
+#[allow(unused_unsafe)]
+pub extern "C" fn rt_msgqueue_info() {
+    let callback_forword = || {
+        println!("msgqueue entry suspend thread");
+        println!("-------- ----  --------------");
+    };
+    let callback = |node: &ListHead| unsafe {
+        let msgqueue =
+            &*(crate::list_head_entry!(node.as_ptr(), KObjectBase, list) as *const rt_messagequeue);
+        let _ = crate::format_name!(msgqueue.parent.parent.name.as_ptr(), 8);
+        print!(" {:04} ", msgqueue.entry);
+        if msgqueue.parent.suspend_thread.is_empty() {
+            println!(" {}", msgqueue.parent.suspend_thread.len());
+        } else {
+            print!(" {}:", msgqueue.parent.suspend_thread.len());
+            let head = &msgqueue.parent.suspend_thread;
+            let mut list = head.next;
+            loop {
+                let thread_node = list;
+                if thread_node == head as *const _ as *mut rt_list_node {
+                    break;
+                }
+                let thread = &*crate::container_of!(thread_node, RtThread, tlist);
+                let _ = crate::format_name!(thread.parent.name.as_ptr(), 8);
+                list = (*list).next;
+            }
+            print!("\n");
+        }
+    };
+    let _ = KObjectBase::get_info(
+        callback_forword,
+        callback,
+        ObjectClassType::ObjectClassMailBox as u8,
+    );
 }

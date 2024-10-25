@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 use crate::alloc::boxed::Box;
 use crate::object::KernelObject;
+use crate::sync::SpinLock;
 use crate::{
     clock,
     cpu::Cpu,
@@ -10,6 +11,7 @@ use crate::{
     object::{KObjectBase, ObjectClassType},
     print, println, rt_bindings,
     stack::Stack,
+    static_init::UnsafeStaticInit,
     str::CStr,
     sync::RawSpin,
     timer, zombie,
@@ -23,7 +25,7 @@ use core::{
     mem,
     pin::Pin,
     ptr::{self, NonNull},
-    sync::atomic::Ordering,
+    sync::atomic::{AtomicU64, Ordering},
 };
 use pinned_init::*;
 
@@ -53,6 +55,32 @@ type RtThreadHook = extern "C" fn(thread: *mut RtThread);
 static mut RT_THREAD_SUSPEND_HOOK: Option<RtThreadHook> = None;
 #[cfg(all(feature = "RT_USING_HOOK", feature = "RT_HOOK_USING_FUNC_PTR"))]
 static mut RT_THREAD_RESUME_HOOK: Option<RtThreadHook> = None;
+
+const MAX_THREAD_SIZE: usize = 1024;
+
+pub(crate) static mut TIDS: UnsafeStaticInit<Tid, TidInit> = UnsafeStaticInit::new(TidInit);
+
+pub(crate) struct TidInit;
+unsafe impl PinInit<Tid> for TidInit {
+    unsafe fn __pinned_init(self, slot: *mut Tid) -> Result<(), core::convert::Infallible> {
+        let init = Tid::new();
+        unsafe { init.__pinned_init(slot) }
+    }
+}
+
+#[pin_data]
+pub(crate) struct Tid {
+    #[pin]
+    id: SpinLock<[Option<*mut RtThread>; MAX_THREAD_SIZE]>,
+}
+
+impl Tid {
+    fn new() -> impl PinInit<Self> {
+        pin_init!(Self {
+            id <- crate::new_spinlock!(pin_init_array_from_fn(|_| None)),
+        })
+    }
+}
 
 #[repr(C)]
 // #[derive(Debug)]
@@ -126,7 +154,7 @@ pub struct RtThread {
     hold_locks: [Cell<Option<NonNull<RawSpin>>>; 8],
     #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
     hold_count: usize,
-
+    tid: u64,
     // signal pthread not used yet.
     #[pin]
     pin: PhantomPinned,
@@ -341,7 +369,9 @@ impl RtThread {
             cur_ref.number_mask = 0;
             cur_ref.init_tick = tick;
             cur_ref.remaining_tick = tick;
-
+            let tid = Self::new_tid();
+            cur_ref.tid = tid;
+            TIDS.id.lock()[tid as usize] = Some(slot);
             #[cfg(feature = "RT_USING_SMP")]
             {
                 cur_ref.bind_cpu = _cpu;
@@ -562,6 +592,23 @@ impl RtThread {
         unsafe { Pin::new_unchecked(&mut self.tlist).remove() };
     }
 
+    #[inline]
+    pub(crate) fn new_tid() -> u64 {
+        static TID: AtomicU64 = AtomicU64::new(0);
+        let id = TID.fetch_add(1, Ordering::SeqCst);
+        let tids = unsafe { TIDS.id.lock() };
+        if id >= MAX_THREAD_SIZE as u64 || !tids[id as usize].is_none() {
+            for i in 0..MAX_THREAD_SIZE {
+                if tids[i].is_none() {
+                    TID.store(0, Ordering::SeqCst);
+                    return i as u64;
+                }
+            }
+            panic!("The maximum number of threads has been exceeded");
+        }
+        id
+    }
+
     // thread timeout handler func.
     #[no_mangle]
     extern "C" fn handle_timeout(para: *mut ffi::c_void) {
@@ -700,7 +747,9 @@ impl RtThread {
         // may be detached from scheduler.
         let scheduler = Cpu::get_current_scheduler();
         scheduler.preempt_disable();
-
+        unsafe {
+            TIDS.id.lock()[self.tid as usize] = None;
+        }
         #[cfg(feature = "DEBUG_SCHEDULER")]
         println!("thread detach: {:?}", self.get_name());
 
@@ -1218,66 +1267,62 @@ pub extern "C" fn rt_thread_resume_sethook(hook: RtThreadHook) {
 pub extern "C" fn rt_thread_info() {
     let callback_forword = || {
         #[cfg(feature = "RT_USING_SMP")]
-        println!("rt_thread_ thread   cpu bind pri  status      sp     stack size max used left tick  error");
-        #[cfg(feature = "RT_USING_SMP")]
-        println!("---------- -------- --- ---- ---  ------- ---------- ----------  ------  ---------- ---");
-        #[cfg(not(feature = "RT_USING_SMP"))]
-        println!(
-            "rt_thread_ thread   pri  status      sp     stack size max used left tick  error"
+        crate::kprintf!(
+            "thread   cpu bind pri  status      sp     stack size left tick  error\n\0"
         );
         #[cfg(not(feature = "RT_USING_SMP"))]
-        println!("---------- -------- ---  ------- ---------- ----------  ------  ---------- ---");
+        crate::kprintf!("thread   pri  status      sp     stack size left tick  error\n\0");
+        #[cfg(feature = "RT_USING_SMP")]
+        crate::kprintf!("-------- --- ---- ---  ------- ---------- ----------  ---------- ---\n\0");
+        #[cfg(not(feature = "RT_USING_SMP"))]
+        crate::kprintf!("-------- ---  ------- ---------- ----------  ---------- ---\n\0");
     };
     let callback = |node: &ListHead| unsafe {
-        let thread = &*crate::list_head_entry!(node.as_ptr(), RtThread, tlist);
-        let _ = crate::format_name!(thread.parent.name.as_ptr());
-        let oncpu = thread.oncpu;
-        let bind_cpu = thread.bind_cpu;
+        let thread =
+            &*(crate::list_head_entry!(node.as_ptr(), KObjectBase, list) as *const RtThread);
+        let _ = crate::format_name!(thread.parent.name.as_ptr(), 8);
         let current_priority = thread.current_priority;
-        print!("{:p} ", thread);
         #[cfg(feature = "RT_USING_SMP")]
         {
             if oncpu != rt_bindings::RT_CPU_DETACHED as u8 {
-                print!(" {} {} {} ", oncpu, bind_cpu, current_priority);
+                print!(
+                    " {:<3} {:^4}  {:<3} ",
+                    thread.oncpu, thread.bind_cpu, current_priority
+                );
             } else {
-                print!(" N/A {} {} ", bind_cpu, current_priority);
+                print!(" N/A {:^4}  {:<3} ", thread.bind_cpu, current_priority);
             }
         }
         #[cfg(not(feature = "RT_USING_SMP"))]
         {
-            print!(" {} ", current_priority);
+            print!(" {:<3}  ", current_priority);
         }
         let stat = thread.stat & (rt_bindings::RT_THREAD_STAT_MASK as u8);
         match stat as u32 {
-            rt_bindings::RT_THREAD_READY => println!(" ready  "),
+            rt_bindings::RT_THREAD_READY => print!("ready  "),
             _ if (stat as u32 & rt_bindings::RT_THREAD_SUSPEND_MASK)
                 == rt_bindings::RT_THREAD_SUSPEND_MASK =>
             {
-                println!(" suspend")
+                print!("suspend")
             }
-            rt_bindings::RT_THREAD_INIT => println!(" init   "),
-            rt_bindings::RT_THREAD_CLOSE => println!(" close  "),
-            rt_bindings::RT_THREAD_RUNNING => println!(" running"),
+            rt_bindings::RT_THREAD_INIT => print!("init   "),
+            rt_bindings::RT_THREAD_CLOSE => print!("close  "),
+            rt_bindings::RT_THREAD_RUNNING => print!("running"),
             _ => {}
         }
-        let mut ptr = thread.stack.bottom_ptr();
-        while *ptr == b'#' {
-            ptr = ptr.add(1);
-        }
         println!(
-            " {:p} 0x{:08x}    {:02}%   0x{:08x} {}",
+            " 0x{:08x} 0x{:08x}  0x{:08x} {}",
             thread
                 .stack
                 .bottom_ptr()
                 .sub(thread.stack.sp() as usize)
-                .add(thread.stack.size()),
+                .add(thread.stack.size()) as usize,
             thread.stack.size(),
-            thread.stack.size() - (ptr.sub(thread.stack.bottom_ptr() as usize) as usize) * 100,
             thread.remaining_tick,
-            thread.error
+            code::name(thread.error)
         );
     };
-    let _ = RtThread::foreach(
+    let _ = RtThread::get_info(
         callback_forword,
         callback,
         ObjectClassType::ObjectClassThread as u8,
