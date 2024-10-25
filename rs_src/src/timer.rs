@@ -163,7 +163,7 @@ pub struct Timer {
     timeout_tick: u32,
     flag: u8,
     #[pin]
-    pub node: ListHead,
+    node: ListHead,
 }
 
 crate::impl_kobject!(Timer);
@@ -222,9 +222,9 @@ impl Timer {
     }
 
     fn timer_is_timeout(&mut self) {
-        self.parent.flag |= rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8;
-        if (self.parent.flag & rt_bindings::RT_TIMER_FLAG_PERIODIC as u8) == 0 {
-            self.parent.flag &= !rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8;
+        self.flag |= rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8;
+        if (self.flag & rt_bindings::RT_TIMER_FLAG_PERIODIC as u8) == 0 {
+            self.flag &= !rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8;
         }
         (self.timeout_func)(self.parameter);
         if self.init_tick != 0 {
