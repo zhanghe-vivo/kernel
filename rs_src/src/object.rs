@@ -393,6 +393,25 @@ fn rt_object_init_internal(
     #[cfg(not(feature = "RT_USING_MODULE"))]
     unsafe {
         Pin::new_unchecked(&mut obj_ref.list).insert_next(&information.object_list);
+        #[cfg(feature = "RT_USING_DEBUG")]
+        {
+            assert!(ptr::eq(
+                &obj_ref.list,
+                information.object_list.next.as_ptr()
+            ));
+            assert!(ptr::eq(
+                obj_ref.list.prev.as_ptr(),
+                &information.object_list
+            ));
+            let mut count: u32 = 0;
+            crate::list_head_for_each!(node, &information.object_list, {
+                if count > 1 {
+                    assert!(!ptr::eq(node.next.as_ptr(), node.prev.as_ptr()));
+                }
+                count += 1;
+                assert!(count < 100);
+            });
+        }
     }
     #[cfg(feature = "RT_USING_DEBUG")]
     {

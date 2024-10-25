@@ -218,6 +218,19 @@ impl Timer {
         unsafe { pin_init_from_closure(init) }
     }
 
+    fn timer_is_timeout(&mut self) {
+        self.parent.flag |= rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8;
+        if (self.parent.flag & rt_bindings::RT_TIMER_FLAG_PERIODIC as u8) == 0 {
+            self.parent.flag &= !rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8;
+        }
+        (self.timeout_func)(self.parameter);
+        if self.init_tick != 0 {
+            let time_wheel = self.get_timer_wheel();
+            let _ = time_wheel.timer_wheel_lock.acquire();
+            self.timer_start();
+        }
+    }
+
     /// This function will start the timer
     fn timer_start(&mut self) {
         let mut is_thread_timer = false;
@@ -447,7 +460,7 @@ pub extern "C" fn rt_timer_create(
     flag: rt_bindings::rt_uint8_t,
 ) -> *mut Timer {
     assert!(!Some(timeout).is_none());
-    assert!(time < rt_bindings::RT_TICK_MAX / 2 && time > 0);
+    assert!(time < rt_bindings::RT_TICK_MAX / 2);
     let timer = rt_object_allocate(ObjectClassType::ObjectClassTimer as u32, name) as *mut Timer;
     if timer.is_null() {
         return ptr::null_mut();
@@ -504,11 +517,14 @@ pub extern "C" fn rt_timer_start(timer: *mut Timer) -> rt_bindings::rt_err_t {
         rt_object_get_type(timer as rt_bindings::rt_object_t)
             == ObjectClassType::ObjectClassTimer as u8
     );
-    unsafe {
-        let time_wheel = (*timer).get_timer_wheel();
+    let timer_ref = unsafe { &mut *timer };
+    if timer_ref.init_tick == 0 {
+        timer_ref.timer_is_timeout();
+    } else {
+        let time_wheel = timer_ref.get_timer_wheel();
         let _ = time_wheel.timer_wheel_lock.acquire();
-        (*timer).timer_start()
-    };
+        timer_ref.timer_start();
+    }
     rt_bindings::RT_EOK as i32
 }
 
