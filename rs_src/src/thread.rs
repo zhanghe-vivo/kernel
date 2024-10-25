@@ -1284,10 +1284,11 @@ pub extern "C" fn rt_thread_info() {
         let current_priority = thread.current_priority;
         #[cfg(feature = "RT_USING_SMP")]
         {
+            let oncpu = thread.oncpu;
             if oncpu != rt_bindings::RT_CPU_DETACHED as u8 {
                 print!(
                     " {:<3} {:^4}  {:<3} ",
-                    thread.oncpu, thread.bind_cpu, current_priority
+                    oncpu, thread.bind_cpu, current_priority
                 );
             } else {
                 print!(" N/A {:^4}  {:<3} ", thread.bind_cpu, current_priority);

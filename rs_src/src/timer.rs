@@ -501,9 +501,7 @@ pub extern "C" fn rt_system_timer_thread_init() {
 pub extern "C" fn rt_timer_start(timer: *mut Timer) -> rt_bindings::rt_err_t {
     assert!(!timer.is_null());
     let timer_ref = unsafe { &mut *timer };
-    assert!(
-        timer_ref.type_name() == ObjectClassType::ObjectClassTimer as u8
-    );
+    assert!(timer_ref.type_name() == ObjectClassType::ObjectClassTimer as u8);
     if timer_ref.init_tick == 0 {
         timer_ref.timer_is_timeout();
     } else {
