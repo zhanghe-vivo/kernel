@@ -29,7 +29,7 @@ unsafe impl PinInit<Kprocess> for KprocessInit {
 /// The kernel process
 #[pin_data]
 pub(crate) struct Kprocess {
-    base: *const KObjectBase,
+    base: KObjectBase,
     ///not use yet
     #[pin]
     sibling: ListHead,
