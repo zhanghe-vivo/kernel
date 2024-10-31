@@ -1,6 +1,17 @@
-use crate::rt_bindings::*;
-use crate::{rt_list_entry, rt_list_init};
+use crate::linked_list::ListHead;
+use crate::object::{self, BaseObject, ObjectClassType};
+use crate::rt_bindings::{self, *};
+use crate::thread::RtThread;
+use crate::{list_head_for_each, rt_list_entry, rt_list_init};
+
+use crate::str::CStr;
+use crate::sync::RawSpin;
 use core::ffi;
+use core::pin::Pin;
+use pinned_init::{pin_data, pin_init_from_closure, PinInit};
+
+pub type IpcFlagType = i32;
+
 #[macro_export]
 macro_rules! rt_get_message_addr {
     ($msg:expr) => {
@@ -8,35 +19,92 @@ macro_rules! rt_get_message_addr {
     };
 }
 
+/// Base structure of IPC object
+#[repr(C)]
+#[derive(Debug)]
+#[pin_data]
+pub struct IPCObject {
+    #[pin]
+    /// inherit from BaseObject
+    pub parent: BaseObject,
+    #[pin]
+    /// threads pended on this resource
+    pub suspend_thread: ListHead,
+}
+
+impl IPCObject {
+    #[inline]
+    pub fn new(
+        name: &'static CStr,
+        obj_type: ObjectClassType,
+        flag: IpcFlagType,
+        is_static: bool,
+    ) -> impl PinInit<Self> {
+        let init = move |slot: *mut Self| unsafe {
+            assert!(
+                (flag == RT_IPC_FLAG_FIFO as IpcFlagType)
+                    || (flag == RT_IPC_FLAG_PRIO as IpcFlagType)
+            );
+            if is_static {
+                object::rt_object_init(
+                    &mut (*slot).parent as *mut BaseObject as *mut rt_bindings::rt_object,
+                    obj_type as u32,
+                    name.as_char_ptr(),
+                )
+            } else {
+                object::rt_object_init_dyn(
+                    &mut (*slot).parent as *mut BaseObject as *mut rt_bindings::rt_object,
+                    obj_type as u32,
+                    name.as_char_ptr(),
+                )
+            }
+
+            let cur_ref = &mut *slot;
+            let _ = ListHead::new().__pinned_init(&mut cur_ref.suspend_thread as *mut ListHead);
+            Ok(())
+        };
+        unsafe { pin_init_from_closure(init) }
+    }
+
+    pub fn reinit(ipcobject: &mut IPCObject) -> rt_err_t {
+        unsafe { Pin::new_unchecked(&mut ipcobject.suspend_thread).reinit() };
+        RT_EOK as rt_err_t
+    }
+}
+
 #[no_mangle]
-pub extern "C" fn _rt_ipc_object_init(object: *mut rt_ipc_object) -> rt_err_t {
+pub extern "C" fn _ipc_object_init(object: &mut IPCObject) -> rt_err_t {
     unsafe {
-        rt_list_init!(&mut ((*object).suspend_thread));
+        let _ = ListHead::new().__pinned_init(&mut object.suspend_thread as *mut ListHead);
     }
 
     RT_EOK as rt_err_t
 }
 
 #[no_mangle]
-pub extern "C" fn _rt_ipc_list_resume(list: *mut rt_list_t) -> rt_err_t {
+pub extern "C" fn _ipc_list_resume(list: *mut ListHead) -> rt_err_t {
     unsafe {
-        let thread = rt_list_entry!((*list).next, rt_thread, tlist) as *mut rt_thread;
-        (*thread).error = RT_EOK as rt_err_t;
-        rt_thread_resume(thread);
+        if let Some(node) = (*list).next() {
+            let thread: *mut RtThread = crate::thread_list_node_entry!(node.as_ptr());
+            (*thread).error = RT_EOK as rt_err_t;
+            (*thread).resume();
+        }
     }
-
     RT_EOK as rt_err_t
 }
 
 #[no_mangle]
-pub extern "C" fn _rt_ipc_list_resume_all(list: *mut rt_list_t) -> rt_err_t {
+pub extern "C" fn _ipc_list_resume_all(list: *mut ListHead) -> rt_err_t {
     unsafe {
         while (*list).is_empty() == false {
-            let level = rt_hw_interrupt_disable();
-            let thread = rt_list_entry!((*list).next, rt_thread, tlist) as *mut rt_thread;
-            (*thread).error = -(RT_ERROR as rt_err_t);
-            rt_thread_resume(thread);
-            rt_hw_interrupt_enable(level);
+            if let Some(node) = (*list).next() {
+                let spin_lock = RawSpin::new();
+                spin_lock.lock();
+                let thread: *mut RtThread = crate::thread_list_node_entry!(node.as_ptr());
+                (*thread).error = -(RT_ERROR as rt_err_t);
+                (*thread).resume();
+                spin_lock.unlock();
+            }
         }
     }
 
@@ -44,15 +112,19 @@ pub extern "C" fn _rt_ipc_list_resume_all(list: *mut rt_list_t) -> rt_err_t {
 }
 
 #[no_mangle]
-pub extern "C" fn _rt_ipc_list_suspend(
-    list: *mut rt_list_t,
-    thread: *mut rt_thread,
+pub extern "C" fn _ipc_list_suspend(
+    list: *mut ListHead,
+    thread: *mut RtThread,
     flag: rt_uint8_t,
-    suspend_flag: i32,
+    suspend_flag: u32,
 ) -> rt_err_t {
     unsafe {
         if ((*thread).stat as u32 & RT_THREAD_SUSPEND_MASK) != RT_THREAD_SUSPEND_MASK {
-            let ret = rt_thread_suspend_with_flag(thread, suspend_flag as rt_uint32_t);
+            let ret = if (*thread).suspend(suspend_flag) == true {
+                RT_EOK as rt_err_t
+            } else {
+                -(RT_ERROR as rt_err_t)
+            };
 
             if ret != RT_EOK as rt_err_t {
                 return ret;
@@ -61,22 +133,19 @@ pub extern "C" fn _rt_ipc_list_suspend(
 
         match flag as u32 {
             RT_IPC_FLAG_FIFO => {
-                (*list).insert_before(&mut (*thread).tlist);
+                Pin::new_unchecked(&mut *list).insert_prev(&mut (*thread).tlist);
             }
             RT_IPC_FLAG_PRIO => {
-                let mut n = (*list).next;
-                while n != list {
-                    let s_thread = rt_list_entry!(n, rt_thread, tlist) as *mut rt_thread;
-
+                list_head_for_each!(node, &(*list), {
+                    let s_thread = crate::thread_list_node_entry!(node.as_ptr()) as *mut RtThread;
                     if (*thread).current_priority < (*s_thread).current_priority {
-                        let insert_to = &mut ((*s_thread).tlist);
-                        insert_to.insert_before(&mut ((*thread).tlist));
+                        let insert_to = Pin::new_unchecked(&mut ((*s_thread).tlist));
+                        insert_to.insert_prev(&mut ((*thread).tlist));
                     }
-                    n = (*n).next;
-                }
+                });
 
-                if n == list {
-                    (*list).insert_before(&mut (*thread).tlist);
+                if node.as_ptr() == list {
+                    Pin::new_unchecked(&mut *list).insert_prev(&mut (*thread).tlist);
                 }
             }
             _ => {

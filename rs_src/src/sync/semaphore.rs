@@ -1,16 +1,21 @@
 use crate::{
+    cpu::{self, Cpu, Cpus},
     error::Error,
     object::{
-        rt_object_allocate, rt_object_delete, rt_object_detach, rt_object_get_type, rt_object_init,
-        rt_object_is_systemobject, *,
+        self, rt_object_allocate, rt_object_delete, rt_object_detach, rt_object_get_type,
+        rt_object_init, rt_object_is_systemobject, *,
     },
+    rt_bindings,
     rt_bindings::*,
     rt_debug_not_in_interrupt,
     sync::ipc_common::*,
+    sync::lock::spinlock::RawSpin,
 };
+use core::pin::Pin;
+use core::ptr::NonNull;
 use core::{
     cell::UnsafeCell,
-    ffi::{c_char, c_void},
+    ffi::{self, c_char, c_void},
     marker::PhantomPinned,
     mem::MaybeUninit,
     ptr::null_mut,
@@ -20,12 +25,114 @@ use kernel::{
     rt_debug_scheduler_available, rt_object_hook_call,
 };
 
+use crate::str::CStr;
+use crate::sync::SpinLock;
 use pinned_init::*;
+
+/// Semaphore raw structure
+#[repr(C)]
+#[pin_data]
+pub struct RtSemaphore {
+    /// Inherit from IPCObject
+    #[pin]
+    pub(crate) parent: IPCObject,
+    /// Value of semaphore
+    pub(crate) value: ffi::c_ushort,
+    /// Reserved field
+    pub(crate) reserved: ffi::c_ushort,
+    /// Spin lock for protecting the semaphore value
+    spinlock: RawSpin,
+}
+
+impl RtSemaphore {
+    #[inline]
+    fn new_internal(
+        name: &'static CStr,
+        value: ffi::c_ushort,
+        flag: IpcFlagType,
+        is_static: bool,
+    ) -> impl PinInit<Self> {
+        assert!(value < ffi::c_ushort::MAX);
+        assert!(
+            (flag == RT_IPC_FLAG_FIFO as IpcFlagType) || (flag == RT_IPC_FLAG_PRIO as IpcFlagType)
+        );
+        let init = move |slot: *mut Self| unsafe {
+            let cur_ref = &mut *slot;
+            let _ = IPCObject::new(name, ObjectClassType::ObjectClassSemaphore, flag, is_static)
+                .__pinned_init(&mut cur_ref.parent);
+
+            if is_static == false {
+                //cur_ref.spinlock = SpinLock::new();
+            }
+
+            cur_ref.value = value;
+            Ok(())
+        };
+        unsafe { pin_init_from_closure(init) }
+    }
+
+    #[inline]
+    fn static_new(
+        name: &'static CStr,
+        value: ffi::c_ushort,
+        flag: IpcFlagType,
+    ) -> impl PinInit<Self> {
+        Self::new_internal(name, value, flag, true)
+    }
+
+    #[inline]
+    fn dyn_new(name: &'static CStr, value: ffi::c_ushort, flag: IpcFlagType) -> impl PinInit<Self> {
+        Self::new_internal(name, value, flag, false)
+    }
+
+    #[inline]
+    pub fn init(
+        &mut self,
+        name: *const core::ffi::c_char,
+        value: rt_uint32_t,
+        flag: rt_uint8_t,
+    ) -> rt_err_t {
+        unsafe {
+            let _ = RtSemaphore::static_new(
+                CStr::from_char_ptr(name),
+                value as ffi::c_ushort,
+                flag as IpcFlagType,
+            )
+            .__pinned_init(self as *mut Self);
+        }
+        RT_EOK as rt_err_t
+    }
+
+    #[inline]
+    pub fn detach(&mut self) -> rt_err_t {
+        _ipc_list_resume_all(&mut (self.parent.suspend_thread));
+        rt_object_detach(&mut self.parent.parent as *mut BaseObject as *mut rt_object);
+
+        RT_EOK as rt_err_t
+    }
+
+    #[inline]
+    pub fn new(name: *const core::ffi::c_char, value: rt_uint32_t, flag: rt_uint8_t) -> *mut Self {
+        unsafe {
+            let sem = rt_object_allocate(ObjectClassType::ObjectClassSemaphore as u32, name)
+                as *mut RtSemaphore;
+
+            let _ = RtSemaphore::dyn_new(
+                CStr::from_char_ptr(name),
+                value as ffi::c_ushort,
+                flag as IpcFlagType,
+            )
+            .__pinned_init(sem);
+
+            sem
+        }
+    }
+}
 
 #[cfg(feature = "RT_USING_SEMAPHORE")]
 #[no_mangle]
 pub unsafe extern "C" fn rt_sem_init(
-    sem: *mut rt_semaphore,
+    sem: *mut RtSemaphore,
     name: *const core::ffi::c_char,
     value: rt_uint32_t,
     flag: rt_uint8_t,
@@ -33,33 +140,25 @@ pub unsafe extern "C" fn rt_sem_init(
     assert!(sem != null_mut());
     assert!(value < 0x10000 as rt_uint32_t);
     assert!((flag == RT_IPC_FLAG_FIFO as rt_uint8_t) || (flag == RT_IPC_FLAG_PRIO as rt_uint8_t));
-    rt_object_init(
-        &mut ((*sem).parent.parent),
-        rt_object_class_type_RT_Object_Class_Semaphore as u32,
-        name,
-    );
 
-    _rt_ipc_object_init(&mut ((*sem).parent));
-
-    (*sem).value = value as rt_uint16_t;
-    (*sem).parent.parent.flag = flag;
+    (*sem).init(name, value, flag);
 
     RT_EOK as rt_err_t
 }
 #[cfg(feature = "RT_USING_SEMAPHORE")]
 #[no_mangle]
-pub unsafe extern "C" fn rt_sem_detach(sem: *mut rt_semaphore) -> rt_err_t {
+pub unsafe extern "C" fn rt_sem_detach(sem: *mut RtSemaphore) -> rt_err_t {
     assert!(sem != null_mut());
     assert!(
-        rt_object_get_type(&mut (*sem).parent.parent)
-            == rt_object_class_type_RT_Object_Class_Semaphore as u8
+        rt_object_get_type(&mut (*sem).parent.parent as *mut BaseObject as *mut rt_object)
+            == ObjectClassType::ObjectClassSemaphore as u8
     );
-    assert!(rt_object_is_systemobject(&mut (*sem).parent.parent) == RT_TRUE as i32);
+    assert!(
+        rt_object_is_systemobject(&mut (*sem).parent.parent as *mut BaseObject as *mut rt_object)
+            == RT_TRUE as i32
+    );
 
-    _rt_ipc_list_resume_all(&mut ((*sem).parent.suspend_thread));
-    rt_object_detach(&mut ((*sem).parent.parent));
-
-    RT_EOK as rt_err_t
+    (*sem).detach()
 }
 #[cfg(all(feature = "RT_USING_SEMAPHORE", feature = "RT_USING_HEAP"))]
 #[no_mangle]
@@ -67,17 +166,20 @@ pub unsafe extern "C" fn rt_sem_create(
     name: *const core::ffi::c_char,
     value: rt_uint32_t,
     flag: rt_uint8_t,
-) -> rt_sem_t {
+) -> *mut RtSemaphore {
     assert!(value < 0x10000 as rt_uint32_t);
     assert!((flag == RT_IPC_FLAG_FIFO as rt_uint8_t) || (flag == RT_IPC_FLAG_PRIO as rt_uint8_t));
     rt_debug_not_in_interrupt!();
-    let sem =
-        rt_object_allocate(rt_object_class_type_RT_Object_Class_Semaphore as u32, name) as rt_sem_t;
+
+    //RtSemaphore::new(name, value, flag)
+    rt_debug_not_in_interrupt!();
+    let sem = rt_object_allocate(ObjectClassType::ObjectClassSemaphore as u32, name) as rt_sem_t
+        as *mut RtSemaphore;
     if sem == null_mut() {
         return sem;
     }
 
-    _rt_ipc_object_init(&mut (*sem).parent);
+    _ipc_object_init(&mut (*sem).parent);
 
     (*sem).value = value as u16;
     (*sem).parent.parent.flag = flag;
@@ -87,19 +189,22 @@ pub unsafe extern "C" fn rt_sem_create(
 
 #[cfg(all(feature = "RT_USING_SEMAPHORE", feature = "RT_USING_HEAP"))]
 #[no_mangle]
-pub unsafe extern "C" fn rt_sem_delete(sem: *mut rt_semaphore) -> rt_err_t {
+pub unsafe extern "C" fn rt_sem_delete(sem: *mut RtSemaphore) -> rt_err_t {
     assert!(sem != null_mut());
     assert!(
-        rt_object_get_type(&mut (*sem).parent.parent)
-            == rt_object_class_type_RT_Object_Class_Semaphore as u8
+        rt_object_get_type(&mut (*sem).parent.parent as *mut BaseObject as *mut rt_object)
+            == ObjectClassType::ObjectClassSemaphore as u8
     );
-    assert!(rt_object_is_systemobject(&mut (*sem).parent.parent) == RT_FALSE as i32);
+    assert!(
+        rt_object_is_systemobject(&mut (*sem).parent.parent as *mut BaseObject as *mut rt_object)
+            == RT_FALSE as i32
+    );
 
     rt_debug_not_in_interrupt!();
 
-    _rt_ipc_list_resume_all(&mut ((*sem).parent.suspend_thread));
+    _ipc_list_resume_all(&mut ((*sem).parent.suspend_thread));
 
-    rt_object_delete(&mut ((*sem).parent.parent));
+    rt_object_delete(&mut (*sem).parent.parent as *mut BaseObject as *mut rt_object);
 
     RT_EOK as rt_err_t
 }
@@ -107,18 +212,21 @@ pub unsafe extern "C" fn rt_sem_delete(sem: *mut rt_semaphore) -> rt_err_t {
 #[cfg(feature = "RT_USING_SEMAPHORE")]
 #[no_mangle]
 unsafe extern "C" fn _rt_sem_take(
-    sem: rt_sem_t,
+    sem: *mut RtSemaphore,
     timeout: rt_int32_t,
     suspend_flag: i32,
 ) -> rt_err_t {
     let mut time_out = timeout as i32;
     assert!(sem != null_mut());
     assert!(
-        rt_object_get_type(&mut (*sem).parent.parent)
-            == rt_object_class_type_RT_Object_Class_Semaphore as u8
+        rt_object_get_type((&mut (*sem).parent.parent) as *mut BaseObject as *mut rt_object)
+            == ObjectClassType::ObjectClassSemaphore as u8
     );
 
-    rt_object_hook_call!(rt_object_trytake_hook, &mut ((*sem).parent.parent));
+    rt_object_hook_call!(
+        rt_object_trytake_hook,
+        &mut (*sem).parent.parent as *mut BaseObject as *mut rt_object
+    );
 
     #[allow(unused_variables)]
     let check = (*sem).value == 0 && timeout != 0;
@@ -136,15 +244,15 @@ unsafe extern "C" fn _rt_sem_take(
             /* FIXME: -2 is as expected, while C -RT_ETIMEOUT is -116. */
             return -116; //(RT_ETIMEOUT as rt_err_t);
         } else {
-            let thread = rt_thread_self();
+            let thread = unsafe { crate::current_thread!().unwrap().as_mut() };
 
             (*thread).error = -(RT_EINTR as rt_err_t);
 
-            let ret = _rt_ipc_list_suspend(
+            let ret = _ipc_list_suspend(
                 &mut ((*sem).parent.suspend_thread),
                 thread,
                 (*sem).parent.parent.flag,
-                suspend_flag,
+                suspend_flag as u32,
             );
 
             if ret != RT_EOK as rt_err_t {
@@ -163,7 +271,7 @@ unsafe extern "C" fn _rt_sem_take(
 
             rt_hw_interrupt_enable(level);
 
-            rt_schedule();
+            Cpu::get_current_scheduler().do_task_schedule();
 
             if (*thread).error != RT_EOK as rt_err_t {
                 return (*thread).error;
@@ -171,50 +279,59 @@ unsafe extern "C" fn _rt_sem_take(
         }
     }
 
-    rt_object_hook_call!(rt_object_take_hook, &mut ((*sem).parent.parent));
+    rt_object_hook_call!(
+        rt_object_take_hook,
+        &mut (*sem).parent.parent as *mut BaseObject as *mut rt_object
+    );
 
     RT_EOK as rt_err_t
 }
 
 #[cfg(feature = "RT_USING_SEMAPHORE")]
 #[no_mangle]
-pub unsafe extern "C" fn rt_sem_take(sem: rt_sem_t, time: rt_int32_t) -> rt_err_t {
+pub unsafe extern "C" fn rt_sem_take(sem: *mut RtSemaphore, time: rt_int32_t) -> rt_err_t {
     _rt_sem_take(sem, time, RT_UNINTERRUPTIBLE as i32)
 }
 
 #[cfg(feature = "RT_USING_SEMAPHORE")]
 #[no_mangle]
-pub unsafe extern "C" fn rt_sem_take_interruptible(sem: rt_sem_t, time: rt_int32_t) -> rt_err_t {
+pub unsafe extern "C" fn rt_sem_take_interruptible(
+    sem: *mut RtSemaphore,
+    time: rt_int32_t,
+) -> rt_err_t {
     _rt_sem_take(sem, time, RT_INTERRUPTIBLE as i32)
 }
 
 #[cfg(feature = "RT_USING_SEMAPHORE")]
 #[no_mangle]
-pub unsafe extern "C" fn rt_sem_take_killable(sem: rt_sem_t, time: rt_int32_t) -> rt_err_t {
+pub unsafe extern "C" fn rt_sem_take_killable(sem: *mut RtSemaphore, time: rt_int32_t) -> rt_err_t {
     _rt_sem_take(sem, time, RT_KILLABLE as i32)
 }
 
 #[cfg(feature = "RT_USING_SEMAPHORE")]
 #[no_mangle]
-pub unsafe extern "C" fn rt_sem_trytake(sem: rt_sem_t) -> rt_err_t {
+pub unsafe extern "C" fn rt_sem_trytake(sem: *mut RtSemaphore) -> rt_err_t {
     rt_sem_take(sem, RT_WAITING_NO as i32)
 }
 
 #[cfg(feature = "RT_USING_SEMAPHORE")]
 #[no_mangle]
-pub unsafe extern "C" fn rt_sem_release(sem: rt_sem_t) -> rt_err_t {
+pub unsafe extern "C" fn rt_sem_release(sem: *mut RtSemaphore) -> rt_err_t {
     assert!(sem != null_mut());
     assert!(
-        rt_object_get_type(&mut (*sem).parent.parent)
-            == rt_object_class_type_RT_Object_Class_Semaphore as u8
+        rt_object_get_type(&mut (*sem).parent.parent as *mut BaseObject as *mut rt_object)
+            == ObjectClassType::ObjectClassSemaphore as u8
     );
-    rt_object_hook_call!(rt_object_put_hook, &mut ((*sem).parent.parent));
+    rt_object_hook_call!(
+        rt_object_put_hook,
+        &mut (*sem).parent.parent as *mut BaseObject as *mut rt_object
+    );
 
     let mut need_schedule = RT_FALSE;
     let level = rt_hw_interrupt_disable();
 
     if (*sem).parent.suspend_thread.is_empty() == false {
-        _rt_ipc_list_resume(&mut ((*sem).parent.suspend_thread));
+        _ipc_list_resume(&mut ((*sem).parent.suspend_thread));
         need_schedule = RT_TRUE;
     } else {
         if (*sem).value < RT_SEM_VALUE_MAX as rt_uint16_t {
@@ -228,7 +345,7 @@ pub unsafe extern "C" fn rt_sem_release(sem: rt_sem_t) -> rt_err_t {
     rt_hw_interrupt_enable(level);
 
     if need_schedule == RT_TRUE {
-        rt_schedule();
+        Cpu::get_current_scheduler().do_task_schedule();
     }
 
     RT_EOK as rt_err_t
@@ -236,24 +353,28 @@ pub unsafe extern "C" fn rt_sem_release(sem: rt_sem_t) -> rt_err_t {
 
 #[cfg(feature = "RT_USING_SEMAPHORE")]
 #[no_mangle]
-pub unsafe extern "C" fn rt_sem_control(sem: rt_sem_t, cmd: i32, arg: *const c_void) -> rt_err_t {
+pub unsafe extern "C" fn rt_sem_control(
+    sem: *mut RtSemaphore,
+    cmd: i32,
+    arg: *const c_void,
+) -> rt_err_t {
     assert!(sem != null_mut());
     assert!(
-        rt_object_get_type(&mut (*sem).parent.parent)
-            == rt_object_class_type_RT_Object_Class_Semaphore as u8
+        rt_object_get_type(&mut (*sem).parent.parent as *mut BaseObject as *mut rt_object)
+            == ObjectClassType::ObjectClassSemaphore as u8
     );
 
     if cmd == RT_IPC_CMD_RESET as i32 {
         let value = arg as rt_ubase_t;
         let level = rt_hw_interrupt_disable();
 
-        _rt_ipc_list_resume_all(&mut (*sem).parent.suspend_thread);
+        _ipc_list_resume_all(&mut (*sem).parent.suspend_thread);
 
         (*sem).value = value as rt_uint16_t;
 
         rt_hw_interrupt_enable(level);
 
-        rt_schedule();
+        Cpu::get_current_scheduler().do_task_schedule();
 
         return RT_EOK as rt_err_t;
     }
@@ -270,12 +391,8 @@ impl<'a> Drop for SemaphoreGuard<'a> {
     }
 }
 
-#[pin_data]
 pub struct Semaphore {
-    #[pin]
-    sem_ptr: rt_sem_t,
-    #[pin]
-    _pin: PhantomPinned,
+    raw_sem: *mut RtSemaphore,
 }
 
 unsafe impl Send for Semaphore {}
@@ -290,18 +407,17 @@ impl Semaphore {
                 RT_IPC_FLAG_PRIO as u8,
             )
         };
-        if result == RT_NULL as rt_sem_t {
-            Err(Error::from_errno(RT_ERROR as i32))
-        } else {
-            Ok(Self {
-                sem_ptr: result,
-                _pin: PhantomPinned {},
-            })
+        unsafe {
+            if result == RT_NULL as *mut RtSemaphore {
+                Err(Error::from_errno(RT_ERROR as i32))
+            } else {
+                Ok(Self { raw_sem: result })
+            }
         }
     }
 
-    pub fn delete(self) -> Result<(), Error> {
-        let result = unsafe { rt_sem_delete(self.sem_ptr) };
+    fn delete(self) -> Result<(), Error> {
+        let result = unsafe { rt_sem_delete(self.raw_sem) };
         if result == RT_EOK as rt_err_t {
             Ok(())
         } else {
@@ -310,74 +426,23 @@ impl Semaphore {
     }
 
     pub fn acquire(&self) {
-        let _result = unsafe { rt_sem_take(self.sem_ptr, RT_WAITING_FOREVER) };
+        let _result = unsafe { rt_sem_take(self.raw_sem, RT_WAITING_FOREVER) };
     }
 
     pub fn acquire_wait(&self, tick: i32) {
-        let _result = unsafe { rt_sem_take(self.sem_ptr, tick) };
+        let _result = unsafe { rt_sem_take(self.raw_sem, tick) };
     }
 
     pub fn acquire_no_wait(&self) {
-        let _result = unsafe { rt_sem_trytake(self.sem_ptr) };
+        let _result = unsafe { rt_sem_trytake(self.raw_sem) };
     }
 
     pub fn release(&self) {
-        let _result = unsafe { rt_sem_release(self.sem_ptr) };
+        let _result = unsafe { rt_sem_release(self.raw_sem) };
     }
 
     pub fn access(&self) -> SemaphoreGuard {
         self.acquire();
         SemaphoreGuard { _sem: self }
-    }
-}
-
-#[pin_data]
-pub struct SemaphoreStatic {
-    #[pin]
-    sem_: UnsafeCell<MaybeUninit<rt_semaphore>>,
-    #[pin]
-    pinned_: PhantomPinned,
-}
-
-unsafe impl Send for SemaphoreStatic {}
-unsafe impl Sync for SemaphoreStatic {}
-
-impl SemaphoreStatic {
-    pub const fn new() -> Self {
-        SemaphoreStatic {
-            sem_: UnsafeCell::new(MaybeUninit::uninit()),
-            pinned_: PhantomPinned {},
-        }
-    }
-    pub fn init(&'static self, name: &str, value: u32) -> Result<(), Error> {
-        let result = unsafe {
-            rt_sem_init(
-                self.sem_.get().cast(),
-                name.as_ptr() as *const c_char,
-                value,
-                RT_IPC_FLAG_PRIO as u8,
-            )
-        };
-        if result == RT_EOK as i32 {
-            Ok(())
-        } else {
-            Err(Error::from_errno(result))
-        }
-    }
-
-    pub fn detach(&'static self) -> Result<(), Error> {
-        let result = unsafe { rt_sem_detach(self.sem_.get().cast()) };
-        if result == RT_EOK as i32 {
-            Ok(())
-        } else {
-            Err(Error::from_errno(result))
-        }
-    }
-
-    pub fn get(&'static self) -> Semaphore {
-        Semaphore {
-            sem_ptr: self.sem_.get().cast(),
-            _pin: PhantomPinned {},
-        }
     }
 }

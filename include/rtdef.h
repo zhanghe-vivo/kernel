@@ -982,6 +982,7 @@ struct rt_semaphore
 
     rt_uint16_t          value;                         /**< value of semaphore. */
     rt_uint16_t          reserved;                      /**< reserved field */
+    struct rt_spinlock  spinlock;
 };
 typedef struct rt_semaphore *rt_sem_t;
 #endif /* RT_USING_SEMAPHORE */
@@ -1021,6 +1022,7 @@ struct rt_event
     struct rt_ipc_object parent;                        /**< inherit from ipc_object */
 
     rt_uint32_t          set;                           /**< event set */
+    struct rt_spinlock          spinlock;
 };
 typedef struct rt_event *rt_event_t;
 #endif /* RT_USING_EVENT */
@@ -1042,6 +1044,7 @@ struct rt_mailbox
     rt_uint16_t          out_offset;                    /**< output offset of the message buffer */
 
     rt_list_t            suspend_sender_thread;         /**< sender thread suspended on this mailbox */
+    struct rt_spinlock  spinlock;
 };
 typedef struct rt_mailbox *rt_mailbox_t;
 #endif /* RT_USING_MAILBOX */
@@ -1066,6 +1069,7 @@ struct rt_messagequeue
     void                *msg_queue_free;                /**< pointer indicated the free node of queue */
 
     rt_list_t            suspend_sender_thread;         /**< sender thread suspended on this message queue */
+    struct rt_spinlock          spinlock;
 };
 typedef struct rt_messagequeue *rt_mq_t;
 #endif /* RT_USING_MESSAGEQUEUE */

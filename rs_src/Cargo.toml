@@ -16,6 +16,7 @@ bindgen = "0.69.4"
 [dependencies]
 log = "0.4"
 const_default1 = { version = "1", package = "const-default", default-features = false }
+cfg-if = "1"
 # lots of compile errors, use source code
 pinned-init = { path = "./third_party/pinned-init" }
 paste = "1.0.6"

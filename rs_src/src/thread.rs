@@ -82,7 +82,7 @@ pub struct RtThread {
 
     /// built-in thread timer, used for wait timeout
     #[pin]
-    thread_timer: rt_bindings::rt_timer,
+    pub(crate) thread_timer: rt_bindings::rt_timer,
 
     /// stack point and entry
     pub(crate) stack: Stack,
@@ -104,7 +104,7 @@ pub struct RtThread {
     // cpus_lock_nest: AtomicU32,
     spinlock: RawSpin,
     /// error code
-    error: ffi::c_int,
+    pub(crate) error: ffi::c_int,
 
     /// mutexes holded by this thread
     #[cfg(feature = "RT_USING_MUTEX")]
@@ -115,9 +115,9 @@ pub struct RtThread {
     pending_object: *mut rt_bindings::rt_object,
 
     #[cfg(feature = "RT_USING_EVENT")]
-    event_set: ffi::c_uint,
+    pub(crate) event_set: ffi::c_uint,
     #[cfg(feature = "RT_USING_EVENT")]
-    event_info: ffi::c_uchar,
+    pub(crate) event_info: ffi::c_uchar,
 
     #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
     wait_lock: Cell<Option<NonNull<RawSpin>>>,
