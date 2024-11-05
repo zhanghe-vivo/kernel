@@ -337,12 +337,8 @@ impl RtThread {
                     name.as_char_ptr(),
                 )
             } else {
-                assert!(!slot.is_null());
-                object::KObjectBase::init(
-                    &mut *(slot as *mut KObjectBase),
-                    ObjectClassType::ObjectClassThread as u8,
-                    name.as_char_ptr(),
-                )
+                let obj = &mut *(slot as *mut KObjectBase);
+                obj.init_internal(ObjectClassType::ObjectClassThread as u8, name.as_char_ptr())
             }
 
             let cur_ref = &mut *slot;

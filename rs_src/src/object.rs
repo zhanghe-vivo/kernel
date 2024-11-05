@@ -29,15 +29,18 @@ pub struct KObjectBase {
 }
 
 impl KObjectBase {
-    pub fn init(object: &mut KObjectBase, type_: u8, name: *const i8) {
-        object.type_ = type_;
+    pub(crate) fn init(&mut self, type_: u8, name: *const i8) {
+        self.init_internal(type_ | OBJECT_CLASS_STATIC, name);
+    }
 
+    pub(crate) fn init_internal(&mut self, type_: u8, name: *const i8) {
+        self.type_ = type_;
         unsafe {
-            rt_strncpy(object.name.as_mut_ptr(), name, (NAME_MAX - 1) as usize);
-            crate::rt_object_hook_call!(OBJECT_ATTACH_HOOK, object as *const _ as *const rt_object);
+            rt_strncpy(self.name.as_mut_ptr(), name, (NAME_MAX - 1) as usize);
+            crate::rt_object_hook_call!(OBJECT_ATTACH_HOOK, self as *const _ as *const rt_object);
         }
-        if type_ != ObjectClassType::ObjectClassProcess as u8 {
-            insert(type_, &mut object.list);
+        if type_ & (!OBJECT_CLASS_STATIC) != ObjectClassType::ObjectClassProcess as u8 {
+            insert(type_, &mut self.list);
         }
     }
 
@@ -56,8 +59,28 @@ impl KObjectBase {
         }
 
         let obj_ref = unsafe { &mut *object };
-        KObjectBase::init(obj_ref, type_ as u8, name);
+        obj_ref.init_internal(type_, name);
         object
+    }
+
+    pub(crate) fn detach(&mut self) {
+        unsafe {
+            crate::rt_object_hook_call!(OBJECT_DETACH_HOOK, self as *const _ as *const rt_object)
+        };
+        remove(self);
+        self.type_ = ObjectClassType::ObjectClassUninit as u8;
+    }
+
+    pub(crate) fn delete(&mut self) {
+        assert!((self.type_ & OBJECT_CLASS_STATIC) == 0);
+        unsafe {
+            crate::rt_object_hook_call!(OBJECT_DETACH_HOOK, self as *const _ as *const rt_object)
+        };
+        remove(self);
+        self.type_ = ObjectClassType::ObjectClassUninit as u8;
+        unsafe {
+            rt_free(self as *mut _ as *mut ffi::c_void);
+        }
     }
 }
 
@@ -67,39 +90,39 @@ pub const NAME_MAX: usize = 8;
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ObjectClassType {
     ObjectClassUninit = 0,
-    ObjectClassProcess = 1,
     //< The object is a process.
-    ObjectClassThread,
+    ObjectClassProcess,
     //< The object is a thread.
+    ObjectClassThread,
+    //< The object is a semaphore.
     #[cfg(feature = "RT_USING_SEMAPHORE")]
     ObjectClassSemaphore,
-    //< The object is a semaphore.
+    //< The object is a mutex.
     #[cfg(feature = "RT_USING_MUTEX")]
     ObjectClassMutex,
-    //< The object is a mutex.
+    //< The object is an event.
     #[cfg(feature = "RT_USING_EVENT")]
     ObjectClassEvent,
-    //< The object is an event.
+    //< The object is a mailbox.
     #[cfg(feature = "RT_USING_MAILBOX")]
     ObjectClassMailBox,
-    //< The object is a mailbox.
+    //< The object is a message queue.
     #[cfg(feature = "RT_USING_MESSAGEQUEUE")]
     ObjectClassMessageQueue,
-    //< The object is a message queue.
+    //< The object is a memory heap.
     #[cfg(feature = "RT_USING_MEMHEAP")]
     ObjectClassMemHeap,
-    //< The object is a memory heap.
+    //< The object is a memory pool.
     #[cfg(feature = "RT_USING_MEMPOOL")]
     ObjectClassMemPool,
-    //< The object is a memory pool.
+    //< The object is a device.
     #[cfg(feature = "RT_USING_DEVICE")]
     ObjectClassDevice,
-    //< The object is a device.
-    ObjectClassTimer,
     //< The object is a timer.
+    ObjectClassTimer,
+    //< The object is memory.
     #[cfg(feature = "RT_USING_HEAP")]
     ObjectClassMemory,
-    //< The object is memory.
     ObjectClassUnknown,
 }
 
@@ -111,8 +134,8 @@ pub trait KernelObject: Downcast {
     fn name(&self) -> *const i8;
     /// Set kernel object's name.
     fn set_name(&mut self, name: *const i8);
-    /// Checks whether the object is a system object.
-    fn is_systemobject(&self) -> bool;
+    /// Checks whether the kernel object is a static object.
+    fn is_static_kobject(&self) -> bool;
     /// This function is used to iterate all kernel objects.
     fn foreach<F>(callback: F, type_: u8) -> Result<(), i32>
     where
@@ -144,7 +167,7 @@ impl KernelObject for KObjectBase {
         }
     }
 
-    fn is_systemobject(&self) -> bool {
+    fn is_static_kobject(&self) -> bool {
         let obj_type = self.type_;
         if (obj_type & OBJECT_CLASS_STATIC) != 0 {
             return true;
@@ -178,39 +201,40 @@ impl ObjectClassType {
     // 为枚举类型添加方法
     fn get_object_size(index: u8) -> usize {
         match index {
+            //< The object is a process.
             x if x == Self::ObjectClassProcess as u8 => mem::size_of::<Kprocess>(),
-            x if x == Self::ObjectClassThread as u8 => mem::size_of::<RtThread>(),
             //< The object is a thread.
+            x if x == Self::ObjectClassThread as u8 => mem::size_of::<RtThread>(),
+            //< The object is a semaphore.
             #[cfg(feature = "RT_USING_SEMAPHORE")]
             x if x == Self::ObjectClassSemaphore as u8 => mem::size_of::<rt_semaphore>(),
-            //< The object is a semaphore.
+            //< The object is a mutex.
             #[cfg(feature = "RT_USING_MUTEX")]
             x if x == Self::ObjectClassMutex as u8 => mem::size_of::<rt_mutex>(),
-            //< The object is a mutex.
+            //< The object is an event.
             #[cfg(feature = "RT_USING_EVENT")]
             x if x == Self::ObjectClassEvent as u8 => mem::size_of::<rt_event>(),
-            //< The object is an event.
+            //< The object is a mailbox.
             #[cfg(feature = "RT_USING_MAILBOX")]
             x if x == Self::ObjectClassMailBox as u8 => mem::size_of::<rt_mailbox>(),
-            //< The object is a mailbox.
+            //< The object is a message queue.
             #[cfg(feature = "RT_USING_MESSAGEQUEUE")]
             x if x == Self::ObjectClassMessageQueue as u8 => mem::size_of::<rt_messagequeue>(),
-            //< The object is a message queue.
+            //< The object is a memory heap.
             #[cfg(feature = "RT_USING_MEMHEAP")]
             x if x == Self::ObjectClassMemHeap as u8 => mem::size_of::<rt_memheap>(),
-            //< The object is a memory heap.
+            //< The object is a memory pool.
             #[cfg(feature = "RT_USING_MEMPOOL")]
             x if x == Self::ObjectClassMemPool as u8 => mem::size_of::<rt_mempool>(),
-            //< The object is a memory pool.
+            //< The object is a device.
             #[cfg(feature = "RT_USING_DEVICE")]
             x if x == Self::ObjectClassDevice as u8 => mem::size_of::<rt_device>(),
-            //< The object is a device.
-            x if x == Self::ObjectClassTimer as u8 => mem::size_of::<rt_timer>(),
             //< The object is a timer.
+            x if x == Self::ObjectClassTimer as u8 => mem::size_of::<rt_timer>(),
+            //< The object is memory.
             #[cfg(feature = "RT_USING_HEAP")]
             x if x == Self::ObjectClassMemory as u8 => mem::size_of::<rt_memory>(),
-            //< The object is memory.
-            _ => unreachable!("not a kernel object type!"),
+            _ => unreachable!("not a static kobject type!"),
         }
     }
 }
@@ -280,8 +304,7 @@ pub extern "C" fn rt_object_init(
     object_addr_detect(type_ as u8, obj_ref);
     // initialize object's parameters
     // set object type to static
-    let type_ = type_ as u8 | OBJECT_CLASS_STATIC;
-    KObjectBase::init(obj_ref, type_, name);
+    obj_ref.init(type_ as u8, name);
 }
 
 /// This function will detach a static object from the object system,
@@ -293,10 +316,8 @@ pub extern "C" fn rt_object_init(
 #[no_mangle]
 pub extern "C" fn rt_object_detach(object: *mut rt_object) {
     assert!(!object.is_null());
-    unsafe { crate::rt_object_hook_call!(OBJECT_DETACH_HOOK, object) };
     let obj = unsafe { &mut *(object as *mut KObjectBase) };
-    remove(obj);
-    obj.type_ = ObjectClassType::ObjectClassUninit as u8;
+    obj.detach();
 }
 
 /// This function will allocate an object from object system.
@@ -323,19 +344,8 @@ pub extern "C" fn rt_object_allocate(
 pub extern "C" fn rt_object_delete(object: rt_object_t) {
     // object check
     assert!(!object.is_null());
-    unsafe {
-        assert!(((*object).type_ & OBJECT_CLASS_STATIC) == 0);
-    }
-
-    unsafe { crate::rt_object_hook_call!(OBJECT_DETACH_HOOK, object) };
-
-    unsafe {
-        let obj = &mut *(object as *mut KObjectBase);
-        remove(obj);
-        // reset object type
-        obj.type_ = ObjectClassType::ObjectClassUninit as u8;
-        rt_free(object as *mut ffi::c_void);
-    }
+    let obj = unsafe { &mut *(object as *mut KObjectBase) };
+    obj.delete();
 }
 
 /// This function will judge the object is system object or not.
@@ -359,7 +369,7 @@ pub extern "C" fn rt_object_is_systemobject(object: rt_object_t) -> rt_bool_t {
     /* object check */
     assert!(!object.is_null());
     let obj = unsafe { &mut *(object as *mut KObjectBase) };
-    let res = obj.is_systemobject();
+    let res = obj.is_static_kobject();
 
     if res {
         return RT_TRUE as ffi::c_int;
@@ -550,8 +560,8 @@ macro_rules! impl_kobject {
             fn set_name(&mut self, name: *const i8){
                 self.parent.set_name(name);
             }
-            fn is_systemobject(&self) -> bool{
-                self.parent.is_systemobject()
+            fn is_static_kobject(&self) -> bool{
+                self.parent.is_static_kobject()
             }
             fn foreach<F>(callback: F, type_: u8) -> Result<(), i32>
             where

@@ -437,7 +437,7 @@ pub extern "C" fn rt_timer_detach(timer: *mut Timer) -> rt_bindings::rt_err_t {
     assert!(!timer.is_null());
     let timer_ref = unsafe { &mut *timer };
     assert!(timer_ref.type_name() == ObjectClassType::ObjectClassTimer as u8);
-    assert!(timer_ref.is_systemobject() != false);
+    assert!(timer_ref.is_static_kobject() != false);
     let time_wheel = timer_ref.get_timer_wheel();
     let _ = time_wheel.timer_wheel_lock.acquire();
     timer_ref.timer_remove();
@@ -472,7 +472,7 @@ pub extern "C" fn rt_timer_delete(timer: *mut Timer) -> rt_bindings::rt_err_t {
     assert!(!timer.is_null());
     let timer_ref = unsafe { &mut *timer };
     assert!(timer_ref.type_name() == ObjectClassType::ObjectClassTimer as u8);
-    assert!(timer_ref.is_systemobject() == false);
+    assert!(timer_ref.is_static_kobject() == false);
     let time_wheel = timer_ref.get_timer_wheel();
     let _ = time_wheel.timer_wheel_lock.acquire();
     timer_ref.timer_remove();
