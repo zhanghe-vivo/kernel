@@ -8,10 +8,8 @@ use crate::{
 };
 
 use core::{ffi, fmt::Debug, mem, ptr, slice};
-use {
-    downcast_rs::{impl_downcast, Downcast},
-    pinned_init::*,
-};
+use pinned_init::*;
+
 
 /// Base kernel Object
 #[pin_data]
@@ -127,7 +125,7 @@ pub enum ObjectClassType {
 }
 
 /// Common interface of a kernel object.
-pub trait KernelObject: Downcast {
+pub trait KernelObject {
     /// Get the name of the type of the kernel object.
     fn type_name(&self) -> u8;
     /// Get kernel object's name.
@@ -148,8 +146,6 @@ pub trait KernelObject: Downcast {
         F: Fn(&ListHead),
         Self: Sized;
 }
-
-impl_downcast!(KernelObject);
 
 impl KernelObject for KObjectBase {
     fn type_name(&self) -> u8 {
