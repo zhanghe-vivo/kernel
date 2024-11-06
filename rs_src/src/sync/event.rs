@@ -202,7 +202,10 @@ unsafe extern "C" fn _rt_event_recv(
 
     let mut time_out = timeout;
     let mut status = -(RT_ERROR as rt_err_t);
-    let thread = unsafe { crate::current_thread!().unwrap().as_mut() };
+    let thread = crate::current_thread_ptr!();
+    if thread.is_null() {
+        return -(RT_ERROR as rt_err_t);
+    }
     (*thread).error = -(RT_EINTR as rt_err_t);
 
     rt_object_hook_call!(rt_object_trytake_hook, obj_ptr);

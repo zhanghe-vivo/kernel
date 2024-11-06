@@ -5,12 +5,12 @@ use crate::{
     cpu::Cpu,
     error::{code, Error},
     linked_list::ListHead,
-    object,
+    list_head_entry, list_head_for_each, object,
     object::{BaseObject, ObjectClassType},
     println, rt_bindings,
     stack::Stack,
     str::CStr,
-    sync::RawSpin,
+    sync::{lock::mutex::RtMutex, RawSpin},
     zombie,
 };
 use alloc::alloc;
@@ -39,11 +39,30 @@ macro_rules! current_thread {
 pub use current_thread;
 
 #[macro_export]
+macro_rules! current_thread_ptr {
+    () => {
+        unsafe {
+            if let Some(mut curth) = $crate::current_thread!() {
+                curth.as_mut()
+            } else {
+                null_mut()
+            }
+        }
+    };
+}
+pub use current_thread_ptr;
+
+#[macro_export]
 macro_rules! thread_list_node_entry {
     ($node:expr) => {
         crate::container_of!($node, crate::thread::RtThread, tlist)
     };
 }
+use crate::object::rt_object_get_type;
+use crate::rt_bindings::{
+    rt_err_t, rt_uint8_t, RT_EOK, RT_ERROR, RT_THREAD_CTRL_CHANGE_PRIORITY, RT_THREAD_SUSPEND_MASK,
+};
+use crate::sync::ipc_common::_ipc_list_suspend;
 pub use thread_list_node_entry;
 
 #[cfg(all(feature = "RT_USING_HOOK", feature = "RT_HOOK_USING_FUNC_PTR"))]
@@ -109,10 +128,10 @@ pub struct RtThread {
     /// mutexes holded by this thread
     #[cfg(feature = "RT_USING_MUTEX")]
     #[pin]
-    taken_object_list: ListHead,
+    pub(crate) taken_object_list: ListHead,
     /// mutex object
     #[cfg(feature = "RT_USING_MUTEX")]
-    pending_object: *mut rt_bindings::rt_object,
+    pub(crate) pending_object: *mut rt_bindings::rt_object,
 
     #[cfg(feature = "RT_USING_EVENT")]
     pub(crate) event_set: ffi::c_uint,
@@ -654,6 +673,87 @@ impl RtThread {
         self.number_mask = 1 << self.number;
         // FIXME: RT_THREAD_PRIORITY_MAX <= 32
         // self.number_mask = 1 << self.current_priority
+    }
+
+    #[inline]
+    pub(crate) fn get_mutex_priority(&self) -> rt_uint8_t {
+        unsafe {
+            let mut priority = self.init_priority;
+
+            list_head_for_each!(node, &self.taken_object_list, {
+                let mutex = list_head_entry!(node.as_ptr(), RtMutex, taken_list);
+                let mut mutex_prio = (*mutex).priority;
+                mutex_prio = if mutex_prio < (*mutex).ceiling_priority {
+                    mutex_prio
+                } else {
+                    (*mutex).ceiling_priority
+                };
+
+                if priority > mutex_prio {
+                    priority = mutex_prio;
+                }
+            });
+
+            priority
+        }
+    }
+
+    #[inline]
+    pub(crate) fn update_priority(&mut self, priority: u8, suspend_flag: u32) -> rt_err_t {
+        unsafe {
+            // Change priority of the thread
+            let mut priority = priority;
+            let mut ret = rt_thread_control(
+                self,
+                RT_THREAD_CTRL_CHANGE_PRIORITY,
+                (&mut priority) as *mut u8 as *mut ffi::c_void,
+            );
+
+            while (ret == RT_EOK as rt_err_t)
+                && (self.stat & RT_THREAD_SUSPEND_MASK as rt_uint8_t
+                    == RT_THREAD_SUSPEND_MASK as rt_uint8_t)
+            {
+                //Whether change the priority of the taken mutex
+                let pending_obj = self.pending_object;
+
+                if pending_obj.is_null() == false
+                    && rt_object_get_type(pending_obj)
+                        == ObjectClassType::ObjectClassMutex as rt_uint8_t
+                {
+                    let mut mutex_priority: rt_uint8_t = 0xff;
+                    let mut pending_mutex = pending_obj as *mut RtMutex;
+                    let owner = (*pending_mutex).owner;
+                    // Re-insert thread to suspended thread list
+                    self.remove_tlist();
+
+                    ret = _ipc_list_suspend(
+                        &mut (*pending_mutex).parent.suspend_thread,
+                        self,
+                        (*pending_mutex).parent.parent.flag as rt_uint8_t,
+                        suspend_flag as u32,
+                    );
+                    if ret == RT_EOK as rt_err_t {
+                        // Update priority
+                        (*pending_mutex).update_priority();
+                        mutex_priority = (*(*pending_mutex).owner).get_mutex_priority();
+                        if mutex_priority != (*(*pending_mutex).owner).current_priority {
+                            let thread = (*pending_mutex).owner;
+                            ret = rt_thread_control(
+                                thread,
+                                RT_THREAD_CTRL_CHANGE_PRIORITY,
+                                (&mut mutex_priority) as *mut u8 as *mut ffi::c_void,
+                            );
+                        } else {
+                            ret = -(RT_ERROR as rt_err_t);
+                        }
+                    }
+                } else {
+                    ret = -(RT_ERROR as rt_err_t);
+                }
+            }
+
+            ret
+        }
     }
 
     pub fn start(&mut self) {

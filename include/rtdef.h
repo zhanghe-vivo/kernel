@@ -1002,6 +1002,7 @@ struct rt_mutex
 
     struct rt_thread    *owner;                         /**< current owner of mutex */
     rt_list_t            taken_list;                    /**< the object list taken by thread */
+    struct rt_spinlock  spinlock;
 };
 typedef struct rt_mutex *rt_mutex_t;
 #endif /* RT_USING_MUTEX */

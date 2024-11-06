@@ -40,7 +40,7 @@ impl IPCObject {
         flag: IpcFlagType,
         is_static: bool,
     ) -> impl PinInit<Self> {
-        let init = move |slot: *mut Self| unsafe {
+        let init = move |mut slot: *mut Self| unsafe {
             assert!(
                 (flag == RT_IPC_FLAG_FIFO as IpcFlagType)
                     || (flag == RT_IPC_FLAG_PRIO as IpcFlagType)
@@ -52,11 +52,7 @@ impl IPCObject {
                     name.as_char_ptr(),
                 )
             } else {
-                object::rt_object_init_dyn(
-                    &mut (*slot).parent as *mut BaseObject as *mut rt_bindings::rt_object,
-                    obj_type as u32,
-                    name.as_char_ptr(),
-                )
+                slot = object::rt_object_allocate(obj_type as u32, name.as_char_ptr()) as *mut Self;
             }
 
             let cur_ref = &mut *slot;

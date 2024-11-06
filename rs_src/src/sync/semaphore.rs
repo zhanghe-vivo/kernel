@@ -62,7 +62,7 @@ impl RtSemaphore {
                 .__pinned_init(&mut cur_ref.parent);
 
             if is_static == false {
-                //cur_ref.spinlock = SpinLock::new();
+                cur_ref.spinlock = RawSpin::new();
             }
 
             cur_ref.value = value;
