@@ -3,23 +3,23 @@ variables:
   GIT_SUBMODULE_UPDATE_FLAGS: --jobs 16
 
 stages:
-  - build_up
-  - ut_up
-  - build_mp
-  - ut_mp
+  - mps2-an385-build
+  - mps2-an385-ut
+  # - a9-build-up
+  # - a9-ut-up
+  # - a9-build-mp
+  # - a9-ut-mp
 
 before_script:
     - export PATH="$PATH:/home/vivoadmin/.cargo/bin"
     - rustup toolchain link mygnutoolchain "/home/vivoadmin/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu"
     - rustup default mygnutoolchain
-    
-up-build:
-  stage: build_up
+
+build-mps2-an385:
+  stage: mps2-an385-build
   script:
     - echo "...开始NP构建..."  
-    - cp bsp/qemu-vexpress-a9/.config_up bsp/qemu-vexpress-a9/rtconfig.h
-    - ls -l bsp/qemu-vexpress-a9/rtconfig.h
-    - ./build.sh qemu-vexpress-a9
+    - ./build.sh qemu-mps2-an385
   tags:
     - ubuntu
   rules:
@@ -29,53 +29,85 @@ up-build:
         untracked: false
         expire_in: 5 mins
         paths:
-            - /data01/runner/gitlab-runner/builds/y1GSVydi/0/11154271/rt-thread/bsp/qemu-vexpress-a9/rtthread.bin
+            - /data01/runner/gitlab-runner/builds/y1GSVydi/0/11154271/rt-thread/bsp/qemu-mps2-an385/rtthread.bin
 
-
-up-unit-test:
-  stage: ut_up
+test-mps2-an385:
+  stage: mps2-an385-ut
   dependencies:
-    - up-build
+    - build-mps2-an385
   script:
     - echo "...测试NP代码..."  
-    - cd bsp/qemu-vexpress-a9
+    - cd bsp/qemu-mps2-an385
     - timeout 90s ./qemu-test.sh || true
     - cd ../../
-    - python check_result.py
+    - python3 check_result.py qemu-mps2-an385
   tags:
     - ubuntu
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    
-mp-build:
-  stage: build_mp
-  script:
-    - echo "...开始MP构建..."  
-    - cp bsp/qemu-vexpress-a9/.config_mp bsp/qemu-vexpress-a9/rtconfig.h
-    - ./build.sh qemu-vexpress-a9
-  tags:
-    - ubuntu
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-  artifacts:
-        name: "rtthread.bin"
-        untracked: false
-        expire_in: 5 mins
-        paths:
-            - /data01/runner/gitlab-runner/builds/y1GSVydi/0/11154271/rt-thread/bsp/qemu-vexpress-a9/rtthread.bin    
 
-mp-unit-test:
-  stage: ut_mp
-  dependencies:
-    - mp-build
-  script:
-    - echo "...测试MP代码..."  
-    - cd bsp/qemu-vexpress-a9
-    - timeout 90s ./qemu-test.sh || true
-    - cd ../../
-    - python check_result.py
-  tags:
-    - ubuntu
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+# a9-up-build:
+#   stage: a9-build-up
+#   script:
+#     - echo "...开始NP构建..."  
+#     - cp bsp/qemu-vexpress-a9/.config_up bsp/qemu-vexpress-a9/rtconfig.h
+#     - ls -l bsp/qemu-vexpress-a9/rtconfig.h
+#     - ./build.sh qemu-vexpress-a9
+#   tags:
+#     - ubuntu
+#   rules:
+#     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+#   artifacts:
+#         name: "rtthread.bin"
+#         untracked: false
+#         expire_in: 5 mins
+#         paths:
+#             - /data01/runner/gitlab-runner/builds/y1GSVydi/0/11154271/rt-thread/bsp/qemu-vexpress-a9/rtthread.bin
+
+# a9-up-unit-test:
+#   stage: a9-ut-up
+#   dependencies:
+#     - a9-up-build
+#   script:
+#     - echo "...测试NP代码..."  
+#     - cd bsp/qemu-vexpress-a9
+#     - timeout 90s ./qemu-test.sh || true
+#     - cd ../../
+#     - python3 check_result.py qemu-vexpress-a9
+#   tags:
+#     - ubuntu
+#   rules:
+#     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    
+# a9-mp-build:
+#   stage: a9-build-mp
+#   script:
+#     - echo "...开始MP构建..."  
+#     - cp bsp/qemu-vexpress-a9/.config_mp bsp/qemu-vexpress-a9/rtconfig.h
+#     - ./build.sh qemu-vexpress-a9
+#   tags:
+#     - ubuntu
+#   rules:
+#     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+#   artifacts:
+#         name: "rtthread.bin"
+#         untracked: false
+#         expire_in: 5 mins
+#         paths:
+#             - /data01/runner/gitlab-runner/builds/y1GSVydi/0/11154271/rt-thread/bsp/qemu-vexpress-a9/rtthread.bin    
+
+# a9-mp-unit-test:
+#   stage: a9-ut-mp
+#   dependencies:
+#     - a9-mp-build
+#   script:
+#     - echo "...测试MP代码..."  
+#     - cd bsp/qemu-vexpress-a9
+#     - timeout 90s ./qemu-test.sh || true
+#     - cd ../../
+#     - python3 check_result.py qemu-vexpress-a9
+#   tags:
+#     - ubuntu
+#   rules:
+#     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
 

@@ -1,0 +1,16 @@
+menu "Hardware Drivers Config"
+config SOC_MPS2_CORTEX_M3
+    bool
+    select ARCH_ARM_CORTEX_M3
+    select RT_USING_COMPONENTS_INIT
+    select RT_USING_USER_MAIN
+    default y
+menu "Onboard Peripheral Drivers"
+config BSP_USING_UART0
+    bool "Enable UART0"
+    default y
+config BSP_USING_UART1
+    bool "Enable UART1"
+    default n
+endmenu
+endmenu

@@ -236,6 +236,8 @@ void rt_application_init(void)
 int rtthread_startup(void)
 {
     rt_hw_local_irq_disable();
+    extern void init_cpus();
+    init_cpus();
 
     /* board level initialization
      * NOTE: please initialize heap inside board initialization.

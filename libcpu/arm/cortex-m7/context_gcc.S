@@ -214,13 +214,6 @@ rt_hw_context_switch_to:
 
     /* never reach here! */
 
-/* compatible with old version */
-.global rt_hw_interrupt_thread_switch
-.type rt_hw_interrupt_thread_switch, %function
-rt_hw_interrupt_thread_switch:
-    BX  lr
-    NOP
-
 .global HardFault_Handler
 .type HardFault_Handler, %function
 HardFault_Handler:

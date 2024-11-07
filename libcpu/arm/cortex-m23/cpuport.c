@@ -118,3 +118,7 @@ void rt_hw_hard_fault_exception(struct exception_stack_frame *contex)
     while (1);
 }
 
+rt_weak int rt_hw_cpu_id(void)
+{
+    return 0;
+}

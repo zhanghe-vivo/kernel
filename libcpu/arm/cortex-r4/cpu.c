@@ -16,6 +16,11 @@
  */
 /*@{*/
 
+rt_weak int rt_hw_cpu_id(void)
+{
+    return 0;
+}
+
 #ifdef __TI_COMPILER_VERSION__
 #ifdef RT_USING_CPU_FFS
 int __rt_ffs(int value)

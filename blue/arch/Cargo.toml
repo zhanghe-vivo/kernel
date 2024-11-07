@@ -1,0 +1,18 @@
+[package]
+name = "blue-arch"
+version = "0.1.0"
+edition = "2021"
+
+[target.'cfg(all(target_arch = "arm", target_os = "none"))'.dependencies]
+cortex-m = { version = "0.7.7", features = ["inline-asm"] }
+tock-registers = "0.9.0"
+
+[target.'cfg(all(target_arch = "aarch64", target_os = "none"))'.dependencies]
+aarch64-cpu = "9.4.0"
+
+[dependencies]
+# blue-console = { path = "../../blue_components/console" }
+
+[features]
+default = ["console"]
+console = []
