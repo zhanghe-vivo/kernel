@@ -1,7 +1,7 @@
 use crate::arch::stack_frame::{ExceptionFrame, StackFrame};
 use crate::cortex_m::Arch;
 use crate::interrupt::IInterrupt;
-use core::{arch::asm, fmt};
+use core::{arch::naked_asm, fmt};
 use cortex_m::peripheral::SCB;
 
 #[no_mangle]
@@ -9,7 +9,7 @@ use cortex_m::peripheral::SCB;
 pub unsafe extern "C" fn HardFault_Handler() {
     #[cfg(any(armv7m, armv7em))]
     unsafe {
-        asm!(
+        naked_asm!(
             "mrs      r0, msp",   // get fault context from handler.
             "tst      lr, #0x04", // if(!EXC_RETURN[2])
             "beq      1f",
@@ -27,13 +27,12 @@ pub unsafe extern "C" fn HardFault_Handler() {
             "pop     {{lr}}",
             "orr     lr, lr, #0x04",
             "bx      lr",
-            options(noreturn),
         )
     }
 
     #[cfg(armv8m)] // support trustzone
     unsafe {
-        asm!(
+        naked_asm!(
             "mrs     r0, msp",   // get fault context from handler.
             "tst     lr, #0x04", // if(!EXC_RETURN[2])
             "beq     1f",
@@ -55,7 +54,6 @@ pub unsafe extern "C" fn HardFault_Handler() {
             "pop     {{lr}}",
             "orr     lr, lr, #0x04",
             "bx      lr",
-            options(noreturn),
         )
     }
 }

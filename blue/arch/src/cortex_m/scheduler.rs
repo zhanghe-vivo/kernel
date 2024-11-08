@@ -1,6 +1,6 @@
 //! ARM Cortex-M implementation of [`IScheduler`] and context switch.
 
-use core::arch::asm;
+use core::arch::{asm, naked_asm};
 use core::mem;
 use cortex_m::peripheral::SCB;
 
@@ -19,7 +19,7 @@ pub unsafe extern "C" fn PendSV_Handler() {
     // Based on "Definitive Guide to Cortex-M3/4", p. 349
     #[cfg(has_fpu)]
     unsafe {
-        asm!(
+        naked_asm!(
             "cpsid   I", // disable interrupt
             "mrs      r1, psp",
             "mov      r3, lr",    // store lr in r2
@@ -41,13 +41,12 @@ pub unsafe extern "C" fn PendSV_Handler() {
             "orr      lr, lr, #0x04", // return to thread PSP
             "cpsie    I",
             "bx       lr",
-            options(noreturn),
         )
     }
 
     #[cfg(not(has_fpu))]
     unsafe {
-        asm!(
+        naked_asm!(
             "cpsid   I", // disable interrupt
             "mrs      r1, psp",
             "mov      r3, lr",
@@ -63,7 +62,6 @@ pub unsafe extern "C" fn PendSV_Handler() {
             "orr      lr, lr, #0x04",
             "cpsie    I",
             "bx       lr",
-            options(noreturn),
         )
     }
 }

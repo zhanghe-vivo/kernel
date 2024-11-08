@@ -7,9 +7,10 @@ members = [
 ]
 
 [patch.crates-io]
-blue-kernel = { path = "kernel" }
-blue-arch = { path = "arch" }
+blue_kernel = { path = "kernel" }
+blue_arch = { path = "arch" }
 rt_bindings = { path = "os_compat/rt_thread" }
+#pinned-init = { git = "ssh://git@gitlab.vmic.xyz/11154271/pinned-init.git", branch = "main" }
 #linux_bindings = { path = "os_compat/linux" }
 
 [profile.release]

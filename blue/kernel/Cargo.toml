@@ -1,12 +1,12 @@
 [package]
-name = "blue-kernel"
+name = "blue_kernel"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
-name = "bluekernel"
+name = "blue_kernel"
 crate-type = ["staticlib"]
 path = "src/lib.rs"
 
@@ -17,8 +17,8 @@ cbindgen = "0.24.0"
 log = "0.4"
 const_default1 = { version = "1", package = "const-default", default-features = false }
 paste = "1.0.6"
-pinned-init = { path = "../third_party/pinned-init" }
-blue-arch = { path = "../arch" }
+pinned-init = { version = "0.0.8", features = ["alloc"], default-features = false }
+blue_arch = { path = "../arch" }
 rt_bindings = { path = "../os_compat/rt_thread" }  # todo: dependency by cfg
 downcast-rs = { version = "1.2", default-features = false }
 

@@ -10,7 +10,7 @@ path = "rt_bindings.rs"
 bindgen = "0.69.4"
 
 [dependencies]
-blue-arch = { path = "../../arch" }
+blue_arch = { path = "../../arch" }
 
 [features]
 # RT-thread config

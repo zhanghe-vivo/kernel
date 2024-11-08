@@ -1,5 +1,5 @@
 [package]
-name = "blue-arch"
+name = "blue_arch"
 version = "0.1.0"
 edition = "2021"
 

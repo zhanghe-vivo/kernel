@@ -11,9 +11,9 @@ stages:
   # - a9-ut-mp
 
 before_script:
-    - export PATH="$PATH:/home/vivoadmin/.cargo/bin"
-    - rustup toolchain link mygnutoolchain "/home/vivoadmin/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu"
-    - rustup default mygnutoolchain
+  - export PATH="$PATH:/home/vivoadmin/.cargo/bin"
+  - rustup toolchain link mygnutoolchain "/home/vivoadmin/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu"
+  - rustup default mygnutoolchain
 
 build-mps2-an385:
   stage: mps2-an385-build

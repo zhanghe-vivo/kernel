@@ -4,7 +4,7 @@ import os
 src = Glob('*.c')
 cwd = GetCurrentDir()
 
-libs = ["bluekernel"]
+libs = ["blue_kernel"]
 # libpath = [cwd + "/target/armv7a-none-eabi/debug"]
 libpath = [cwd + "/target/thumbv7m-none-eabi/debug"]
 group = DefineGroup('Rust', src, depend = ['USE_RUST'], CPPPATH = [], LIBS=[libs], LIBPATH=libpath, CPPDEFINES = ['__RTTHREAD__'])
