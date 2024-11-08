@@ -24,6 +24,8 @@ pub mod klibc;
 mod linked_list;
 pub mod object;
 mod print;
+pub mod process;
+// pub mod process;
 mod rt_bindings;
 mod rt_list;
 pub mod scheduler;
@@ -33,13 +35,15 @@ pub mod static_init;
 pub mod str;
 pub mod sync;
 pub mod thread;
+pub mod timer;
 mod zombie;
 
 // need to call before rt_enter_critical/ cpus_lock called
 #[no_mangle]
 pub unsafe extern "C" fn init_cpus() {
-    object::OBJECT_CONTAINER.init_once();
+    process::KPROCESS.init_once();
     cpu::CPUS.init_once();
+    thread::TIDS.init_once();
 }
 
 use core::sync::atomic::{self, Ordering};

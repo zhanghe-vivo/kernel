@@ -1,17 +1,20 @@
 use crate::{
     allocator::{rt_free, rt_malloc},
-    cpu::{self, Cpu, Cpus},
+    clock::rt_tick_get,
+    cpu::Cpu,
     error::Error,
     linked_list::ListHead,
+    list_head_for_each,
     object::{
         rt_object_allocate, rt_object_delete, rt_object_detach, rt_object_get_type, rt_object_init,
-        rt_object_is_systemobject, *,
+        rt_object_is_systemobject, ObjectClassType, *,
     },
-    rt_align,
+    print, println, rt_align,
     rt_bindings::*,
-    rt_debug_not_in_interrupt, rt_get_message_addr, rt_list_for_each_entry, rt_list_init,
+    rt_debug_not_in_interrupt,
     sync::ipc_common::*,
     thread::RtThread,
+    timer::{rt_timer_control, rt_timer_start, Timer},
 };
 #[allow(unused_imports)]
 use core::{
@@ -29,6 +32,13 @@ use kernel::{
 
 use crate::sync::RawSpin;
 use pinned_init::*;
+
+#[macro_export]
+macro_rules! rt_get_message_addr {
+    ($msg:expr) => {
+        ($msg as *mut RtMessage).offset(1) as *mut _
+    };
+}
 
 macro_rules! rt_message_queue_priority {
     ($msg:expr, $mq:expr, $prio: expr) => {
@@ -130,12 +140,12 @@ pub unsafe extern "C" fn rt_mq_init(
     assert!((flag == RT_IPC_FLAG_FIFO as rt_uint8_t) || (flag == RT_IPC_FLAG_PRIO as rt_uint8_t));
 
     rt_object_init(
-        &mut (*mq).parent.parent as *mut BaseObject as *mut rt_object,
+        &mut (*mq).parent.parent as *mut KObjectBase as *mut rt_object,
         ObjectClassType::ObjectClassMessageQueue as u32,
         name,
     );
 
-    (*mq).parent.parent.flag = flag;
+    (*mq).parent.flag = flag;
 
     _ipc_object_init(&mut (*mq).parent);
 
@@ -143,6 +153,7 @@ pub unsafe extern "C" fn rt_mq_init(
 
     let msg_align_size = rt_align!(msg_size, RT_ALIGN_SIZE);
     (*mq).msg_size = msg_size as rt_uint16_t;
+
     (*mq).max_msgs =
         (pool_size / (msg_align_size + mem::size_of::<RtMessage>() as rt_size_t)) as rt_uint16_t;
 
@@ -175,18 +186,18 @@ pub unsafe extern "C" fn rt_mq_init(
 pub unsafe extern "C" fn rt_mq_detach(mq: *mut RtMessageQueue) -> rt_err_t {
     assert!(mq != null_mut());
     assert!(
-        rt_object_get_type(&mut (*mq).parent.parent as *mut BaseObject as *mut rt_object)
+        rt_object_get_type(&mut (*mq).parent.parent as *mut KObjectBase as *mut rt_object)
             == ObjectClassType::ObjectClassMessageQueue as u8
     );
     assert!(
-        rt_object_is_systemobject(&mut (*mq).parent.parent as *mut BaseObject as *mut rt_object)
+        rt_object_is_systemobject(&mut (*mq).parent.parent as *mut KObjectBase as *mut rt_object)
             == RT_TRUE as i32
     );
 
     _ipc_list_resume_all(&mut (*mq).parent.suspend_thread);
     _ipc_list_resume_all(&mut (*mq).suspend_sender_thread);
 
-    rt_object_detach(&mut (*mq).parent.parent as *mut BaseObject as *mut rt_object);
+    rt_object_detach(&mut (*mq).parent.parent as *mut KObjectBase as *mut rt_object);
 
     RT_EOK as rt_err_t
 }
@@ -205,11 +216,12 @@ pub unsafe extern "C" fn rt_mq_create(
 
     let mq = rt_object_allocate(ObjectClassType::ObjectClassMessageQueue as u32, name)
         as *mut rt_messagequeue as *mut RtMessageQueue;
+
     if mq == null_mut() {
         return mq;
     }
 
-    (*mq).parent.parent.flag = flag;
+    (*mq).parent.flag = flag;
 
     _ipc_object_init(&mut (*mq).parent);
 
@@ -222,7 +234,7 @@ pub unsafe extern "C" fn rt_mq_create(
         (msg_align_size as usize + mem::size_of::<RtMessage>()) * (*mq).max_msgs as usize,
     );
     if (*mq).msg_pool == null_mut() {
-        rt_object_delete(&mut (*mq).parent.parent as *mut BaseObject as *mut rt_object);
+        rt_object_delete(&mut (*mq).parent.parent as *mut KObjectBase as *mut rt_object);
         return null_mut();
     }
 
@@ -251,11 +263,11 @@ pub unsafe extern "C" fn rt_mq_create(
 pub unsafe extern "C" fn rt_mq_delete(mq: *mut RtMessageQueue) -> rt_err_t {
     assert!(mq != null_mut());
     assert!(
-        rt_object_get_type(&mut (*mq).parent.parent as *mut BaseObject as *mut rt_object)
+        rt_object_get_type(&mut (*mq).parent.parent as *mut KObjectBase as *mut rt_object)
             == ObjectClassType::ObjectClassMessageQueue as u8
     );
     assert!(
-        rt_object_is_systemobject(&mut (*mq).parent.parent as *mut BaseObject as *mut rt_object)
+        rt_object_is_systemobject(&mut (*mq).parent.parent as *mut KObjectBase as *mut rt_object)
             == RT_FALSE as i32
     );
 
@@ -266,7 +278,7 @@ pub unsafe extern "C" fn rt_mq_delete(mq: *mut RtMessageQueue) -> rt_err_t {
 
     rt_free((*mq).msg_pool);
 
-    rt_object_delete(&mut (*mq).parent.parent as *mut BaseObject as *mut rt_object);
+    rt_object_delete(&mut (*mq).parent.parent as *mut KObjectBase as *mut rt_object);
 
     RT_EOK as rt_err_t
 }
@@ -285,7 +297,7 @@ unsafe extern "C" fn _rt_mq_send_wait(
 
     assert!(mq != null_mut());
     assert!(
-        rt_object_get_type(&mut (*mq).parent.parent as *mut BaseObject as *mut rt_object)
+        rt_object_get_type(&mut (*mq).parent.parent as *mut KObjectBase as *mut rt_object)
             == ObjectClassType::ObjectClassMessageQueue as u8
     );
     assert!(buffer != null_mut());
@@ -304,12 +316,13 @@ unsafe extern "C" fn _rt_mq_send_wait(
 
     rt_object_hook_call!(
         rt_object_put_hook,
-        &mut (*mq).parent.parent as *mut BaseObject as *mut rt_object
+        &mut (*mq).parent.parent as *mut KObjectBase as *mut rt_object
     );
 
     let mut level = rt_hw_interrupt_disable();
 
     let mut msg = (*mq).msg_queue_free as *mut RtMessage;
+
     if msg.is_null() && timeout == 0 {
         rt_hw_interrupt_enable(level);
         return -(RT_EFULL as rt_err_t);
@@ -330,7 +343,7 @@ unsafe extern "C" fn _rt_mq_send_wait(
         let ret = _ipc_list_suspend(
             &mut (*mq).suspend_sender_thread,
             thread,
-            (*mq).parent.parent.flag,
+            (*mq).parent.flag,
             suspend_flag as u32,
         );
 
@@ -343,11 +356,11 @@ unsafe extern "C" fn _rt_mq_send_wait(
             tick_delta = rt_tick_get();
 
             rt_timer_control(
-                &mut (*thread).thread_timer,
+                &mut (*thread).thread_timer as *const _ as *mut Timer,
                 RT_TIMER_CTRL_SET_TIME as i32,
                 (&mut timeout) as *mut i32 as *mut c_void,
             );
-            rt_timer_start(&mut (*thread).thread_timer);
+            rt_timer_start(&mut (*thread).thread_timer as *const _ as *mut Timer);
         }
 
         rt_hw_interrupt_enable(level);
@@ -485,7 +498,7 @@ pub unsafe extern "C" fn rt_mq_urgent(
 ) -> rt_err_t {
     assert!(mq != null_mut());
     assert!(
-        rt_object_get_type(&mut (*mq).parent.parent as *mut BaseObject as *mut rt_object)
+        rt_object_get_type(&mut (*mq).parent.parent as *mut KObjectBase as *mut rt_object)
             == ObjectClassType::ObjectClassMessageQueue as u8
     );
     assert!(buffer != null_mut());
@@ -497,12 +510,13 @@ pub unsafe extern "C" fn rt_mq_urgent(
 
     rt_object_hook_call!(
         rt_object_put_hook,
-        &mut (*mq).parent.parent as *mut BaseObject as *mut rt_object
+        &mut (*mq).parent.parent as *mut KObjectBase as *mut rt_object
     );
 
     let mut level = rt_hw_interrupt_disable();
 
     let msg = (*mq).msg_queue_free as *mut RtMessage;
+
     if msg == null_mut() {
         rt_hw_interrupt_enable(level);
         return -(RT_EFULL as rt_err_t);
@@ -519,6 +533,7 @@ pub unsafe extern "C" fn rt_mq_urgent(
     level = rt_hw_interrupt_disable();
 
     (*msg).next = (*mq).msg_queue_head as *mut RtMessage;
+
     (*mq).msg_queue_head = msg as *mut c_void;
 
     if (*mq).msg_queue_tail.is_null() {
@@ -532,7 +547,7 @@ pub unsafe extern "C" fn rt_mq_urgent(
         return -(RT_EFULL as rt_err_t);
     }
 
-    if (*mq).parent.suspend_thread.is_empty() == false {
+    if !(*mq).parent.suspend_thread.is_empty() {
         _ipc_list_resume(&mut (*mq).parent.suspend_thread);
 
         rt_hw_interrupt_enable(level);
@@ -561,7 +576,7 @@ unsafe extern "C" fn _rt_mq_recv(
 
     assert!(mq != null_mut());
     assert!(
-        rt_object_get_type(&mut (*mq).parent.parent as *mut BaseObject as *mut rt_object)
+        rt_object_get_type(&mut (*mq).parent.parent as *mut KObjectBase as *mut rt_object)
             == ObjectClassType::ObjectClassMessageQueue as u8
     );
     assert!(buffer != null_mut());
@@ -574,7 +589,7 @@ unsafe extern "C" fn _rt_mq_recv(
     let thread = unsafe { crate::current_thread!().unwrap().as_mut() };
     rt_object_hook_call!(
         rt_object_trytake_hook,
-        &mut (*mq).parent.parent as *mut BaseObject as *mut rt_object
+        &mut (*mq).parent.parent as *mut KObjectBase as *mut rt_object
     );
 
     let mut level = rt_hw_interrupt_disable();
@@ -596,7 +611,7 @@ unsafe extern "C" fn _rt_mq_recv(
         let ret = _ipc_list_suspend(
             &mut (*mq).parent.suspend_thread,
             thread,
-            (*mq).parent.parent.flag,
+            (*mq).parent.flag,
             suspend_flag as u32,
         );
         if ret != RT_EOK as rt_err_t {
@@ -609,11 +624,11 @@ unsafe extern "C" fn _rt_mq_recv(
             tick_delta = rt_tick_get();
 
             rt_timer_control(
-                &mut (*thread).thread_timer,
+                &mut (*thread).thread_timer as *const _ as *mut Timer,
                 RT_TIMER_CTRL_SET_TIME as i32,
                 (&mut timeout) as *mut i32 as *mut c_void,
             );
-            rt_timer_start(&mut (*thread).thread_timer);
+            rt_timer_start(&mut (*thread).thread_timer as *const _ as *mut Timer);
         }
 
         rt_hw_interrupt_enable(level);
@@ -668,14 +683,14 @@ unsafe extern "C" fn _rt_mq_recv(
     (*msg).next = (*mq).msg_queue_free as *mut RtMessage;
     (*mq).msg_queue_free = msg as *mut c_void;
 
-    if (*mq).suspend_sender_thread.is_empty() == false {
+    if !(*mq).suspend_sender_thread.is_empty() {
         _ipc_list_resume(&mut (*mq).suspend_sender_thread);
 
         rt_hw_interrupt_enable(level);
 
         rt_object_hook_call!(
             rt_object_take_hook,
-            &mut (*mq).parent.parent as *mut BaseObject as *mut rt_object
+            &mut (*mq).parent.parent as *mut KObjectBase as *mut rt_object
         );
 
         Cpu::get_current_scheduler().do_task_schedule();
@@ -687,7 +702,7 @@ unsafe extern "C" fn _rt_mq_recv(
 
     rt_object_hook_call!(
         rt_object_take_hook,
-        &mut (*mq).parent.parent as *mut BaseObject as *mut rt_object
+        &mut (*mq).parent.parent as *mut KObjectBase as *mut rt_object
     );
 
     len as rt_ssize_t
@@ -749,7 +764,7 @@ pub unsafe extern "C" fn rt_mq_control(
 ) -> rt_err_t {
     assert!(mq != null_mut());
     assert!(
-        rt_object_get_type(&mut (*mq).parent.parent as *mut BaseObject as *mut rt_object)
+        rt_object_get_type(&mut (*mq).parent.parent as *mut KObjectBase as *mut rt_object)
             == ObjectClassType::ObjectClassMessageQueue as u8
     );
 
@@ -759,7 +774,7 @@ pub unsafe extern "C" fn rt_mq_control(
         _ipc_list_resume_all(&mut (*mq).parent.suspend_thread);
         _ipc_list_resume_all(&mut (*mq).suspend_sender_thread);
 
-        while (*mq).msg_queue_head.is_null() == false {
+        while !(*mq).msg_queue_head.is_null() {
             let msg = (*mq).msg_queue_head as *mut RtMessage;
 
             (*mq).msg_queue_head = (*msg).next as *mut c_void;
@@ -953,4 +968,35 @@ impl MessageQueue {
             Err(Error::from_errno(result))
         }
     }
+}
+
+#[no_mangle]
+#[allow(unused_unsafe)]
+pub extern "C" fn rt_msgqueue_info() {
+    let callback_forword = || {
+        println!("msgqueue entry suspend thread");
+        println!("-------- ----  --------------");
+    };
+    let callback = |node: &ListHead| unsafe {
+        let msgqueue =
+            &*(crate::list_head_entry!(node.as_ptr(), KObjectBase, list) as *const RtMessageQueue);
+        let _ = crate::format_name!(msgqueue.parent.parent.name.as_ptr(), 8);
+        print!(" {:04} ", msgqueue.entry);
+        if msgqueue.parent.suspend_thread.is_empty() {
+            println!(" {}", msgqueue.parent.suspend_thread.size());
+        } else {
+            print!(" {}:", msgqueue.parent.suspend_thread.size());
+            let head = &msgqueue.parent.suspend_thread;
+            list_head_for_each!(node, head, {
+                let thread = crate::thread_list_node_entry!(node.as_ptr()) as *mut RtThread;
+                let _ = crate::format_name!((*thread).parent.name.as_ptr(), 8);
+            });
+            print!("\n");
+        }
+    };
+    let _ = KObjectBase::get_info(
+        callback_forword,
+        callback,
+        ObjectClassType::ObjectClassMailBox as u8,
+    );
 }

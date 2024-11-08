@@ -71,6 +71,7 @@ extern void (*rt_object_take_hook)(struct rt_object *object);
 extern void (*rt_object_put_hook)(struct rt_object *object);
 #endif /* RT_USING_HOOK */
 
+#ifndef USE_RUST
 /**
  * @addtogroup IPC
  * @{
@@ -266,7 +267,7 @@ rt_inline rt_err_t _ipc_list_resume_all(rt_list_t *list)
 
     return RT_EOK;
 }
-#ifndef USE_RUST
+
 #ifdef RT_USING_SEMAPHORE
 /**
  * @addtogroup semaphore
@@ -330,7 +331,7 @@ rt_err_t rt_sem_init(rt_sem_t    sem,
     sem->value = (rt_uint16_t)value;
 
     /* set parent */
-    sem->parent.parent.flag = flag;
+    sem->parent.flag = flag;
 
     return RT_EOK;
 }
@@ -426,7 +427,7 @@ rt_sem_t rt_sem_create(const char *name, rt_uint32_t value, rt_uint8_t flag)
     sem->value = value;
 
     /* set parent */
-    sem->parent.parent.flag = flag;
+    sem->parent.flag = flag;
 
     return sem;
 }
@@ -553,7 +554,7 @@ static rt_err_t _rt_sem_take(rt_sem_t sem, rt_int32_t timeout, int suspend_flag)
             /* suspend thread */
             ret = _ipc_list_suspend(&(sem->parent.suspend_thread),
                                 thread,
-                                sem->parent.parent.flag,
+                                sem->parent.flag,
                                 suspend_flag);
             if (ret != RT_EOK)
             {
@@ -814,7 +815,7 @@ rt_inline void _thread_update_priority(struct rt_thread *thread, rt_uint8_t prio
 
             ret = _ipc_list_suspend(&(pending_mutex->parent.suspend_thread),
                                     thread,
-                                    pending_mutex->parent.parent.flag,
+                                    pending_mutex->parent.flag,
                                     suspend_flag);
             if (ret == RT_EOK)
             {
@@ -893,7 +894,7 @@ rt_err_t rt_mutex_init(rt_mutex_t mutex, const char *name, rt_uint8_t flag)
     rt_list_init(&(mutex->taken_list));
 
     /* flag can only be RT_IPC_FLAG_PRIO. RT_IPC_FLAG_FIFO cannot solve the unbounded priority inversion problem */
-    mutex->parent.parent.flag = RT_IPC_FLAG_PRIO;
+    mutex->parent.flag = RT_IPC_FLAG_PRIO;
 
     return RT_EOK;
 }
@@ -1098,7 +1099,7 @@ rt_mutex_t rt_mutex_create(const char *name, rt_uint8_t flag)
     rt_list_init(&(mutex->taken_list));
 
     /* flag can only be RT_IPC_FLAG_PRIO. RT_IPC_FLAG_FIFO cannot solve the unbounded priority inversion problem */
-    mutex->parent.parent.flag = RT_IPC_FLAG_PRIO;
+    mutex->parent.flag = RT_IPC_FLAG_PRIO;
 
     return mutex;
 }
@@ -1258,7 +1259,7 @@ static rt_err_t _rt_mutex_take(rt_mutex_t mutex, rt_int32_t timeout, int suspend
                 /* suspend current thread */
                 ret = _ipc_list_suspend(&(mutex->parent.suspend_thread),
                                     thread,
-                                    mutex->parent.parent.flag,
+                                    mutex->parent.flag,
                                     suspend_flag);
                 if (ret != RT_EOK)
                 {
@@ -1622,7 +1623,7 @@ rt_err_t rt_event_init(rt_event_t event, const char *name, rt_uint8_t flag)
     rt_object_init(&(event->parent.parent), RT_Object_Class_Event, name);
 
     /* set parent flag */
-    event->parent.parent.flag = flag;
+    event->parent.flag = flag;
 
     /* initialize ipc object */
     _ipc_object_init(&(event->parent));
@@ -1713,7 +1714,7 @@ rt_event_t rt_event_create(const char *name, rt_uint8_t flag)
         return event;
 
     /* set parent */
-    event->parent.parent.flag = flag;
+    event->parent.flag = flag;
 
     /* initialize ipc object */
     _ipc_object_init(&(event->parent));
@@ -1999,7 +2000,7 @@ static rt_err_t _rt_event_recv(rt_event_t   event,
         /* put thread to suspended thread list */
         ret = _ipc_list_suspend(&(event->parent.suspend_thread),
                             thread,
-                            event->parent.parent.flag,
+                            event->parent.flag,
                             suspend_flag);
         if (ret != RT_EOK)
         {
@@ -2179,7 +2180,7 @@ rt_err_t rt_mb_init(rt_mailbox_t mb,
     rt_object_init(&(mb->parent.parent), RT_Object_Class_MailBox, name);
 
     /* set parent flag */
-    mb->parent.parent.flag = flag;
+    mb->parent.flag = flag;
 
     /* initialize ipc object */
     _ipc_object_init(&(mb->parent));
@@ -2282,7 +2283,7 @@ rt_mailbox_t rt_mb_create(const char *name, rt_size_t size, rt_uint8_t flag)
         return mb;
 
     /* set parent */
-    mb->parent.parent.flag = flag;
+    mb->parent.flag = flag;
 
     /* initialize ipc object */
     _ipc_object_init(&(mb->parent));
@@ -2429,7 +2430,7 @@ static rt_err_t _rt_mb_send_wait(rt_mailbox_t mb,
         /* suspend current thread */
         ret = _ipc_list_suspend(&(mb->suspend_sender_thread),
                             thread,
-                            mb->parent.parent.flag,
+                            mb->parent.flag,
                             suspend_flag);
 
         if (ret != RT_EOK)
@@ -2724,7 +2725,7 @@ static rt_err_t _rt_mb_recv(rt_mailbox_t mb, rt_ubase_t *value, rt_int32_t timeo
         /* suspend current thread */
         ret = _ipc_list_suspend(&(mb->parent.suspend_thread),
                             thread,
-                            mb->parent.parent.flag,
+                            mb->parent.flag,
                             suspend_flag);
         if (ret != RT_EOK)
         {
@@ -2948,7 +2949,7 @@ rt_err_t rt_mq_init(rt_mq_t     mq,
     rt_object_init(&(mq->parent.parent), RT_Object_Class_MessageQueue, name);
 
     /* set parent flag */
-    mq->parent.parent.flag = flag;
+    mq->parent.flag = flag;
 
     /* initialize ipc object */
     _ipc_object_init(&(mq->parent));
@@ -3081,7 +3082,7 @@ rt_mq_t rt_mq_create(const char *name,
         return mq;
 
     /* set parent */
-    mq->parent.parent.flag = flag;
+    mq->parent.flag = flag;
 
     /* initialize ipc object */
     _ipc_object_init(&(mq->parent));
@@ -3269,7 +3270,7 @@ static rt_err_t _rt_mq_send_wait(rt_mq_t mq,
         /* suspend current thread */
         ret = _ipc_list_suspend(&(mq->suspend_sender_thread),
                             thread,
-                            mq->parent.parent.flag,
+                            mq->parent.flag,
                             suspend_flag);
         if (ret != RT_EOK)
         {
@@ -3662,7 +3663,7 @@ static rt_ssize_t _rt_mq_recv(rt_mq_t mq,
         /* suspend current thread */
         ret = _ipc_list_suspend(&(mq->parent.suspend_thread),
                             thread,
-                            mq->parent.parent.flag,
+                            mq->parent.flag,
                             suspend_flag);
         if (ret != RT_EOK)
         {

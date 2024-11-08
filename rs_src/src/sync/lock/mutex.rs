@@ -1,20 +1,20 @@
-use crate::cpu::{self, Cpu, Cpus};
+use crate::cpu::Cpu;
 use crate::linked_list::*;
 use crate::object::{
     rt_object_get_type, rt_object_put_hook, rt_object_take_hook, rt_object_trytake_hook,
-    BaseObject, ObjectClassType,
+    KObjectBase, KernelObject, ObjectClassType,
 };
 use crate::rt_bindings::{self, *};
 use crate::sync::ipc_common::*;
 use crate::thread::{rt_thread_control, RtThread};
 use crate::{
-    current_thread_ptr, list_head_for_each, rt_debug_in_thread_context, rt_debug_not_in_interrupt,
+    current_thread_ptr, list_head_for_each, print, println, rt_debug_in_thread_context,
+    rt_debug_not_in_interrupt,
 };
+
 use core::ffi;
 use core::pin::Pin;
-use core::ptr::{null, null_mut};
-use core::sync::atomic::Ordering::{Acquire, Relaxed, Release};
-use core::sync::atomic::*;
+use core::ptr::null_mut;
 use kernel::rt_bindings::rt_object;
 use kernel::sync::RawSpin;
 use kernel::{rt_debug_scheduler_available, rt_object_hook_call};
@@ -36,28 +36,27 @@ pub struct MutexBackend;
 
 // SAFETY: The underlying kernel `struct mutex` object ensures mutual exclusion.
 unsafe impl super::Backend for MutexBackend {
-    type State = rt_bindings::rt_mutex;
+    type State = RtMutex;
     type GuardState = ();
 
     unsafe fn init(ptr: *mut Self::State, name: *const core::ffi::c_char) {
         // SAFETY: The safety requirements ensure that `ptr` is valid for writes, and `name` and
         // `key` are valid for read indefinitely.
-        unsafe { rt_bindings::rt_mutex_init(ptr, name, rt_bindings::RT_IPC_FLAG_PRIO as u8) };
+        unsafe { rt_mutex_init(ptr, name, rt_bindings::RT_IPC_FLAG_PRIO as u8) };
     }
 
     unsafe fn lock(ptr: *mut Self::State) -> Self::GuardState {
         // SAFETY: The safety requirements of this function ensure that `ptr` points to valid
         // memory, and that it has been initialised before.
-        unsafe { rt_bindings::rt_mutex_take(ptr, rt_bindings::RT_WAITING_FOREVER) };
+        unsafe { rt_mutex_take(ptr, rt_bindings::RT_WAITING_FOREVER) };
     }
 
     unsafe fn unlock(ptr: *mut Self::State, _guard_state: &Self::GuardState) {
         // SAFETY: The safety requirements of this function ensure that `ptr` is valid and that the
         // caller is the owner of the mutex.
-        unsafe { rt_bindings::rt_mutex_release(ptr) };
+        unsafe { rt_mutex_release(ptr) };
     }
 }
-
 #[repr(C)]
 #[pin_data]
 pub struct RtMutex {
@@ -84,7 +83,7 @@ pub struct RtMutex {
 
 impl RtMutex {
     #[inline]
-    pub(crate) fn update_priority(&mut self) -> rt_uint8_t {
+    pub(crate) fn update_priority(&mut self) -> u8 {
         unsafe {
             if self.parent.suspend_thread.is_empty() == false {
                 if let Some(node) = self.parent.suspend_thread.next() {
@@ -116,8 +115,8 @@ unsafe extern "C" fn _thread_get_mutex_priority(thread: *mut RtThread) -> rt_uin
 #[inline]
 unsafe extern "C" fn _thread_update_priority(
     thread: *mut RtThread,
-    priority: ffi::c_uchar,
-    suspend_flag: ffi::c_int,
+    priority: rt_uint8_t,
+    suspend_flag: rt_int32_t,
 ) {
     assert!(!thread.is_null());
     (*thread).update_priority(priority, suspend_flag as u32);
@@ -133,7 +132,7 @@ pub unsafe extern "C" fn rt_mutex_init(
     assert!(!mutex.is_null());
 
     rt_object_init(
-        &mut (*mutex).parent.parent as *mut BaseObject as *mut rt_object,
+        &mut (*mutex).parent.parent as *mut KObjectBase as *mut rt_object,
         ObjectClassType::ObjectClassMutex as rt_object_class_type,
         name,
     );
@@ -149,7 +148,7 @@ pub unsafe extern "C" fn rt_mutex_init(
 
     // Flag can only be RT_IPC_FLAG_PRIO.
     // RT_IPC_FLAG_FIFO cannot solve the unbounded priority inversion problem
-    (*mutex).parent.parent.flag = RT_IPC_FLAG_PRIO as rt_uint8_t;
+    (*mutex).parent.flag = RT_IPC_FLAG_PRIO as rt_uint8_t;
 
     RT_EOK as rt_err_t
 }
@@ -158,7 +157,7 @@ pub unsafe extern "C" fn rt_mutex_init(
 #[no_mangle]
 pub unsafe extern "C" fn rt_mutex_detach(mutex: *mut RtMutex) -> rt_err_t {
     assert!(!mutex.is_null());
-    let obj_ptr = (&mut (*mutex).parent.parent) as *mut BaseObject as *mut rt_object;
+    let obj_ptr = (&mut (*mutex).parent.parent) as *mut KObjectBase as *mut rt_object;
     assert_eq!(
         rt_object_get_type(obj_ptr),
         ObjectClassType::ObjectClassMutex as u8
@@ -278,7 +277,7 @@ pub unsafe extern "C" fn rt_mutex_create(
     (*mutex).hold = 0;
     (*mutex).ceiling_priority = 0xFF;
     ListHead::new().__pinned_init(&mut (*mutex).taken_list);
-    (*mutex).parent.parent.flag = RT_IPC_FLAG_PRIO as rt_uint8_t;
+    (*mutex).parent.flag = RT_IPC_FLAG_PRIO as rt_uint8_t;
 
     mutex
 }
@@ -287,7 +286,7 @@ pub unsafe extern "C" fn rt_mutex_create(
 #[no_mangle]
 pub unsafe extern "C" fn rt_mutex_delete(mutex: *mut RtMutex) -> rt_err_t {
     assert!(mutex != null_mut());
-    let obj_ptr = &mut (*mutex).parent.parent as *mut BaseObject as *mut rt_object;
+    let obj_ptr = &mut (*mutex).parent.parent as *mut KObjectBase as *mut rt_object;
     assert_eq!(
         rt_object_get_type(obj_ptr),
         ObjectClassType::ObjectClassMutex as rt_uint8_t
@@ -320,7 +319,7 @@ unsafe extern "C" fn _rt_mutex_take(
     let mut timeout = timeout;
     rt_debug_scheduler_available!(true);
     assert!(!mutex.is_null());
-    let obj_ptr = &mut (*mutex).parent.parent as *mut BaseObject as *mut rt_object;
+    let obj_ptr = &mut (*mutex).parent.parent as *mut KObjectBase as *mut rt_object;
     assert_eq!(
         rt_object_get_type(obj_ptr),
         ObjectClassType::ObjectClassMutex as rt_uint8_t
@@ -376,7 +375,7 @@ unsafe extern "C" fn _rt_mutex_take(
                 let mut ret = _ipc_list_suspend(
                     &mut (*mutex).parent.suspend_thread,
                     thread,
-                    (*mutex).parent.parent.flag,
+                    (*mutex).parent.flag,
                     suspend_flag as u32,
                 );
                 if ret != RT_EOK as rt_err_t {
@@ -385,8 +384,7 @@ unsafe extern "C" fn _rt_mutex_take(
                 }
 
                 // Set pending object in thread to this mutex
-                (*thread).pending_object =
-                    &mut (*mutex).parent.parent as *mut BaseObject as *mut rt_object;
+                (*thread).pending_object = &mut (*mutex).parent.parent as *mut KObjectBase;
 
                 // Update the priority level of mutex
                 if priority < (*mutex).priority {
@@ -397,13 +395,12 @@ unsafe extern "C" fn _rt_mutex_take(
                 }
 
                 if timeout > 0 {
-                    rt_timer_control(
-                        &mut (*thread).thread_timer,
-                        RT_TIMER_CTRL_SET_TIME as i32,
+                    (*thread).thread_timer.timer_control(
+                        RT_TIMER_CTRL_SET_TIME,
                         (&mut timeout) as *mut i32 as *mut ffi::c_void,
                     );
 
-                    rt_timer_start(&mut (*thread).thread_timer);
+                    (*thread).thread_timer.timer_start();
                 }
 
                 rt_hw_interrupt_enable(level);
@@ -452,7 +449,7 @@ unsafe extern "C" fn _rt_mutex_take(
 
     rt_object_hook_call!(
         rt_object_take_hook,
-        &(*mutex).parent.parent as *const BaseObject as *const rt_object
+        &(*mutex).parent.parent as *const KObjectBase as *const rt_object
     );
 
     RT_EOK as rt_err_t
@@ -490,7 +487,7 @@ pub unsafe extern "C" fn rt_mutex_trytake(mutex: *mut RtMutex) -> rt_err_t {
 pub unsafe extern "C" fn rt_mutex_release(mutex: *mut RtMutex) -> rt_err_t {
     assert!(!mutex.is_null());
     assert_eq!(
-        rt_object_get_type(&mut (*mutex).parent.parent as *mut BaseObject as *mut rt_object),
+        rt_object_get_type(&mut (*mutex).parent.parent as *mut KObjectBase as *mut rt_object),
         ObjectClassType::ObjectClassMutex as rt_uint8_t
     );
 
@@ -503,7 +500,7 @@ pub unsafe extern "C" fn rt_mutex_release(mutex: *mut RtMutex) -> rt_err_t {
 
     rt_object_hook_call!(
         rt_object_put_hook,
-        &mut (*mutex).parent.parent as *mut BaseObject as *mut rt_object
+        &mut (*mutex).parent.parent as *mut KObjectBase as *mut rt_object
     );
 
     if thread != (*mutex).owner {
@@ -587,9 +584,44 @@ pub unsafe extern "C" fn rt_mutex_control(
 ) -> rt_err_t {
     assert!(!mutex.is_null());
     assert_eq!(
-        rt_object_get_type(&mut (*mutex).parent.parent as *mut BaseObject as *mut rt_object),
+        rt_object_get_type(&mut (*mutex).parent.parent as *mut KObjectBase as *mut rt_object),
         ObjectClassType::ObjectClassMutex as rt_uint8_t
     );
 
     -(RT_ERROR as rt_err_t)
+}
+#[no_mangle]
+#[allow(unused_unsafe)]
+pub extern "C" fn rt_mutex_info() {
+    let callback_forword = || {
+        println!("mutex      owner  hold priority suspend thread");
+        println!("-------- -------- ---- -------- --------------");
+    };
+    let callback = |node: &ListHead| unsafe {
+        let mutex = &*(crate::list_head_entry!(node.as_ptr(), KObjectBase, list) as *const RtMutex);
+        let _ = crate::format_name!(mutex.parent.parent.name.as_ptr(), 8);
+        if mutex.owner.is_null() {
+            print!(" (NULL)   ");
+        } else {
+            let _ = crate::format_name!((*mutex.owner).parent.name.as_ptr(), 8);
+        }
+        print!("{:04}", mutex.hold);
+        print!("{:>8}  ", mutex.priority);
+        if mutex.parent.suspend_thread.is_empty() {
+            println!("0000");
+        } else {
+            print!("{}:", mutex.parent.suspend_thread.size());
+            let head = &mutex.parent.suspend_thread;
+            list_head_for_each!(node, head, {
+                let thread = crate::thread_list_node_entry!(node.as_ptr()) as *mut RtThread;
+                let _ = crate::format_name!((*thread).parent.name.as_ptr(), 8);
+            });
+            print!("\n");
+        }
+    };
+    let _ = KObjectBase::get_info(
+        callback_forword,
+        callback,
+        ObjectClassType::ObjectClassMutex as u8,
+    );
 }

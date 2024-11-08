@@ -1,11 +1,9 @@
 pub mod event;
-//mod futex;
 pub mod ipc_common;
 pub mod lock;
 pub mod mailbox;
 pub mod message_queue;
 pub mod semaphore;
-//mod wait_queue;
 
 pub use lock::heaplock::{new_heaplock, HeapLock};
 pub use lock::mutex::{new_mutex, Mutex};

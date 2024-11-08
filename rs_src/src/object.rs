@@ -1,252 +1,241 @@
 use crate::{
-    linked_list::ListHead, rt_bindings::*, static_init::UnsafeStaticInit, sync::RawSpin,
+    allocator::{rt_free, rt_malloc},
+    klibc::{rt_memset, rt_strncpy},
+    linked_list::ListHead,
+    process::*,
+    rt_bindings::*,
     thread::RtThread,
 };
 
-use core::{ffi, mem, pin::Pin, ptr, slice};
-use pinned_init::*;
+use core::{ffi, fmt::Debug, mem, ptr, slice};
+use {
+    downcast_rs::{impl_downcast, Downcast},
+    pinned_init::*,
+};
 
-type DestroyFunc = extern "C" fn(*mut ffi::c_void) -> rt_err_t;
+/// Base kernel Object
+#[pin_data]
+#[derive(Debug)]
+#[repr(C)]
+pub struct KObjectBase {
+    /// TODO: change type to String
+    /// name of kernel object
+    pub name: [i8; NAME_MAX],
+    /// type of kernel object
+    pub type_: u8,
+    /// list node of kernel object
+    #[pin]
+    pub list: ListHead,
+}
+
+impl KObjectBase {
+    pub(crate) fn init(&mut self, type_: u8, name: *const i8) {
+        self.init_internal(type_ | OBJECT_CLASS_STATIC, name);
+    }
+
+    pub(crate) fn init_internal(&mut self, type_: u8, name: *const i8) {
+        self.type_ = type_;
+        unsafe {
+            rt_strncpy(self.name.as_mut_ptr(), name, (NAME_MAX - 1) as usize);
+            crate::rt_object_hook_call!(OBJECT_ATTACH_HOOK, self as *const _ as *const rt_object);
+        }
+        if type_ & (!OBJECT_CLASS_STATIC) != ObjectClassType::ObjectClassProcess as u8 {
+            insert(type_, &mut self.list);
+        }
+    }
+
+    pub(crate) fn new(type_: u8, name: *const i8) -> *mut KObjectBase {
+        use core::ffi::c_void;
+        let object_size = ObjectClassType::get_object_size(type_ as u8);
+
+        crate::rt_debug_not_in_interrupt!();
+
+        let object = unsafe { rt_malloc(object_size) as *mut KObjectBase };
+        if object.is_null() {
+            return ptr::null_mut();
+        }
+        unsafe {
+            rt_memset(object as *mut c_void, 0x0, object_size);
+        }
+
+        let obj_ref = unsafe { &mut *object };
+        obj_ref.init_internal(type_, name);
+        object
+    }
+
+    pub(crate) fn detach(&mut self) {
+        unsafe {
+            crate::rt_object_hook_call!(OBJECT_DETACH_HOOK, self as *const _ as *const rt_object)
+        };
+        remove(self);
+        self.type_ = ObjectClassType::ObjectClassUninit as u8;
+    }
+
+    pub(crate) fn delete(&mut self) {
+        assert!((self.type_ & OBJECT_CLASS_STATIC) == 0);
+        unsafe {
+            crate::rt_object_hook_call!(OBJECT_DETACH_HOOK, self as *const _ as *const rt_object)
+        };
+        remove(self);
+        self.type_ = ObjectClassType::ObjectClassUninit as u8;
+        unsafe {
+            rt_free(self as *mut _ as *mut ffi::c_void);
+        }
+    }
+}
+
+pub const NAME_MAX: usize = 8;
 
 #[repr(u8)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ObjectClassType {
     ObjectClassUninit = 0,
-    ObjectClassThread = 1,
+    //< The object is a process.
+    ObjectClassProcess,
     //< The object is a thread.
+    ObjectClassThread,
+    //< The object is a semaphore.
     #[cfg(feature = "RT_USING_SEMAPHORE")]
     ObjectClassSemaphore,
-    //< The object is a semaphore.
+    //< The object is a mutex.
     #[cfg(feature = "RT_USING_MUTEX")]
     ObjectClassMutex,
-    //< The object is a mutex.
+    //< The object is an event.
     #[cfg(feature = "RT_USING_EVENT")]
     ObjectClassEvent,
-    //< The object is an event.
+    //< The object is a mailbox.
     #[cfg(feature = "RT_USING_MAILBOX")]
     ObjectClassMailBox,
-    //< The object is a mailbox.
+    //< The object is a message queue.
     #[cfg(feature = "RT_USING_MESSAGEQUEUE")]
     ObjectClassMessageQueue,
-    //< The object is a message queue.
+    //< The object is a memory heap.
     #[cfg(feature = "RT_USING_MEMHEAP")]
     ObjectClassMemHeap,
-    //< The object is a memory heap.
+    //< The object is a memory pool.
     #[cfg(feature = "RT_USING_MEMPOOL")]
     ObjectClassMemPool,
-    //< The object is a memory pool.
+    //< The object is a device.
     #[cfg(feature = "RT_USING_DEVICE")]
     ObjectClassDevice,
-    //< The object is a device.
-    ObjectClassTimer,
     //< The object is a timer.
-    #[cfg(feature = "RT_USING_MODULE")]
-    ObjectClassModule,
-    //< The object is a module.
+    ObjectClassTimer,
+    //< The object is memory.
     #[cfg(feature = "RT_USING_HEAP")]
     ObjectClassMemory,
-    //< The object is memory.
-    #[cfg(feature = "RT_USING_SMART")]
-    ObjectClassChannel,
-    //< The object is an IPC channel.
-    #[cfg(feature = "RT_USING_HEAP")]
-    ObjectClassCustom,
-    //< The object is a custom object.
     ObjectClassUnknown,
 }
 
+/// Common interface of a kernel object.
+pub trait KernelObject: Downcast {
+    /// Get the name of the type of the kernel object.
+    fn type_name(&self) -> u8;
+    /// Get kernel object's name.
+    fn name(&self) -> *const i8;
+    /// Set kernel object's name.
+    fn set_name(&mut self, name: *const i8);
+    /// Checks whether the kernel object is a static object.
+    fn is_static_kobject(&self) -> bool;
+    /// This function is used to iterate all kernel objects.
+    fn foreach<F>(callback: F, type_: u8) -> Result<(), i32>
+    where
+        F: Fn(&ListHead),
+        Self: Sized;
+    /// Get the kernel object info.
+    fn get_info<FF, F>(callback_forword: FF, callback: F, type_: u8) -> Result<(), i32>
+    where
+        FF: Fn(),
+        F: Fn(&ListHead),
+        Self: Sized;
+}
+
+impl_downcast!(KernelObject);
+
+impl KernelObject for KObjectBase {
+    fn type_name(&self) -> u8 {
+        self.type_ & (!OBJECT_CLASS_STATIC)
+    }
+
+    fn name(&self) -> *const i8 {
+        self.name.as_ptr()
+    }
+
+    fn set_name(&mut self, name: *const i8) {
+        assert!(!name.is_null());
+        unsafe {
+            rt_strncpy(self.name.as_mut_ptr(), name, (NAME_MAX - 1) as usize);
+        }
+    }
+
+    fn is_static_kobject(&self) -> bool {
+        let obj_type = self.type_;
+        if (obj_type & OBJECT_CLASS_STATIC) != 0 {
+            return true;
+        }
+        return false;
+    }
+
+    fn foreach<F>(callback: F, type_: u8) -> Result<(), i32>
+    where
+        F: Fn(&ListHead),
+        Self: Sized,
+    {
+        foreach(callback, type_)
+    }
+
+    fn get_info<FF, F>(callback_forword: FF, callback: F, type_: u8) -> Result<(), i32>
+    where
+        FF: Fn(),
+        F: Fn(&ListHead),
+        Self: Sized,
+    {
+        callback_forword();
+        Self::foreach(callback, type_)
+    }
+}
+
 /// The object is a static object.
-const OBJECT_CLASS_STATIC: u8 = 0x80;
-
-#[pin_data]
-//#[derive(Debug)]
-#[repr(C)]
-struct ObjectInformation {
-    pub(crate) spinlock: RawSpin,
-    #[pin]
-    pub(crate) object_list: ListHead,
-    object_size: usize,
-    obj_type: ObjectClassType,
-}
-
-#[doc = " Base structure of Kernel object"]
-#[pin_data]
-#[derive(Debug)]
-#[repr(C)]
-pub struct BaseObject {
-    #[doc = "< dynamic name of kernel object"]
-    pub name: [i8; RT_NAME_MAX as usize],
-    #[doc = "< type of kernel object"]
-    pub type_: u8,
-    #[doc = "< flag of kernel object"]
-    pub flag: u8,
-    #[doc = "< list node of kernel object"]
-    #[pin]
-    list: ListHead,
-}
-
-#[pin_data]
-#[derive(Debug)]
-#[repr(C)]
-struct CustomObject {
-    #[pin]
-    parent: BaseObject,
-    destroy: Option<DestroyFunc>,
-    data: *mut ffi::c_void,
-}
-
-#[pin_data]
-pub(crate) struct ObjectContainer {
-    #[pin]
-    data: [ObjectInformation; ObjectClassType::ObjectClassUnknown as usize - 1],
-}
-
-pub(crate) static mut OBJECT_CONTAINER: UnsafeStaticInit<ObjectContainer, ObjectContainerInit> =
-    UnsafeStaticInit::new(ObjectContainerInit);
-
-pub(crate) struct ObjectContainerInit;
-unsafe impl PinInit<ObjectContainer> for ObjectContainerInit {
-    unsafe fn __pinned_init(
-        self,
-        slot: *mut ObjectContainer,
-    ) -> Result<(), core::convert::Infallible> {
-        let init = ObjectContainer::new();
-        unsafe { init.__pinned_init(slot) }
-    }
-}
-
-impl ObjectContainer {
-    fn new() -> impl PinInit<Self> {
-        pin_init!(Self {
-            data <- pin_init_array_from_fn(|i| ObjectInformation::new(i as u8)),
-        })
-    }
-}
+pub(crate) const OBJECT_CLASS_STATIC: u8 = 0x80;
 
 impl ObjectClassType {
     // 为枚举类型添加方法
     fn get_object_size(index: u8) -> usize {
         match index {
-            x if x == Self::ObjectClassThread as u8 => mem::size_of::<RtThread>(),
+            //< The object is a process.
+            x if x == Self::ObjectClassProcess as u8 => mem::size_of::<Kprocess>(),
             //< The object is a thread.
+            x if x == Self::ObjectClassThread as u8 => mem::size_of::<RtThread>(),
+            //< The object is a semaphore.
             #[cfg(feature = "RT_USING_SEMAPHORE")]
             x if x == Self::ObjectClassSemaphore as u8 => mem::size_of::<rt_semaphore>(),
-            //< The object is a semaphore.
+            //< The object is a mutex.
             #[cfg(feature = "RT_USING_MUTEX")]
             x if x == Self::ObjectClassMutex as u8 => mem::size_of::<rt_mutex>(),
-            //< The object is a mutex.
+            //< The object is an event.
             #[cfg(feature = "RT_USING_EVENT")]
             x if x == Self::ObjectClassEvent as u8 => mem::size_of::<rt_event>(),
-            //< The object is an event.
+            //< The object is a mailbox.
             #[cfg(feature = "RT_USING_MAILBOX")]
             x if x == Self::ObjectClassMailBox as u8 => mem::size_of::<rt_mailbox>(),
-            //< The object is a mailbox.
+            //< The object is a message queue.
             #[cfg(feature = "RT_USING_MESSAGEQUEUE")]
             x if x == Self::ObjectClassMessageQueue as u8 => mem::size_of::<rt_messagequeue>(),
-            //< The object is a message queue.
+            //< The object is a memory heap.
             #[cfg(feature = "RT_USING_MEMHEAP")]
             x if x == Self::ObjectClassMemHeap as u8 => mem::size_of::<rt_memheap>(),
-            //< The object is a memory heap.
+            //< The object is a memory pool.
             #[cfg(feature = "RT_USING_MEMPOOL")]
             x if x == Self::ObjectClassMemPool as u8 => mem::size_of::<rt_mempool>(),
-            //< The object is a memory pool.
+            //< The object is a device.
             #[cfg(feature = "RT_USING_DEVICE")]
             x if x == Self::ObjectClassDevice as u8 => mem::size_of::<rt_device>(),
-            //< The object is a device.
-            x if x == Self::ObjectClassTimer as u8 => mem::size_of::<rt_timer>(),
             //< The object is a timer.
-            #[cfg(feature = "RT_USING_MODULE")]
-            x if x == Self::ObjectClassModule as u8 => mem::size_of::<rt_dlmodule>(),
-            //< The object is a module.
+            x if x == Self::ObjectClassTimer as u8 => mem::size_of::<rt_timer>(),
+            //< The object is memory.
             #[cfg(feature = "RT_USING_HEAP")]
             x if x == Self::ObjectClassMemory as u8 => mem::size_of::<rt_memory>(),
-            //< The object is memory.
-            #[cfg(feature = "RT_USING_SMART")]
-            x if x == Self::ObjectClassChannel as u8 => mem::size_of::<rt_channel>(),
-            //< The object is an IPC channel.
-            #[cfg(feature = "RT_USING_HEAP")]
-            x if x == Self::ObjectClassCustom as u8 => mem::size_of::<CustomObject>(),
-
-            _ => unreachable!("not a kernel object type!"),
+            _ => unreachable!("not a static kobject type!"),
         }
-    }
-}
-
-impl ObjectInformation {
-    fn new(index: u8) -> impl PinInit<Self> {
-        pin_init!(Self {
-            spinlock: RawSpin::new(),
-            object_list <- ListHead::new(),
-            object_size: ObjectClassType::get_object_size(index + 1),
-            obj_type: unsafe { mem::transmute(index + 1) },
-        })
-    }
-
-    #[inline]
-    pub fn get_info_by_type(object_type: u8) -> Option<&'static ObjectInformation> {
-        if object_type > ObjectClassType::ObjectClassUninit as u8
-            && object_type < ObjectClassType::ObjectClassUnknown as u8
-        {
-            Some(unsafe { &OBJECT_CONTAINER.data[(object_type - 1) as usize] })
-        } else {
-            None
-        }
-    }
-
-    pub fn size(object_type: u8) -> usize {
-        if object_type > ObjectClassType::ObjectClassUninit as u8
-            && object_type < ObjectClassType::ObjectClassUnknown as u8
-        {
-            let info = unsafe { &OBJECT_CONTAINER.data[(object_type - 1) as usize] };
-            info.spinlock.acquire();
-            info.object_list.size()
-        } else {
-            0
-        }
-    }
-
-    pub fn get_objects_by_type(object_type: u8, objects: &mut [*mut BaseObject]) -> usize {
-        if object_type > ObjectClassType::ObjectClassUninit as u8
-            && object_type < ObjectClassType::ObjectClassUnknown as u8
-        {
-            let mut count: usize = 0;
-            let maxlen: usize = objects.len();
-            let info = unsafe { &OBJECT_CONTAINER.data[(object_type - 1) as usize] };
-            info.spinlock.acquire();
-            crate::list_head_for_each!(node, &info.object_list, {
-                let object = unsafe { crate::list_head_entry!(node.as_ptr(), BaseObject, list) };
-                objects[count] = object as *mut BaseObject;
-                count += 1;
-                if count >= maxlen {
-                    break;
-                }
-            });
-            count
-        } else {
-            0
-        }
-    }
-}
-
-/// This function will return the specified type of object information.
-///
-/// # Arguments
-///
-/// * `object_type` - The type of object, which can be RT_Object_Class_Thread, Semaphore, Mutex, etc.
-///
-/// # Returns
-///
-/// The object type information or None if not found.
-#[no_mangle]
-pub extern "C" fn rt_object_get_information(
-    object_type: rt_object_class_type,
-) -> *const rt_object_information {
-    if let Some(info) =
-        ObjectInformation::get_info_by_type(object_type as u8 & (!OBJECT_CLASS_STATIC))
-    {
-        info as *const _ as *const rt_object_information
-    } else {
-        core::ptr::null_mut()
     }
 }
 
@@ -261,7 +250,7 @@ pub extern "C" fn rt_object_get_information(
 /// The length of object list.
 #[no_mangle]
 pub extern "C" fn rt_object_get_length(object_type: rt_object_class_type) -> usize {
-    ObjectInformation::size(object_type as u8)
+    size(object_type as u8)
 }
 
 /// This function will copy the object pointer of the specified type, with the maximum size specified by maxlen.
@@ -285,9 +274,9 @@ pub unsafe extern "C" fn rt_object_get_pointers(
         return 0;
     }
 
-    let object_slice: &mut [*mut BaseObject] =
-        slice::from_raw_parts_mut(pointers as *mut *mut BaseObject, maxlen);
-    ObjectInformation::get_objects_by_type(object_type as u8, object_slice)
+    let object_slice: &mut [*mut KObjectBase] =
+        slice::from_raw_parts_mut(pointers as *mut *mut KObjectBase, maxlen);
+    get_objects_by_type(object_type as u8, object_slice)
 }
 
 /// This function will initialize an object and add it to object system
@@ -310,81 +299,12 @@ pub extern "C" fn rt_object_init(
     name: *const ffi::c_char,
 ) {
     assert!(!object.is_null());
-    let information = ObjectInformation::get_info_by_type(type_ as u8).unwrap();
-
+    let obj_ref = unsafe { &mut *(object as *mut KObjectBase) };
     #[cfg(feature = "RT_USING_DEBUG")]
-    {
-        let _guard = information.spinlock.acquire();
-        crate::list_head_for_each!(node, &information.object_list, {
-            let obj = unsafe { crate::list_head_entry!(node.as_ptr(), BaseObject, list) };
-            assert!(!ptr::eq(object, obj as *const rt_object));
-        });
-    }
-    let obj_ref = unsafe { &mut *(object as *mut BaseObject) };
+    object_addr_detect(type_ as u8, obj_ref);
     // initialize object's parameters
     // set object type to static
-    let type_ = type_ as u8 | OBJECT_CLASS_STATIC;
-
-    rt_object_init_internal(information, obj_ref, type_, name);
-}
-
-pub(crate) fn rt_object_init_dyn(
-    object: *mut rt_object,
-    type_: rt_object_class_type,
-    name: *const ffi::c_char,
-) {
-    assert!(!object.is_null());
-
-    let information = ObjectInformation::get_info_by_type(type_ as u8).unwrap();
-    let obj_ref = unsafe { &mut *(object as *mut BaseObject) };
-
-    rt_object_init_internal(information, obj_ref, type_ as u8, name);
-}
-
-#[inline]
-fn rt_object_init_internal(
-    information: &ObjectInformation,
-    obj_ref: &mut BaseObject,
-    type_: u8,
-    name: *const ffi::c_char,
-) {
-    obj_ref.type_ = type_;
-
-    #[cfg(feature = "RT_NAME_MAX")]
-    unsafe {
-        rt_strncpy(obj_ref.name.as_mut_ptr(), name, RT_NAME_MAX - 1);
-    }
-
-    #[cfg(not(feature = "RT_NAME_MAX"))]
-    {
-        obj_ref.name = name;
-    }
-
-    unsafe {
-        crate::rt_object_hook_call!(OBJECT_ATTACH_HOOK, obj_ref as *const _ as *const rt_object);
-    }
-
-    #[cfg(feature = "RT_USING_MODULE")]
-    let module = unsafe { dlmodule_self() };
-
-    let _guard = information.spinlock.acquire();
-    #[cfg(feature = "RT_USING_MODULE")]
-    if !module.is_null() {
-        unsafe {
-            Pin::new_unchecked(&mut obj_ref.list).insert_next(&(*module).object_list);
-            obj_ref.module_id = module as *mut ffi::c_void;
-        }
-    } else {
-        // insert object into information object list
-        unsafe {
-            Pin::new_unchecked(&mut obj_ref.list).insert_next(&information.object_list);
-        }
-    }
-
-    unsafe {
-        #[cfg(not(feature = "RT_USING_MODULE"))]
-        Pin::new_unchecked(&mut obj_ref.list).insert_next(&information.object_list);
-    }
+    obj_ref.init(type_ as u8, name);
 }
 
 /// This function will detach a static object from the object system,
@@ -396,22 +316,8 @@ fn rt_object_init_internal(
 #[no_mangle]
 pub extern "C" fn rt_object_detach(object: *mut rt_object) {
     assert!(!object.is_null());
-    unsafe { crate::rt_object_hook_call!(OBJECT_DETACH_HOOK, object) };
-
-    //let obj = unsafe { Box::leak(Box::from_raw(object as *mut BaseObject)) };
-    let obj = unsafe { &mut *object };
-    if let Some(information) =
-        ObjectInformation::get_info_by_type(obj.type_ & (!OBJECT_CLASS_STATIC))
-    {
-        information.spinlock.acquire();
-        unsafe { Pin::new_unchecked(&mut obj.list).remove() };
-        obj.type_ = ObjectClassType::ObjectClassUninit as u8;
-    } else {
-        panic!(
-            "object type not find. name: {:?}, type: {:?}",
-            obj.name, obj.type_
-        );
-    }
+    let obj = unsafe { &mut *(object as *mut KObjectBase) };
+    obj.detach();
 }
 
 /// This function will allocate an object from object system.
@@ -427,23 +333,7 @@ pub extern "C" fn rt_object_allocate(
     type_: rt_object_class_type,
     name: *const ffi::c_char,
 ) -> rt_object_t {
-    // get object information
-    use core::ffi::c_void;
-    let information = ObjectInformation::get_info_by_type(type_ as u8).unwrap();
-
-    crate::rt_debug_not_in_interrupt!();
-
-    let object = unsafe { rt_malloc(information.object_size as u32) as *mut BaseObject };
-    if object.is_null() {
-        return ptr::null_mut();
-    }
-    unsafe {
-        rt_memset(object as *mut c_void, 0x0, information.object_size as u32);
-    }
-
-    let obj_ref = unsafe { &mut *object };
-    rt_object_init_internal(information, obj_ref, type_ as u8, name);
-    object as rt_object_t
+    KObjectBase::new(type_ as u8, name) as rt_object_t
 }
 
 /// This function will delete an object and release object memory.
@@ -454,83 +344,8 @@ pub extern "C" fn rt_object_allocate(
 pub extern "C" fn rt_object_delete(object: rt_object_t) {
     // object check
     assert!(!object.is_null());
-    unsafe {
-        assert!(((*object).type_ & OBJECT_CLASS_STATIC) == 0);
-    }
-
-    unsafe { crate::rt_object_hook_call!(OBJECT_DETACH_HOOK, object) };
-
-    unsafe {
-        let obj = &mut *object;
-        let information = ObjectInformation::get_info_by_type(obj.type_).unwrap();
-        // lock interrupt
-        {
-            let _guard = information.spinlock.acquire();
-            Pin::new_unchecked(&mut obj.list).remove();
-        }
-        // reset object type
-        obj.type_ = ObjectClassType::ObjectClassUninit as u8;
-        rt_free(object as *mut ffi::c_void);
-    }
-}
-
-/// This function will create a custom object container.
-///
-/// # Arguments
-///
-/// * `name` - the specified name of object.
-/// * `data` - the custom data.
-/// * `data_destroy` - the custom object destroy callback.
-///
-/// # Returns
-///
-/// The found object or `RT_NULL` if there is no this object in object container.
-///
-/// # Note
-///
-/// This function shall not be invoked in interrupt status.
-#[cfg(feature = "RT_USING_HEAP")]
-#[no_mangle]
-pub extern "C" fn rt_custom_object_create(
-    name: *const ffi::c_char,
-    data: *mut ffi::c_void,
-    data_destroy: DestroyFunc,
-) -> rt_object_t {
-    let cobj =
-        rt_object_allocate(ObjectClassType::ObjectClassCustom as u32, name) as *mut CustomObject;
-    if cobj.is_null() {
-        return cobj as rt_object_t;
-    }
-    unsafe {
-        (*cobj).destroy = Some(data_destroy);
-        (*cobj).data = data;
-    }
-    cobj as rt_object_t
-}
-
-/// This function will destroy a custom object container.
-///
-/// # Arguments
-///
-/// * `obj` - the specified name of object.
-///
-/// # Note
-///
-/// This function shall not be invoked in interrupt status.
-#[cfg(feature = "RT_USING_HEAP")]
-#[no_mangle]
-pub extern "C" fn rt_custom_object_destroy(obj: *mut rt_object) -> rt_err_t {
-    let mut ret: rt_err_t = -1;
-    let cobj = obj as *mut CustomObject;
-
-    if !obj.is_null() && (unsafe { *obj }).type_ == ObjectClassType::ObjectClassCustom as u8 {
-        let custom_obj = unsafe { &*cobj };
-        if let Some(destroy_fn) = custom_obj.destroy {
-            ret = destroy_fn(custom_obj.data);
-        }
-        rt_object_delete(obj);
-    }
-    ret
+    let obj = unsafe { &mut *(object as *mut KObjectBase) };
+    obj.delete();
 }
 
 /// This function will judge the object is system object or not.
@@ -553,9 +368,10 @@ pub extern "C" fn rt_custom_object_destroy(obj: *mut rt_object) -> rt_err_t {
 pub extern "C" fn rt_object_is_systemobject(object: rt_object_t) -> rt_bool_t {
     /* object check */
     assert!(!object.is_null());
-    let obj_type = unsafe { (*object).type_ };
+    let obj = unsafe { &mut *(object as *mut KObjectBase) };
+    let res = obj.is_static_kobject();
 
-    if (obj_type & OBJECT_CLASS_STATIC) != 0 {
+    if res {
         return RT_TRUE as ffi::c_int;
     }
 
@@ -576,9 +392,8 @@ pub extern "C" fn rt_object_is_systemobject(object: rt_object_t) -> rt_bool_t {
 pub extern "C" fn rt_object_get_type(object: rt_object_t) -> rt_uint8_t {
     /* object check */
     assert!(!object.is_null());
-    let obj_type = unsafe { (*object).type_ };
-
-    return obj_type & (!OBJECT_CLASS_STATIC);
+    let obj = unsafe { &mut *(object as *mut KObjectBase) };
+    obj.type_name()
 }
 
 /// This function will find specified name object from object
@@ -599,39 +414,7 @@ pub extern "C" fn rt_object_get_type(object: rt_object_t) -> rt_uint8_t {
 /// This function shall not be invoked in interrupt status.
 #[no_mangle]
 pub extern "C" fn rt_object_find(name: *const ffi::c_char, type_: rt_uint8_t) -> rt_object_t {
-    /* parameter check */
-    if name.is_null() {
-        return ptr::null_mut();
-    }
-
-    /* which is invoke in interrupt status */
-    crate::rt_debug_not_in_interrupt!();
-
-    let information = ObjectInformation::get_info_by_type(type_ & (!OBJECT_CLASS_STATIC)).unwrap();
-
-    unsafe {
-        /* enter critical */
-        rt_enter_critical();
-        /* try to find object */
-        crate::list_head_for_each!(node, &information.object_list, {
-            let object = crate::list_head_entry!(node.as_ptr(), BaseObject, list);
-            if rt_strncmp(
-                (*object).name.as_ptr() as *const ffi::c_char,
-                name,
-                RT_NAME_MAX,
-            ) == 0
-            {
-                /* leave critical */
-                rt_exit_critical();
-                return object as rt_object_t;
-            }
-        });
-
-        /* leave critical */
-        rt_exit_critical();
-    }
-
-    ptr::null_mut()
+    find_object(type_, name) as rt_object_t
 }
 
 /// This function will return the name of the specified object container
@@ -658,7 +441,7 @@ pub extern "C" fn rt_object_get_name(
     let mut result: rt_err_t = -(RT_EINVAL as i32);
     if !object.is_null() && !name.is_null() && name_size != 0 {
         let obj_name = (unsafe { *object }).name;
-        unsafe { rt_strncpy(name as *mut _, obj_name.as_ptr(), name_size as rt_size_t) };
+        unsafe { rt_strncpy(name as *mut _, obj_name.as_ptr(), name_size as usize) };
         result = RT_EOK as rt_err_t;
     }
 
@@ -749,4 +532,69 @@ pub extern "C" fn rt_object_take_sethook(hook: unsafe extern "C" fn(*const rt_ob
 #[no_mangle]
 pub extern "C" fn rt_object_put_sethook(hook: unsafe extern "C" fn(*const rt_object)) {
     unsafe { rt_object_put_hook = Some(hook) };
+}
+
+/// bindgen for ObjectClassType
+#[no_mangle]
+pub extern "C" fn bindgen_object_class_type(_obj: ObjectClassType) {
+    0;
+}
+
+/// bindgen for ObjectClassType
+#[allow(improper_ctypes_definitions)]
+#[no_mangle]
+pub extern "C" fn bindgen_base_object(_obj: KObjectBase) {
+    0;
+}
+
+#[macro_export]
+macro_rules! impl_kobject {
+    ($class:ident $( $fn:tt )*) => {
+        impl $crate::object::KernelObject for $class {
+            fn type_name(&self) -> u8{
+                self.parent.type_name()
+            }
+            fn name(&self) -> *const i8{
+                self.parent.name()
+            }
+            fn set_name(&mut self, name: *const i8){
+                self.parent.set_name(name);
+            }
+            fn is_static_kobject(&self) -> bool{
+                self.parent.is_static_kobject()
+            }
+            fn foreach<F>(callback: F, type_: u8) -> Result<(), i32>
+            where
+                F: Fn(&ListHead),
+                Self: Sized
+            {
+                KObjectBase::foreach(callback, type_)
+            }
+            fn get_info<FF,F>(callback_forword: FF, callback: F, type_: u8) -> Result<(), i32>
+            where
+                FF: Fn(),
+                F: Fn(&ListHead),
+                Self: Sized
+            {
+                KObjectBase::get_info(callback_forword,callback, type_)
+            }
+            $( $fn )*
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! format_name {
+    ($name:expr,$width:expr) => {{
+        use crate::str::CStr;
+        let name_cstr = CStr::from_char_ptr($name);
+        match name_cstr.to_str() {
+            Ok(name) => {
+                print!("{:<1$}", name, $width);
+            }
+            Err(_) => {
+                println!("Error when converting C string to UTF-8");
+            }
+        }
+    }};
 }

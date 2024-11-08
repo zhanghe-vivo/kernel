@@ -1,5 +1,4 @@
-use crate::cpu::Cpu;
-use crate::rt_bindings;
+use crate::{cpu::Cpu, rt_bindings, timer};
 
 #[cfg(all(feature = "RT_USING_HOOK", feature = "RT_HOOK_USING_FUNC_PTR"))]
 static mut RT_TICK_HOOK: Option<unsafe extern "C" fn()> = None;
@@ -37,7 +36,7 @@ pub extern "C" fn rt_tick_increase() {
         let scheduler = Cpu::get_current_scheduler();
         scheduler.handle_tick_increase();
 
-        rt_bindings::rt_timer_check();
+        timer::rt_timer_check();
     }
 }
 

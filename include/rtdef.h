@@ -573,7 +573,7 @@ struct rt_object_information
     rt_size_t                 object_size;              /**< object size */
 };
 #else
-#include "rust_object.inc"
+#include "rt_thread_wrapper.inc"
 #endif
 
 /**
@@ -643,6 +643,7 @@ struct rt_object_information
 #define RT_TIMER_SKIP_LIST_MASK         0x3             /**< Timer skips the list mask */
 #endif
 
+#ifndef USE_RUST
 /**
  * timer structure
  */
@@ -658,6 +659,7 @@ struct rt_timer
     rt_tick_t        init_tick;                         /**< timer timeout tick */
     rt_tick_t        timeout_tick;                      /**< timeout tick */
 };
+#endif
 typedef struct rt_timer *rt_timer_t;
 
 /**@}*/
@@ -935,8 +937,6 @@ struct rt_thread
 
     // rt_ubase_t                  user_data;              /**< private user data beyond this thread */
 };
-#else
-#include "rust_thread.inc"
 #endif
 
 typedef struct rt_thread *rt_thread_t;
@@ -962,17 +962,21 @@ typedef struct rt_thread *rt_thread_t;
 #define RT_WAITING_FOREVER              -1              /**< Block forever until get resource. */
 #define RT_WAITING_NO                   0               /**< Non-block. */
 
+
+#ifndef USE_RUST
 /**
  * Base structure of IPC object
  */
 struct rt_ipc_object
 {
     struct rt_object parent;                            /**< inherit from rt_object */
-
+    rt_uint8_t  flag;
     rt_list_t        suspend_thread;                    /**< threads pended on this resource */
 };
+#endif /* rt_ipc_object USE_RUST */
 
 #ifdef RT_USING_SEMAPHORE
+#ifndef USE_RUST
 /**
  * Semaphore structure
  */
@@ -982,12 +986,13 @@ struct rt_semaphore
 
     rt_uint16_t          value;                         /**< value of semaphore. */
     rt_uint16_t          reserved;                      /**< reserved field */
-    struct rt_spinlock  spinlock;
 };
+#endif /* rt_semaphore USE_RUST */
 typedef struct rt_semaphore *rt_sem_t;
 #endif /* RT_USING_SEMAPHORE */
 
 #ifdef RT_USING_MUTEX
+#ifndef USE_RUST
 /**
  * Mutual exclusion (mutex) structure
  */
@@ -1002,8 +1007,8 @@ struct rt_mutex
 
     struct rt_thread    *owner;                         /**< current owner of mutex */
     rt_list_t            taken_list;                    /**< the object list taken by thread */
-    struct rt_spinlock  spinlock;
 };
+#endif /* rt_mutex USE_RUST */
 typedef struct rt_mutex *rt_mutex_t;
 #endif /* RT_USING_MUTEX */
 
@@ -1014,7 +1019,7 @@ typedef struct rt_mutex *rt_mutex_t;
 #define RT_EVENT_FLAG_AND               0x01            /**< logic and */
 #define RT_EVENT_FLAG_OR                0x02            /**< logic or */
 #define RT_EVENT_FLAG_CLEAR             0x04            /**< clear flag */
-
+#ifndef USE_RUST
 /*
  * event structure
  */
@@ -1023,12 +1028,13 @@ struct rt_event
     struct rt_ipc_object parent;                        /**< inherit from ipc_object */
 
     rt_uint32_t          set;                           /**< event set */
-    struct rt_spinlock          spinlock;
 };
+#endif /* rt_event USE_RUST */
 typedef struct rt_event *rt_event_t;
 #endif /* RT_USING_EVENT */
 
 #ifdef RT_USING_MAILBOX
+#ifndef USE_RUST
 /**
  * mailbox structure
  */
@@ -1045,8 +1051,8 @@ struct rt_mailbox
     rt_uint16_t          out_offset;                    /**< output offset of the message buffer */
 
     rt_list_t            suspend_sender_thread;         /**< sender thread suspended on this mailbox */
-    struct rt_spinlock  spinlock;
 };
+#endif /* rt_event USE_RUST */
 typedef struct rt_mailbox *rt_mailbox_t;
 #endif /* RT_USING_MAILBOX */
 
@@ -1054,6 +1060,7 @@ typedef struct rt_mailbox *rt_mailbox_t;
 /**
  * message queue structure
  */
+ #ifndef USE_RUST
 struct rt_messagequeue
 {
     struct rt_ipc_object parent;                        /**< inherit from ipc_object */
@@ -1072,9 +1079,9 @@ struct rt_messagequeue
     rt_list_t            suspend_sender_thread;         /**< sender thread suspended on this message queue */
     struct rt_spinlock          spinlock;
 };
+#endif /* rt_messagequeue USE_RUST */
 typedef struct rt_messagequeue *rt_mq_t;
 #endif /* RT_USING_MESSAGEQUEUE */
-
 /**@}*/
 
 /**

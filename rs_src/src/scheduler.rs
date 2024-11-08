@@ -1,12 +1,8 @@
-use crate::{
-    cpu::{self, Cpu, Cpus},
-    linked_list::ListHead,
-    rt_bindings,
-    sync::RawSpin,
-    thread::RtThread,
-};
+#[cfg(feature = "RT_USING_SMP")]
+use crate::cpu::{self, Cpus};
 #[cfg(feature = "DEBUG_SCHEDULER")]
-use crate::{println, str::CStr};
+use crate::println;
+use crate::{cpu::Cpu, linked_list::ListHead, rt_bindings, thread::RtThread};
 
 use core::{
     ffi,

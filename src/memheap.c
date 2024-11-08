@@ -863,130 +863,14 @@ void *_memheap_realloc(struct rt_memheap *heap, void *rmem, rt_size_t newsize)
 #ifdef RT_USING_MEMTRACE
 int memheapcheck(int argc, char *argv[])
 {
-    struct rt_object_information *info;
-    struct rt_list_node *list;
-    struct rt_memheap *heap;
-    struct rt_list_node *node;
-    struct rt_memheap_item *item;
-    rt_bool_t has_bad = RT_FALSE;
-    rt_base_t level;
-    char *name;
-
-    name = argc > 1 ? argv[1] : RT_NULL;
-    level = rt_hw_interrupt_disable();
-    info = rt_object_get_information(RT_Object_Class_MemHeap);
-    list = &info->object_list;
-    for (node = list->next; node != list; node = node->next)
-    {
-        heap = (struct rt_memheap *)rt_list_entry(node, struct rt_object, list);
-        /* find the specified object */
-        if (name != RT_NULL && rt_strncmp(name, heap->parent.name, RT_NAME_MAX) != 0)
-            continue;
-        /* check memheap */
-        for (item = heap->block_list; item->next != heap->block_list; item = item->next)
-        {
-            /* check magic */
-            if (!((item->magic & (RT_MEMHEAP_MAGIC | RT_MEMHEAP_FREED)) == (RT_MEMHEAP_MAGIC | RT_MEMHEAP_FREED) ||
-                 (item->magic & (RT_MEMHEAP_MAGIC | RT_MEMHEAP_USED))  == (RT_MEMHEAP_MAGIC | RT_MEMHEAP_USED)))
-            {
-                has_bad = RT_TRUE;
-                break;
-            }
-            /* check pool_ptr */
-            if (heap != item->pool_ptr)
-            {
-                has_bad = RT_TRUE;
-                break;
-            }
-            /* check next and prev */
-            if (!((rt_ubase_t)item->next <= (rt_ubase_t)((rt_ubase_t)heap->start_addr + heap->pool_size) &&
-                  (rt_ubase_t)item->prev >= (rt_ubase_t)heap->start_addr) &&
-                  (rt_ubase_t)item->next == RT_ALIGN((rt_ubase_t)item->next, RT_ALIGN_SIZE) &&
-                  (rt_ubase_t)item->prev == RT_ALIGN((rt_ubase_t)item->prev, RT_ALIGN_SIZE))
-            {
-                has_bad = RT_TRUE;
-                break;
-            }
-            /* check item */
-            if (item->next == item->next->prev)
-            {
-                has_bad = RT_TRUE;
-                break;
-            }
-        }
-    }
-    rt_hw_interrupt_enable(level);
-    if (has_bad)
-    {
-        rt_kprintf("Memory block wrong:\n");
-        rt_kprintf("name: %s\n", heap->parent.name);
-        rt_kprintf("item: 0x%p\n", item);
-    }
+    //TODO: rewrite rust memheap
     return 0;
 }
 MSH_CMD_EXPORT(memheapcheck, check memory for memheap);
 
 int memheaptrace(int argc, char *argv[])
 {
-    struct rt_object_information *info;
-    struct rt_list_node *list;
-    struct rt_memheap *mh;
-    struct rt_list_node *node;
-    char *name;
-
-    name = argc > 1 ? argv[1] : RT_NULL;
-    info = rt_object_get_information(RT_Object_Class_MemHeap);
-    list = &info->object_list;
-    for (node = list->next; node != list; node = node->next)
-    {
-        struct rt_memheap_item *header_ptr;
-        long block_size;
-
-        mh = (struct rt_memheap *)rt_list_entry(node, struct rt_object, list);
-        /* find the specified object */
-        if (name != RT_NULL && rt_strncmp(name, mh->parent.name, RT_NAME_MAX) != 0)
-            continue;
-        /* memheap dump */
-        rt_kprintf("\nmemory heap address:\n");
-        rt_kprintf("name    : %s\n", mh->parent.name);
-        rt_kprintf("heap_ptr: 0x%p\n", mh->start_addr);
-        rt_kprintf("free    : 0x%08x\n", mh->available_size);
-        rt_kprintf("max_used: 0x%08x\n", mh->max_used_size);
-        rt_kprintf("size    : 0x%08x\n", mh->pool_size);
-        rt_kprintf("\n--memory used information --\n");
-        /* memheap item */
-        for (header_ptr = mh->block_list;
-             header_ptr->next != mh->block_list;
-             header_ptr = header_ptr->next)
-        {
-            if ((header_ptr->magic & RT_MEMHEAP_MASK) != RT_MEMHEAP_MAGIC)
-            {
-                rt_kprintf("[0x%p - incorrect magic: 0x%08x\n",
-                    header_ptr, header_ptr->magic);
-                break;
-            }
-            /* get current memory block size */
-            block_size = MEMITEM_SIZE(header_ptr);
-            if (block_size < 0)
-                break;
-
-            rt_kprintf("[0x%p - ", header_ptr);
-            if (block_size < 1024)
-                rt_kprintf("%5d", block_size);
-            else if (block_size < 1024 * 1024)
-                rt_kprintf("%4dK", block_size / 1024);
-            else if (block_size < 1024 * 1024 * 100)
-                rt_kprintf("%2d.%dM", block_size / (1024 * 1024),  (block_size % (1024 * 1024) * 10) / (1024 * 1024));
-            else
-                rt_kprintf("%4dM", block_size / (1024 * 1024));
-            /* dump thread name */
-            rt_kprintf("] %c%c%c%c\n",
-                header_ptr->owner_thread_name[0],
-                header_ptr->owner_thread_name[1],
-                header_ptr->owner_thread_name[2],
-                header_ptr->owner_thread_name[3]);
-        }
-    }
+    //TODO: rewrite rust memheap
     return 0;
 }
 

@@ -12,6 +12,7 @@ path = "src/lib.rs"
 
 [build-dependencies]
 bindgen = "0.69.4"
+cbindgen = "0.24.0"
 
 [dependencies]
 log = "0.4"
@@ -20,6 +21,7 @@ cfg-if = "1"
 # lots of compile errors, use source code
 pinned-init = { path = "./third_party/pinned-init" }
 paste = "1.0.6"
+downcast-rs = { version = "1.2", default-features = false }
 [profile.dev]
 opt-level = 0
 debug = true

@@ -1,17 +1,20 @@
 #![allow(dead_code)]
 use crate::alloc::boxed::Box;
+use crate::object::KernelObject;
+use crate::sync::SpinLock;
 use crate::{
     clock,
     cpu::Cpu,
     error::{code, Error},
     linked_list::ListHead,
     list_head_entry, list_head_for_each, object,
-    object::{BaseObject, ObjectClassType},
-    println, rt_bindings,
+    object::{KObjectBase, ObjectClassType},
+    print, println, rt_bindings,
     stack::Stack,
+    static_init::UnsafeStaticInit,
     str::CStr,
-    sync::{lock::mutex::RtMutex, RawSpin},
-    zombie,
+    sync::{lock::mutex::*, RawSpin},
+    timer, zombie,
 };
 use alloc::alloc;
 use core::{
@@ -22,7 +25,7 @@ use core::{
     mem,
     pin::Pin,
     ptr::{self, NonNull},
-    sync::atomic::Ordering,
+    sync::atomic::{AtomicU64, Ordering},
 };
 use pinned_init::*;
 
@@ -60,7 +63,8 @@ macro_rules! thread_list_node_entry {
 }
 use crate::object::rt_object_get_type;
 use crate::rt_bindings::{
-    rt_err_t, rt_uint8_t, RT_EOK, RT_ERROR, RT_THREAD_CTRL_CHANGE_PRIORITY, RT_THREAD_SUSPEND_MASK,
+    rt_err_t, rt_object, rt_uint8_t, RT_EOK, RT_ERROR, RT_THREAD_CTRL_CHANGE_PRIORITY,
+    RT_THREAD_SUSPEND_MASK,
 };
 use crate::sync::ipc_common::_ipc_list_suspend;
 pub use thread_list_node_entry;
@@ -72,12 +76,38 @@ static mut RT_THREAD_SUSPEND_HOOK: Option<RtThreadHook> = None;
 #[cfg(all(feature = "RT_USING_HOOK", feature = "RT_HOOK_USING_FUNC_PTR"))]
 static mut RT_THREAD_RESUME_HOOK: Option<RtThreadHook> = None;
 
+const MAX_THREAD_SIZE: usize = 1024;
+
+pub(crate) static mut TIDS: UnsafeStaticInit<Tid, TidInit> = UnsafeStaticInit::new(TidInit);
+
+pub(crate) struct TidInit;
+unsafe impl PinInit<Tid> for TidInit {
+    unsafe fn __pinned_init(self, slot: *mut Tid) -> Result<(), core::convert::Infallible> {
+        let init = Tid::new();
+        unsafe { init.__pinned_init(slot) }
+    }
+}
+
+#[pin_data]
+pub(crate) struct Tid {
+    #[pin]
+    id: SpinLock<[Option<*mut RtThread>; MAX_THREAD_SIZE]>,
+}
+
+impl Tid {
+    fn new() -> impl PinInit<Self> {
+        pin_init!(Self {
+            id <- crate::new_spinlock!(pin_init_array_from_fn(|_| None)),
+        })
+    }
+}
+
 #[repr(C)]
 // #[derive(Debug)]
 #[pin_data(PinnedDrop)]
 pub struct RtThread {
     #[pin]
-    pub(crate) parent: BaseObject,
+    pub(crate) parent: KObjectBase,
     // start of schedule context
     /// the thread list, used in ready_list\ipc wait_list\...
     #[pin]
@@ -101,7 +131,7 @@ pub struct RtThread {
 
     /// built-in thread timer, used for wait timeout
     #[pin]
-    pub(crate) thread_timer: rt_bindings::rt_timer,
+    pub(crate) thread_timer: timer::Timer,
 
     /// stack point and entry
     pub(crate) stack: Stack,
@@ -123,7 +153,7 @@ pub struct RtThread {
     // cpus_lock_nest: AtomicU32,
     spinlock: RawSpin,
     /// error code
-    pub(crate) error: ffi::c_int,
+    pub error: ffi::c_int,
 
     /// mutexes holded by this thread
     #[cfg(feature = "RT_USING_MUTEX")]
@@ -131,7 +161,7 @@ pub struct RtThread {
     pub(crate) taken_object_list: ListHead,
     /// mutex object
     #[cfg(feature = "RT_USING_MUTEX")]
-    pub(crate) pending_object: *mut rt_bindings::rt_object,
+    pub(crate) pending_object: *mut KObjectBase,
 
     #[cfg(feature = "RT_USING_EVENT")]
     pub(crate) event_set: ffi::c_uint,
@@ -144,7 +174,7 @@ pub struct RtThread {
     hold_locks: [Cell<Option<NonNull<RawSpin>>>; 8],
     #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
     hold_count: usize,
-
+    tid: u64,
     // signal pthread not used yet.
     #[pin]
     pin: PhantomPinned,
@@ -316,7 +346,7 @@ impl RtThread {
         stack_size: usize,
         priority: u8,
         tick: u32,
-        cpu: u8,
+        _cpu: u8,
         is_static: bool,
     ) -> impl PinInit<Self> {
         let init = move |slot: *mut Self| unsafe {
@@ -327,20 +357,17 @@ impl RtThread {
                     name.as_char_ptr(),
                 )
             } else {
-                object::rt_object_init_dyn(
-                    slot as *mut rt_bindings::rt_object,
-                    ObjectClassType::ObjectClassThread as u32,
-                    name.as_char_ptr(),
-                )
+                let obj = &mut *(slot as *mut KObjectBase);
+                obj.init_internal(ObjectClassType::ObjectClassThread as u8, name.as_char_ptr())
             }
 
             let cur_ref = &mut *slot;
             let _ = ListHead::new().__pinned_init(&mut cur_ref.tlist as *mut ListHead);
 
-            rt_bindings::rt_timer_init(
-                &mut cur_ref.thread_timer as *mut _,
+            timer::rt_timer_init(
+                &mut cur_ref.thread_timer as *mut _ as *mut timer::Timer,
                 name.as_char_ptr(),
-                Some(Self::handle_timeout),
+                Self::handle_timeout,
                 cur_ref as *mut _ as *mut ffi::c_void,
                 0,
                 (rt_bindings::RT_TIMER_FLAG_ONE_SHOT | rt_bindings::RT_TIMER_FLAG_THREAD_TIMER)
@@ -358,10 +385,12 @@ impl RtThread {
             cur_ref.number_mask = 0;
             cur_ref.init_tick = tick;
             cur_ref.remaining_tick = tick;
-
+            let tid = Self::new_tid();
+            cur_ref.tid = tid;
+            TIDS.id.lock()[tid as usize] = Some(slot);
             #[cfg(feature = "RT_USING_SMP")]
             {
-                cur_ref.bind_cpu = cpu;
+                cur_ref.bind_cpu = _cpu;
                 cur_ref.oncpu = rt_bindings::RT_CPU_DETACHED as u8;
                 // cur_ref.critical_lock_nest = 0;
                 // cur_ref.cpus_lock_nest = AtomicU32::new(0);
@@ -571,12 +600,29 @@ impl RtThread {
 
     #[inline]
     pub(crate) fn get_name(&self) -> &CStr {
-        unsafe { CStr::from_char_ptr(self.parent.name.as_ptr()) }
+        unsafe { CStr::from_char_ptr(self.name()) }
     }
 
     #[inline]
     pub(crate) fn remove_tlist(&mut self) {
         unsafe { Pin::new_unchecked(&mut self.tlist).remove() };
+    }
+
+    #[inline]
+    pub(crate) fn new_tid() -> u64 {
+        static TID: AtomicU64 = AtomicU64::new(0);
+        let id = TID.fetch_add(1, Ordering::SeqCst);
+        let tids = unsafe { TIDS.id.lock() };
+        if id >= MAX_THREAD_SIZE as u64 || !tids[id as usize].is_none() {
+            for i in 0..MAX_THREAD_SIZE {
+                if tids[i].is_none() {
+                    TID.store(0, Ordering::SeqCst);
+                    return i as u64;
+                }
+            }
+            panic!("The maximum number of threads has been exceeded");
+        }
+        id
     }
 
     // thread timeout handler func.
@@ -627,14 +673,11 @@ impl RtThread {
 
         // as rt_mutex_release may use sched_lock.
         if self.pending_object != ptr::null_mut()
-            && object::rt_object_get_type(self.pending_object)
+            && object::rt_object_get_type(self.pending_object as *mut rt_bindings::rt_object)
                 == ObjectClassType::ObjectClassMutex as u8
         {
             unsafe {
-                rt_bindings::rt_mutex_drop_thread(
-                    self.pending_object as *mut rt_bindings::rt_mutex,
-                    self as *mut RtThread as *mut rt_bindings::rt_thread,
-                )
+                rt_mutex_drop_thread(self.pending_object as *mut RtMutex, self as *mut RtThread)
             };
             self.pending_object = ptr::null_mut();
         }
@@ -653,10 +696,10 @@ impl RtThread {
             unsafe {
                 let mutex = crate::rt_list_entry!(
                     inspect as *const ListHead as *mut ListHead,
-                    rt_bindings::rt_mutex,
+                    RtMutex,
                     taken_list
                 );
-                rt_bindings::rt_mutex_release(mutex);
+                rt_mutex_release(mutex);
             }
         }
 
@@ -676,7 +719,7 @@ impl RtThread {
     }
 
     #[inline]
-    pub(crate) fn get_mutex_priority(&self) -> rt_uint8_t {
+    pub(crate) fn get_mutex_priority(&self) -> u8 {
         unsafe {
             let mut priority = self.init_priority;
 
@@ -716,8 +759,8 @@ impl RtThread {
                 //Whether change the priority of the taken mutex
                 let pending_obj = self.pending_object;
 
-                if pending_obj.is_null() == false
-                    && rt_object_get_type(pending_obj)
+                if !pending_obj.is_null()
+                    && rt_object_get_type(pending_obj as *mut rt_object)
                         == ObjectClassType::ObjectClassMutex as rt_uint8_t
                 {
                     let mut mutex_priority: rt_uint8_t = 0xff;
@@ -729,7 +772,7 @@ impl RtThread {
                     ret = _ipc_list_suspend(
                         &mut (*pending_mutex).parent.suspend_thread,
                         self,
-                        (*pending_mutex).parent.parent.flag as rt_uint8_t,
+                        (*pending_mutex).parent.flag as rt_uint8_t,
                         suspend_flag as u32,
                     );
                     if ret == RT_EOK as rt_err_t {
@@ -786,9 +829,7 @@ impl RtThread {
             if self.stat != rt_bindings::RT_THREAD_INIT as u8 {
                 scheduler.remove_thread_locked(self);
             }
-
-            unsafe { rt_bindings::rt_timer_detach(&mut self.thread_timer) };
-
+            timer::rt_timer_detach(&mut self.thread_timer as *const _ as *mut timer::Timer);
             self.stat = rt_bindings::RT_THREAD_CLOSE as u8;
         }
 
@@ -800,7 +841,9 @@ impl RtThread {
         // may be detached from scheduler.
         let scheduler = Cpu::get_current_scheduler();
         scheduler.preempt_disable();
-
+        unsafe {
+            TIDS.id.lock()[self.tid as usize] = None;
+        }
         #[cfg(feature = "DEBUG_SCHEDULER")]
         println!("thread detach: {:?}", self.get_name());
 
@@ -819,9 +862,8 @@ impl RtThread {
         debug_assert!(Cpu::get_current_scheduler().is_sched_locked());
         let mut res = true;
         if self.sched_flag_ttmr_set != 0 {
-            res = unsafe {
-                rt_bindings::rt_timer_stop(&mut self.thread_timer) == rt_bindings::RT_EOK as i32
-            };
+            res = timer::rt_timer_stop(&mut self.thread_timer as *const _ as *mut timer::Timer)
+                == rt_bindings::RT_EOK as i32;
             self.sched_flag_ttmr_set = 0;
         }
         res
@@ -857,14 +899,12 @@ impl RtThread {
         println!("thread sleep: {:?}", thread.get_name());
 
         if thread.suspend(rt_bindings::RT_INTERRUPTIBLE) {
-            unsafe {
-                rt_bindings::rt_timer_control(
-                    &mut thread.thread_timer as *mut rt_bindings::rt_timer,
-                    rt_bindings::RT_TIMER_CTRL_SET_TIME as i32,
-                    &tick as *const _ as *mut ffi::c_void,
-                );
-                rt_bindings::rt_timer_start(&mut thread.thread_timer as *mut rt_bindings::rt_timer);
-            }
+            timer::rt_timer_control(
+                &mut thread.thread_timer as *const _ as *mut timer::Timer,
+                rt_bindings::RT_TIMER_CTRL_SET_TIME as i32,
+                &tick as *const _ as *mut ffi::c_void,
+            );
+            timer::rt_timer_start(&mut thread.thread_timer as *const _ as *mut timer::Timer);
             thread.error = -(rt_bindings::RT_EINTR as i32);
 
             // notify a pending rescheduling
@@ -1038,6 +1078,8 @@ impl PinnedDrop for RtThread {
         this_th.detach();
     }
 }
+
+crate::impl_kobject!(RtThread);
 
 #[no_mangle]
 pub extern "C" fn rt_thread_init(
@@ -1313,4 +1355,71 @@ pub extern "C" fn rt_thread_resume_sethook(hook: RtThreadHook) {
     unsafe {
         RT_THREAD_RESUME_HOOK = Some(hook);
     }
+}
+
+#[no_mangle]
+pub extern "C" fn rt_thread_info() {
+    let callback_forword = || {
+        #[cfg(feature = "RT_USING_SMP")]
+        crate::kprintf!(
+            "thread   cpu bind pri  status      sp     stack size left tick  error\n\0"
+        );
+        #[cfg(not(feature = "RT_USING_SMP"))]
+        crate::kprintf!("thread   pri  status      sp     stack size left tick  error\n\0");
+        #[cfg(feature = "RT_USING_SMP")]
+        crate::kprintf!("-------- --- ---- ---  ------- ---------- ----------  ---------- ---\n\0");
+        #[cfg(not(feature = "RT_USING_SMP"))]
+        crate::kprintf!("-------- ---  ------- ---------- ----------  ---------- ---\n\0");
+    };
+    let callback = |node: &ListHead| unsafe {
+        let thread =
+            &*(crate::list_head_entry!(node.as_ptr(), KObjectBase, list) as *const RtThread);
+        let _ = crate::format_name!(thread.parent.name.as_ptr(), 8);
+        let current_priority = thread.current_priority;
+        #[cfg(feature = "RT_USING_SMP")]
+        {
+            let oncpu = thread.oncpu;
+            if oncpu != rt_bindings::RT_CPU_DETACHED as u8 {
+                print!(
+                    " {:<3} {:^4}  {:<3} ",
+                    oncpu, thread.bind_cpu, current_priority
+                );
+            } else {
+                print!(" N/A {:^4}  {:<3} ", thread.bind_cpu, current_priority);
+            }
+        }
+        #[cfg(not(feature = "RT_USING_SMP"))]
+        {
+            print!(" {:<3}  ", current_priority);
+        }
+        let stat = thread.stat & (rt_bindings::RT_THREAD_STAT_MASK as u8);
+        match stat as u32 {
+            rt_bindings::RT_THREAD_READY => print!("ready  "),
+            _ if (stat as u32 & rt_bindings::RT_THREAD_SUSPEND_MASK)
+                == rt_bindings::RT_THREAD_SUSPEND_MASK =>
+            {
+                print!("suspend")
+            }
+            rt_bindings::RT_THREAD_INIT => print!("init   "),
+            rt_bindings::RT_THREAD_CLOSE => print!("close  "),
+            rt_bindings::RT_THREAD_RUNNING => print!("running"),
+            _ => {}
+        }
+        println!(
+            " 0x{:08x} 0x{:08x}  0x{:08x} {}",
+            thread
+                .stack
+                .bottom_ptr()
+                .sub(thread.stack.sp() as usize)
+                .add(thread.stack.size()) as usize,
+            thread.stack.size(),
+            thread.remaining_tick,
+            code::name(thread.error)
+        );
+    };
+    let _ = RtThread::get_info(
+        callback_forword,
+        callback,
+        ObjectClassType::ObjectClassThread as u8,
+    );
 }

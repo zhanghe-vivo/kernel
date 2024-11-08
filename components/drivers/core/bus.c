@@ -86,7 +86,7 @@ rt_device_t rt_device_bus_create(char *name, int attach_size)
 rt_err_t rt_device_bus_destroy(rt_device_t dev)
 {
     rt_device_unregister(dev);
-    dev->parent.type = RT_Object_Class_Device;
+    dev->parent.type_ = RT_Object_Class_Device;
     rt_device_destroy(dev);
     LOG_D("bus destroy");
     return RT_EOK;

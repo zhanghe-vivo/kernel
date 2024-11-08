@@ -1,8 +1,8 @@
 use crate::linked_list::ListHead;
-use crate::object::{self, BaseObject, ObjectClassType};
+use crate::list_head_for_each;
+use crate::object::{self, KObjectBase, ObjectClassType};
 use crate::rt_bindings::{self, *};
 use crate::thread::RtThread;
-use crate::{list_head_for_each, rt_list_entry, rt_list_init};
 
 use crate::str::CStr;
 use crate::sync::RawSpin;
@@ -12,24 +12,19 @@ use pinned_init::{pin_data, pin_init_from_closure, PinInit};
 
 pub type IpcFlagType = i32;
 
-#[macro_export]
-macro_rules! rt_get_message_addr {
-    ($msg:expr) => {
-        ($msg as *mut rt_mq_message).offset(1) as *mut _
-    };
-}
-
 /// Base structure of IPC object
 #[repr(C)]
 #[derive(Debug)]
 #[pin_data]
 pub struct IPCObject {
     #[pin]
-    /// inherit from BaseObject
-    pub parent: BaseObject,
+    /// Inherit from KObjectBase
+    pub(crate) parent: KObjectBase,
+    /// IPC flag to use
+    pub(crate) flag: ffi::c_uchar,
     #[pin]
-    /// threads pended on this resource
-    pub suspend_thread: ListHead,
+    /// Threads pended on this IPC resource
+    pub(crate) suspend_thread: ListHead,
 }
 
 impl IPCObject {
@@ -47,7 +42,7 @@ impl IPCObject {
             );
             if is_static {
                 object::rt_object_init(
-                    &mut (*slot).parent as *mut BaseObject as *mut rt_bindings::rt_object,
+                    &mut (*slot).parent as *mut KObjectBase as *mut rt_bindings::rt_object,
                     obj_type as u32,
                     name.as_char_ptr(),
                 )
@@ -92,7 +87,7 @@ pub extern "C" fn _ipc_list_resume(list: *mut ListHead) -> rt_err_t {
 #[no_mangle]
 pub extern "C" fn _ipc_list_resume_all(list: *mut ListHead) -> rt_err_t {
     unsafe {
-        while (*list).is_empty() == false {
+        while !(*list).is_empty() {
             if let Some(node) = (*list).next() {
                 let spin_lock = RawSpin::new();
                 spin_lock.lock();
@@ -116,7 +111,7 @@ pub extern "C" fn _ipc_list_suspend(
 ) -> rt_err_t {
     unsafe {
         if ((*thread).stat as u32 & RT_THREAD_SUSPEND_MASK) != RT_THREAD_SUSPEND_MASK {
-            let ret = if (*thread).suspend(suspend_flag) == true {
+            let ret = if (*thread).suspend(suspend_flag) {
                 RT_EOK as rt_err_t
             } else {
                 -(RT_ERROR as rt_err_t)

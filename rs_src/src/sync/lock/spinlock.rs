@@ -1,7 +1,7 @@
 #![allow(dead_code)]
-use crate::{cpu::Cpu, rt_bindings, thread::RtThread};
+use crate::{cpu::Cpu, rt_bindings};
 #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
-use crate::{irq::IrqLock, println};
+use crate::{irq::IrqLock, println, thread::RtThread};
 #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
 use core::{cell::Cell, ptr::NonNull};
 use core::{cell::UnsafeCell, fmt, ops::Deref, ops::DerefMut};
@@ -318,10 +318,10 @@ impl<'a, T: ?Sized> Drop for SpinMutexGuard<'a, T> {
 /// * `lock` - a pointer to the spinlock to initialize.
 ///
 #[no_mangle]
-pub unsafe extern "C" fn rt_spin_lock_init(spin: *mut rt_bindings::rt_spinlock) {
+pub unsafe extern "C" fn rt_spin_lock_init(_spin: *mut rt_bindings::rt_spinlock) {
     #[cfg(feature = "RT_USING_SMP")]
     unsafe {
-        rt_bindings::rt_hw_spin_lock_init(&mut (*spin).lock)
+        rt_bindings::rt_hw_spin_lock_init(&mut (*_spin).lock)
     };
 }
 

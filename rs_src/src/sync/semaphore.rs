@@ -1,32 +1,34 @@
 use crate::{
-    cpu::{self, Cpu, Cpus},
+    cpu::Cpu,
     error::Error,
+    linked_list::ListHead,
+    list_head_for_each,
     object::{
-        self, rt_object_allocate, rt_object_delete, rt_object_detach, rt_object_get_type,
-        rt_object_init, rt_object_is_systemobject, *,
+        rt_object_allocate, rt_object_delete, rt_object_detach, rt_object_get_type,
+        rt_object_is_systemobject, ObjectClassType, *,
     },
-    rt_bindings,
+    print, println,
     rt_bindings::*,
     rt_debug_not_in_interrupt,
     sync::ipc_common::*,
     sync::lock::spinlock::RawSpin,
+    thread::RtThread,
+    timer,
 };
 use core::pin::Pin;
-use core::ptr::NonNull;
 use core::{
-    cell::UnsafeCell,
     ffi::{self, c_char, c_void},
-    marker::PhantomPinned,
-    mem::MaybeUninit,
     ptr::null_mut,
 };
+
 use kernel::{
-    rt_bindings::{rt_hw_interrupt_disable, rt_hw_interrupt_enable},
-    rt_debug_scheduler_available, rt_object_hook_call,
+    //rt_bindings::{rt_hw_interrupt_disable, rt_hw_interrupt_enable},
+    rt_debug_scheduler_available,
+    rt_object_hook_call,
 };
 
 use crate::str::CStr;
-use crate::sync::SpinLock;
+//use crate::sync::SpinLock;
 use pinned_init::*;
 
 /// Semaphore raw structure
@@ -106,7 +108,7 @@ impl RtSemaphore {
     #[inline]
     pub fn detach(&mut self) -> rt_err_t {
         _ipc_list_resume_all(&mut (self.parent.suspend_thread));
-        rt_object_detach(&mut self.parent.parent as *mut BaseObject as *mut rt_object);
+        rt_object_detach(&mut self.parent.parent as *mut KObjectBase as *mut rt_object);
 
         RT_EOK as rt_err_t
     }
@@ -150,11 +152,11 @@ pub unsafe extern "C" fn rt_sem_init(
 pub unsafe extern "C" fn rt_sem_detach(sem: *mut RtSemaphore) -> rt_err_t {
     assert!(sem != null_mut());
     assert!(
-        rt_object_get_type(&mut (*sem).parent.parent as *mut BaseObject as *mut rt_object)
+        rt_object_get_type(&mut (*sem).parent.parent as *mut KObjectBase as *mut rt_object)
             == ObjectClassType::ObjectClassSemaphore as u8
     );
     assert!(
-        rt_object_is_systemobject(&mut (*sem).parent.parent as *mut BaseObject as *mut rt_object)
+        rt_object_is_systemobject(&mut (*sem).parent.parent as *mut KObjectBase as *mut rt_object)
             == RT_TRUE as i32
     );
 
@@ -175,6 +177,7 @@ pub unsafe extern "C" fn rt_sem_create(
     rt_debug_not_in_interrupt!();
     let sem = rt_object_allocate(ObjectClassType::ObjectClassSemaphore as u32, name) as rt_sem_t
         as *mut RtSemaphore;
+
     if sem == null_mut() {
         return sem;
     }
@@ -182,7 +185,7 @@ pub unsafe extern "C" fn rt_sem_create(
     _ipc_object_init(&mut (*sem).parent);
 
     (*sem).value = value as u16;
-    (*sem).parent.parent.flag = flag;
+    (*sem).parent.flag = flag;
 
     sem
 }
@@ -192,11 +195,11 @@ pub unsafe extern "C" fn rt_sem_create(
 pub unsafe extern "C" fn rt_sem_delete(sem: *mut RtSemaphore) -> rt_err_t {
     assert!(sem != null_mut());
     assert!(
-        rt_object_get_type(&mut (*sem).parent.parent as *mut BaseObject as *mut rt_object)
+        rt_object_get_type(&mut (*sem).parent.parent as *mut KObjectBase as *mut rt_object)
             == ObjectClassType::ObjectClassSemaphore as u8
     );
     assert!(
-        rt_object_is_systemobject(&mut (*sem).parent.parent as *mut BaseObject as *mut rt_object)
+        rt_object_is_systemobject(&mut (*sem).parent.parent as *mut KObjectBase as *mut rt_object)
             == RT_FALSE as i32
     );
 
@@ -204,7 +207,7 @@ pub unsafe extern "C" fn rt_sem_delete(sem: *mut RtSemaphore) -> rt_err_t {
 
     _ipc_list_resume_all(&mut ((*sem).parent.suspend_thread));
 
-    rt_object_delete(&mut (*sem).parent.parent as *mut BaseObject as *mut rt_object);
+    rt_object_delete(&mut (*sem).parent.parent as *mut KObjectBase as *mut rt_object);
 
     RT_EOK as rt_err_t
 }
@@ -219,13 +222,13 @@ unsafe extern "C" fn _rt_sem_take(
     let mut time_out = timeout as i32;
     assert!(sem != null_mut());
     assert!(
-        rt_object_get_type((&mut (*sem).parent.parent) as *mut BaseObject as *mut rt_object)
+        rt_object_get_type((&mut (*sem).parent.parent) as *mut KObjectBase as *mut rt_object)
             == ObjectClassType::ObjectClassSemaphore as u8
     );
 
     rt_object_hook_call!(
         rt_object_trytake_hook,
-        &mut (*sem).parent.parent as *mut BaseObject as *mut rt_object
+        &mut (*sem).parent.parent as *mut KObjectBase as *mut rt_object
     );
 
     #[allow(unused_variables)]
@@ -251,7 +254,7 @@ unsafe extern "C" fn _rt_sem_take(
             let ret = _ipc_list_suspend(
                 &mut ((*sem).parent.suspend_thread),
                 thread,
-                (*sem).parent.parent.flag,
+                (*sem).parent.flag,
                 suspend_flag as u32,
             );
 
@@ -261,12 +264,14 @@ unsafe extern "C" fn _rt_sem_take(
             }
 
             if timeout > 0 {
-                rt_timer_control(
-                    &mut ((*thread).thread_timer),
+                timer::rt_timer_control(
+                    &mut (*thread).thread_timer as *const _ as *mut timer::Timer,
                     RT_TIMER_CTRL_SET_TIME as i32,
                     (&mut time_out) as *mut i32 as *mut c_void,
                 );
-                rt_timer_start(&mut ((*thread).thread_timer));
+                timer::rt_timer_start(
+                    &mut ((*thread).thread_timer) as *const _ as *mut timer::Timer,
+                );
             }
 
             rt_hw_interrupt_enable(level);
@@ -281,7 +286,7 @@ unsafe extern "C" fn _rt_sem_take(
 
     rt_object_hook_call!(
         rt_object_take_hook,
-        &mut (*sem).parent.parent as *mut BaseObject as *mut rt_object
+        &mut (*sem).parent.parent as *mut KObjectBase as *mut rt_object
     );
 
     RT_EOK as rt_err_t
@@ -319,12 +324,12 @@ pub unsafe extern "C" fn rt_sem_trytake(sem: *mut RtSemaphore) -> rt_err_t {
 pub unsafe extern "C" fn rt_sem_release(sem: *mut RtSemaphore) -> rt_err_t {
     assert!(sem != null_mut());
     assert!(
-        rt_object_get_type(&mut (*sem).parent.parent as *mut BaseObject as *mut rt_object)
+        rt_object_get_type(&mut (*sem).parent.parent as *mut KObjectBase as *mut rt_object)
             == ObjectClassType::ObjectClassSemaphore as u8
     );
     rt_object_hook_call!(
         rt_object_put_hook,
-        &mut (*sem).parent.parent as *mut BaseObject as *mut rt_object
+        &mut (*sem).parent.parent as *mut KObjectBase as *mut rt_object
     );
 
     let mut need_schedule = RT_FALSE;
@@ -360,7 +365,7 @@ pub unsafe extern "C" fn rt_sem_control(
 ) -> rt_err_t {
     assert!(sem != null_mut());
     assert!(
-        rt_object_get_type(&mut (*sem).parent.parent as *mut BaseObject as *mut rt_object)
+        rt_object_get_type(&mut (*sem).parent.parent as *mut KObjectBase as *mut rt_object)
             == ObjectClassType::ObjectClassSemaphore as u8
     );
 
@@ -445,4 +450,35 @@ impl Semaphore {
         self.acquire();
         SemaphoreGuard { _sem: self }
     }
+}
+
+#[no_mangle]
+#[allow(unused_unsafe)]
+pub extern "C" fn rt_sem_info() {
+    let callback_forword = || {
+        println!("semaphor v   suspend thread");
+        println!("-------- --- --------------");
+    };
+    let callback = |node: &ListHead| unsafe {
+        let sem =
+            &*(crate::list_head_entry!(node.as_ptr(), KObjectBase, list) as *const RtSemaphore);
+        let _ = crate::format_name!(sem.parent.parent.name.as_ptr(), 8);
+        print!(" {:03} ", sem.value);
+        if sem.parent.suspend_thread.is_empty() {
+            println!("{}", sem.parent.suspend_thread.size());
+        } else {
+            print!("{}:", sem.parent.suspend_thread.size());
+            let head = &sem.parent.suspend_thread;
+            list_head_for_each!(node, head, {
+                let thread = crate::thread_list_node_entry!(node.as_ptr()) as *mut RtThread;
+                let _ = crate::format_name!((*thread).parent.name.as_ptr(), 8);
+            });
+            print!("\n");
+        }
+    };
+    let _ = KObjectBase::get_info(
+        callback_forword,
+        callback,
+        ObjectClassType::ObjectClassSemaphore as u8,
+    );
 }

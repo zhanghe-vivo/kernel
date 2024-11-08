@@ -1,26 +1,31 @@
 use crate::{
     allocator::{rt_free, rt_malloc},
-    cpu::{self, Cpu, Cpus},
+    clock::rt_tick_get,
+    cpu::Cpu,
     error::Error,
     linked_list::ListHead,
+    list_head_for_each,
     object::{
         rt_object_allocate, rt_object_delete, rt_object_detach, rt_object_get_type, rt_object_init,
-        rt_object_is_systemobject, *,
+        rt_object_is_systemobject, ObjectClassType, *,
     },
+    print, println,
     rt_bindings::*,
-    rt_debug_not_in_interrupt, rt_list_init,
+    rt_debug_not_in_interrupt,
     sync::ipc_common::*,
+    thread::RtThread,
+    timer::{rt_timer_control, rt_timer_start, Timer},
 };
-use core::ffi;
+
 #[allow(unused_imports)]
 use core::{
     cell::UnsafeCell,
+    ffi,
     ffi::{c_char, c_void},
     marker::PhantomPinned,
     mem,
     mem::MaybeUninit,
     ptr::null_mut,
-    sync::atomic::{AtomicUsize, Ordering},
 };
 use kernel::{
     rt_bindings::{rt_hw_interrupt_disable, rt_hw_interrupt_enable},
@@ -67,12 +72,12 @@ pub unsafe extern "C" fn rt_mb_init(
     assert!((flag == RT_IPC_FLAG_FIFO as rt_uint8_t) || (flag == RT_IPC_FLAG_PRIO as rt_uint8_t));
 
     rt_object_init(
-        &mut (*mb).parent.parent as *mut BaseObject as *mut rt_object,
+        &mut (*mb).parent.parent as *mut KObjectBase as *mut rt_object,
         ObjectClassType::ObjectClassMailBox as u32,
         name,
     );
 
-    (*mb).parent.parent.flag = flag;
+    (*mb).parent.flag = flag;
 
     _ipc_object_init(&mut (*mb).parent);
 
@@ -92,18 +97,18 @@ pub unsafe extern "C" fn rt_mb_init(
 pub unsafe extern "C" fn rt_mb_detach(mb: *mut RtMailbox) -> rt_err_t {
     assert!(mb != null_mut());
     assert!(
-        rt_object_get_type(&mut (*mb).parent.parent as *mut BaseObject as *mut rt_object)
+        rt_object_get_type(&mut (*mb).parent.parent as *mut KObjectBase as *mut rt_object)
             == ObjectClassType::ObjectClassMailBox as u8
     );
     assert!(
-        rt_object_is_systemobject(&mut (*mb).parent.parent as *mut BaseObject as *mut rt_object)
+        rt_object_is_systemobject(&mut (*mb).parent.parent as *mut KObjectBase as *mut rt_object)
             == RT_TRUE as i32
     );
 
     _ipc_list_resume_all(&mut ((*mb).parent.suspend_thread));
     _ipc_list_resume_all(&mut ((*mb).suspend_sender_thread));
 
-    rt_object_detach(&mut (*mb).parent.parent as *mut BaseObject as *mut rt_object);
+    rt_object_detach(&mut (*mb).parent.parent as *mut KObjectBase as *mut rt_object);
 
     return RT_EOK as rt_err_t;
 }
@@ -125,7 +130,7 @@ pub unsafe extern "C" fn rt_mb_create(
         return mb;
     }
 
-    (*mb).parent.parent.flag = flag;
+    (*mb).parent.flag = flag;
 
     _ipc_object_init(&mut (*mb).parent);
 
@@ -133,7 +138,7 @@ pub unsafe extern "C" fn rt_mb_create(
     let ptr = rt_malloc((*mb).size as usize * mem::size_of::<rt_ubase_t>()) as *mut rt_ubase_t;
     (*mb).msg_pool = ptr;
     if (*mb).msg_pool == null_mut() {
-        rt_object_delete(&mut (*mb).parent.parent as *mut BaseObject as *mut rt_object);
+        rt_object_delete(&mut (*mb).parent.parent as *mut KObjectBase as *mut rt_object);
         return null_mut();
     }
 
@@ -151,11 +156,11 @@ pub unsafe extern "C" fn rt_mb_create(
 pub unsafe extern "C" fn rt_mb_delete(mb: *mut RtMailbox) -> rt_err_t {
     assert!(mb != null_mut());
     assert!(
-        rt_object_get_type(&mut (*mb).parent.parent as *mut BaseObject as *mut rt_object)
+        rt_object_get_type(&mut (*mb).parent.parent as *mut KObjectBase as *mut rt_object)
             == ObjectClassType::ObjectClassMailBox as u8
     );
     assert!(
-        rt_object_is_systemobject(&mut (*mb).parent.parent as *mut BaseObject as *mut rt_object)
+        rt_object_is_systemobject(&mut (*mb).parent.parent as *mut KObjectBase as *mut rt_object)
             == RT_FALSE as i32
     );
 
@@ -167,7 +172,7 @@ pub unsafe extern "C" fn rt_mb_delete(mb: *mut RtMailbox) -> rt_err_t {
 
     rt_free((*mb).msg_pool as *mut c_void);
 
-    rt_object_delete(&mut (*mb).parent.parent as *mut BaseObject as *mut rt_object);
+    rt_object_delete(&mut (*mb).parent.parent as *mut KObjectBase as *mut rt_object);
 
     RT_EOK as rt_err_t
 }
@@ -182,7 +187,7 @@ unsafe extern "C" fn _rt_mb_send_wait(
 ) -> rt_err_t {
     assert!(mb != null_mut());
     assert!(
-        rt_object_get_type(&mut (*mb).parent.parent as *mut BaseObject as *mut rt_object)
+        rt_object_get_type(&mut (*mb).parent.parent as *mut KObjectBase as *mut rt_object)
             == ObjectClassType::ObjectClassMailBox as u32 as u8
     );
 
@@ -196,10 +201,9 @@ unsafe extern "C" fn _rt_mb_send_wait(
 
     rt_object_hook_call!(
         rt_object_put_hook,
-        &mut (*mb).parent.parent as *mut BaseObject as *mut rt_object
+        &mut (*mb).parent.parent as *mut KObjectBase as *mut rt_object
     );
 
-    //TODO:
     let mut level = rt_hw_interrupt_disable();
 
     if (*mb).entry == (*mb).size && timeout == 0 {
@@ -219,7 +223,7 @@ unsafe extern "C" fn _rt_mb_send_wait(
         let ret = _ipc_list_suspend(
             &mut (*mb).suspend_sender_thread,
             thread,
-            (*mb).parent.parent.flag,
+            (*mb).parent.flag,
             suspend_flag as u32,
         );
 
@@ -232,11 +236,11 @@ unsafe extern "C" fn _rt_mb_send_wait(
             tick_delta = rt_tick_get();
 
             rt_timer_control(
-                &mut (*thread).thread_timer,
+                &mut (*thread).thread_timer as *const _ as *mut Timer,
                 RT_TIMER_CTRL_SET_TIME as i32,
                 (&mut timeout) as *mut i32 as *mut c_void,
             );
-            rt_timer_start(&mut (*thread).thread_timer);
+            rt_timer_start(&mut (*thread).thread_timer as *const _ as *mut Timer);
         }
 
         rt_hw_interrupt_enable(level);
@@ -343,13 +347,13 @@ pub unsafe extern "C" fn rt_mb_send_killable(mb: *mut RtMailbox, value: rt_ubase
 pub unsafe extern "C" fn rt_mb_urgent(mb: *mut RtMailbox, value: rt_ubase_t) -> rt_err_t {
     assert!(mb != null_mut());
     assert!(
-        rt_object_get_type(&mut (*mb).parent.parent as *mut BaseObject as *mut rt_object)
+        rt_object_get_type(&mut (*mb).parent.parent as *mut KObjectBase as *mut rt_object)
             == ObjectClassType::ObjectClassMailBox as u8
     );
 
     rt_object_hook_call!(
         rt_object_put_hook,
-        &mut (*mb).parent.parent as *mut BaseObject as *mut rt_object
+        &mut (*mb).parent.parent as *mut KObjectBase as *mut rt_object
     );
 
     let level = rt_hw_interrupt_disable();
@@ -394,7 +398,7 @@ unsafe extern "C" fn _rt_mb_recv(
 ) -> rt_err_t {
     assert!(mb != null_mut());
     assert!(
-        rt_object_get_type(&mut (*mb).parent.parent as *mut BaseObject as *mut rt_object)
+        rt_object_get_type(&mut (*mb).parent.parent as *mut KObjectBase as *mut rt_object)
             == ObjectClassType::ObjectClassMailBox as u8
     );
 
@@ -404,11 +408,12 @@ unsafe extern "C" fn _rt_mb_recv(
     rt_debug_scheduler_available!(scheduler);
 
     let mut tick_delta = 0;
+
     let thread = unsafe { crate::current_thread!().unwrap().as_mut() };
 
     rt_object_hook_call!(
         rt_object_trytake_hook,
-        &mut (*mb).parent.parent as *mut BaseObject as *mut rt_object
+        &mut (*mb).parent.parent as *mut KObjectBase as *mut rt_object
     );
 
     let mut level = rt_hw_interrupt_disable();
@@ -431,7 +436,7 @@ unsafe extern "C" fn _rt_mb_recv(
         let ret = _ipc_list_suspend(
             &mut (*mb).parent.suspend_thread,
             thread,
-            (*mb).parent.parent.flag,
+            (*mb).parent.flag,
             suspend_flag as u32,
         );
         if ret != RT_EOK as rt_err_t {
@@ -443,11 +448,11 @@ unsafe extern "C" fn _rt_mb_recv(
             tick_delta = rt_tick_get();
 
             rt_timer_control(
-                &mut (*thread).thread_timer,
+                &mut (*thread).thread_timer as *const _ as *mut Timer,
                 RT_TIMER_CTRL_SET_TIME as i32,
                 (&mut timeout) as *mut i32 as *mut c_void,
             );
-            rt_timer_start(&mut (*thread).thread_timer);
+            rt_timer_start(&mut (*thread).thread_timer as *const _ as *mut Timer);
         }
 
         rt_hw_interrupt_enable(level);
@@ -481,14 +486,14 @@ unsafe extern "C" fn _rt_mb_recv(
         (*mb).entry -= 1;
     }
 
-    if (*mb).suspend_sender_thread.is_empty() == false {
+    if !(*mb).suspend_sender_thread.is_empty() {
         _ipc_list_resume(&mut (*mb).suspend_sender_thread);
 
         rt_hw_interrupt_enable(level);
 
         rt_object_hook_call!(
             rt_object_take_hook,
-            &mut (*mb).parent.parent as *mut BaseObject as *mut rt_object
+            &mut (*mb).parent.parent as *mut KObjectBase as *mut rt_object
         );
 
         Cpu::get_current_scheduler().do_task_schedule();
@@ -500,7 +505,7 @@ unsafe extern "C" fn _rt_mb_recv(
 
     rt_object_hook_call!(
         rt_object_take_hook,
-        &mut (*mb).parent.parent as *mut BaseObject as *mut rt_object
+        &mut (*mb).parent.parent as *mut KObjectBase as *mut rt_object
     );
 
     RT_EOK as rt_err_t
@@ -545,7 +550,7 @@ pub unsafe extern "C" fn rt_mb_control(
 ) -> rt_err_t {
     assert!(mb != null_mut());
     assert!(
-        rt_object_get_type(&mut (*mb).parent.parent as *mut BaseObject as *mut rt_object)
+        rt_object_get_type(&mut (*mb).parent.parent as *mut KObjectBase as *mut rt_object)
             == ObjectClassType::ObjectClassMailBox as u8
     );
 
@@ -668,4 +673,35 @@ impl MailBox {
             Err(Error::from_errno(result))
         }
     }
+}
+#[no_mangle]
+#[allow(unused_unsafe)]
+pub extern "C" fn rt_mailbox_info() {
+    let callback_forword = || {
+        println!("mailbox  entry size suspend thread");
+        println!("-------- ----  ---- --------------");
+    };
+    let callback = |node: &ListHead| unsafe {
+        let mailbox =
+            &*(crate::list_head_entry!(node.as_ptr(), KObjectBase, list) as *const RtMailbox);
+        let _ = crate::format_name!(mailbox.parent.parent.name.as_ptr(), 8);
+        print!(" {:04} ", mailbox.entry);
+        print!(" {:04} ", mailbox.size);
+        if mailbox.parent.suspend_thread.is_empty() {
+            println!("{}", mailbox.parent.suspend_thread.size());
+        } else {
+            print!("{}:", mailbox.parent.suspend_thread.size());
+            let head = &mailbox.parent.suspend_thread;
+            list_head_for_each!(node, head, {
+                let thread = crate::thread_list_node_entry!(node.as_ptr()) as *mut RtThread;
+                let _ = crate::format_name!((*thread).parent.name.as_ptr(), 8);
+            });
+            print!("\n");
+        }
+    };
+    let _ = KObjectBase::get_info(
+        callback_forword,
+        callback,
+        ObjectClassType::ObjectClassMailBox as u8,
+    );
 }
