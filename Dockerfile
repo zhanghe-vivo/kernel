@@ -5,6 +5,8 @@ ENV RUSTUP_DIST_SERVER https://mirrors.tuna.tsinghua.edu.cn/rustup
 ENV RUSTUP_UPDATE_ROOT https://mirrors.tuna.tsinghua.edu.cn/rustup/rustup
 RUN rustup default nightly && \
     rustup target add armv7a-none-eabi && \
+    rustup target add thumbv7m-none-eabi && \
+    rustup target add thumbv8m.main-none-eabi && \
     cargo install cargo-binutils && \
     rustup component add llvm-tools-preview && \
     rustup component add rust-src && \

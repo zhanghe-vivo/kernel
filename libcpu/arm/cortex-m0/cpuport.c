@@ -135,3 +135,8 @@ void rt_hw_cpu_reset(void)
 {
     SCB_AIRCR  = SCB_RESET_VALUE;//((0x5FAUL << SCB_AIRCR_VECTKEY_Pos) |SCB_AIRCR_SYSRESETREQ_Msk);
 }
+
+rt_weak int rt_hw_cpu_id(void)
+{
+    return 0;
+}

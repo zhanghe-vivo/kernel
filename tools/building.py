@@ -359,9 +359,9 @@ def PrepareBuilding(env, root_directory, has_libcpu=False, remove_components = [
     # include kernel
     objs.extend(SConscript(Rtt_Root + '/src/SConscript', variant_dir=kernel_vdir + '/src', duplicate=0))
     # include libcpu
-    if not has_libcpu:
-        objs.extend(SConscript(Rtt_Root + '/libcpu/SConscript',
-                    variant_dir=kernel_vdir + '/libcpu', duplicate=0))
+    # if not has_libcpu:
+    #     objs.extend(SConscript(Rtt_Root + '/libcpu/SConscript',
+    #                 variant_dir=kernel_vdir + '/libcpu', duplicate=0))
 
     # include components
     objs.extend(SConscript(Rtt_Root + '/components/SConscript',
@@ -374,8 +374,8 @@ def PrepareBuilding(env, root_directory, has_libcpu=False, remove_components = [
                            variant_dir=kernel_vdir + '/examples/utest/testcases',
                            duplicate=0))
     # include rust-libs
-    objs.extend(SConscript(Rtt_Root + '/rs_src/SConscript',
-                    variant_dir=kernel_vdir + '/rs_src', duplicate=0))
+    objs.extend(SConscript(Rtt_Root + '/blue/SConscript',
+                    variant_dir=kernel_vdir + '/blue', duplicate=0))
     return objs
 
 def PrepareModuleBuilding(env, root_directory, bsp_directory):

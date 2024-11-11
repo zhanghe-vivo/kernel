@@ -186,13 +186,6 @@ rt_hw_context_switch_to:
 
     /* never reach here! */
 
-/* compatible with old version */
-    .global rt_hw_interrupt_thread_switch
-    .type rt_hw_interrupt_thread_switch, %function
-rt_hw_interrupt_thread_switch:
-    BX      LR
-    NOP
-
     .global HardFault_Handler
     .type HardFault_Handler, %function
 HardFault_Handler:
@@ -201,14 +194,3 @@ HardFault_Handler:
     PUSH    {LR}
     BL      rt_hw_hard_fault_exception
     POP     {PC}
-
-
-/*
- * rt_uint32_t rt_hw_interrupt_check(void);
- * R0 --> state
- */
-    .global rt_hw_interrupt_check
-    .type rt_hw_interrupt_check, %function
-rt_hw_interrupt_check:
-    MRS     R0, IPSR
-    BX      LR

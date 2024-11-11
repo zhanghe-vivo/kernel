@@ -1,3 +1,0 @@
-[submodule "rs_src/third_party/pinned-init"]
-	path = rs_src/third_party/pinned-init
-	url = https://gitlab.vmic.xyz/11154271/pinned-init.git

@@ -45,10 +45,6 @@ rt_hw_context_switch_to:
 
     mov     r0, r1
     bl      rt_cpus_lock_status_restore
-#ifdef RT_USING_SMART
-    bl      rt_thread_self
-    bl      lwp_user_setting_restore
-#endif
     b       rt_hw_context_switch_exit
 
 .section .bss.share.isr
@@ -76,10 +72,6 @@ rt_hw_context_switch:
 
     stmfd sp!, {r4}         @ push cpsr
 
-#ifdef RT_USING_SMART
-    stmfd sp, {r13, r14}^   @ push usr_sp usr_lr
-    sub sp, #8
-#endif
 #ifdef RT_USING_FPU
     /* fpu context */
     vmrs r6, fpexc
@@ -98,10 +90,6 @@ rt_hw_context_switch:
 
     mov     r0, r2
     bl      rt_cpus_lock_status_restore
-#ifdef RT_USING_SMART
-    bl      rt_thread_self
-    bl      lwp_user_setting_restore
-#endif
 
     b       rt_hw_context_switch_exit
 
@@ -119,9 +107,6 @@ rt_hw_context_switch:
 .equ I_Bit,           0x80            @ when I bit is set, IRQ is disabled
 .equ F_Bit,           0x40            @ when F bit is set, FIQ is disabled
 
-/* .globl rt_thread_switch_interrupt_flag
-   .globl rt_interrupt_from_thread
-   .globl rt_interrupt_to_thread */
 .globl rt_hw_context_switch_interrupt
 rt_hw_context_switch_interrupt:
     clrex
@@ -130,26 +115,10 @@ rt_hw_context_switch_interrupt:
      * r2 :addr of to_thread's sp
      * r3 :to_thread's tcb
      */
-#ifdef RT_USING_SMART
-    push {r0 - r3, lr}
-#ifdef RT_USING_SMART
-    bl rt_thread_self
-    bl lwp_user_setting_save
-#endif
-    pop {r0 - r3, lr}
-#endif
     str     r0, [r1]  /* context store to current_thread->sp */
-
     ldr     sp, [r2]  /* load to_thread->sp to sp register */
     mov     r0, r3    /* to_thread pointer to r0 for first parameter */
-#ifdef RT_USING_SMART
-    mov     r4, r0
-#endif
     bl      rt_cpus_lock_status_restore
-#ifdef RT_USING_SMART
-    mov     r0, r4
-    bl      lwp_user_setting_restore
-#endif
     b       rt_hw_context_switch_exit
 
 .global rt_hw_context_switch_exit
@@ -177,22 +146,8 @@ rt_hw_context_switch_exit:
 1:
 #endif
 
-#ifdef RT_USING_SMART
-    ldmfd   sp, {r13, r14}^ /* usr_sp, usr_lr */
-    add     sp, #8
-#endif
     ldmfd   sp!, {r1}
     msr     spsr_cxsf, r1        /* original mode */
-
-#ifdef RT_USING_SMART
-    and r1, #0x1f
-    cmp r1, #0x10
-    bne 1f
-    ldmfd   sp!, {r0-r12,lr}
-    ldmfd   sp!, {lr}
-    b arch_ret_to_user
-1:
-#endif
     ldmfd   sp!, {r0-r12,lr,pc}^ /* irq return */
 
 #ifdef RT_USING_FPU

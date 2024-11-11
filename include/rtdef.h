@@ -401,7 +401,24 @@ typedef int (*init_fn_t)(void);
  */
 
 /**@{*/
-
+#ifdef USE_RUST
+// compat for bindgen
+#define RT_EOK                          0          /**< There is no error */
+#define RT_ERROR                        255        /**< A generic/unknown error happens */
+#define RT_ETIMEOUT                     116        /**< Timed out */
+#define RT_EFULL                        28         /**< The resource is full */
+#define RT_EEMPTY                       61         /**< The resource is empty */
+#define RT_ENOMEM                       12         /**< No memory */
+#define RT_ENOSYS                       88         /**< Function not implemented */
+#define RT_EBUSY                        16         /**< Busy */
+#define RT_EIO                          5          /**< IO error */
+#define RT_EINTR                        4          /**< Interrupted system call */
+#define RT_EINVAL                       22         /**< Invalid argument */
+#define RT_ENOENT                       2          /**< No entry */
+#define RT_ENOSPC                       28         /**< No space left */
+#define RT_EPERM                        1          /**< Operation not permitted */
+#define RT_ETRAP                        254        /**< Trap event */
+#else
 /* RT-Thread error code definitions */
 #if defined(RT_USING_LIBC) && !RT_USING_LIBC_ISO_ONLY
 /* POSIX error code compatible */
@@ -437,7 +454,7 @@ typedef int (*init_fn_t)(void);
 #define RT_EPERM                        13              /**< Operation not permitted */
 #define RT_ETRAP                        14              /**< Trap event */
 #endif /* defined(RT_USING_LIBC) && !RT_USING_LIBC_ISO_ONLY */
-
+#endif // USE_RUST
 /**@}*/
 
 /**
