@@ -7,15 +7,21 @@ enum ObjectClassType {
   ObjectClassUninit = 0,
   ObjectClassProcess,
   ObjectClassThread,
+#if defined(RT_USING_SEMAPHORE)
   ObjectClassSemaphore,
+#endif
 #if defined(RT_USING_MUTEX)
   ObjectClassMutex,
 #endif
 #if defined(RT_USING_EVENT)
   ObjectClassEvent,
 #endif
+#if defined(RT_USING_MAILBOX)
   ObjectClassMailBox,
+#endif
+#if defined(RT_USING_MESSAGEQUEUE)
   ObjectClassMessageQueue,
+#endif
   ObjectClassMemHeap,
   ObjectClassMemPool,
   ObjectClassDevice,
@@ -43,6 +49,42 @@ typedef struct rt_object {
    */
   rt_list_t list;
 } rt_object;
+
+/**
+ * Base structure of IPC object
+ */
+typedef struct rt_ipc_object {
+  /**
+   * Inherit from KObjectBase
+   */
+  struct rt_object parent;
+  /**
+   * IPC flag to use
+   */
+  unsigned char flag;
+  /**
+   * Spin lock IPCObject used
+   */
+  struct RawSpin spinlock;
+  /**
+   * Threads pended on this IPC object
+   */
+  rt_list_t wait_list;
+} rt_ipc_object;
+
+/**
+ * Event flag raw structure
+ */
+typedef struct rt_event {
+  /**
+   * Inherit from IPCObject
+   */
+  struct rt_ipc_object parent;
+  /**
+   * Event flog set value
+   */
+  unsigned int set;
+} rt_event;
 
 /**
  * The timer structure
@@ -169,5 +211,126 @@ typedef struct rt_thread {
   ;
   uintptr_t tid;
 } rt_thread;
+
+typedef struct rt_mutex {
+  /**
+   * Inherit from IPCObject
+   */
+  struct rt_ipc_object parent;
+  /**
+   * Priority ceiling of mutex
+   */
+  unsigned char ceiling_priority;
+  /**
+   * Maximal priority for pending thread
+   */
+  unsigned char priority;
+  /**
+   * Numbers of thread hold the mutex
+   */
+  unsigned char hold;
+  /**
+   * Current owner of mutex
+   */
+  struct rt_thread *owner;
+  /**
+   * The object list taken by thread
+   */
+  rt_list_t taken_list;
+} rt_mutex;
+
+/**
+ * Mailbox raw structure
+ */
+typedef struct rt_mailbox {
+  /**
+   * Inherit from IPCObject
+   */
+  struct rt_ipc_object parent;
+  /**
+   * Message pool buffer of mailbox
+   */
+  unsigned long *msg_pool;
+  /**
+   * Message pool buffer size
+   */
+  unsigned short size;
+  /**
+   * Index of messages in message pool
+   */
+  unsigned short entry;
+  /**
+   * Input offset of the message buffer
+   */
+  unsigned short in_offset;
+  /**
+   * Output offset of the message buffer
+   */
+  unsigned short out_offset;
+  /**
+   * Sender thread suspended on this mailbox
+   */
+  rt_list_t suspend_sender_thread;
+} rt_mailbox;
+
+/**
+ * MessageQueue raw structure
+ */
+typedef struct rt_messagequeue {
+  /**
+   * Inherit from IPCObject
+   */
+  struct rt_ipc_object parent;
+  /**
+   * Start address of message queue
+   */
+  void *msg_pool;
+  /**
+   * Message size of each message
+   */
+  unsigned short msg_size;
+  /**
+   * Max number of messages
+   */
+  unsigned short max_msgs;
+  /**
+   * Index of messages in the queue
+   */
+  unsigned short entry;
+  /**
+   * List head
+   */
+  void *msg_queue_head;
+  /**
+   * List tail
+   */
+  void *msg_queue_tail;
+  /**
+   * Pointer indicated the free node of queue
+   */
+  void *msg_queue_free;
+  /**
+   * Sender thread suspended on this message queue
+   */
+  rt_list_t suspend_sender_thread;
+} rt_messagequeue;
+
+/**
+ * Semaphore raw structure
+ */
+typedef struct rt_semaphore {
+  /**
+   * Inherit from IPCObject
+   */
+  struct rt_ipc_object parent;
+  /**
+   * Value of semaphore
+   */
+  unsigned short value;
+  /**
+   * Reserved field
+   */
+  unsigned short reserved;
+} rt_semaphore;
 
 #endif /* KERN_RUST_WRAPPER_H */

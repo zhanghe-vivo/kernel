@@ -13,7 +13,7 @@ use crate::{
     stack::Stack,
     static_init::UnsafeStaticInit,
     str::CStr,
-    sync::{lock::mutex::*, RawSpin},
+    sync::{ipc_common::*, lock::mutex::*, RawSpin},
     timer, zombie,
 };
 use alloc::alloc;
@@ -69,7 +69,6 @@ use crate::rt_bindings::{
     rt_err_t, rt_object, rt_uint8_t, RT_EOK, RT_ERROR, RT_THREAD_CTRL_CHANGE_PRIORITY,
     RT_THREAD_SUSPEND_MASK,
 };
-use crate::sync::ipc_common::_ipc_list_suspend;
 pub use thread_list_node_entry;
 
 #[cfg(all(feature = "RT_USING_HOOK", feature = "RT_HOOK_USING_FUNC_PTR"))]
@@ -679,12 +678,14 @@ impl RtThread {
         let level = self.spinlock.lock_irqsave();
 
         // as rt_mutex_release may use sched_lock.
-        if self.pending_object != ptr::null_mut()
-            && object::rt_object_get_type(self.pending_object as *mut rt_bindings::rt_object)
-                == ObjectClassType::ObjectClassMutex as u8
-        {
-            unsafe {
-                rt_mutex_drop_thread(self.pending_object as *mut RtMutex, self as *mut RtThread)
+        unsafe {
+            if self.pending_object != ptr::null_mut()
+                && (*self.pending_object).type_name() == ObjectClassType::ObjectClassMutex as u8
+            {
+                let mutex = self.pending_object as *mut RtMutex;
+                if !mutex.is_null() {
+                    (*mutex).drop_thread(self);
+                }
             };
             self.pending_object = ptr::null_mut();
         }
@@ -771,13 +772,13 @@ impl RtThread {
                         == ObjectClassType::ObjectClassMutex as rt_uint8_t
                 {
                     let mut mutex_priority: rt_uint8_t = 0xff;
-                    let mut pending_mutex = pending_obj as *mut RtMutex;
+                    let pending_mutex = pending_obj as *mut RtMutex;
                     let owner = (*pending_mutex).owner;
                     // Re-insert thread to suspended thread list
                     self.remove_tlist();
 
-                    ret = _ipc_list_suspend(
-                        &mut (*pending_mutex).parent.suspend_thread,
+                    ret = IPCObject::suspend_thread(
+                        &mut (*pending_mutex).parent.wait_list,
                         self,
                         (*pending_mutex).parent.flag as rt_uint8_t,
                         suspend_flag as u32,
@@ -785,11 +786,10 @@ impl RtThread {
                     if ret == RT_EOK as rt_err_t {
                         // Update priority
                         (*pending_mutex).update_priority();
-                        mutex_priority = (*(*pending_mutex).owner).get_mutex_priority();
-                        if mutex_priority != (*(*pending_mutex).owner).current_priority {
-                            let thread = (*pending_mutex).owner;
+                        mutex_priority = (*owner).get_mutex_priority();
+                        if mutex_priority != (*owner).current_priority {
                             ret = rt_thread_control(
-                                thread,
+                                owner,
                                 RT_THREAD_CTRL_CHANGE_PRIORITY,
                                 (&mut mutex_priority) as *mut u8 as *mut ffi::c_void,
                             );

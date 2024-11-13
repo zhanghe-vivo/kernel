@@ -425,6 +425,118 @@ fn bindgen_test_layout_rt_object() {
         )
     );
 }
+#[doc = " Base structure of IPC object"]
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct rt_ipc_object {
+    #[doc = " Inherit from KObjectBase"]
+    pub parent: rt_object,
+    #[doc = " IPC flag to use"]
+    pub flag: core::ffi::c_uchar,
+    #[doc = " Spin lock IPCObject used"]
+    pub spinlock: rt_spinlock,
+    #[doc = " Threads pended on this IPC object"]
+    pub wait_list: rt_list_t,
+}
+#[test]
+fn bindgen_test_layout_rt_ipc_object() {
+    const UNINIT: ::core::mem::MaybeUninit<rt_ipc_object> = ::core::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(
+        ::core::mem::size_of::<rt_ipc_object>(),
+        36usize,
+        concat!("Size of: ", stringify!(rt_ipc_object))
+    );
+    assert_eq!(
+        ::core::mem::align_of::<rt_ipc_object>(),
+        4usize,
+        concat!("Alignment of ", stringify!(rt_ipc_object))
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).parent) as usize - ptr as usize },
+        0usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_ipc_object),
+            "::",
+            stringify!(parent)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).flag) as usize - ptr as usize },
+        20usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_ipc_object),
+            "::",
+            stringify!(flag)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).spinlock) as usize - ptr as usize },
+        24usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_ipc_object),
+            "::",
+            stringify!(spinlock)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).wait_list) as usize - ptr as usize },
+        28usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_ipc_object),
+            "::",
+            stringify!(wait_list)
+        )
+    );
+}
+#[doc = " Event flag raw structure"]
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct rt_event {
+    #[doc = " Inherit from IPCObject"]
+    pub parent: rt_ipc_object,
+    #[doc = " Event flog set value"]
+    pub set: core::ffi::c_uint,
+}
+#[test]
+fn bindgen_test_layout_rt_event() {
+    const UNINIT: ::core::mem::MaybeUninit<rt_event> = ::core::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(
+        ::core::mem::size_of::<rt_event>(),
+        40usize,
+        concat!("Size of: ", stringify!(rt_event))
+    );
+    assert_eq!(
+        ::core::mem::align_of::<rt_event>(),
+        4usize,
+        concat!("Alignment of ", stringify!(rt_event))
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).parent) as usize - ptr as usize },
+        0usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_event),
+            "::",
+            stringify!(parent)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).set) as usize - ptr as usize },
+        36usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_event),
+            "::",
+            stringify!(set)
+        )
+    );
+}
 #[doc = " The timer structure"]
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -860,148 +972,20 @@ fn bindgen_test_layout_rt_thread() {
         )
     );
 }
-pub type rt_object_t = *mut rt_object;
-pub type rt_timer_t = *mut rt_timer;
-pub const RT_INTERRUPTIBLE: _bindgen_ty_1 = 0;
-pub const RT_KILLABLE: _bindgen_ty_1 = 1;
-pub const RT_UNINTERRUPTIBLE: _bindgen_ty_1 = 2;
-pub type _bindgen_ty_1 = core::ffi::c_uint;
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct rt_cpu {
-    _unused: [u8; 0],
-}
-pub type rt_thread_cleanup_t = ::core::option::Option<unsafe extern "C" fn(tid: *mut rt_thread)>;
-pub type rt_thread_t = *mut rt_thread;
-#[doc = " Base structure of IPC object"]
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct rt_ipc_object {
-    #[doc = "< inherit from rt_object"]
-    pub parent: rt_object,
-    pub flag: rt_uint8_t,
-    #[doc = "< threads pended on this resource"]
-    pub suspend_thread: rt_list_t,
-}
-#[test]
-fn bindgen_test_layout_rt_ipc_object() {
-    const UNINIT: ::core::mem::MaybeUninit<rt_ipc_object> = ::core::mem::MaybeUninit::uninit();
-    let ptr = UNINIT.as_ptr();
-    assert_eq!(
-        ::core::mem::size_of::<rt_ipc_object>(),
-        32usize,
-        concat!("Size of: ", stringify!(rt_ipc_object))
-    );
-    assert_eq!(
-        ::core::mem::align_of::<rt_ipc_object>(),
-        4usize,
-        concat!("Alignment of ", stringify!(rt_ipc_object))
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).parent) as usize - ptr as usize },
-        0usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_ipc_object),
-            "::",
-            stringify!(parent)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).flag) as usize - ptr as usize },
-        20usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_ipc_object),
-            "::",
-            stringify!(flag)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).suspend_thread) as usize - ptr as usize },
-        24usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_ipc_object),
-            "::",
-            stringify!(suspend_thread)
-        )
-    );
-}
-#[doc = " Semaphore structure"]
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct rt_semaphore {
-    #[doc = "< inherit from ipc_object"]
-    pub parent: rt_ipc_object,
-    #[doc = "< value of semaphore."]
-    pub value: rt_uint16_t,
-    #[doc = "< reserved field"]
-    pub reserved: rt_uint16_t,
-}
-#[test]
-fn bindgen_test_layout_rt_semaphore() {
-    const UNINIT: ::core::mem::MaybeUninit<rt_semaphore> = ::core::mem::MaybeUninit::uninit();
-    let ptr = UNINIT.as_ptr();
-    assert_eq!(
-        ::core::mem::size_of::<rt_semaphore>(),
-        36usize,
-        concat!("Size of: ", stringify!(rt_semaphore))
-    );
-    assert_eq!(
-        ::core::mem::align_of::<rt_semaphore>(),
-        4usize,
-        concat!("Alignment of ", stringify!(rt_semaphore))
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).parent) as usize - ptr as usize },
-        0usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_semaphore),
-            "::",
-            stringify!(parent)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).value) as usize - ptr as usize },
-        32usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_semaphore),
-            "::",
-            stringify!(value)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).reserved) as usize - ptr as usize },
-        34usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_semaphore),
-            "::",
-            stringify!(reserved)
-        )
-    );
-}
-pub type rt_sem_t = *mut rt_semaphore;
-#[doc = " Mutual exclusion (mutex) structure"]
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct rt_mutex {
-    #[doc = "< inherit from ipc_object"]
+    #[doc = " Inherit from IPCObject"]
     pub parent: rt_ipc_object,
-    #[doc = "< the priority ceiling of mutexe"]
-    pub ceiling_priority: rt_uint8_t,
-    #[doc = "< the maximal priority for pending thread"]
-    pub priority: rt_uint8_t,
-    #[doc = "< numbers of thread hold the mutex"]
-    pub hold: rt_uint8_t,
-    #[doc = "< reserved field"]
-    pub reserved: rt_uint8_t,
-    #[doc = "< current owner of mutex"]
+    #[doc = " Priority ceiling of mutex"]
+    pub ceiling_priority: core::ffi::c_uchar,
+    #[doc = " Maximal priority for pending thread"]
+    pub priority: core::ffi::c_uchar,
+    #[doc = " Numbers of thread hold the mutex"]
+    pub hold: core::ffi::c_uchar,
+    #[doc = " Current owner of mutex"]
     pub owner: *mut rt_thread,
-    #[doc = "< the object list taken by thread"]
+    #[doc = " The object list taken by thread"]
     pub taken_list: rt_list_t,
 }
 #[test]
@@ -1010,7 +994,7 @@ fn bindgen_test_layout_rt_mutex() {
     let ptr = UNINIT.as_ptr();
     assert_eq!(
         ::core::mem::size_of::<rt_mutex>(),
-        48usize,
+        52usize,
         concat!("Size of: ", stringify!(rt_mutex))
     );
     assert_eq!(
@@ -1030,7 +1014,7 @@ fn bindgen_test_layout_rt_mutex() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).ceiling_priority) as usize - ptr as usize },
-        32usize,
+        36usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_mutex),
@@ -1040,7 +1024,7 @@ fn bindgen_test_layout_rt_mutex() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).priority) as usize - ptr as usize },
-        33usize,
+        37usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_mutex),
@@ -1050,7 +1034,7 @@ fn bindgen_test_layout_rt_mutex() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).hold) as usize - ptr as usize },
-        34usize,
+        38usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_mutex),
@@ -1059,18 +1043,8 @@ fn bindgen_test_layout_rt_mutex() {
         )
     );
     assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).reserved) as usize - ptr as usize },
-        35usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_mutex),
-            "::",
-            stringify!(reserved)
-        )
-    );
-    assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).owner) as usize - ptr as usize },
-        36usize,
+        40usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_mutex),
@@ -1080,7 +1054,7 @@ fn bindgen_test_layout_rt_mutex() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).taken_list) as usize - ptr as usize },
-        40usize,
+        44usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_mutex),
@@ -1089,68 +1063,23 @@ fn bindgen_test_layout_rt_mutex() {
         )
     );
 }
-pub type rt_mutex_t = *mut rt_mutex;
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct rt_event {
-    #[doc = "< inherit from ipc_object"]
-    pub parent: rt_ipc_object,
-    #[doc = "< event set"]
-    pub set: rt_uint32_t,
-}
-#[test]
-fn bindgen_test_layout_rt_event() {
-    const UNINIT: ::core::mem::MaybeUninit<rt_event> = ::core::mem::MaybeUninit::uninit();
-    let ptr = UNINIT.as_ptr();
-    assert_eq!(
-        ::core::mem::size_of::<rt_event>(),
-        36usize,
-        concat!("Size of: ", stringify!(rt_event))
-    );
-    assert_eq!(
-        ::core::mem::align_of::<rt_event>(),
-        4usize,
-        concat!("Alignment of ", stringify!(rt_event))
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).parent) as usize - ptr as usize },
-        0usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_event),
-            "::",
-            stringify!(parent)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).set) as usize - ptr as usize },
-        32usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_event),
-            "::",
-            stringify!(set)
-        )
-    );
-}
-pub type rt_event_t = *mut rt_event;
-#[doc = " mailbox structure"]
+#[doc = " Mailbox raw structure"]
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct rt_mailbox {
-    #[doc = "< inherit from ipc_object"]
+    #[doc = " Inherit from IPCObject"]
     pub parent: rt_ipc_object,
-    #[doc = "< start address of message buffer"]
-    pub msg_pool: *mut rt_ubase_t,
-    #[doc = "< size of message pool"]
-    pub size: rt_uint16_t,
-    #[doc = "< index of messages in msg_pool"]
-    pub entry: rt_uint16_t,
-    #[doc = "< input offset of the message buffer"]
-    pub in_offset: rt_uint16_t,
-    #[doc = "< output offset of the message buffer"]
-    pub out_offset: rt_uint16_t,
-    #[doc = "< sender thread suspended on this mailbox"]
+    #[doc = " Message pool buffer of mailbox"]
+    pub msg_pool: *mut core::ffi::c_ulong,
+    #[doc = " Message pool buffer size"]
+    pub size: core::ffi::c_ushort,
+    #[doc = " Index of messages in message pool"]
+    pub entry: core::ffi::c_ushort,
+    #[doc = " Input offset of the message buffer"]
+    pub in_offset: core::ffi::c_ushort,
+    #[doc = " Output offset of the message buffer"]
+    pub out_offset: core::ffi::c_ushort,
+    #[doc = " Sender thread suspended on this mailbox"]
     pub suspend_sender_thread: rt_list_t,
 }
 #[test]
@@ -1159,7 +1088,7 @@ fn bindgen_test_layout_rt_mailbox() {
     let ptr = UNINIT.as_ptr();
     assert_eq!(
         ::core::mem::size_of::<rt_mailbox>(),
-        52usize,
+        56usize,
         concat!("Size of: ", stringify!(rt_mailbox))
     );
     assert_eq!(
@@ -1179,7 +1108,7 @@ fn bindgen_test_layout_rt_mailbox() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).msg_pool) as usize - ptr as usize },
-        32usize,
+        36usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_mailbox),
@@ -1189,7 +1118,7 @@ fn bindgen_test_layout_rt_mailbox() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).size) as usize - ptr as usize },
-        36usize,
+        40usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_mailbox),
@@ -1199,7 +1128,7 @@ fn bindgen_test_layout_rt_mailbox() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).entry) as usize - ptr as usize },
-        38usize,
+        42usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_mailbox),
@@ -1209,7 +1138,7 @@ fn bindgen_test_layout_rt_mailbox() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).in_offset) as usize - ptr as usize },
-        40usize,
+        44usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_mailbox),
@@ -1219,7 +1148,7 @@ fn bindgen_test_layout_rt_mailbox() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).out_offset) as usize - ptr as usize },
-        42usize,
+        46usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_mailbox),
@@ -1229,7 +1158,7 @@ fn bindgen_test_layout_rt_mailbox() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).suspend_sender_thread) as usize - ptr as usize },
-        44usize,
+        48usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_mailbox),
@@ -1238,28 +1167,27 @@ fn bindgen_test_layout_rt_mailbox() {
         )
     );
 }
-pub type rt_mailbox_t = *mut rt_mailbox;
-#[doc = " message queue structure"]
+#[doc = " MessageQueue raw structure"]
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct rt_messagequeue {
-    #[doc = "< inherit from ipc_object"]
+    #[doc = " Inherit from IPCObject"]
     pub parent: rt_ipc_object,
-    #[doc = "< start address of message queue"]
+    #[doc = " Start address of message queue"]
     pub msg_pool: *mut core::ffi::c_void,
-    #[doc = "< message size of each message"]
-    pub msg_size: rt_uint16_t,
-    #[doc = "< max number of messages"]
-    pub max_msgs: rt_uint16_t,
-    #[doc = "< index of messages in the queue"]
-    pub entry: rt_uint16_t,
-    #[doc = "< list head"]
+    #[doc = " Message size of each message"]
+    pub msg_size: core::ffi::c_ushort,
+    #[doc = " Max number of messages"]
+    pub max_msgs: core::ffi::c_ushort,
+    #[doc = " Index of messages in the queue"]
+    pub entry: core::ffi::c_ushort,
+    #[doc = " List head"]
     pub msg_queue_head: *mut core::ffi::c_void,
-    #[doc = "< list tail"]
+    #[doc = " List tail"]
     pub msg_queue_tail: *mut core::ffi::c_void,
-    #[doc = "< pointer indicated the free node of queue"]
+    #[doc = " Pointer indicated the free node of queue"]
     pub msg_queue_free: *mut core::ffi::c_void,
-    #[doc = "< sender thread suspended on this message queue"]
+    #[doc = " Sender thread suspended on this message queue"]
     pub suspend_sender_thread: rt_list_t,
 }
 #[test]
@@ -1268,7 +1196,7 @@ fn bindgen_test_layout_rt_messagequeue() {
     let ptr = UNINIT.as_ptr();
     assert_eq!(
         ::core::mem::size_of::<rt_messagequeue>(),
-        64usize,
+        68usize,
         concat!("Size of: ", stringify!(rt_messagequeue))
     );
     assert_eq!(
@@ -1288,7 +1216,7 @@ fn bindgen_test_layout_rt_messagequeue() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).msg_pool) as usize - ptr as usize },
-        32usize,
+        36usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_messagequeue),
@@ -1298,7 +1226,7 @@ fn bindgen_test_layout_rt_messagequeue() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).msg_size) as usize - ptr as usize },
-        36usize,
+        40usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_messagequeue),
@@ -1308,7 +1236,7 @@ fn bindgen_test_layout_rt_messagequeue() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).max_msgs) as usize - ptr as usize },
-        38usize,
+        42usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_messagequeue),
@@ -1318,7 +1246,7 @@ fn bindgen_test_layout_rt_messagequeue() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).entry) as usize - ptr as usize },
-        40usize,
+        44usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_messagequeue),
@@ -1328,7 +1256,7 @@ fn bindgen_test_layout_rt_messagequeue() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).msg_queue_head) as usize - ptr as usize },
-        44usize,
+        48usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_messagequeue),
@@ -1338,7 +1266,7 @@ fn bindgen_test_layout_rt_messagequeue() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).msg_queue_tail) as usize - ptr as usize },
-        48usize,
+        52usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_messagequeue),
@@ -1348,7 +1276,7 @@ fn bindgen_test_layout_rt_messagequeue() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).msg_queue_free) as usize - ptr as usize },
-        52usize,
+        56usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_messagequeue),
@@ -1358,7 +1286,7 @@ fn bindgen_test_layout_rt_messagequeue() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).suspend_sender_thread) as usize - ptr as usize },
-        56usize,
+        60usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_messagequeue),
@@ -1367,6 +1295,79 @@ fn bindgen_test_layout_rt_messagequeue() {
         )
     );
 }
+#[doc = " Semaphore raw structure"]
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct rt_semaphore {
+    #[doc = " Inherit from IPCObject"]
+    pub parent: rt_ipc_object,
+    #[doc = " Value of semaphore"]
+    pub value: core::ffi::c_ushort,
+    #[doc = " Reserved field"]
+    pub reserved: core::ffi::c_ushort,
+}
+#[test]
+fn bindgen_test_layout_rt_semaphore() {
+    const UNINIT: ::core::mem::MaybeUninit<rt_semaphore> = ::core::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(
+        ::core::mem::size_of::<rt_semaphore>(),
+        40usize,
+        concat!("Size of: ", stringify!(rt_semaphore))
+    );
+    assert_eq!(
+        ::core::mem::align_of::<rt_semaphore>(),
+        4usize,
+        concat!("Alignment of ", stringify!(rt_semaphore))
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).parent) as usize - ptr as usize },
+        0usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_semaphore),
+            "::",
+            stringify!(parent)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).value) as usize - ptr as usize },
+        36usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_semaphore),
+            "::",
+            stringify!(value)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).reserved) as usize - ptr as usize },
+        38usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_semaphore),
+            "::",
+            stringify!(reserved)
+        )
+    );
+}
+pub type rt_object_t = *mut rt_object;
+pub type rt_timer_t = *mut rt_timer;
+pub const RT_INTERRUPTIBLE: _bindgen_ty_1 = 0;
+pub const RT_KILLABLE: _bindgen_ty_1 = 1;
+pub const RT_UNINTERRUPTIBLE: _bindgen_ty_1 = 2;
+pub type _bindgen_ty_1 = core::ffi::c_uint;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct rt_cpu {
+    _unused: [u8; 0],
+}
+pub type rt_thread_cleanup_t = ::core::option::Option<unsafe extern "C" fn(tid: *mut rt_thread)>;
+pub type rt_thread_t = *mut rt_thread;
+pub type rt_sem_t = *mut rt_semaphore;
+pub type rt_mutex_t = *mut rt_mutex;
+pub type rt_event_t = *mut rt_event;
+pub type rt_mailbox_t = *mut rt_mailbox;
 pub type rt_mq_t = *mut rt_messagequeue;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]

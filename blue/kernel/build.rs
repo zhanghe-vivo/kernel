@@ -61,8 +61,20 @@ fn main() {
                 "RT_USING_MUTEX".to_string(),
             ),
             (
+                "feature = RT_USING_SEMAPHORE".to_string(),
+                "RT_USING_SEMAPHORE".to_string(),
+            ),
+            (
                 "feature = RT_USING_EVENT".to_string(),
                 "RT_USING_EVENT".to_string(),
+            ),
+            (
+                "feature = RT_USING_MAILBOX".to_string(),
+                "RT_USING_MAILBOX".to_string(),
+            ),
+            (
+                "feature = RT_USING_MESSAGEQUEUE".to_string(),
+                "RT_USING_MESSAGEQUEUE".to_string(),
             ),
             (
                 "feature = RT_DEBUGING_SPINLOCK".to_string(),

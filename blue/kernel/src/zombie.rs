@@ -4,7 +4,6 @@ use crate::{
 };
 use core::{pin::Pin, ptr::NonNull};
 use pinned_init::*;
-use rt_bindings;
 
 #[cfg(feature = "RT_USING_SMP")]
 use crate::{
@@ -12,14 +11,6 @@ use crate::{
     str::CStr,
     thread::{ThreadEntryFn, ThreadWithStack},
 };
-use crate::{
-    linked_list::ListHead,
-    new_spinlock, object, rt_bindings,
-    static_init::UnsafeStaticInit,
-    sync::{semaphore::*, SpinLock},
-    thread::RtThread,
-};
-use pinned_init::*;
 
 #[cfg(feature = "RT_USING_SMP")]
 const ZOMBIE_THREAD_STACK_SIZE: usize = rt_bindings::IDLE_THREAD_STACK_SIZE as usize;

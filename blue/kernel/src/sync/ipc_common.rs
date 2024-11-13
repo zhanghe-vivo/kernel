@@ -4,17 +4,15 @@ use crate::object::{self, KObjectBase, ObjectClassType};
 use crate::rt_bindings::{self, *};
 use crate::thread::RtThread;
 
+use crate::impl_kobject;
 use crate::str::CStr;
 use crate::sync::RawSpin;
 use core::ffi;
 use core::pin::Pin;
 use pinned_init::{pin_data, pin_init_from_closure, PinInit};
 
-pub type IpcFlagType = i32;
-
 /// Base structure of IPC object
 #[repr(C)]
-#[derive(Debug)]
 #[pin_data]
 pub struct IPCObject {
     #[pin]
@@ -22,138 +20,161 @@ pub struct IPCObject {
     pub(crate) parent: KObjectBase,
     /// IPC flag to use
     pub(crate) flag: ffi::c_uchar,
+    /// Spin lock IPCObject used
+    pub(crate) spinlock: RawSpin,
     #[pin]
-    /// Threads pended on this IPC resource
-    pub(crate) suspend_thread: ListHead,
+    /// Threads pended on this IPC object
+    pub(crate) wait_list: ListHead,
 }
+
+impl_kobject!(IPCObject);
 
 impl IPCObject {
     #[inline]
-    pub fn new(
-        name: &'static CStr,
-        obj_type: ObjectClassType,
-        flag: IpcFlagType,
-        is_static: bool,
-    ) -> impl PinInit<Self> {
-        let init = move |mut slot: *mut Self| unsafe {
-            assert!(
-                (flag == RT_IPC_FLAG_FIFO as IpcFlagType)
-                    || (flag == RT_IPC_FLAG_PRIO as IpcFlagType)
-            );
-            if is_static {
-                object::rt_object_init(
-                    &mut (*slot).parent as *mut KObjectBase as *mut rt_bindings::rt_object,
-                    obj_type as u32,
-                    name.as_char_ptr(),
-                )
-            } else {
-                slot = object::rt_object_allocate(obj_type as u32, name.as_char_ptr()) as *mut Self;
-            }
-
-            let cur_ref = &mut *slot;
-            let _ = ListHead::new().__pinned_init(&mut cur_ref.suspend_thread as *mut ListHead);
-            Ok(())
-        };
-        unsafe { pin_init_from_closure(init) }
+    pub(crate) fn init(&mut self, type_: u8, name: *const i8, flag: u8) {
+        assert!((flag == RT_IPC_FLAG_FIFO as u8) || (flag == RT_IPC_FLAG_PRIO as u8));
+        self.parent.init(type_, name);
+        self.flag = flag;
+        self.spinlock = RawSpin::new();
+        self.init_wait_list();
     }
-
-    pub fn reinit(ipcobject: &mut IPCObject) -> rt_err_t {
-        unsafe { Pin::new_unchecked(&mut ipcobject.suspend_thread).reinit() };
-        RT_EOK as rt_err_t
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn _ipc_object_init(object: &mut IPCObject) -> rt_err_t {
-    unsafe {
-        let _ = ListHead::new().__pinned_init(&mut object.suspend_thread as *mut ListHead);
-    }
-
-    RT_EOK as rt_err_t
-}
-
-#[no_mangle]
-pub extern "C" fn _ipc_list_resume(list: *mut ListHead) -> rt_err_t {
-    unsafe {
-        if let Some(node) = (*list).next() {
-            let thread: *mut RtThread = crate::thread_list_node_entry!(node.as_ptr());
-            (*thread).error = RT_EOK as rt_err_t;
-            (*thread).resume();
+    #[inline]
+    fn init_wait_list(&mut self) {
+        unsafe {
+            let _ = ListHead::new().__pinned_init(&mut self.wait_list as *mut ListHead);
         }
     }
-    RT_EOK as rt_err_t
-}
 
-#[no_mangle]
-pub extern "C" fn _ipc_list_resume_all(list: *mut ListHead) -> rt_err_t {
-    unsafe {
-        while !(*list).is_empty() {
+    #[inline]
+    pub(crate) fn new<T>(type_: u8, name: *const i8, flag: u8) -> *mut T {
+        assert!((flag == RT_IPC_FLAG_FIFO as u8) || (flag == RT_IPC_FLAG_PRIO as u8));
+        unsafe {
+            let ipc_obj = KObjectBase::new(type_, name) as *mut IPCObject;
+            (*ipc_obj).flag = flag;
+            (*ipc_obj).spinlock = RawSpin::new();
+            (*ipc_obj).init_wait_list();
+            ipc_obj as *mut T
+        }
+    }
+    #[inline]
+    pub(crate) fn reinit(ipcobject: &mut IPCObject) -> ffi::c_long {
+        unsafe { Pin::new_unchecked(&mut ipcobject.wait_list).reinit() };
+        RT_EOK as core::ffi::c_long
+    }
+
+    pub(crate) fn lock(&self) {
+        self.spinlock.lock();
+    }
+
+    pub(crate) fn unlock(&self) {
+        self.spinlock.unlock();
+    }
+
+    #[inline]
+    pub(crate) fn resume_thread(list: *mut ListHead) -> ffi::c_long {
+        unsafe {
             if let Some(node) = (*list).next() {
-                let spin_lock = RawSpin::new();
-                spin_lock.lock();
                 let thread: *mut RtThread = crate::thread_list_node_entry!(node.as_ptr());
-                (*thread).error = -(RT_ERROR as rt_err_t);
+                (*thread).error = RT_EOK as ffi::c_int;
                 (*thread).resume();
-                spin_lock.unlock();
             }
         }
+        RT_EOK as ffi::c_long
     }
 
-    RT_EOK as rt_err_t
-}
-
-#[no_mangle]
-pub extern "C" fn _ipc_list_suspend(
-    list: *mut ListHead,
-    thread: *mut RtThread,
-    flag: rt_uint8_t,
-    suspend_flag: u32,
-) -> rt_err_t {
-    unsafe {
-        if ((*thread).stat as u32 & RT_THREAD_SUSPEND_MASK) != RT_THREAD_SUSPEND_MASK {
-            let ret = if (*thread).suspend(suspend_flag) {
-                RT_EOK as rt_err_t
-            } else {
-                -(RT_ERROR as rt_err_t)
-            };
-
-            if ret != RT_EOK as rt_err_t {
-                return ret;
-            }
-        }
-
-        match flag as u32 {
-            RT_IPC_FLAG_FIFO => {
-                Pin::new_unchecked(&mut *list).insert_prev(&mut (*thread).tlist);
-            }
-            RT_IPC_FLAG_PRIO => {
-                list_head_for_each!(node, &(*list), {
-                    let s_thread = crate::thread_list_node_entry!(node.as_ptr()) as *mut RtThread;
-                    if (*thread).current_priority < (*s_thread).current_priority {
-                        let insert_to = Pin::new_unchecked(&mut ((*s_thread).tlist));
-                        insert_to.insert_prev(&mut ((*thread).tlist));
-                    }
-                });
-
-                if node.as_ptr() == list {
-                    Pin::new_unchecked(&mut *list).insert_prev(&mut (*thread).tlist);
+    #[inline]
+    pub(crate) fn resume_all_threads(list: *mut ListHead) -> ffi::c_long {
+        unsafe {
+            while !(*list).is_empty() {
+                if let Some(node) = (*list).next() {
+                    let spin_lock = RawSpin::new();
+                    spin_lock.lock();
+                    let thread: *mut RtThread = crate::thread_list_node_entry!(node.as_ptr());
+                    (*thread).error = -(RT_ERROR as rt_err_t);
+                    (*thread).resume();
+                    spin_lock.unlock();
                 }
             }
-            _ => {
-                assert!(false);
-            }
         }
 
-        RT_EOK as rt_err_t
+        RT_EOK as ffi::c_long
+    }
+
+    pub(crate) fn suspend_thread(
+        list: *mut ListHead,
+        thread: *mut RtThread,
+        flag: rt_uint8_t,
+        suspend_flag: u32,
+    ) -> ffi::c_long {
+        unsafe {
+            if ((*thread).stat as u32 & RT_THREAD_SUSPEND_MASK) != RT_THREAD_SUSPEND_MASK {
+                let ret = if (*thread).suspend(suspend_flag) {
+                    RT_EOK as rt_err_t
+                } else {
+                    -(RT_ERROR as rt_err_t)
+                };
+
+                if ret != RT_EOK as rt_err_t {
+                    return ret;
+                }
+            }
+
+            match flag as u32 {
+                RT_IPC_FLAG_FIFO => {
+                    Pin::new_unchecked(&mut *list).insert_prev(&mut (*thread).tlist);
+                }
+                RT_IPC_FLAG_PRIO => {
+                    list_head_for_each!(node, &(*list), {
+                        let s_thread =
+                            crate::thread_list_node_entry!(node.as_ptr()) as *mut RtThread;
+                        if (*thread).current_priority < (*s_thread).current_priority {
+                            let insert_to = Pin::new_unchecked(&mut ((*s_thread).tlist));
+                            insert_to.insert_prev(&mut ((*thread).tlist));
+                        }
+                    });
+
+                    if node.as_ptr() == list {
+                        Pin::new_unchecked(&mut *list).insert_prev(&mut (*thread).tlist);
+                    }
+                }
+                _ => {
+                    assert!(false);
+                }
+            }
+
+            RT_EOK as ffi::c_long
+        }
+    }
+
+    #[inline]
+    pub(crate) fn has_waiting(&self) -> bool {
+        !self.wait_list.is_empty()
+    }
+
+    #[inline]
+    pub(crate) fn wake_one(&mut self) -> ffi::c_long {
+        Self::resume_thread(&mut self.wait_list)
+    }
+
+    #[inline]
+    pub(crate) fn wake_all(&mut self) -> ffi::c_long {
+        Self::resume_all_threads(&mut self.wait_list)
+    }
+
+    #[inline]
+    pub(crate) fn wait(
+        &mut self,
+        thread: *mut RtThread,
+        flag: ffi::c_uchar,
+        suspend_flag: u32,
+    ) -> ffi::c_long {
+        Self::suspend_thread(&mut self.wait_list, thread, flag, suspend_flag)
     }
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn _rt_memcpy(
-    dst: *mut ffi::c_void,
-    src: *const ffi::c_void,
-    size: usize,
-) -> *mut ffi::c_void {
-    dst.copy_from(src, size);
-    dst
+pub extern "C" fn _ipc_object_init(list: &mut IPCObject) {
+    unsafe {
+        let _ = ListHead::new().__pinned_init(&mut list.wait_list as *mut ListHead);
+    }
 }

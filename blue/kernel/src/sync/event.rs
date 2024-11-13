@@ -1,6 +1,7 @@
 use crate::{
     cpu::Cpu,
     error::Error,
+    impl_kobject,
     linked_list::ListHead,
     list_head_for_each,
     object::{
@@ -9,19 +10,18 @@ use crate::{
     },
     print, println,
     rt_bindings::*,
-    rt_debug_not_in_interrupt,
     sync::ipc_common::*,
     thread::RtThread,
     timer,
 };
 use core::{
-    ffi::{c_char, c_void},
+    ffi::{self, c_char, c_void},
     marker::PhantomPinned,
     ptr::null_mut,
 };
-use kernel::{
-    rt_bindings::{rt_hw_interrupt_disable, rt_hw_interrupt_enable},
-    rt_debug_scheduler_available, rt_object_hook_call,
+use kernel::rt_bindings::{
+    rt_debug_scheduler_available, rt_hw_interrupt_disable, rt_hw_interrupt_enable,
+    rt_object_hook_call,
 };
 
 use crate::sync::RawSpin;
@@ -31,13 +31,283 @@ use pinned_init::*;
 #[repr(C)]
 #[pin_data]
 pub struct RtEvent {
-    /// Inherit from ipc_object
+    /// Inherit from IPCObject
     #[pin]
     pub parent: IPCObject,
     /// Event flog set value
-    pub set: rt_uint32_t,
-    /// Spin lock internal used
-    spinlock: RawSpin,
+    pub set: ffi::c_uint,
+}
+
+impl_kobject!(RtEvent);
+
+impl RtEvent {
+    #[inline]
+    pub(crate) fn init(&mut self, name: *const i8, flag: u8) {
+        assert!((flag == RT_IPC_FLAG_FIFO as u8) || (flag == RT_IPC_FLAG_PRIO as u8));
+
+        self.parent
+            .init(ObjectClassType::ObjectClassEvent as u8, name, flag);
+
+        self.set = 0;
+    }
+
+    #[inline]
+    pub fn detach(&mut self) {
+        assert_eq!(self.type_name(), ObjectClassType::ObjectClassEvent as u8);
+        assert!(self.is_static_kobject());
+
+        self.parent.wake_all();
+        self.parent.parent.detach();
+    }
+
+    #[inline]
+    pub fn new(name: *const i8, flag: u8) -> *mut Self {
+        assert!((flag == RT_IPC_FLAG_FIFO as u8) || (flag == RT_IPC_FLAG_PRIO as u8));
+
+        rt_debug_not_in_interrupt!();
+
+        let event = IPCObject::new::<Self>(ObjectClassType::ObjectClassEvent as u8, name, flag);
+        if !event.is_null() {
+            // SAFETY: we have null protection
+            unsafe {
+                (*event).set = 0;
+            }
+        }
+
+        event
+    }
+
+    #[inline]
+    pub fn delete(&mut self) {
+        assert_eq!(self.type_name(), ObjectClassType::ObjectClassEvent as u8);
+        assert!(!self.is_static_kobject());
+
+        rt_debug_not_in_interrupt!();
+
+        self.parent.wake_all();
+        self.parent.parent.delete();
+    }
+
+    pub fn send(&mut self, set: u32) -> ffi::c_long {
+        assert_eq!(self.type_name(), ObjectClassType::ObjectClassEvent as u8);
+
+        let mut need_schedule = false;
+        let mut need_clear_set = 0u32;
+
+        if set == 0 {
+            return -(RT_ERROR as ffi::c_long);
+        }
+
+        self.parent.lock();
+
+        self.set |= set;
+
+        unsafe {
+            rt_object_hook_call!(
+                rt_object_put_hook,
+                &mut self.parent.parent as *mut KObjectBase as *mut rt_object
+            );
+        }
+
+        // SAFETY: Raw thread is not null and could be safely used.
+        unsafe {
+            if self.parent.has_waiting() {
+                crate::list_head_for_each!(node, &self.parent.wait_list, {
+                    let thread = crate::thread_list_node_entry!(node.as_ptr()) as *mut RtThread;
+
+                    let mut status = -(RT_ERROR as ffi::c_long);
+                    if (*thread).event_info as u32 & RT_EVENT_FLAG_AND > 0u32 {
+                        if (*thread).event_set & self.set == (*thread).event_set {
+                            status = RT_EOK as ffi::c_long;
+                        }
+                    } else if (*thread).event_info as u32 & RT_EVENT_FLAG_OR > 0u32 {
+                        if (*thread).event_set & self.set > 0u32 {
+                            (*thread).event_set = (*thread).event_set & self.set;
+                            status = RT_EOK as ffi::c_long;
+                        }
+                    } else {
+                        self.parent.unlock();
+                        return -(RT_EINVAL as ffi::c_long);
+                    }
+
+                    if status == RT_EOK as ffi::c_long {
+                        if (*thread).event_info as u32 & RT_EVENT_FLAG_CLEAR > 0u32 {
+                            need_clear_set |= (*thread).event_set;
+                        }
+
+                        (*thread).resume();
+                        (*thread).error = RT_EOK as ffi::c_long;
+                        need_schedule = true;
+                    }
+                });
+
+                if need_clear_set > 0 {
+                    self.set &= !need_clear_set;
+                }
+            }
+        }
+        self.parent.unlock();
+
+        if need_schedule {
+            Cpu::get_current_scheduler().do_task_schedule();
+        }
+
+        RT_EOK as ffi::c_long
+    }
+
+    fn receive_internal(
+        &mut self,
+        set: u32,
+        option: u8,
+        timeout: i32,
+        recved: *mut u32,
+        suspend_flag: u32,
+    ) -> ffi::c_long {
+        assert_eq!(self.type_name(), ObjectClassType::ObjectClassEvent as u8);
+
+        rt_debug_scheduler_available!(true);
+
+        if set == 0 {
+            return -(RT_ERROR as ffi::c_long);
+        }
+
+        let mut time_out = timeout;
+        let mut status = -(RT_ERROR as ffi::c_long);
+        // SAFETY: Raw thread is not null and could be safely used.
+        unsafe {
+            let thread = crate::current_thread_ptr!();
+            if thread.is_null() {
+                return -(RT_ERROR as ffi::c_long);
+            }
+            (*thread).error = -(RT_EINTR as ffi::c_long);
+            unsafe {
+                rt_object_hook_call!(
+                    rt_object_trytake_hook,
+                    &mut self.parent.parent as *mut KObjectBase as *mut rt_object
+                );
+            }
+            self.parent.lock();
+
+            if option as u32 & RT_EVENT_FLAG_AND > 0u32 {
+                if (self.set & set) == set {
+                    status = RT_EOK as ffi::c_long;
+                }
+            } else if option as u32 & RT_EVENT_FLAG_OR > 0u32 {
+                if self.set & set > 0 {
+                    status = RT_EOK as ffi::c_long;
+                }
+            } else {
+                assert!(false);
+            }
+
+            if status == RT_EOK as ffi::c_long {
+                (*thread).error = RT_EOK as ffi::c_long;
+
+                if !recved.is_null() {
+                    unsafe {
+                        *recved = self.set & set;
+                    }
+                }
+
+                (*thread).event_set = self.set & set;
+                (*thread).event_info = option;
+
+                if option as u32 & RT_EVENT_FLAG_CLEAR > 0u32 {
+                    self.set &= !set;
+                }
+            } else if timeout == 0 {
+                (*thread).error = -(RT_ETIMEOUT as ffi::c_long);
+                self.parent.unlock();
+                return -(RT_ETIMEOUT as ffi::c_long);
+            } else {
+                (*thread).event_set = set;
+                (*thread).event_info = option;
+
+                let ret = self
+                    .parent
+                    .wait(thread, self.parent.flag, suspend_flag as u32);
+                if ret != RT_EOK as ffi::c_long {
+                    self.parent.unlock();
+                    return ret;
+                }
+
+                if timeout > 0 {
+                    (*thread).thread_timer.timer_control(
+                        RT_TIMER_CTRL_SET_TIME as u32,
+                        (&mut time_out) as *mut i32 as *mut c_void,
+                    );
+                    (*thread).thread_timer.start();
+                }
+
+                self.parent.unlock();
+
+                Cpu::get_current_scheduler().do_task_schedule();
+
+                if (*thread).error != RT_EOK as ffi::c_long {
+                    return (*thread).error;
+                }
+
+                self.parent.lock();
+
+                if recved != null_mut() {
+                    unsafe {
+                        *recved = (*thread).event_set;
+                    }
+                }
+            }
+
+            self.parent.unlock();
+            rt_object_hook_call!(
+                rt_object_take_hook,
+                &mut self.parent.parent as *mut KObjectBase as *mut rt_object
+            );
+            (*thread).error
+        }
+    }
+
+    pub fn receive(&mut self, set: u32, option: u8, timeout: i32, recved: *mut u32) -> ffi::c_long {
+        self.receive_internal(set, option, timeout, recved, RT_UNINTERRUPTIBLE as u32)
+    }
+
+    pub fn receive_interruptible(
+        &mut self,
+        set: u32,
+        option: u8,
+        timeout: i32,
+        recved: *mut u32,
+    ) -> ffi::c_long {
+        self.receive_internal(set, option, timeout, recved, RT_INTERRUPTIBLE as u32)
+    }
+
+    pub fn receive_killable(
+        &mut self,
+        set: u32,
+        option: u8,
+        timeout: i32,
+        recved: *mut u32,
+    ) -> ffi::c_long {
+        self.receive_internal(set, option, timeout, recved, RT_KILLABLE as u32)
+    }
+
+    pub fn control(&mut self, cmd: i32, _arg: *const c_void) -> ffi::c_long {
+        assert_eq!(self.type_name(), ObjectClassType::ObjectClassEvent as u8);
+
+        if cmd == RT_IPC_CMD_RESET as i32 {
+            self.parent.lock();
+
+            self.parent.wake_all();
+
+            self.set = 0;
+
+            self.parent.unlock();
+
+            Cpu::get_current_scheduler().do_task_schedule();
+
+            return RT_EOK as ffi::c_long;
+        }
+
+        -(RT_ERROR as ffi::c_long)
+    }
 }
 
 #[cfg(feature = "RT_USING_EVENT")]
@@ -47,33 +317,16 @@ pub unsafe extern "C" fn rt_event_init(
     name: *const core::ffi::c_char,
     flag: rt_uint8_t,
 ) -> rt_err_t {
-    assert!(event != null_mut());
-    assert!((flag == RT_IPC_FLAG_FIFO as rt_uint8_t) || (flag == RT_IPC_FLAG_PRIO as rt_uint8_t));
-
-    let rt_obj_ptr = &mut (*event).parent.parent as *mut KObjectBase as *mut rt_object;
-    rt_object_init(rt_obj_ptr, ObjectClassType::ObjectClassEvent as u32, name);
-
-    (*event).parent.flag = flag;
-
-    _ipc_object_init(&mut ((*event).parent));
-
-    (*event).set = 0;
-
+    assert!(!event.is_null());
+    (*event).init(name, flag);
     RT_EOK as rt_err_t
 }
 
 #[cfg(feature = "RT_USING_EVENT")]
 #[no_mangle]
 pub unsafe extern "C" fn rt_event_detach(event: *mut RtEvent) -> rt_err_t {
-    assert!(event != null_mut());
-    let rt_obj_ptr = &mut (*event).parent.parent as *mut KObjectBase as *mut rt_object;
-    assert!(rt_object_get_type(rt_obj_ptr) == ObjectClassType::ObjectClassEvent as u8);
-    assert!(rt_object_is_systemobject(rt_obj_ptr) == RT_TRUE as i32);
-
-    _ipc_list_resume_all(&mut ((*event).parent.suspend_thread));
-
-    rt_object_detach(rt_obj_ptr);
-
+    assert!(!event.is_null());
+    (*event).detach();
     RT_EOK as rt_err_t
 }
 
@@ -83,210 +336,22 @@ pub unsafe extern "C" fn rt_event_create(
     name: *const core::ffi::c_char,
     flag: rt_uint8_t,
 ) -> *mut RtEvent {
-    assert!((flag == RT_IPC_FLAG_FIFO as rt_uint8_t) || (flag == RT_IPC_FLAG_PRIO as rt_uint8_t));
-    rt_debug_not_in_interrupt!();
-
-    let event = rt_object_allocate(ObjectClassType::ObjectClassEvent as u32, name) as *mut rt_event
-        as *mut RtEvent;
-    if event == RT_NULL as *mut RtEvent {
-        return event;
-    }
-
-    (*event).parent.flag = flag;
-
-    _ipc_object_init(&mut ((*event).parent));
-
-    (*event).set = 0;
-
-    event
+    RtEvent::new(name, flag)
 }
 
 #[cfg(all(feature = "RT_USING_EVENT", feature = "RT_USING_HEAP"))]
 #[no_mangle]
 pub unsafe extern "C" fn rt_event_delete(event: *mut RtEvent) -> rt_err_t {
-    assert!(event != null_mut());
-    let rt_obj_ptr = &mut (*event).parent.parent as *mut KObjectBase as *mut rt_object;
-    assert!(rt_object_get_type(rt_obj_ptr) == ObjectClassType::ObjectClassEvent as u8);
-    assert!(rt_object_is_systemobject(rt_obj_ptr) == RT_FALSE as i32);
-
-    rt_debug_not_in_interrupt!();
-
-    _ipc_list_resume_all(&mut ((*event).parent.suspend_thread));
-
-    rt_object_delete(rt_obj_ptr);
-
+    assert!(!event.is_null());
+    (*event).delete();
     RT_EOK as rt_err_t
 }
 
 #[cfg(feature = "RT_USING_EVENT")]
 #[no_mangle]
 pub unsafe extern "C" fn rt_event_send(event: *mut RtEvent, set: rt_uint32_t) -> rt_err_t {
-    let mut need_schedule = RT_FALSE;
-    let mut need_clear_set = 0u32;
-
-    assert!(event != null_mut());
-    let obj_ptr = &mut (*event).parent.parent as *mut KObjectBase as *mut rt_object;
-    assert!(rt_object_get_type(obj_ptr) == ObjectClassType::ObjectClassEvent as u8);
-
-    if set == 0 {
-        return -(RT_ERROR as rt_err_t);
-    }
-
-    let level = rt_hw_interrupt_disable();
-
-    (*event).set |= set;
-
-    rt_object_hook_call!(rt_object_put_hook, obj_ptr);
-
-    if (*event).parent.suspend_thread.is_empty() == false {
-        crate::list_head_for_each!(node, &(*event).parent.suspend_thread, {
-            let thread = crate::thread_list_node_entry!(node.as_ptr()) as *mut RtThread;
-
-            let mut status = -(RT_ERROR as rt_err_t);
-            if (*thread).event_info as u32 & RT_EVENT_FLAG_AND > 0u32 {
-                if (*thread).event_set & (*event).set == (*thread).event_set {
-                    status = RT_EOK as rt_err_t;
-                }
-            } else if (*thread).event_info as u32 & RT_EVENT_FLAG_OR > 0u32 {
-                if (*thread).event_set & (*event).set > 0u32 {
-                    (*thread).event_set = (*thread).event_set & (*event).set;
-                    status = RT_EOK as rt_err_t;
-                }
-            } else {
-                rt_hw_interrupt_enable(level);
-                return -(RT_EINVAL as rt_err_t);
-            }
-
-            if status == RT_EOK as rt_err_t {
-                if (*thread).event_info as u32 & RT_EVENT_FLAG_CLEAR > 0u32 {
-                    need_clear_set |= (*thread).event_set;
-                }
-
-                (*thread).resume();
-                (*thread).error = RT_EOK as rt_err_t;
-                need_schedule = RT_TRUE;
-            }
-        });
-
-        if need_clear_set > 0 {
-            (*event).set &= !need_clear_set;
-        }
-    }
-    rt_hw_interrupt_enable(level);
-
-    if need_schedule == RT_TRUE {
-        Cpu::get_current_scheduler().do_task_schedule();
-    }
-
-    RT_EOK as rt_err_t
-}
-
-#[cfg(feature = "RT_USING_EVENT")]
-#[no_mangle]
-unsafe extern "C" fn _rt_event_recv(
-    event: *mut RtEvent,
-    set: rt_uint32_t,
-    option: rt_uint8_t,
-    timeout: rt_int32_t,
-    recved: *mut rt_uint32_t,
-    suspend_flag: i32,
-) -> rt_err_t {
-    assert!(event != null_mut());
-    let obj_ptr = &mut (*event).parent.parent as *mut KObjectBase as *mut rt_object;
-    assert!(rt_object_get_type(obj_ptr) == ObjectClassType::ObjectClassEvent as u8);
-
-    rt_debug_scheduler_available!(RT_TRUE);
-
-    if set == 0 {
-        return -(RT_ERROR as rt_err_t);
-    }
-
-    let mut time_out = timeout;
-    let mut status = -(RT_ERROR as rt_err_t);
-
-    let thread = crate::current_thread_ptr!();
-    if thread.is_null() {
-        return -(RT_ERROR as rt_err_t);
-    }
-    (*thread).error = -(RT_EINTR as rt_err_t);
-
-    rt_object_hook_call!(rt_object_trytake_hook, obj_ptr);
-
-    let mut level = rt_hw_interrupt_disable();
-
-    if option as u32 & RT_EVENT_FLAG_AND > 0u32 {
-        if ((*event).set & set) == set {
-            status = RT_EOK as rt_err_t;
-        }
-    } else if option as u32 & RT_EVENT_FLAG_OR > 0u32 {
-        if (*event).set & set > 0 {
-            status = RT_EOK as rt_err_t;
-        }
-    } else {
-        assert!(false);
-    }
-
-    if status == RT_EOK as rt_err_t {
-        (*thread).error = RT_EOK as rt_err_t;
-
-        if recved != null_mut() {
-            *recved = (*event).set & set;
-        }
-
-        (*thread).event_set = (*event).set & set;
-        (*thread).event_info = option;
-
-        if option as u32 & RT_EVENT_FLAG_CLEAR > 0u32 {
-            (*event).set &= !set;
-        }
-    } else if timeout == 0 {
-        (*thread).error = -(RT_ETIMEOUT as rt_err_t);
-        rt_hw_interrupt_enable(level);
-        return -(RT_ETIMEOUT as rt_err_t);
-    } else {
-        (*thread).event_set = set;
-        (*thread).event_info = option;
-
-        let ret = _ipc_list_suspend(
-            &mut (*event).parent.suspend_thread,
-            thread,
-            (*event).parent.flag,
-            suspend_flag as u32,
-        );
-        if ret != RT_EOK as rt_err_t {
-            rt_hw_interrupt_enable(level);
-            return ret;
-        }
-
-        if timeout > 0 {
-            timer::rt_timer_control(
-                &mut (*thread).thread_timer as *const _ as *mut timer::Timer,
-                RT_TIMER_CTRL_SET_TIME as i32,
-                (&mut time_out) as *mut i32 as *mut c_void,
-            );
-            timer::rt_timer_start(&mut (*thread).thread_timer as *const _ as *mut timer::Timer);
-        }
-
-        rt_hw_interrupt_enable(level);
-
-        Cpu::get_current_scheduler().do_task_schedule();
-
-        if (*thread).error != RT_EOK as rt_err_t {
-            return (*thread).error;
-        }
-
-        level = rt_hw_interrupt_disable();
-
-        if recved != null_mut() {
-            *recved = (*thread).event_set;
-        }
-    }
-
-    rt_hw_interrupt_enable(level);
-
-    rt_object_hook_call!(rt_object_take_hook, obj_ptr);
-
-    (*thread).error
+    assert!(!event.is_null());
+    (*event).send(set)
 }
 
 #[cfg(feature = "RT_USING_EVENT")]
@@ -298,14 +363,8 @@ pub unsafe extern "C" fn rt_event_recv(
     timeout: rt_int32_t,
     recved: *mut rt_uint32_t,
 ) -> rt_err_t {
-    _rt_event_recv(
-        event,
-        set,
-        option,
-        timeout,
-        recved,
-        RT_UNINTERRUPTIBLE as i32,
-    )
+    assert!(!event.is_null());
+    (*event).receive(set, option, timeout, recved as *mut u32)
 }
 
 #[cfg(feature = "RT_USING_EVENT")]
@@ -317,7 +376,8 @@ pub unsafe extern "C" fn rt_event_recv_interruptible(
     timeout: rt_int32_t,
     recved: *mut rt_uint32_t,
 ) -> rt_err_t {
-    return _rt_event_recv(event, set, option, timeout, recved, RT_INTERRUPTIBLE as i32);
+    assert!(!event.is_null());
+    (*event).receive_interruptible(set, option, timeout, recved as *mut u32)
 }
 
 #[cfg(feature = "RT_USING_EVENT")]
@@ -329,7 +389,8 @@ pub unsafe extern "C" fn rt_event_recv_killable(
     timeout: rt_int32_t,
     recved: *mut rt_uint32_t,
 ) -> rt_err_t {
-    _rt_event_recv(event, set, option, timeout, recved, RT_KILLABLE as i32)
+    assert!(!event.is_null());
+    (*event).receive_killable(set, option, timeout, recved as *mut u32)
 }
 
 #[cfg(feature = "RT_USING_EVENT")]
@@ -339,27 +400,8 @@ pub unsafe extern "C" fn rt_event_control(
     cmd: i32,
     _arg: *const c_void,
 ) -> rt_err_t {
-    assert!(event != null_mut());
-    assert!(
-        rt_object_get_type(&mut (*event).parent.parent as *mut KObjectBase as *mut rt_object)
-            == ObjectClassType::ObjectClassEvent as u8
-    );
-
-    if cmd == RT_IPC_CMD_RESET as i32 {
-        let level = rt_hw_interrupt_disable();
-
-        _ipc_list_resume_all(&mut (*event).parent.suspend_thread);
-
-        (*event).set = 0;
-
-        rt_hw_interrupt_enable(level);
-
-        Cpu::get_current_scheduler().do_task_schedule();
-
-        return RT_EOK as rt_err_t;
-    }
-
-    -(RT_ERROR as rt_err_t)
+    assert!(!event.is_null());
+    (*event).control(cmd, _arg)
 }
 
 #[pin_data]
@@ -452,11 +494,11 @@ pub extern "C" fn rt_event_info() {
         let event = &*(crate::list_head_entry!(node.as_ptr(), KObjectBase, list) as *const RtEvent);
         let _ = crate::format_name!(event.parent.parent.name.as_ptr(), 8);
         print!(" 0x{:08x} ", event.set);
-        if event.parent.suspend_thread.is_empty() {
+        if event.parent.wait_list.is_empty() {
             println!("000");
         } else {
-            print!("{}:", event.parent.suspend_thread.size());
-            let head = &event.parent.suspend_thread;
+            print!("{}:", event.parent.wait_list.size());
+            let head = &event.parent.wait_list;
 
             list_head_for_each!(node, head, {
                 let thread = crate::thread_list_node_entry!(node.as_ptr()) as *mut RtThread;
