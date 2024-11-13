@@ -50,8 +50,6 @@ tags
 CMakeLists.txt
 cmake-build-debug
 *.mk
-
-rs_src/target
-rs_src/Cargo.lock
-rs_src/bindings.rs
 *log.txt
+
+blue/target

@@ -60,9 +60,9 @@ rt_hw_context_switch:
     LDR     R2, =rt_thread_switch_interrupt_flag
     LDR     R3, [R2]
     CMP     R3, #1
-    BEQ     _reswitch
+    BEQ     _reswitch // if flag is 1, switch
     MOV     R3, #1
-    STR     R3, [R2]
+    STR     R3, [R2] // else set flag as 1
 
     LDR     R2, =rt_interrupt_from_thread   /* set rt_interrupt_from_thread */
     STR     R0, [R2]
@@ -126,7 +126,7 @@ pendsv_exit:
  */
     .global rt_hw_context_switch_to
     .type rt_hw_context_switch_to, %function
-rt_hw_context_switch_to:
+rt_hw_context_switch_to:   
     LDR     R1, =rt_interrupt_to_thread
     STR     R0, [R1]
 
@@ -168,13 +168,6 @@ rt_hw_context_switch_to:
 
     /* never reach here! */
 
-/* compatible with old version */
-    .global rt_hw_interrupt_thread_switch
-    .type rt_hw_interrupt_thread_switch, %function
-rt_hw_interrupt_thread_switch:
-    BX      LR
-    NOP
-
     .global HardFault_Handler
     .type HardFault_Handler, %function
 HardFault_Handler:
@@ -203,12 +196,3 @@ _update_done:
     ORR     LR, LR, #0x04
     BX      LR
 
-/*
- * rt_uint32_t rt_hw_interrupt_check(void);
- * R0 --> state
- */
-    .global rt_hw_interrupt_check
-    .type rt_hw_interrupt_check, %function
-rt_hw_interrupt_check:
-    MRS     R0, IPSR
-    BX      LR

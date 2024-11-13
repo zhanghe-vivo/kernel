@@ -351,6 +351,11 @@ void rt_hw_cpu_reset(void)
     SCB_AIRCR = SCB_RESET_VALUE;
 }
 
+rt_weak int rt_hw_cpu_id(void)
+{
+    return 0;
+}
+
 #ifdef RT_USING_CPU_FFS
 /**
  * This function finds the first bit set (beginning with the least significant bit)

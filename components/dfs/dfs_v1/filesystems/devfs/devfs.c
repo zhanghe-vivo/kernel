@@ -144,6 +144,18 @@ int dfs_device_fs_close(struct dfs_file *file)
     return -EIO;
 }
 
+static void device_object_callback(rt_object_t obj, rt_size_t index, void* args) {
+    struct device_dirent *root_dirent = (struct device_dirent *)args;
+    /* avoid memory write through */
+    if (index >= root_dirent->device_count)
+    {
+        rt_kprintf("warning: There are newly added devices that are not displayed!");
+        return;
+    }
+    
+    root_dirent->devices[index] = (rt_device_t)obj;
+}
+
 int dfs_device_fs_open(struct dfs_file *file)
 {
     rt_err_t result;
@@ -163,19 +175,19 @@ int dfs_device_fs_open(struct dfs_file *file)
         struct rt_list_node *node;
         struct rt_object_information *information;
         struct device_dirent *root_dirent;
-        rt_uint32_t count = 0;
+        rt_uint32_t count = rt_object_get_length(RT_Object_Class_Device);
 
         /* lock scheduler */
-        rt_enter_critical();
+        // rt_enter_critical();
 
-        /* traverse device object */
-        information = rt_object_get_information(RT_Object_Class_Device);
-        RT_ASSERT(information != RT_NULL);
-        for (node = information->object_list.next; node != &(information->object_list); node = node->next)
-        {
-            count ++;
-        }
-        rt_exit_critical();
+        // /* traverse device object */
+        // information = rt_object_get_information(RT_Object_Class_Device);
+        // RT_ASSERT(information != RT_NULL);
+        // for (node = information->object_list.next; node != &(information->object_list); node = node->next)
+        // {
+        //     count ++;
+        // }
+        // rt_exit_critical();
 
         root_dirent = (struct device_dirent *)rt_malloc(sizeof(struct device_dirent) +
                       count * sizeof(rt_device_t));
@@ -187,20 +199,23 @@ int dfs_device_fs_open(struct dfs_file *file)
             root_dirent->devices = (rt_device_t *)(root_dirent + 1);
             root_dirent->read_index = 0;
             root_dirent->device_count = count;
-            count = 0;
+
+            extern void rt_object_for_each_callback(rt_uint8_t, void*, void*);
+            rt_object_for_each_callback(RT_Object_Class_Device, device_object_callback, root_dirent);
+
             /* get all device node */
-            for (node = information->object_list.next; node != &(information->object_list); node = node->next)
-            {
-                /* avoid memory write through */
-                if (count == root_dirent->device_count)
-                {
-                    rt_kprintf("warning: There are newly added devices that are not displayed!");
-                    break;
-                }
-                object = rt_list_entry(node, struct rt_object, list);
-                root_dirent->devices[count] = (rt_device_t)object;
-                count ++;
-            }
+            // for (node = information->object_list.next; node != &(information->object_list); node = node->next)
+            // {
+            //     /* avoid memory write through */
+            //     if (count == root_dirent->device_count)
+            //     {
+            //         rt_kprintf("warning: There are newly added devices that are not displayed!");
+            //         break;
+            //     }
+            //     object = rt_list_entry(node, struct rt_object, list);
+            //     root_dirent->devices[count] = (rt_device_t)object;
+            //     count ++;
+            // }
             rt_exit_critical();
         }
 
