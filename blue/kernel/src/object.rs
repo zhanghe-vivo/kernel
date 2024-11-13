@@ -5,6 +5,7 @@ use crate::{
     print, println,
     process::*,
     thread::RtThread,
+    rt_bindings::*,
     *,
 };
 
