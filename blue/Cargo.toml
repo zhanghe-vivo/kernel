@@ -8,11 +8,6 @@ members = [
 ]
 
 [patch.crates-io]
-blue_kernel = { path = "kernel" }
-blue_arch = { path = "arch" }
-rt_bindings = { path = "os_compat/rt_thread" }
-#pinned-init = { git = "ssh://git@gitlab.vmic.xyz/11154271/pinned-init.git", branch = "main" }
-#linux_bindings = { path = "os_compat/linux" }
 
 [profile.release]
 codegen-units = 1 # better optimizations
