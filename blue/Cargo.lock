@@ -97,6 +97,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "blue_infra"
+version = "0.1.0"
+
+[[package]]
 name = "blue_kernel"
 version = "0.1.0"
 dependencies = [
