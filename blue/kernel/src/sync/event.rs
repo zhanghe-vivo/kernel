@@ -42,7 +42,7 @@ impl_kobject!(RtEvent);
 
 impl RtEvent {
     #[inline]
-    pub(crate) fn init(&mut self, name: *const i8, flag: u8) {
+    pub fn init(&mut self, name: *const i8, flag: u8) {
         assert!((flag == RT_IPC_FLAG_FIFO as u8) || (flag == RT_IPC_FLAG_PRIO as u8));
 
         self.parent

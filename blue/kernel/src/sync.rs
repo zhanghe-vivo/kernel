@@ -6,7 +6,6 @@ pub mod message_queue;
 pub mod semaphore;
 
 pub use lock::heaplock::{new_heaplock, HeapLock};
-pub use lock::mutex::{new_mutex, Mutex};
 pub use lock::spinlock::{new_spinlock, RawSpin, SpinLock, SpinMutex};
 
 /// Returns the given string, if one is provided, otherwise generates one based on the source code

@@ -18,12 +18,81 @@ use crate::{
 use core::pin::Pin;
 use core::{
     ffi::{self, c_char, c_void},
+    marker::PhantomPinned,
     ptr::null_mut,
 };
 
+use crate::alloc::boxed::Box;
+use core::cell::UnsafeCell;
+use kernel::{fmt, str::CString};
+
 use crate::str::CStr;
-//use crate::sync::SpinLock;
 use pinned_init::*;
+
+#[pin_data(PinnedDrop)]
+pub struct KSemaphore {
+    #[pin]
+    raw: UnsafeCell<RtSemaphore>,
+    #[pin]
+    pin: PhantomPinned,
+}
+
+unsafe impl Send for KSemaphore {}
+unsafe impl Sync for KSemaphore {}
+
+#[pinned_drop]
+impl PinnedDrop for KSemaphore {
+    fn drop(self: Pin<&mut Self>) {
+        unsafe {
+            (*self.raw.get()).detach();
+        }
+    }
+}
+
+impl KSemaphore {
+    pub fn new(value: u32) -> Pin<Box<Self>> {
+        fn init_raw(value: u16) -> impl PinInit<UnsafeCell<RtSemaphore>> {
+            let init = move |slot: *mut UnsafeCell<RtSemaphore>| {
+                let slot: *mut RtSemaphore = slot.cast();
+                unsafe {
+                    let cur_ref = &mut *slot;
+
+                    let addr = core::ptr::addr_of!(cur_ref);
+                    if let Ok(s) = CString::try_from_fmt(fmt!("{:p}", addr)) {
+                        cur_ref.init(s.as_ptr() as *const i8, value, RT_IPC_FLAG_PRIO as u8);
+                    } else {
+                        let default = "default";
+                        cur_ref.init(default.as_ptr() as *const i8, value, RT_IPC_FLAG_PRIO as u8);
+                    }
+                }
+                Ok(())
+            };
+            unsafe { pin_init_from_closure(init) }
+        };
+
+        Box::pin_init(pin_init!(Self {
+            raw<-init_raw(value as u16),
+            pin: PhantomPinned,
+        }))
+        .unwrap()
+    }
+
+    pub fn acquire(&self) -> KSemaphoreGuard<'_> {
+        unsafe {
+            (*self.raw.get()).take(RT_WAITING_FOREVER);
+        };
+        KSemaphoreGuard { sem: self }
+    }
+}
+pub struct KSemaphoreGuard<'a> {
+    sem: &'a KSemaphore,
+}
+
+impl<'a> Drop for KSemaphoreGuard<'a> {
+    fn drop(&mut self) {
+        unsafe { (*self.sem.raw.get()).release() };
+    }
+}
 
 /// Semaphore raw structure
 #[repr(C)]
@@ -42,7 +111,7 @@ impl_kobject!(RtSemaphore);
 
 impl RtSemaphore {
     #[inline]
-    pub(crate) fn init(&mut self, name: *const i8, value: u16, flag: u8) {
+    pub fn init(&mut self, name: *const i8, value: u16, flag: u8) {
         assert!((flag == RT_IPC_FLAG_FIFO as u8) || (flag == RT_IPC_FLAG_PRIO as u8));
 
         self.parent

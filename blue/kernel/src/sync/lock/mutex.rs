@@ -1,3 +1,4 @@
+use crate::alloc::boxed::Box;
 use crate::cpu::Cpu;
 use crate::impl_kobject;
 use crate::linked_list::*;
@@ -11,52 +12,97 @@ use crate::thread::{rt_thread_control, RtThread};
 use crate::{current_thread_ptr, list_head_for_each, print, println};
 
 use core::ffi;
+use core::marker::PhantomPinned;
 use core::pin::Pin;
 use core::ptr::null_mut;
+use core::{cell::UnsafeCell, ops::Deref, ops::DerefMut};
 use kernel::rt_bindings::rt_object;
 use kernel::sync::RawSpin;
+use kernel::{fmt, str::CString};
 use pinned_init::*;
 
-#[macro_export]
-macro_rules! new_mutex {
-    ($inner:expr $(, $name:literal)? $(,)?) => {
-        $crate::sync::Mutex::new(
-            $inner, $crate::optional_name!($($name)?))
-    };
+#[pin_data(PinnedDrop)]
+pub struct KMutex<T> {
+    #[pin]
+    raw: UnsafeCell<RtMutex>,
+    data_: UnsafeCell<T>,
+    #[pin]
+    pin: PhantomPinned,
 }
-pub use new_mutex;
 
-pub type Mutex<T> = super::Lock<T, MutexBackend>;
+unsafe impl<T: Send> Send for KMutex<T> {}
+unsafe impl<T: Send> Sync for KMutex<T> {}
 
-/// A kernel `struct mutex` lock backend.
-pub struct MutexBackend;
-
-// SAFETY: The underlying kernel `struct mutex` object ensures mutual exclusion.
-unsafe impl super::Backend for MutexBackend {
-    type State = RtMutex;
-    type GuardState = ();
-
-    unsafe fn init(ptr: *mut Self::State, name: *const core::ffi::c_char) {
-        // SAFETY: The safety requirements ensure that `ptr` is valid for writes, and `name` and
-        // `key` are valid for read indefinitely.
-        // unsafe { (*ptr).init(name, rt_bindings::RT_IPC_FLAG_PRIO as u8) };
-        unsafe { rt_mutex_init(ptr, name, rt_bindings::RT_IPC_FLAG_PRIO as u8) };
-    }
-
-    unsafe fn lock(ptr: *mut Self::State) -> Self::GuardState {
-        // SAFETY: The safety requirements of this function ensure that `ptr` points to valid
-        // memory, and that it has been initialised before.
-        // unsafe { (*ptr).take(rt_bindings::RT_WAITING_FOREVER) };
-        unsafe { rt_mutex_take(ptr, rt_bindings::RT_WAITING_FOREVER) };
-    }
-
-    unsafe fn unlock(ptr: *mut Self::State, _guard_state: &Self::GuardState) {
-        // SAFETY: The safety requirements of this function ensure that `ptr` is valid and that the
-        // caller is the owner of the mutex.
-        // unsafe { (*ptr).release(ptr) };
-        unsafe { rt_mutex_release(ptr) };
+#[pinned_drop]
+impl<T> PinnedDrop for KMutex<T> {
+    fn drop(self: Pin<&mut Self>) {
+        unsafe {
+            (*self.raw.get()).detach();
+        }
     }
 }
+
+impl<T> KMutex<T> {
+    pub fn new(data: T) -> Pin<Box<Self>> {
+        fn init_raw() -> impl PinInit<UnsafeCell<RtMutex>> {
+            let init = |slot: *mut UnsafeCell<RtMutex>| {
+                let slot: *mut RtMutex = slot.cast();
+                unsafe {
+                    let cur_ref = &mut *slot;
+
+                    let addr = core::ptr::addr_of!(cur_ref);
+                    if let Ok(s) = CString::try_from_fmt(fmt!("{:p}", addr)) {
+                        cur_ref.init(s.as_ptr() as *const i8, 0);
+                    } else {
+                        let default = "default";
+                        cur_ref.init(default.as_ptr() as *const i8, 0);
+                    }
+                }
+                Ok(())
+            };
+            unsafe { pin_init_from_closure(init) }
+        }
+
+        Box::pin_init(pin_init!(Self {
+            data_: UnsafeCell::new(data),
+            raw<-init_raw(),
+            pin: PhantomPinned,
+        }))
+        .unwrap()
+    }
+
+    pub fn lock(&self) -> KMutexGuard<'_, T> {
+        unsafe {
+            (*self.raw.get()).take(RT_WAITING_FOREVER);
+        };
+        KMutexGuard { mtx: self }
+    }
+}
+
+pub struct KMutexGuard<'a, T> {
+    mtx: &'a KMutex<T>,
+}
+
+impl<'a, T> Drop for KMutexGuard<'a, T> {
+    fn drop(&mut self) {
+        unsafe { (*self.mtx.raw.get()).release() };
+    }
+}
+
+impl<'a, T> Deref for KMutexGuard<'a, T> {
+    type Target = T;
+
+    fn deref(&self) -> &T {
+        unsafe { &*self.mtx.data_.get() }
+    }
+}
+
+impl<'a, T> DerefMut for KMutexGuard<'a, T> {
+    fn deref_mut(&mut self) -> &mut T {
+        unsafe { &mut *self.mtx.data_.get() }
+    }
+}
+
 #[repr(C)]
 #[pin_data]
 pub struct RtMutex {
@@ -75,13 +121,15 @@ pub struct RtMutex {
     /// The object list taken by thread
     #[pin]
     pub taken_list: ListHead,
+    #[pin]
+    pin: PhantomPinned,
 }
 
 impl_kobject!(RtMutex);
 
 impl RtMutex {
     #[inline]
-    pub(crate) fn init(&mut self, name: *const i8, _flag: u8) {
+    pub fn init(&mut self, name: *const i8, _flag: u8) {
         // Flag can only be RT_IPC_FLAG_PRIO.
         self.parent.init(
             ObjectClassType::ObjectClassMutex as u8,
