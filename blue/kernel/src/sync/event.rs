@@ -24,8 +24,81 @@ use kernel::rt_bindings::{
     rt_object_hook_call,
 };
 
+use crate::alloc::boxed::Box;
+use core::cell::UnsafeCell;
+use core::pin::Pin;
+use kernel::{fmt, str::CString};
+
 use crate::sync::RawSpin;
 use pinned_init::*;
+
+#[pin_data(PinnedDrop)]
+pub struct KEvent {
+    #[pin]
+    raw: UnsafeCell<RtEvent>,
+    #[pin]
+    pin: PhantomPinned,
+}
+
+unsafe impl Send for KEvent {}
+unsafe impl Sync for KEvent {}
+
+#[pinned_drop]
+impl PinnedDrop for KEvent {
+    fn drop(self: Pin<&mut Self>) {
+        unsafe {
+            (*self.raw.get()).detach();
+        }
+    }
+}
+
+impl KEvent {
+    pub fn new() -> Pin<Box<Self>> {
+        fn init_raw() -> impl PinInit<UnsafeCell<RtEvent>> {
+            let init = |slot: *mut UnsafeCell<RtEvent>| {
+                let slot: *mut RtEvent = slot.cast();
+                unsafe {
+                    let cur_ref = &mut *slot;
+
+                    let addr = core::ptr::addr_of!(cur_ref);
+                    if let Ok(s) = CString::try_from_fmt(fmt!("{:p}", addr)) {
+                        cur_ref.init(s.as_ptr() as *const i8, RT_IPC_FLAG_PRIO as u8);
+                    } else {
+                        let default = "default";
+                        cur_ref.init(default.as_ptr() as *const i8, RT_IPC_FLAG_PRIO as u8);
+                    }
+                }
+                Ok(())
+            };
+            unsafe { pin_init_from_closure(init) }
+        };
+
+        Box::pin_init(pin_init!(Self {
+            raw<-init_raw(),
+            pin: PhantomPinned,
+        }))
+        .unwrap()
+    }
+
+    pub fn send(&self, set: u32) -> Result<(), Error> {
+        let result = unsafe { (*self.raw.get()).send(set) };
+        if result == RT_EOK as i32 {
+            Ok(())
+        } else {
+            Err(Error::from_errno(result))
+        }
+    }
+
+    pub fn receive(&self, set: u32, option: u32, timeout: i32) -> Result<u32, Error> {
+        let mut retmsg = 0u32;
+        let result = unsafe { (*self.raw.get()).receive(set, option as u8, timeout, &mut retmsg) };
+        if result == RT_EOK as i32 {
+            Ok(retmsg)
+        } else {
+            Err(Error::from_errno(result))
+        }
+    }
+}
 
 /// Event flag raw structure
 #[repr(C)]
@@ -402,85 +475,6 @@ pub unsafe extern "C" fn rt_event_control(
 ) -> rt_err_t {
     assert!(!event.is_null());
     (*event).control(cmd, _arg)
-}
-
-#[pin_data]
-pub struct Event {
-    #[pin]
-    event_ptr: *mut RtEvent,
-    #[pin]
-    _pin: PhantomPinned,
-}
-
-unsafe impl Send for Event {}
-unsafe impl Sync for Event {}
-
-impl Event {
-    pub fn new(name: &str) -> Result<Self, Error> {
-        let result =
-            unsafe { rt_event_create(name.as_ptr() as *const c_char, RT_IPC_FLAG_PRIO as u8) };
-        if result == RT_NULL as *mut RtEvent {
-            Err(Error::from_errno(RT_ERROR as i32))
-        } else {
-            Ok(Self {
-                event_ptr: result,
-                _pin: PhantomPinned {},
-            })
-        }
-    }
-
-    pub fn delete(self) -> Result<(), Error> {
-        let result = unsafe { rt_event_delete(self.event_ptr) };
-        if result == RT_EOK as i32 {
-            Ok(())
-        } else {
-            Err(Error::from_errno(result))
-        }
-    }
-
-    pub fn send(&self, set: u32) -> Result<(), Error> {
-        let result = unsafe { rt_event_send(self.event_ptr, set) };
-        if result == RT_EOK as i32 {
-            Ok(())
-        } else {
-            Err(Error::from_errno(result))
-        }
-    }
-
-    pub fn receive(&self, set: u32, option: u32, timeout: i32) -> Result<u32, Error> {
-        let mut retmsg = 0u32;
-        let result =
-            unsafe { rt_event_recv(self.event_ptr, set, option as u8, timeout, &mut retmsg) };
-        if result == RT_EOK as i32 {
-            Ok(retmsg)
-        } else {
-            Err(Error::from_errno(result))
-        }
-    }
-
-    pub fn receive_interruptible(&self, set: u32, option: u32, timeout: i32) -> Result<u32, Error> {
-        let mut retmsg = 0u32;
-        let result = unsafe {
-            rt_event_recv_interruptible(self.event_ptr, set, option as u8, timeout, &mut retmsg)
-        };
-        if result == RT_EOK as i32 {
-            Ok(retmsg)
-        } else {
-            Err(Error::from_errno(result))
-        }
-    }
-
-    pub fn receive_killable(&self, set: u32, option: u32, timeout: i32) -> Result<u32, Error> {
-        let mut retmsg = 0u32;
-        let result = unsafe {
-            rt_event_recv_killable(self.event_ptr, set, option as u8, timeout, &mut retmsg)
-        };
-        if result == RT_EOK as i32 {
-            Ok(retmsg)
-        } else {
-            Err(Error::from_errno(result))
-        }
-    }
 }
 
 #[no_mangle]
