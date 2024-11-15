@@ -111,7 +111,7 @@ impl Kprocess {
 
     fn get_object_list(&self, object_tpye: u8) -> &ListHead {
         let process = Kprocess::get_process();
-        process.lock.acquire();
+        let _ = process.lock.acquire();
         match object_tpye & (!OBJECT_CLASS_STATIC) {
             x if x == ObjectClassType::ObjectClassThread as u8 => &process.threas,
             #[cfg(feature = "RT_USING_SEMAPHORE")]
@@ -147,7 +147,7 @@ impl Kprocess {
 
     fn insert(&mut self, object_tpye: u8, node: &mut ListHead) {
         let list = self.get_object_list(object_tpye);
-        self.lock.acquire();
+        let _ = self.lock.acquire();
         unsafe {
             Pin::new_unchecked(node).insert_next(list);
         }
@@ -156,7 +156,7 @@ impl Kprocess {
     #[cfg(feature = "RT_USING_DEBUG")]
     fn addr_detect(&mut self, object_tpye: u8, ptr: &mut KObjectBase) {
         let list = self.get_object_list(object_tpye);
-        self.lock.acquire();
+        let _ = self.lock.acquire();
         crate::list_head_for_each!(node, list, {
             let obj = unsafe { crate::list_head_entry!(node.as_ptr(), KObjectBase, list) };
             assert!(!ptr::eq(ptr, obj));
@@ -187,7 +187,7 @@ pub fn find_object(object_tpye: u8, name: *const i8) -> *const KObjectBase {
 
     let process = Kprocess::get_process();
     let list = process.get_object_list(object_tpye);
-    process.lock.acquire();
+    let _ = process.lock.acquire();
     /* enter critical */
     rt_enter_critical();
     /* try to find object */
@@ -220,7 +220,7 @@ pub fn get_objects_by_type(object_type: u8, objects: &mut [*mut KObjectBase]) ->
         let maxlen: usize = objects.len();
         let process = Kprocess::get_process();
         let list = process.get_object_list(object_type);
-        process.lock.acquire();
+        let _ = process.lock.acquire();
         crate::list_head_for_each!(node, list, {
             let object = unsafe { crate::list_head_entry!(node.as_ptr(), KObjectBase, list) };
             objects[count] = object as *mut KObjectBase;
@@ -281,6 +281,6 @@ pub fn size(object_type: u8) -> usize {
 
 pub fn remove(object: &mut KObjectBase) {
     let process = Kprocess::get_process();
-    process.lock.acquire();
+    let _ = process.lock.acquire();
     unsafe { Pin::new_unchecked(&mut object.list).remove() };
 }

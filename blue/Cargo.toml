@@ -3,7 +3,8 @@
 members = [
     "kernel",
     "arch",
-    "os_compat/rt_thread"
+    "os_compat/rt_thread",
+    "infra",
 ]
 
 [patch.crates-io]
