@@ -60,6 +60,11 @@ def Format(config, toml):
     return subprocess.call(['cargo', 'fmt'], cwd=os.path.join(ROOT, 'blue'))
 
 
+def ListTargets(config, toml):
+    for t in toml['target']:
+        print(t)
+
+
 def main():
     parser = argparse.ArgumentParser(description=u"BlueOS构建器")
     subparsers = parser.add_subparsers(dest='action')
@@ -82,6 +87,8 @@ def main():
     clean.set_defaults(func=Clean)
     fmt = subparsers.add_parser('format', aliases=['f'], description=u"格式化代码")
     fmt.set_defaults(func=Format)
+    lst = subparsers.add_parser('list', aliases=['l'], description=u"列出支持的目标")
+    lst.set_defaults(func=ListTargets)
     config = parser.parse_args()
     if not config.action:
         parser.print_help()
