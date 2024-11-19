@@ -1,0 +1,23 @@
+#!/bin/bash
+
+MACROS=""
+
+function parse_config() {
+  while IFS= read -r line
+  do
+    if echo "$line" | grep -q "^#define"; then
+      macro_name=$(echo "$line" | awk '{print $2}')
+      macro_value=$(echo "$line" | awk '{print $3}')
+      
+      # Need RT_NAME_MAX as feature when bigger than 0.
+      if [ "${macro_name}" = "RT_NAME_MAX" ] && [ "${macro_value}" != "0" ]; then
+        MACROS="${MACROS} ${macro_name}"
+      elif ! [ -n "$macro_value" ]; then
+        MACROS="${MACROS} ${macro_name}"   
+      fi
+    fi
+  done < "$1"
+}
+
+parse_config "$@"
+echo ${MACROS}

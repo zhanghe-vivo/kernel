@@ -40,7 +40,7 @@ test-mps2-an385:
     - cd bsp/qemu-mps2-an385
     - timeout 90s ./qemu-test.sh || true
     - cd ../../
-    - python3 check_result.py qemu-mps2-an385
+    - python3 scripts/check_bsp_unittests_result.py qemu-mps2-an385
   tags:
     - ubuntu
   rules:
@@ -73,7 +73,7 @@ test-mps2-an385:
 #     - cd bsp/qemu-vexpress-a9
 #     - timeout 90s ./qemu-test.sh || true
 #     - cd ../../
-#     - python3 check_result.py qemu-vexpress-a9
+#     - python3 scripts/check_bsp_unittests_result.py qemu-vexpress-a9
 #   tags:
 #     - ubuntu
 #   rules:
@@ -105,7 +105,7 @@ test-mps2-an385:
 #     - cd bsp/qemu-vexpress-a9
 #     - timeout 90s ./qemu-test.sh || true
 #     - cd ../../
-#     - python3 check_result.py qemu-vexpress-a9
+#     - python3 scripts/check_bsp_unittests_result.py qemu-vexpress-a9
 #   tags:
 #     - ubuntu
 #   rules:

@@ -1,33 +1,37 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+import os
 import sys
 import os
 import argparse
 
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+
+
 def check_test_result(platform):
-    log_path = os.path.join('bsp', f'{platform}', 'log.txt')
-    
+    log_path = os.path.join(ROOT, 'bsp', f'{platform}', 'log.txt')
+
     if not os.path.exists(log_path):
         raise FileNotFoundError(f"找不到日志文件：{log_path}")
-        
+
     with open(log_path, 'r') as file:
         print(f"########## {platform} test log ##########")
-        
         lines = file.readlines()
         for line in lines:
             print(line, end='')  # end='' 因为文件中的行已经包含换行符
-            
+
         last_line = lines[-1] if lines else ""
         if 'PASSED' not in last_line:
             raise Exception(f"平台 {platform} 的单元测试不通过！")
 
+
 def main():
     parser = argparse.ArgumentParser(description='检查 QEMU 测试结果')
     parser.add_argument('platform', help='QEMU 平台名称 (例如: vexpress-a9)')
-    
+
     args = parser.parse_args()
-    
+
     try:
         check_test_result(args.platform)
         return 0
