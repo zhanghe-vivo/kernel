@@ -1,13 +1,12 @@
 use crate::{
     allocator::{rt_free, rt_malloc},
     klibc::{rt_memset, rt_strncpy},
-    linked_list::ListHead,
     print, println,
     process::*,
     thread::RtThread,
     *,
 };
-
+use blue_infra::list::doubly_linked_list::ListHead;
 use core::{ffi, fmt::Debug, mem, ptr, slice};
 use {
     downcast_rs::{impl_downcast, Downcast},

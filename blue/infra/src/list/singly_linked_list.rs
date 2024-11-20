@@ -2,6 +2,7 @@ extern crate alloc;
 
 use alloc::boxed::Box;
 use core::mem;
+use core::ops::Drop;
 
 pub struct Node<T> {
     next: Link<T>,
@@ -22,6 +23,14 @@ impl<T> Default for List<T> {
     }
 }
 
+impl<T> Drop for List<T> {
+    fn drop(&mut self) {
+        while !self.is_empty() {
+            self.pop();
+        }
+    }
+}
+
 impl<T> List<T> {
     pub const fn new() -> Self {
         List::<T> {
@@ -34,36 +43,28 @@ impl<T> List<T> {
         self.size
     }
 
-    pub fn empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
+        assert_eq!(self.head.is_none(), self.size == 0);
         self.size == 0
     }
 
-    pub fn get_first(&mut self) -> Option<&mut Node<T>> {
-        match &mut self.head {
-            None => None,
-            Some(fst) => Some(fst.as_mut()),
-        }
-    }
-
-    pub fn push(&mut self, val: T) -> &mut Node<T> {
+    pub fn push(&mut self, val: T) -> &mut Self {
+        let mut new_node = Box::new(Node::<T>::new(val));
+        let old_head = mem::replace(&mut self.head, None);
+        new_node.next = old_head;
+        self.head = Some(new_node);
         self.size += 1;
-        if self.head.is_none() {
-            let fst = Box::<Node<T>>::new(Node::<T> {
-                next: None,
-                val: val,
-            });
-            self.head = Some(fst);
-            return self.get_first().unwrap();
-        }
-        self.get_first().unwrap().insert(val)
+        self
     }
 
-    pub fn pop(&mut self) -> Option<Node<T>> {
-        match &mut self.head {
+    pub fn pop(&mut self) -> Option<T> {
+        match mem::replace(&mut self.head, None) {
             None => None,
-            Some(fst) => {
+            Some(mut old_head) => {
+                assert!(self.size > 0);
+                mem::swap(&mut self.head, &mut old_head.next);
                 self.size -= 1;
-                fst.remove()
+                Some(old_head.take())
             }
         }
     }
@@ -73,6 +74,25 @@ type Link<T> = Option<Box<Node<T>>>;
 
 // A safe singly linked list. External code should **NOT** rely on the address of a node in the list.
 impl<T> Node<T> {
+    const fn new(val: T) -> Self {
+        Self {
+            next: None,
+            val: val,
+        }
+    }
+
+    fn as_ref(&self) -> &T {
+        &self.val
+    }
+
+    fn as_mut(&mut self) -> &mut T {
+        &mut self.val
+    }
+
+    fn take(self) -> T {
+        self.val
+    }
+
     // O(1) insertion.
     fn insert(&mut self, val: T) -> &mut Self {
         let mut new_node = Box::<Node<T>>::new(Node::<T> {
@@ -129,10 +149,7 @@ mod tests {
 
     #[test]
     fn remove_node() {
-        let mut n0 = Node::<i32> {
-            val: -1,
-            next: None,
-        };
+        let mut n0 = Node::<i32>::new(-1);
         let n1 = n0.insert(1024);
         assert_eq!(n1.val, 1024);
         let n2 = n1.remove();
@@ -143,7 +160,7 @@ mod tests {
 
     #[test]
     fn make_sequence_and_count() {
-        let mut head = Node::<i32> { val: 0, next: None };
+        let mut head = Node::<i32>::new(0);
         for i in 1..1024 {
             head.insert(i);
         }
@@ -159,7 +176,7 @@ mod tests {
 
     #[test]
     fn make_sequence_and_remove() {
-        let mut head = Node::<i32> { val: 0, next: None };
+        let mut head = Node::<i32>::new(0);
         for i in 1..1024 {
             head.insert(i);
         }
@@ -174,7 +191,7 @@ mod tests {
     #[bench]
     fn bench_make_sequence_and_remove(b: &mut Bencher) {
         let n = 1 << 16;
-        let mut head = Node::<i32> { val: 0, next: None };
+        let mut head = Node::<i32>::new(0);
         b.iter(|| {
             for i in 1..n {
                 black_box(head.insert(i));
@@ -185,17 +202,46 @@ mod tests {
         });
     }
 
+    #[test]
+    fn test_push() {
+        let n = 1usize << 16;
+        let mut l = List::<usize>::default();
+        for i in 0..n {
+            l.push(i);
+        }
+        assert_eq!(l.size(), n);
+    }
+
+    // This test indicates the List should implement Drop trait itself to destory.
+    // Or the destruction procedure will hit stackoverflow, since the boxes are
+    // destroyed recursively.
     #[bench]
-    fn bench_list_push_and_pop(b: &mut Bencher) {
-        let n = 1 << 16;
-        let mut l = List::<i32>::default();
+    fn bench_push(b: &mut Bencher) {
+        let n = 1usize << 16;
+        let mut l = List::<usize>::default();
+        let mut count = 0;
         b.iter(|| {
-            for i in 1..n {
+            count += 1;
+            for i in 0..n {
                 black_box(l.push(i));
             }
-            while !l.empty() {
+        });
+        assert_eq!(count * n, l.size());
+    }
+
+    #[bench]
+    fn bench_push_and_pop(b: &mut Bencher) {
+        let n = 1usize << 16;
+        let mut l = List::<usize>::default();
+        b.iter(|| {
+            for i in 0..n {
+                black_box(l.push(i));
+            }
+            assert_eq!(l.size(), n);
+            while !l.is_empty() {
                 black_box(l.pop());
             }
+            assert!(l.is_empty());
         });
     }
 }

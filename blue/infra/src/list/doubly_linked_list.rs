@@ -304,25 +304,42 @@ impl Link {
     }
 }
 
-/// Get the struct for this entry
-#[macro_export]
-macro_rules! list_head_entry {
-    ($node:expr, $type:ty, $($f:tt)*) => {
-        rt_bindings::container_of!($node, $type, $($f)*)
-    };
-}
+#[cfg(test)]
+mod tests {
+    extern crate alloc;
+    extern crate test;
 
-/// Iterate over a list
-#[macro_export]
-macro_rules! list_head_for_each {
-    ($pos:ident, $head:expr, $code:block) => {
-        let mut $pos = $head;
-        while let Some(next) = $pos.next() {
-            $pos = unsafe { &*next.as_ptr() };
-            if core::ptr::eq($pos, $head) {
-                break;
+    use alloc::boxed::Box;
+
+    use super::*;
+    use test::{black_box, Bencher};
+
+    #[bench]
+    fn bench_push(b: &mut Bencher) {
+        let n = 1 << 16;
+        let mut l = LinkedList::new();
+        b.iter(|| unsafe {
+            for _ in 0..n {
+                let v = Box::new(0usize);
+                // Let the memory leak.
+                black_box(l.push(Box::<usize>::into_raw(v)))
             }
-            $code
-        }
-    };
+        });
+    }
+
+    #[bench]
+    fn bench_push_and_pop(b: &mut Bencher) {
+        let n = 1 << 16;
+        let mut l = LinkedList::new();
+        b.iter(|| unsafe {
+            for _ in 0..n {
+                let v = Box::new(0usize);
+                // Let the memory leak.
+                black_box(l.push(Box::<usize>::into_raw(v)))
+            }
+            while !l.is_empty() {
+                l.pop();
+            }
+        });
+    }
 }

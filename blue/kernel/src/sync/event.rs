@@ -1,7 +1,5 @@
-use crate::{
-    error::Error, linked_list::ListHead, object::*, print, println, sync::ipc_common::*, thread,
-    timer,
-};
+use crate::{error::Error, object::*, print, println, sync::ipc_common::*, thread, timer};
+use blue_infra::list::doubly_linked_list::ListHead;
 use core::{
     cell::UnsafeCell,
     ffi::{c_char, c_void},
