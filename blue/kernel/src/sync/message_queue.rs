@@ -535,13 +535,16 @@ impl RtMessageQueue {
                 }
             } else {
                 if self.msg_queue_tail != null_mut() {
-                    (*(self.msg_queue_tail as *mut RtMessage)).next = msg
+                    // SAFETY: msg_queue_tail is not null
+                    unsafe {
+                        (*(self.msg_queue_tail as *mut RtMessage)).next = msg;
+                    }
                 }
 
-                self.msg_queue_tail = msg as *mut c_void;
+                self.msg_queue_tail = msg as *mut u8;
 
                 if self.msg_queue_head.is_null() {
-                    self.msg_queue_head = msg as *mut c_void;
+                    self.msg_queue_head = msg as *mut u8;
                 }
             }
         }

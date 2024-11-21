@@ -3443,7 +3443,6 @@ extern "C" {
 pub struct rt_mq_message {
     pub next: *mut rt_mq_message,
     pub length: rt_ssize_t,
-    pub prio: rt_int32_t,
 }
 #[test]
 fn bindgen_test_layout_rt_mq_message() {
@@ -3451,7 +3450,7 @@ fn bindgen_test_layout_rt_mq_message() {
     let ptr = UNINIT.as_ptr();
     assert_eq!(
         ::core::mem::size_of::<rt_mq_message>(),
-        12usize,
+        8usize,
         concat!("Size of: ", stringify!(rt_mq_message))
     );
     assert_eq!(
@@ -3477,16 +3476,6 @@ fn bindgen_test_layout_rt_mq_message() {
             stringify!(rt_mq_message),
             "::",
             stringify!(length)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).prio) as usize - ptr as usize },
-        8usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_mq_message),
-            "::",
-            stringify!(prio)
         )
     );
 }
@@ -3589,26 +3578,6 @@ extern "C" {
         cmd: core::ffi::c_int,
         arg: *mut core::ffi::c_void,
     ) -> rt_err_t;
-}
-extern "C" {
-    pub fn rt_mq_send_wait_prio(
-        mq: rt_mq_t,
-        buffer: *const core::ffi::c_void,
-        size: rt_size_t,
-        prio: rt_int32_t,
-        timeout: rt_int32_t,
-        suspend_flag: core::ffi::c_int,
-    ) -> rt_err_t;
-}
-extern "C" {
-    pub fn rt_mq_recv_prio(
-        mq: rt_mq_t,
-        buffer: *mut core::ffi::c_void,
-        size: rt_size_t,
-        prio: *mut rt_int32_t,
-        timeout: rt_int32_t,
-        suspend_flag: core::ffi::c_int,
-    ) -> rt_ssize_t;
 }
 extern "C" {
     pub fn rt_thread_defunct_enqueue(thread: rt_thread_t);
