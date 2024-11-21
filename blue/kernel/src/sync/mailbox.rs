@@ -8,7 +8,7 @@ use crate::{
     list_head_for_each,
     object::{
         rt_object_allocate, rt_object_delete, rt_object_detach, rt_object_get_type, rt_object_init,
-        rt_object_is_systemobject, ObjectClassType, *,
+        rt_object_is_systemobject, ObjectClassType, NAME_MAX, *,
     },
     print, println,
     rt_bindings::*,
@@ -28,26 +28,105 @@ use core::{
     ptr::null_mut,
 };
 
+use crate::alloc::boxed::Box;
+use core::pin::Pin;
+use kernel::{fmt, str::CString};
+
 use crate::sync::RawSpin;
 use pinned_init::*;
 
+#[pin_data(PinnedDrop)]
+pub struct KMailbox {
+    #[pin]
+    raw: UnsafeCell<RtMailbox>,
+    #[pin]
+    pin: PhantomPinned,
+}
+
+unsafe impl Send for KMailbox {}
+unsafe impl Sync for KMailbox {}
+
+#[pinned_drop]
+impl PinnedDrop for KMailbox {
+    fn drop(self: Pin<&mut Self>) {
+        unsafe {
+            (*self.raw.get()).detach();
+        }
+    }
+}
+
+impl KMailbox {
+    pub fn new(size: usize) -> Pin<Box<Self>> {
+        fn init_raw(size: usize) -> impl PinInit<UnsafeCell<RtMailbox>> {
+            let init = move |slot: *mut UnsafeCell<RtMailbox>| {
+                let slot: *mut RtMailbox = slot.cast();
+                unsafe {
+                    let cur_ref = &mut *slot;
+
+                    if let Ok(s) = CString::try_from_fmt(fmt!("{:p}", slot)) {
+                        cur_ref.init_new_storage(
+                            s.as_ptr() as *const i8,
+                            size,
+                            RT_IPC_FLAG_PRIO as u8,
+                        );
+                    } else {
+                        let default = "default";
+                        cur_ref.init_new_storage(
+                            default.as_ptr() as *const i8,
+                            size,
+                            RT_IPC_FLAG_PRIO as u8,
+                        );
+                    }
+                }
+                Ok(())
+            };
+            unsafe { pin_init_from_closure(init) }
+        };
+
+        Box::pin_init(pin_init!(Self {
+            raw<-init_raw(size),
+            pin: PhantomPinned,
+        }))
+        .unwrap()
+    }
+
+    pub fn send(&self, set: usize) -> Result<(), Error> {
+        let result = unsafe { (*self.raw.get()).send(set) };
+        if result == RT_EOK as rt_err_t {
+            Ok(())
+        } else {
+            Err(Error::from_errno(result))
+        }
+    }
+
+    pub fn receive(&self, timeout: i32) -> Result<usize, Error> {
+        let mut retmsg = 0 as usize;
+        let result = unsafe { (*self.raw.get()).receive(&mut retmsg, timeout) };
+        if result == RT_EOK as rt_err_t {
+            Ok(retmsg)
+        } else {
+            Err(Error::from_errno(result))
+        }
+    }
+}
+
 /// Mailbox raw structure
 #[repr(C)]
-#[pin_data]
+#[pin_data(PinnedDrop)]
 pub struct RtMailbox {
     /// Inherit from IPCObject
     #[pin]
     pub(crate) parent: IPCObject,
     /// Message pool buffer of mailbox
-    pub(crate) msg_pool: *mut ffi::c_ulong,
+    pub(crate) msg_pool: *mut u8,
     /// Message pool buffer size
-    pub(crate) size: ffi::c_ushort,
+    pub(crate) size: u16,
     /// Index of messages in message pool
-    pub(crate) entry: ffi::c_ushort,
+    pub(crate) entry: u16,
     /// Input offset of the message buffer
-    pub(crate) in_offset: ffi::c_ushort,
+    pub(crate) in_offset: u16,
     /// Output offset of the message buffer
-    pub(crate) out_offset: ffi::c_ushort,
+    pub(crate) out_offset: u16,
     /// Sender thread suspended on this mailbox
     #[pin]
     pub(crate) suspend_sender_thread: ListHead,
@@ -55,22 +134,45 @@ pub struct RtMailbox {
 
 impl_kobject!(RtMailbox);
 
+#[pinned_drop]
+impl PinnedDrop for RtMailbox {
+    fn drop(self: Pin<&mut Self>) {
+        let this_mb = unsafe { Pin::get_unchecked_mut(self) };
+
+        unsafe {
+            if !this_mb.msg_pool.is_null() {
+                rt_free(this_mb.msg_pool as *mut ffi::c_void);
+            }
+        }
+    }
+}
+
 impl RtMailbox {
     #[inline]
-    pub fn init(
-        &mut self,
-        name: *const i8,
-        msg_pool: *mut core::ffi::c_void,
-        size: usize,
-        flag: u8,
-    ) {
+    pub fn new(name: [i8; NAME_MAX], size: usize, flag: u8) -> impl PinInit<Self> {
+        assert!((flag == RT_IPC_FLAG_FIFO as u8) || (flag == RT_IPC_FLAG_PRIO as u8));
+
+        rt_debug_not_in_interrupt!();
+
+        pin_init!(Self {
+            parent<-IPCObject::new(ObjectClassType::ObjectClassMailBox as u8, name, flag),
+            msg_pool: unsafe{ rt_malloc(size * mem::size_of::<usize>()) as *mut u8 },
+            size: size as u16,
+            entry: 0,
+            in_offset: 0,
+            out_offset: 0,
+            suspend_sender_thread<-ListHead::new()
+        })
+    }
+    #[inline]
+    pub fn init(&mut self, name: *const i8, msg_pool: *mut u8, size: usize, flag: u8) {
         assert!((flag == RT_IPC_FLAG_FIFO as u8) || (flag == RT_IPC_FLAG_PRIO as u8));
 
         self.parent
             .init(ObjectClassType::ObjectClassMailBox as u8, name, flag);
 
-        self.msg_pool = msg_pool as *mut ffi::c_ulong;
-        self.size = size as ffi::c_ushort;
+        self.msg_pool = msg_pool;
+        self.size = size as u16;
         self.entry = 0;
         self.in_offset = 0;
         self.out_offset = 0;
@@ -91,40 +193,38 @@ impl RtMailbox {
     }
 
     #[inline]
-    pub fn new(name: *const i8, size: usize, flag: u8) -> *mut Self {
-        assert!((flag == RT_IPC_FLAG_FIFO as u8) || (flag == RT_IPC_FLAG_PRIO as u8));
-
-        rt_debug_not_in_interrupt!();
-
-        // SAFETY: we have null ptr protection
+    pub fn init_new_storage(&mut self, name: *const i8, size: usize, flag: u8) -> i32 {
+        self.size = size as u16;
+        // SAFETY: Ensure the alloc is successful
         unsafe {
-            let mb = IPCObject::new::<Self>(ObjectClassType::ObjectClassMailBox as u8, name, flag);
-            if !mb.is_null() {
-                (*mb).size = size as u16;
-                let ptr = rt_malloc((*mb).size as usize * mem::size_of::<ffi::c_ulong>())
-                    as *mut ffi::c_ulong;
-                (*mb).msg_pool = ptr;
-                if (*mb).msg_pool.is_null() {
-                    (*mb).parent.parent.delete();
-                    return null_mut();
-                }
+            self.msg_pool = rt_malloc(size * mem::size_of::<usize>()) as *mut u8;
+        }
+        if self.msg_pool.is_null() {
+            return -(RT_ENOMEM as i32);
+        }
 
-                (*mb).entry = 0;
-                (*mb).in_offset = 0;
-                (*mb).out_offset = 0;
+        self.entry = 0;
+        self.in_offset = 0;
+        self.out_offset = 0;
 
-                unsafe {
-                    let _ = ListHead::new()
-                        .__pinned_init(&mut (*mb).suspend_sender_thread as *mut ListHead);
-                }
-            }
+        unsafe {
+            let _ = ListHead::new().__pinned_init(&mut self.suspend_sender_thread as *mut ListHead);
+        }
 
-            mb
+        RT_EOK as i32
+    }
+
+    #[inline]
+    pub fn new_raw(name: *const i8, size: usize, flag: u8) -> *mut Self {
+        let mailbox = Box::pin_init(RtMailbox::new(char_ptr_to_array(name), size, flag));
+        match mailbox {
+            Ok(mb) => unsafe { Box::leak(Pin::into_inner_unchecked(mb)) },
+            Err(_) => return null_mut(),
         }
     }
 
     #[inline]
-    pub fn delete(&mut self) {
+    pub fn delete_raw(&mut self) {
         assert_eq!(self.type_name(), ObjectClassType::ObjectClassMailBox as u8);
         assert!(!self.is_static_kobject());
 
@@ -135,144 +235,146 @@ impl RtMailbox {
         // SAFETY: null protection
         unsafe {
             if !self.msg_pool.is_null() {
-                rt_free(self.msg_pool as *mut c_void);
+                rt_free(self.msg_pool as *mut ffi::c_void);
             }
         }
         self.parent.parent.delete();
     }
 
-    fn send_wait_internal(
-        &mut self,
-        value: ffi::c_ulong,
-        timeout: i32,
-        suspend_flag: u32,
-    ) -> ffi::c_long {
+    fn send_wait_internal(&mut self, value: usize, timeout: i32, suspend_flag: u32) -> i32 {
+        let mut timeout = timeout;
+        #[allow(unused_variables)]
+        let scheduler = timeout != 0;
+        rt_debug_scheduler_available!(scheduler);
+
+        let mut tick_delta = 0;
+        let thread_ptr = crate::current_thread_ptr!();
+        if thread_ptr.is_null() {
+            return -(RT_ERROR as i32);
+        }
+
+        // SAFETY: thread_ptr is null checked
+        let thread = unsafe { &mut *thread_ptr };
+
         unsafe {
-            let mut timeout = timeout;
-            #[allow(unused_variables)]
-            let scheduler = timeout != 0;
-            rt_debug_scheduler_available!(scheduler);
-
-            let mut tick_delta = 0;
-            let thread = unsafe { crate::current_thread!().unwrap().as_mut() };
-
             rt_object_hook_call!(
                 rt_object_put_hook,
                 &mut self.parent.parent as *mut KObjectBase as *mut rt_object
             );
+        }
 
-            self.parent.lock();
+        self.parent.lock();
 
-            if self.entry == self.size && timeout == 0 {
+        if self.entry == self.size && timeout == 0 {
+            self.parent.unlock();
+            return -(RT_EFULL as i32);
+        }
+
+        while self.entry == self.size {
+            thread.error = -(RT_EINTR as i32);
+
+            if timeout == 0 {
                 self.parent.unlock();
-                return -(RT_EFULL as ffi::c_long);
+
+                return -(RT_EFULL as i32);
             }
 
-            while self.entry == self.size {
-                (*thread).error = -(RT_EINTR as ffi::c_long);
+            let ret = IPCObject::suspend_thread(
+                &mut self.suspend_sender_thread,
+                thread_ptr,
+                self.parent.flag,
+                suspend_flag as u32,
+            );
 
-                if timeout == 0 {
-                    self.parent.unlock();
+            if ret != RT_EOK as i32 {
+                self.parent.unlock();
+                return ret;
+            }
 
-                    return -(RT_EFULL as ffi::c_long);
-                }
+            if timeout > 0 {
+                tick_delta = rt_tick_get();
 
-                let ret = IPCObject::suspend_thread(
-                    &mut self.suspend_sender_thread,
-                    thread,
-                    self.parent.flag,
-                    suspend_flag as u32,
+                thread.thread_timer.timer_control(
+                    RT_TIMER_CTRL_SET_TIME as u32,
+                    (&mut timeout) as *mut i32 as *mut c_void,
                 );
-
-                if ret != RT_EOK as ffi::c_long {
-                    self.parent.unlock();
-                    return ret;
-                }
-
-                if timeout > 0 {
-                    tick_delta = rt_tick_get();
-
-                    (*thread).thread_timer.timer_control(
-                        RT_TIMER_CTRL_SET_TIME as u32,
-                        (&mut timeout) as *mut i32 as *mut c_void,
-                    );
-                    (*thread).thread_timer.start();
-                }
-
-                self.parent.unlock();
-
-                Cpu::get_current_scheduler().do_task_schedule();
-
-                if (*thread).error != RT_EOK as ffi::c_long {
-                    return (*thread).error;
-                }
-
-                self.parent.lock();
-
-                if timeout > 0 {
-                    tick_delta = rt_tick_get() - tick_delta;
-                    timeout -= tick_delta as i32;
-                    if timeout < 0 {
-                        timeout = 0;
-                    }
-                }
-            }
-
-            *self.msg_pool.offset(self.in_offset as isize) = value;
-            self.in_offset += 1;
-            if self.in_offset >= self.size {
-                self.in_offset = 0;
-            }
-
-            //unsafemonitor
-            if self.entry < RT_MB_ENTRY_MAX as u16 {
-                self.entry += 1;
-            } else {
-                self.parent.unlock();
-                return -(RT_EFULL as ffi::c_long);
-            }
-
-            if self.parent.has_waiting() {
-                self.parent.wake_one();
-
-                self.parent.unlock();
-
-                Cpu::get_current_scheduler().do_task_schedule();
-
-                return RT_EOK as ffi::c_long;
+                thread.thread_timer.start();
             }
 
             self.parent.unlock();
 
-            return RT_EOK as ffi::c_long;
+            Cpu::get_current_scheduler().do_task_schedule();
+
+            if thread.error != RT_EOK as i32 {
+                return thread.error;
+            }
+
+            self.parent.lock();
+
+            if timeout > 0 {
+                tick_delta = rt_tick_get() - tick_delta;
+                timeout -= tick_delta as i32;
+                if timeout < 0 {
+                    timeout = 0;
+                }
+            }
         }
+
+        // SAFETY: msg_pool is not null and offset is within the range
+        unsafe { *((self.msg_pool as *mut usize).offset(self.in_offset as isize)) = value };
+
+        self.in_offset += 1;
+        if self.in_offset >= self.size {
+            self.in_offset = 0;
+        }
+
+        if self.entry < RT_MB_ENTRY_MAX as u16 {
+            self.entry += 1;
+        } else {
+            self.parent.unlock();
+            return -(RT_EFULL as i32);
+        }
+
+        if self.parent.has_waiting() {
+            self.parent.wake_one();
+
+            self.parent.unlock();
+
+            Cpu::get_current_scheduler().do_task_schedule();
+
+            return RT_EOK as i32;
+        }
+
+        self.parent.unlock();
+
+        return RT_EOK as i32;
     }
 
-    pub fn send_wait(&mut self, value: ffi::c_ulong, timeout: i32) -> ffi::c_long {
+    pub fn send_wait(&mut self, value: usize, timeout: i32) -> i32 {
         self.send_wait_internal(value, timeout, RT_UNINTERRUPTIBLE as u32)
     }
 
-    pub fn send_wait_interruptible(&mut self, value: ffi::c_ulong, timeout: i32) -> ffi::c_long {
+    pub fn send_wait_interruptible(&mut self, value: usize, timeout: i32) -> i32 {
         self.send_wait_internal(value, timeout, RT_INTERRUPTIBLE as u32)
     }
 
-    pub fn send_wait_killable(&mut self, value: ffi::c_ulong, timeout: i32) -> ffi::c_long {
+    pub fn send_wait_killable(&mut self, value: usize, timeout: i32) -> i32 {
         self.send_wait_internal(value, timeout, RT_KILLABLE as u32)
     }
 
-    pub fn send(&mut self, value: ffi::c_ulong) -> ffi::c_long {
+    pub fn send(&mut self, value: usize) -> i32 {
         self.send_wait(value, 0)
     }
 
-    pub fn send_interruptible(&mut self, value: ffi::c_ulong) -> ffi::c_long {
+    pub fn send_interruptible(&mut self, value: usize) -> i32 {
         self.send_wait_interruptible(value, 0)
     }
 
-    pub fn send_killable(&mut self, value: ffi::c_ulong) -> ffi::c_long {
+    pub fn send_killable(&mut self, value: usize) -> i32 {
         self.send_wait_killable(value, 0)
     }
 
-    pub fn urgent(&mut self, value: ffi::c_ulong) -> ffi::c_long {
+    pub fn urgent(&mut self, value: usize) -> i32 {
         assert_eq!(self.type_name(), ObjectClassType::ObjectClassMailBox as u8);
 
         // SAFETY： hook and memory operation should be ensured safe
@@ -281,46 +383,44 @@ impl RtMailbox {
                 rt_object_put_hook,
                 &mut self.parent.parent as *mut KObjectBase as *mut rt_object
             );
+        }
 
-            self.parent.lock();
+        self.parent.lock();
 
-            if self.entry == self.size {
-                self.parent.unlock();
-                return -(RT_EFULL as ffi::c_long);
-            }
+        if self.entry == self.size {
+            self.parent.unlock();
+            return -(RT_EFULL as i32);
+        }
 
-            if self.out_offset > 0 {
-                self.out_offset -= 1;
-            } else {
-                self.out_offset = self.size - 1;
-            }
+        if self.out_offset > 0 {
+            self.out_offset -= 1;
+        } else {
+            self.out_offset = self.size - 1;
+        }
 
-            *self.msg_pool.offset(self.out_offset as isize) = value;
+        // SAFETY： msg_pool is not null and offset is within the range
+        unsafe {
+            *((self.msg_pool as *mut usize).offset(self.out_offset as isize)) = value;
+        }
 
-            self.entry += 1;
+        self.entry += 1;
 
-            if self.parent.has_waiting() {
-                self.parent.wake_one();
-
-                self.parent.unlock();
-
-                Cpu::get_current_scheduler().do_task_schedule();
-
-                return RT_EOK as ffi::c_long;
-            }
+        if self.parent.has_waiting() {
+            self.parent.wake_one();
 
             self.parent.unlock();
 
-            RT_EOK as ffi::c_long
+            Cpu::get_current_scheduler().do_task_schedule();
+
+            return RT_EOK as i32;
         }
+
+        self.parent.unlock();
+
+        RT_EOK as i32
     }
 
-    fn receive_internal(
-        &mut self,
-        value: *mut core::ffi::c_ulong,
-        timeout: i32,
-        suspend_flag: u32,
-    ) -> ffi::c_long {
+    fn receive_internal(&mut self, value: &mut usize, timeout: i32, suspend_flag: u32) -> i32 {
         assert_eq!(self.type_name(), ObjectClassType::ObjectClassMailBox as u8);
 
         let mut timeout = timeout;
@@ -342,23 +442,23 @@ impl RtMailbox {
 
             if self.entry == 0 && timeout == 0 {
                 self.parent.unlock();
-                return -(RT_ETIMEOUT as ffi::c_long);
+                return -(RT_ETIMEOUT as i32);
             }
 
             while self.entry == 0 {
-                (*thread).error = -(RT_EINTR as ffi::c_long);
+                (*thread).error = -(RT_EINTR as i32);
 
                 if timeout == 0 {
                     self.parent.unlock();
-                    (*thread).error = -(RT_ETIMEOUT as ffi::c_long);
+                    (*thread).error = -(RT_ETIMEOUT as i32);
 
-                    return -(RT_ETIMEOUT as ffi::c_long);
+                    return -(RT_ETIMEOUT as i32);
                 }
 
                 let ret = self
                     .parent
                     .wait(thread, self.parent.flag, suspend_flag as u32);
-                if ret != RT_EOK as ffi::c_long {
+                if ret != RT_EOK as i32 {
                     self.parent.unlock();
                     return ret;
                 }
@@ -377,7 +477,7 @@ impl RtMailbox {
 
                 Cpu::get_current_scheduler().do_task_schedule();
 
-                if (*thread).error != RT_EOK as ffi::c_long {
+                if (*thread).error != RT_EOK as i32 {
                     return (*thread).error;
                 }
 
@@ -392,8 +492,7 @@ impl RtMailbox {
                 }
             }
 
-            //unsafemonitor
-            *value = *self.msg_pool.offset(self.out_offset as isize);
+            *value = *((self.msg_pool as *mut usize).offset(self.out_offset as isize));
 
             self.out_offset += 1;
             if self.out_offset >= self.size {
@@ -416,7 +515,7 @@ impl RtMailbox {
 
                 Cpu::get_current_scheduler().do_task_schedule();
 
-                return RT_EOK as ffi::c_long;
+                return RT_EOK as i32;
             }
 
             self.parent.unlock();
@@ -426,31 +525,23 @@ impl RtMailbox {
                 &mut self.parent.parent as *mut KObjectBase as *mut rt_object
             );
 
-            RT_EOK as ffi::c_long
+            RT_EOK as i32
         }
     }
 
-    pub fn receive(&mut self, value: *mut core::ffi::c_ulong, timeout: i32) -> ffi::c_long {
+    pub fn receive(&mut self, value: &mut usize, timeout: i32) -> i32 {
         self.receive_internal(value, timeout, RT_UNINTERRUPTIBLE)
     }
 
-    pub fn receive_interruptible(
-        &mut self,
-        value: *mut core::ffi::c_ulong,
-        timeout: i32,
-    ) -> ffi::c_long {
+    pub fn receive_interruptible(&mut self, value: &mut usize, timeout: i32) -> i32 {
         self.receive_internal(value, timeout, RT_INTERRUPTIBLE)
     }
 
-    pub fn receive_killable(
-        &mut self,
-        value: *mut core::ffi::c_ulong,
-        timeout: i32,
-    ) -> ffi::c_long {
+    pub fn receive_killable(&mut self, value: &mut usize, timeout: i32) -> i32 {
         self.receive_internal(value, timeout, RT_KILLABLE)
     }
 
-    pub fn control(&mut self, cmd: i32, _arg: *mut core::ffi::c_void) -> ffi::c_long {
+    pub fn control(&mut self, cmd: i32, _arg: *mut core::ffi::c_void) -> i32 {
         assert_eq!(self.type_name(), ObjectClassType::ObjectClassMailBox as u8);
 
         if cmd == RT_IPC_CMD_RESET as i32 {
@@ -467,10 +558,10 @@ impl RtMailbox {
 
             Cpu::get_current_scheduler().do_task_schedule();
 
-            return RT_EOK as ffi::c_long;
+            return RT_EOK as i32;
         }
 
-        RT_EOK as ffi::c_long
+        RT_EOK as i32
     }
 }
 
@@ -485,7 +576,7 @@ pub unsafe extern "C" fn rt_mb_init(
 ) -> rt_err_t {
     assert!(!mb.is_null());
 
-    (*mb).init(name, msgpool, size as usize, flag);
+    (*mb).init(name, msgpool as *mut u8, size as usize, flag);
 
     RT_EOK as rt_err_t
 }
@@ -507,7 +598,7 @@ pub unsafe extern "C" fn rt_mb_create(
     size: rt_size_t,
     flag: rt_uint8_t,
 ) -> *mut RtMailbox {
-    RtMailbox::new(name, size as usize, flag)
+    RtMailbox::new_raw(name, size as usize, flag)
 }
 
 #[cfg(all(feature = "RT_USING_MAILBOX", feature = "RT_USING_HEAP"))]
@@ -515,7 +606,7 @@ pub unsafe extern "C" fn rt_mb_create(
 pub unsafe extern "C" fn rt_mb_delete(mb: *mut RtMailbox) -> rt_err_t {
     assert!(!mb.is_null());
 
-    (*mb).delete();
+    (*mb).delete_raw();
 
     RT_EOK as rt_err_t
 }
@@ -528,7 +619,7 @@ pub unsafe extern "C" fn rt_mb_send_wait(
     timeout: rt_int32_t,
 ) -> rt_err_t {
     assert!(!mb.is_null());
-    (*mb).send_wait(value, timeout)
+    (*mb).send_wait(value as usize, timeout) as rt_err_t
 }
 
 #[cfg(feature = "RT_USING_MAILBOX")]
@@ -539,7 +630,7 @@ pub unsafe extern "C" fn rt_mb_send_wait_interruptible(
     timeout: rt_int32_t,
 ) -> rt_err_t {
     assert!(!mb.is_null());
-    (*mb).send_wait_interruptible(value, timeout)
+    (*mb).send_wait_interruptible(value as usize, timeout) as rt_err_t
 }
 
 #[cfg(feature = "RT_USING_MAILBOX")]
@@ -550,71 +641,80 @@ pub unsafe extern "C" fn rt_mb_send_wait_killable(
     timeout: rt_int32_t,
 ) -> rt_err_t {
     assert!(!mb.is_null());
-    (*mb).send_wait_killable(value, timeout)
+    (*mb).send_wait_killable(value as usize, timeout) as rt_err_t
 }
 
 #[cfg(feature = "RT_USING_MAILBOX")]
 #[no_mangle]
-pub unsafe extern "C" fn rt_mb_send(mb: *mut RtMailbox, value: rt_ubase_t) -> rt_err_t {
+pub unsafe extern "C" fn rt_mb_send(mb: *mut RtMailbox, value: ffi::c_ulong) -> rt_err_t {
     assert!(!mb.is_null());
-    (*mb).send(value)
+    (*mb).send(value as usize) as rt_err_t
 }
 
 #[cfg(feature = "RT_USING_MAILBOX")]
 #[no_mangle]
 pub unsafe extern "C" fn rt_mb_send_interruptible(
     mb: *mut RtMailbox,
-    value: rt_ubase_t,
+    value: ffi::c_ulong,
 ) -> rt_err_t {
     assert!(!mb.is_null());
-    (*mb).send_interruptible(value)
+    (*mb).send_interruptible(value as usize) as rt_err_t
 }
 
 #[cfg(feature = "RT_USING_MAILBOX")]
 #[no_mangle]
-pub unsafe extern "C" fn rt_mb_send_killable(mb: *mut RtMailbox, value: rt_ubase_t) -> rt_err_t {
+pub unsafe extern "C" fn rt_mb_send_killable(mb: *mut RtMailbox, value: ffi::c_ulong) -> rt_err_t {
     assert!(!mb.is_null());
-    (*mb).send_killable(value)
+    (*mb).send_killable(value as usize) as rt_err_t
 }
 
 #[cfg(feature = "RT_USING_MAILBOX")]
 #[no_mangle]
-pub unsafe extern "C" fn rt_mb_urgent(mb: *mut RtMailbox, value: rt_ubase_t) -> rt_err_t {
+pub unsafe extern "C" fn rt_mb_urgent(mb: *mut RtMailbox, value: ffi::c_ulong) -> rt_err_t {
     assert!(!mb.is_null());
-    (*mb).urgent(value)
+    (*mb).urgent(value as usize) as rt_err_t
 }
 
 #[cfg(feature = "RT_USING_MAILBOX")]
 #[no_mangle]
 pub unsafe extern "C" fn rt_mb_recv(
     mb: *mut RtMailbox,
-    value: *mut core::ffi::c_ulong,
+    value: *mut ffi::c_ulong,
     timeout: rt_int32_t,
 ) -> rt_err_t {
     assert!(!mb.is_null());
-    (*mb).receive(value, timeout)
+    let mut receive_val = 0usize;
+    let ret_val = (*mb).receive(&mut receive_val, timeout) as rt_err_t;
+    *value = receive_val as ffi::c_ulong;
+    ret_val
 }
 
 #[cfg(feature = "RT_USING_MAILBOX")]
 #[no_mangle]
 pub unsafe extern "C" fn rt_mb_recv_interruptible(
     mb: *mut RtMailbox,
-    value: *mut core::ffi::c_ulong,
+    value: *mut ffi::c_ulong,
     timeout: rt_int32_t,
 ) -> rt_err_t {
     assert!(!mb.is_null());
-    (*mb).receive_interruptible(value, timeout)
+    let mut receive_val = 0usize;
+    let ret_val = (*mb).receive_interruptible(&mut receive_val, timeout) as rt_err_t;
+    *value = receive_val as ffi::c_ulong;
+    ret_val
 }
 
 #[cfg(feature = "RT_USING_MAILBOX")]
 #[no_mangle]
 pub unsafe extern "C" fn rt_mb_recv_killable(
     mb: *mut RtMailbox,
-    value: *mut core::ffi::c_ulong,
+    value: *mut ffi::c_ulong,
     timeout: rt_int32_t,
 ) -> rt_err_t {
     assert!(!mb.is_null());
-    (*mb).receive_killable(value, timeout)
+    let mut receive_val = 0usize;
+    let ret_val = (*mb).receive_killable(&mut receive_val, timeout) as rt_err_t;
+    *value = receive_val as ffi::c_ulong;
+    ret_val
 }
 
 #[cfg(feature = "RT_USING_MAILBOX")]
@@ -625,109 +725,9 @@ pub unsafe extern "C" fn rt_mb_control(
     _arg: *mut core::ffi::c_void,
 ) -> rt_err_t {
     assert!(!mb.is_null());
-    (*mb).control(cmd, _arg)
+    (*mb).control(cmd, _arg) as rt_err_t
 }
 
-#[pin_data]
-pub struct MailBox {
-    #[pin]
-    mb_ptr: *mut RtMailbox,
-    #[pin]
-    _pin: PhantomPinned,
-}
-
-unsafe impl Send for MailBox {}
-unsafe impl Sync for MailBox {}
-
-impl MailBox {
-    pub fn new(name: &str, size: usize) -> Result<Self, Error> {
-        let result = unsafe {
-            rt_mb_create(
-                name.as_ptr() as *const c_char,
-                size as rt_size_t,
-                RT_IPC_FLAG_PRIO as u8,
-            )
-        };
-        if result.is_null() {
-            Err(Error::from_errno(RT_ERROR as i32))
-        } else {
-            Ok(Self {
-                mb_ptr: result,
-                _pin: PhantomPinned {},
-            })
-        }
-    }
-
-    pub fn delete(self) -> Result<(), Error> {
-        let result = unsafe { rt_mb_delete(self.mb_ptr) };
-        if result == RT_EOK as rt_err_t {
-            Ok(())
-        } else {
-            Err(Error::from_errno(result))
-        }
-    }
-
-    pub fn send(&self, set: u32) -> Result<(), Error> {
-        self.send_wait(set, 0)
-    }
-
-    pub fn send_wait(&self, set: u32, timeout: rt_int32_t) -> Result<(), Error> {
-        let result = unsafe { rt_mb_send_wait(self.mb_ptr, set, timeout) };
-        if result == RT_EOK as rt_err_t {
-            Ok(())
-        } else {
-            Err(Error::from_errno(result))
-        }
-    }
-
-    pub fn send_interruptible(&self, set: u32) -> Result<(), Error> {
-        let result = unsafe { rt_mb_send_interruptible(self.mb_ptr, set as rt_ubase_t) };
-        if result == RT_EOK as rt_err_t {
-            Ok(())
-        } else {
-            Err(Error::from_errno(result))
-        }
-    }
-
-    pub fn send_killable(&self, set: u32) -> Result<(), Error> {
-        let result = unsafe { rt_mb_send_killable(self.mb_ptr, set as rt_ubase_t) };
-        if result == RT_EOK as rt_err_t {
-            Ok(())
-        } else {
-            Err(Error::from_errno(result))
-        }
-    }
-
-    pub fn receive(&self, timeout: i32) -> Result<u32, Error> {
-        let mut retmsg = 0 as core::ffi::c_ulong;
-        let result = unsafe { rt_mb_recv(self.mb_ptr, &mut retmsg, timeout) };
-        if result == RT_EOK as rt_err_t {
-            Ok(retmsg as u32)
-        } else {
-            Err(Error::from_errno(result))
-        }
-    }
-
-    pub fn receive_interruptible(&self, timeout: i32) -> Result<u32, Error> {
-        let mut retmsg = 0 as core::ffi::c_ulong;
-        let result = unsafe { rt_mb_recv_interruptible(self.mb_ptr, &mut retmsg, timeout) };
-        if result == RT_EOK as rt_err_t {
-            Ok(retmsg as u32)
-        } else {
-            Err(Error::from_errno(result))
-        }
-    }
-
-    pub fn receive_killable(&self, timeout: i32) -> Result<u32, Error> {
-        let mut retmsg = 0 as core::ffi::c_ulong;
-        let result = unsafe { rt_mb_recv_killable(self.mb_ptr, &mut retmsg, timeout) };
-        if result == RT_EOK as i32 {
-            Ok(retmsg as u32)
-        } else {
-            Err(Error::from_errno(result))
-        }
-    }
-}
 #[no_mangle]
 #[allow(unused_unsafe)]
 pub extern "C" fn rt_mailbox_info() {

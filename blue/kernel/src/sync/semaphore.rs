@@ -6,7 +6,7 @@ use crate::{
     list_head_for_each,
     object::{
         rt_object_allocate, rt_object_delete, rt_object_detach, rt_object_get_type,
-        rt_object_is_systemobject, ObjectClassType, *,
+        rt_object_is_systemobject, ObjectClassType, NAME_MAX, *,
     },
     print, println,
     rt_bindings::*,
@@ -57,8 +57,7 @@ impl KSemaphore {
                 unsafe {
                     let cur_ref = &mut *slot;
 
-                    let addr = core::ptr::addr_of!(cur_ref);
-                    if let Ok(s) = CString::try_from_fmt(fmt!("{:p}", addr)) {
+                    if let Ok(s) = CString::try_from_fmt(fmt!("{:p}", slot)) {
                         cur_ref.init(s.as_ptr() as *const i8, value, RT_IPC_FLAG_PRIO as u8);
                     } else {
                         let default = "default";
@@ -102,14 +101,24 @@ pub struct RtSemaphore {
     #[pin]
     pub(crate) parent: IPCObject,
     /// Value of semaphore
-    pub(crate) value: ffi::c_ushort,
-    /// Reserved field
-    pub(crate) reserved: ffi::c_ushort,
+    pub(crate) value: u16,
 }
 
 impl_kobject!(RtSemaphore);
 
 impl RtSemaphore {
+    #[inline]
+    pub fn new(name: [i8; NAME_MAX], value: u16, flag: u8) -> impl PinInit<Self> {
+        assert!((flag == RT_IPC_FLAG_FIFO as u8) || (flag == RT_IPC_FLAG_PRIO as u8));
+
+        rt_debug_not_in_interrupt!();
+
+        pin_init!(Self {
+            parent<-IPCObject::new(ObjectClassType::ObjectClassSemaphore as u8, name, flag),
+            value: value,
+        })
+    }
+
     #[inline]
     pub fn init(&mut self, name: *const i8, value: u16, flag: u8) {
         assert!((flag == RT_IPC_FLAG_FIFO as u8) || (flag == RT_IPC_FLAG_PRIO as u8));
@@ -132,21 +141,16 @@ impl RtSemaphore {
     }
 
     #[inline]
-    pub fn new(name: *const i8, value: u16, flag: u8) -> *mut Self {
-        assert!((flag == RT_IPC_FLAG_FIFO as u8) || (flag == RT_IPC_FLAG_PRIO as u8));
-
-        rt_debug_not_in_interrupt!();
-
-        let sem = IPCObject::new::<Self>(ObjectClassType::ObjectClassSemaphore as u8, name, flag);
-        if !sem.is_null() {
-            unsafe { (*sem).value = value };
+    pub fn new_raw(name: *const i8, value: u16, flag: u8) -> *mut Self {
+        let semaphore = Box::pin_init(RtSemaphore::new(char_ptr_to_array(name), value, flag));
+        match semaphore {
+            Ok(sem) => unsafe { Box::leak(Pin::into_inner_unchecked(sem)) },
+            Err(_) => return null_mut(),
         }
-
-        sem
     }
 
     #[inline]
-    pub fn delete(&mut self) {
+    pub fn delete_raw(&mut self) {
         assert_eq!(
             self.type_name(),
             ObjectClassType::ObjectClassSemaphore as u8
@@ -159,7 +163,7 @@ impl RtSemaphore {
         self.parent.parent.delete();
     }
 
-    fn take_internal(&mut self, timeout: i32, suspend_flag: u32) -> ffi::c_long {
+    fn take_internal(&mut self, timeout: i32, suspend_flag: u32) -> i32 {
         let mut time_out = timeout as i32;
         assert_eq!(
             self.type_name(),
@@ -191,13 +195,13 @@ impl RtSemaphore {
             } else {
                 let thread = unsafe { crate::current_thread!().unwrap().as_mut() };
 
-                (*thread).error = -(RT_EINTR as ffi::c_long);
+                (*thread).error = -(RT_EINTR as i32);
 
                 let ret = self
                     .parent
                     .wait(thread, self.parent.flag, suspend_flag as u32);
 
-                if ret != RT_EOK as ffi::c_long {
+                if ret != RT_EOK as i32 {
                     self.parent.unlock();
                     return ret;
                 }
@@ -214,7 +218,7 @@ impl RtSemaphore {
 
                 Cpu::get_current_scheduler().do_task_schedule();
 
-                if (*thread).error != RT_EOK as ffi::c_long {
+                if (*thread).error != RT_EOK as i32 {
                     return (*thread).error;
                 }
             }
@@ -227,26 +231,26 @@ impl RtSemaphore {
             );
         }
 
-        RT_EOK as ffi::c_long
+        RT_EOK as i32
     }
 
-    pub fn take(&mut self, timeout: i32) -> ffi::c_long {
+    pub fn take(&mut self, timeout: i32) -> i32 {
         self.take_internal(timeout, RT_UNINTERRUPTIBLE as u32)
     }
 
-    pub fn try_take(&mut self) -> ffi::c_long {
+    pub fn try_take(&mut self) -> i32 {
         self.take(0)
     }
 
-    pub fn take_interruptible(&mut self, timeout: i32) -> ffi::c_long {
+    pub fn take_interruptible(&mut self, timeout: i32) -> i32 {
         self.take_internal(timeout, RT_INTERRUPTIBLE as u32)
     }
 
-    pub fn take_killable(&mut self, timeout: i32) -> ffi::c_long {
+    pub fn take_killable(&mut self, timeout: i32) -> i32 {
         self.take_internal(timeout, RT_KILLABLE as u32)
     }
 
-    pub fn release(&mut self) -> ffi::c_long {
+    pub fn release(&mut self) -> i32 {
         assert_eq!(
             self.type_name(),
             ObjectClassType::ObjectClassSemaphore as u8
@@ -270,7 +274,7 @@ impl RtSemaphore {
                 self.value += 1;
             } else {
                 self.parent.unlock();
-                return -(RT_EFULL as ffi::c_long);
+                return -(RT_EFULL as i32);
             }
         }
 
@@ -280,28 +284,27 @@ impl RtSemaphore {
             Cpu::get_current_scheduler().do_task_schedule();
         }
 
-        RT_EOK as ffi::c_long
+        RT_EOK as i32
     }
 
-    pub fn control(&mut self, cmd: i32, arg: *const c_void) -> ffi::c_long {
+    pub fn control(&mut self, cmd: i32, arg: *const c_void) -> i32 {
         assert_eq!(
             self.type_name(),
             ObjectClassType::ObjectClassSemaphore as u8
         );
 
         if cmd == RT_IPC_CMD_RESET as i32 {
-            let value = arg as ffi::c_ulong;
             self.parent.lock();
 
             self.parent.wake_all();
 
-            self.value = value as rt_uint16_t;
+            self.value = arg as u16;
 
             self.parent.unlock();
 
             Cpu::get_current_scheduler().do_task_schedule();
 
-            return RT_EOK as ffi::c_long;
+            return RT_EOK as i32;
         }
 
         -(RT_ERROR as rt_err_t)
@@ -334,14 +337,14 @@ pub unsafe extern "C" fn rt_sem_create(
     value: rt_uint32_t,
     flag: rt_uint8_t,
 ) -> *mut RtSemaphore {
-    RtSemaphore::new(name, value as u16, flag)
+    RtSemaphore::new_raw(name, value as u16, flag)
 }
 
 #[cfg(all(feature = "RT_USING_SEMAPHORE", feature = "RT_USING_HEAP"))]
 #[no_mangle]
 pub unsafe extern "C" fn rt_sem_delete(sem: *mut RtSemaphore) -> rt_err_t {
     assert!(!sem.is_null());
-    (*sem).delete();
+    (*sem).delete_raw();
     RT_EOK as rt_err_t
 }
 

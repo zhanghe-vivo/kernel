@@ -1,6 +1,6 @@
 use crate::linked_list::ListHead;
 use crate::list_head_for_each;
-use crate::object::{self, KObjectBase, ObjectClassType};
+use crate::object::{self, KObjectBase, ObjectClassType, NAME_MAX};
 use crate::rt_bindings::{self, *};
 use crate::thread::RtThread;
 
@@ -8,8 +8,10 @@ use crate::impl_kobject;
 use crate::str::CStr;
 use crate::sync::RawSpin;
 use core::ffi;
+use core::mem;
 use core::pin::Pin;
-use pinned_init::{pin_data, pin_init_from_closure, PinInit};
+use core::slice;
+use pinned_init::*;
 
 /// Base structure of IPC object
 #[repr(C)]
@@ -25,19 +27,34 @@ pub struct IPCObject {
     #[pin]
     /// Threads pended on this IPC object
     pub(crate) wait_list: ListHead,
+    /// IRQ lock saved
+    pub(crate) irq_saved: i32,
 }
 
 impl_kobject!(IPCObject);
 
 impl IPCObject {
     #[inline]
+    pub(crate) fn new(type_: u8, name: [i8; NAME_MAX], flag: u8) -> impl PinInit<Self> {
+        pin_init!(Self {
+            parent<-KObjectBase::new(type_, name),
+            flag: flag,
+            spinlock: RawSpin::new(),
+            wait_list <- ListHead::new(),
+            irq_saved: 0,
+        })
+    }
+
+    #[inline]
     pub(crate) fn init(&mut self, type_: u8, name: *const i8, flag: u8) {
         assert!((flag == RT_IPC_FLAG_FIFO as u8) || (flag == RT_IPC_FLAG_PRIO as u8));
         self.parent.init(type_, name);
         self.flag = flag;
         self.spinlock = RawSpin::new();
+        self.irq_saved = 0;
         self.init_wait_list();
     }
+
     #[inline]
     fn init_wait_list(&mut self) {
         unsafe {
@@ -46,28 +63,17 @@ impl IPCObject {
     }
 
     #[inline]
-    pub(crate) fn new<T>(type_: u8, name: *const i8, flag: u8) -> *mut T {
-        assert!((flag == RT_IPC_FLAG_FIFO as u8) || (flag == RT_IPC_FLAG_PRIO as u8));
-        unsafe {
-            let ipc_obj = KObjectBase::new(type_, name) as *mut IPCObject;
-            (*ipc_obj).flag = flag;
-            (*ipc_obj).spinlock = RawSpin::new();
-            (*ipc_obj).init_wait_list();
-            ipc_obj as *mut T
-        }
-    }
-    #[inline]
     pub(crate) fn reinit(ipcobject: &mut IPCObject) -> ffi::c_long {
         unsafe { Pin::new_unchecked(&mut ipcobject.wait_list).reinit() };
         RT_EOK as core::ffi::c_long
     }
 
-    pub(crate) fn lock(&self) {
-        self.spinlock.lock();
+    pub(crate) fn lock(&mut self) {
+        self.irq_saved = self.spinlock.lock_irqsave();
     }
 
     pub(crate) fn unlock(&self) {
-        self.spinlock.unlock();
+        self.spinlock.unlock_irqrestore(self.irq_saved);
     }
 
     #[inline]
@@ -170,6 +176,15 @@ impl IPCObject {
     ) -> ffi::c_long {
         Self::suspend_thread(&mut self.wait_list, thread, flag, suspend_flag)
     }
+}
+
+pub fn char_ptr_to_array(char_ptr: *const i8) -> [i8; NAME_MAX] {
+    // SAFETY: caller should ensure ptr has more mem size than NAME_MAX
+    let slice = unsafe { slice::from_raw_parts(char_ptr, NAME_MAX) };
+
+    let mut array: [i8; NAME_MAX] = [0; NAME_MAX];
+    array.copy_from_slice(slice);
+    array
 }
 
 #[no_mangle]

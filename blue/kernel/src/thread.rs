@@ -677,7 +677,7 @@ impl RtThread {
     fn detach_from_mutex(&mut self) {
         let level = self.spinlock.lock_irqsave();
 
-        // as rt_mutex_release may use sched_lock.
+        // as mutex release may use sched_lock.
         unsafe {
             if self.pending_object != ptr::null_mut()
                 && (*self.pending_object).type_name() == ObjectClassType::ObjectClassMutex as u8
@@ -690,11 +690,6 @@ impl RtThread {
             self.pending_object = ptr::null_mut();
         }
 
-        // crate::list_for_each_safe!(node, tmp, &self.taken_object_list, {
-        //     let mutex = rt_bindings::rt_list_entry!(node, rt_bindings::rt_mutex, taken_list);
-        //     unsafe { rt_bindings::rt_mutex_release(mutex) };
-        // });
-
         let mut inspect = &self.taken_object_list;
         while let Some(next) = inspect.next() {
             inspect = unsafe { &*next.as_ptr() };
@@ -702,12 +697,14 @@ impl RtThread {
                 break;
             }
             unsafe {
-                let mutex = rt_bindings::rt_list_entry!(
+                let mutex = list_head_entry!(
                     inspect as *const ListHead as *mut ListHead,
                     RtMutex,
                     taken_list
                 );
-                rt_mutex_release(mutex);
+                if !mutex.is_null() {
+                    (*mutex).release();
+                }
             }
         }
 

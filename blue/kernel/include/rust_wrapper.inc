@@ -70,6 +70,10 @@ typedef struct rt_ipc_object {
    * Threads pended on this IPC object
    */
   rt_list_t wait_list;
+  /**
+   * IRQ lock saved
+   */
+  int32_t irq_saved;
 } rt_ipc_object;
 
 /**
@@ -83,7 +87,7 @@ typedef struct rt_event {
   /**
    * Event flog set value
    */
-  unsigned int set;
+  uint32_t set;
 } rt_event;
 
 /**
@@ -220,15 +224,15 @@ typedef struct rt_mutex {
   /**
    * Priority ceiling of mutex
    */
-  unsigned char ceiling_priority;
+  uint8_t ceiling_priority;
   /**
    * Maximal priority for pending thread
    */
-  unsigned char priority;
+  uint8_t priority;
   /**
    * Numbers of thread hold the mutex
    */
-  unsigned char hold;
+  uint8_t hold;
   /**
    * Current owner of mutex
    */
@@ -250,23 +254,23 @@ typedef struct rt_mailbox {
   /**
    * Message pool buffer of mailbox
    */
-  unsigned long *msg_pool;
+  uint8_t *msg_pool;
   /**
    * Message pool buffer size
    */
-  unsigned short size;
+  uint16_t size;
   /**
    * Index of messages in message pool
    */
-  unsigned short entry;
+  uint16_t entry;
   /**
    * Input offset of the message buffer
    */
-  unsigned short in_offset;
+  uint16_t in_offset;
   /**
    * Output offset of the message buffer
    */
-  unsigned short out_offset;
+  uint16_t out_offset;
   /**
    * Sender thread suspended on this mailbox
    */
@@ -284,31 +288,31 @@ typedef struct rt_messagequeue {
   /**
    * Start address of message queue
    */
-  void *msg_pool;
+  uint8_t *msg_pool;
   /**
    * Message size of each message
    */
-  unsigned short msg_size;
+  uint16_t msg_size;
   /**
    * Max number of messages
    */
-  unsigned short max_msgs;
+  uint16_t max_msgs;
   /**
    * Index of messages in the queue
    */
-  unsigned short entry;
+  uint16_t entry;
   /**
    * List head
    */
-  void *msg_queue_head;
+  uint8_t *msg_queue_head;
   /**
    * List tail
    */
-  void *msg_queue_tail;
+  uint8_t *msg_queue_tail;
   /**
    * Pointer indicated the free node of queue
    */
-  void *msg_queue_free;
+  uint8_t *msg_queue_free;
   /**
    * Sender thread suspended on this message queue
    */
@@ -326,11 +330,7 @@ typedef struct rt_semaphore {
   /**
    * Value of semaphore
    */
-  unsigned short value;
-  /**
-   * Reserved field
-   */
-  unsigned short reserved;
+  uint16_t value;
 } rt_semaphore;
 
 #endif /* KERN_RUST_WRAPPER_H */

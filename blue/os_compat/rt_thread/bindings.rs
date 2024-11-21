@@ -437,6 +437,8 @@ pub struct rt_ipc_object {
     pub spinlock: rt_spinlock,
     #[doc = " Threads pended on this IPC object"]
     pub wait_list: rt_list_t,
+    #[doc = " IRQ lock saved"]
+    pub irq_saved: rt_int32_t,
 }
 #[test]
 fn bindgen_test_layout_rt_ipc_object() {
@@ -444,7 +446,7 @@ fn bindgen_test_layout_rt_ipc_object() {
     let ptr = UNINIT.as_ptr();
     assert_eq!(
         ::core::mem::size_of::<rt_ipc_object>(),
-        36usize,
+        40usize,
         concat!("Size of: ", stringify!(rt_ipc_object))
     );
     assert_eq!(
@@ -492,6 +494,16 @@ fn bindgen_test_layout_rt_ipc_object() {
             stringify!(wait_list)
         )
     );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).irq_saved) as usize - ptr as usize },
+        36usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_ipc_object),
+            "::",
+            stringify!(irq_saved)
+        )
+    );
 }
 #[doc = " Event flag raw structure"]
 #[repr(C)]
@@ -500,7 +512,7 @@ pub struct rt_event {
     #[doc = " Inherit from IPCObject"]
     pub parent: rt_ipc_object,
     #[doc = " Event flog set value"]
-    pub set: core::ffi::c_uint,
+    pub set: rt_uint32_t,
 }
 #[test]
 fn bindgen_test_layout_rt_event() {
@@ -508,7 +520,7 @@ fn bindgen_test_layout_rt_event() {
     let ptr = UNINIT.as_ptr();
     assert_eq!(
         ::core::mem::size_of::<rt_event>(),
-        40usize,
+        44usize,
         concat!("Size of: ", stringify!(rt_event))
     );
     assert_eq!(
@@ -528,7 +540,7 @@ fn bindgen_test_layout_rt_event() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).set) as usize - ptr as usize },
-        36usize,
+        40usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_event),
@@ -978,11 +990,11 @@ pub struct rt_mutex {
     #[doc = " Inherit from IPCObject"]
     pub parent: rt_ipc_object,
     #[doc = " Priority ceiling of mutex"]
-    pub ceiling_priority: core::ffi::c_uchar,
+    pub ceiling_priority: rt_uint8_t,
     #[doc = " Maximal priority for pending thread"]
-    pub priority: core::ffi::c_uchar,
+    pub priority: rt_uint8_t,
     #[doc = " Numbers of thread hold the mutex"]
-    pub hold: core::ffi::c_uchar,
+    pub hold: rt_uint8_t,
     #[doc = " Current owner of mutex"]
     pub owner: *mut rt_thread,
     #[doc = " The object list taken by thread"]
@@ -994,7 +1006,7 @@ fn bindgen_test_layout_rt_mutex() {
     let ptr = UNINIT.as_ptr();
     assert_eq!(
         ::core::mem::size_of::<rt_mutex>(),
-        52usize,
+        56usize,
         concat!("Size of: ", stringify!(rt_mutex))
     );
     assert_eq!(
@@ -1014,7 +1026,7 @@ fn bindgen_test_layout_rt_mutex() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).ceiling_priority) as usize - ptr as usize },
-        36usize,
+        40usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_mutex),
@@ -1024,7 +1036,7 @@ fn bindgen_test_layout_rt_mutex() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).priority) as usize - ptr as usize },
-        37usize,
+        41usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_mutex),
@@ -1034,7 +1046,7 @@ fn bindgen_test_layout_rt_mutex() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).hold) as usize - ptr as usize },
-        38usize,
+        42usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_mutex),
@@ -1044,7 +1056,7 @@ fn bindgen_test_layout_rt_mutex() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).owner) as usize - ptr as usize },
-        40usize,
+        44usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_mutex),
@@ -1054,7 +1066,7 @@ fn bindgen_test_layout_rt_mutex() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).taken_list) as usize - ptr as usize },
-        44usize,
+        48usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_mutex),
@@ -1070,15 +1082,15 @@ pub struct rt_mailbox {
     #[doc = " Inherit from IPCObject"]
     pub parent: rt_ipc_object,
     #[doc = " Message pool buffer of mailbox"]
-    pub msg_pool: *mut core::ffi::c_ulong,
+    pub msg_pool: *mut rt_uint8_t,
     #[doc = " Message pool buffer size"]
-    pub size: core::ffi::c_ushort,
+    pub size: rt_uint16_t,
     #[doc = " Index of messages in message pool"]
-    pub entry: core::ffi::c_ushort,
+    pub entry: rt_uint16_t,
     #[doc = " Input offset of the message buffer"]
-    pub in_offset: core::ffi::c_ushort,
+    pub in_offset: rt_uint16_t,
     #[doc = " Output offset of the message buffer"]
-    pub out_offset: core::ffi::c_ushort,
+    pub out_offset: rt_uint16_t,
     #[doc = " Sender thread suspended on this mailbox"]
     pub suspend_sender_thread: rt_list_t,
 }
@@ -1088,7 +1100,7 @@ fn bindgen_test_layout_rt_mailbox() {
     let ptr = UNINIT.as_ptr();
     assert_eq!(
         ::core::mem::size_of::<rt_mailbox>(),
-        56usize,
+        60usize,
         concat!("Size of: ", stringify!(rt_mailbox))
     );
     assert_eq!(
@@ -1108,7 +1120,7 @@ fn bindgen_test_layout_rt_mailbox() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).msg_pool) as usize - ptr as usize },
-        36usize,
+        40usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_mailbox),
@@ -1118,7 +1130,7 @@ fn bindgen_test_layout_rt_mailbox() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).size) as usize - ptr as usize },
-        40usize,
+        44usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_mailbox),
@@ -1128,7 +1140,7 @@ fn bindgen_test_layout_rt_mailbox() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).entry) as usize - ptr as usize },
-        42usize,
+        46usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_mailbox),
@@ -1138,7 +1150,7 @@ fn bindgen_test_layout_rt_mailbox() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).in_offset) as usize - ptr as usize },
-        44usize,
+        48usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_mailbox),
@@ -1148,7 +1160,7 @@ fn bindgen_test_layout_rt_mailbox() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).out_offset) as usize - ptr as usize },
-        46usize,
+        50usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_mailbox),
@@ -1158,7 +1170,7 @@ fn bindgen_test_layout_rt_mailbox() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).suspend_sender_thread) as usize - ptr as usize },
-        48usize,
+        52usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_mailbox),
@@ -1174,19 +1186,19 @@ pub struct rt_messagequeue {
     #[doc = " Inherit from IPCObject"]
     pub parent: rt_ipc_object,
     #[doc = " Start address of message queue"]
-    pub msg_pool: *mut core::ffi::c_void,
+    pub msg_pool: *mut rt_uint8_t,
     #[doc = " Message size of each message"]
-    pub msg_size: core::ffi::c_ushort,
+    pub msg_size: rt_uint16_t,
     #[doc = " Max number of messages"]
-    pub max_msgs: core::ffi::c_ushort,
+    pub max_msgs: rt_uint16_t,
     #[doc = " Index of messages in the queue"]
-    pub entry: core::ffi::c_ushort,
+    pub entry: rt_uint16_t,
     #[doc = " List head"]
-    pub msg_queue_head: *mut core::ffi::c_void,
+    pub msg_queue_head: *mut rt_uint8_t,
     #[doc = " List tail"]
-    pub msg_queue_tail: *mut core::ffi::c_void,
+    pub msg_queue_tail: *mut rt_uint8_t,
     #[doc = " Pointer indicated the free node of queue"]
-    pub msg_queue_free: *mut core::ffi::c_void,
+    pub msg_queue_free: *mut rt_uint8_t,
     #[doc = " Sender thread suspended on this message queue"]
     pub suspend_sender_thread: rt_list_t,
 }
@@ -1196,7 +1208,7 @@ fn bindgen_test_layout_rt_messagequeue() {
     let ptr = UNINIT.as_ptr();
     assert_eq!(
         ::core::mem::size_of::<rt_messagequeue>(),
-        68usize,
+        72usize,
         concat!("Size of: ", stringify!(rt_messagequeue))
     );
     assert_eq!(
@@ -1216,7 +1228,7 @@ fn bindgen_test_layout_rt_messagequeue() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).msg_pool) as usize - ptr as usize },
-        36usize,
+        40usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_messagequeue),
@@ -1226,7 +1238,7 @@ fn bindgen_test_layout_rt_messagequeue() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).msg_size) as usize - ptr as usize },
-        40usize,
+        44usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_messagequeue),
@@ -1236,7 +1248,7 @@ fn bindgen_test_layout_rt_messagequeue() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).max_msgs) as usize - ptr as usize },
-        42usize,
+        46usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_messagequeue),
@@ -1246,7 +1258,7 @@ fn bindgen_test_layout_rt_messagequeue() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).entry) as usize - ptr as usize },
-        44usize,
+        48usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_messagequeue),
@@ -1256,7 +1268,7 @@ fn bindgen_test_layout_rt_messagequeue() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).msg_queue_head) as usize - ptr as usize },
-        48usize,
+        52usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_messagequeue),
@@ -1266,7 +1278,7 @@ fn bindgen_test_layout_rt_messagequeue() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).msg_queue_tail) as usize - ptr as usize },
-        52usize,
+        56usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_messagequeue),
@@ -1276,7 +1288,7 @@ fn bindgen_test_layout_rt_messagequeue() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).msg_queue_free) as usize - ptr as usize },
-        56usize,
+        60usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_messagequeue),
@@ -1286,7 +1298,7 @@ fn bindgen_test_layout_rt_messagequeue() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).suspend_sender_thread) as usize - ptr as usize },
-        60usize,
+        64usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_messagequeue),
@@ -1302,9 +1314,7 @@ pub struct rt_semaphore {
     #[doc = " Inherit from IPCObject"]
     pub parent: rt_ipc_object,
     #[doc = " Value of semaphore"]
-    pub value: core::ffi::c_ushort,
-    #[doc = " Reserved field"]
-    pub reserved: core::ffi::c_ushort,
+    pub value: rt_uint16_t,
 }
 #[test]
 fn bindgen_test_layout_rt_semaphore() {
@@ -1312,7 +1322,7 @@ fn bindgen_test_layout_rt_semaphore() {
     let ptr = UNINIT.as_ptr();
     assert_eq!(
         ::core::mem::size_of::<rt_semaphore>(),
-        40usize,
+        44usize,
         concat!("Size of: ", stringify!(rt_semaphore))
     );
     assert_eq!(
@@ -1332,22 +1342,12 @@ fn bindgen_test_layout_rt_semaphore() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).value) as usize - ptr as usize },
-        36usize,
+        40usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_semaphore),
             "::",
             stringify!(value)
-        )
-    );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).reserved) as usize - ptr as usize },
-        38usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_semaphore),
-            "::",
-            stringify!(reserved)
         )
     );
 }
@@ -3443,6 +3443,7 @@ extern "C" {
 pub struct rt_mq_message {
     pub next: *mut rt_mq_message,
     pub length: rt_ssize_t,
+    pub prio: rt_int32_t,
 }
 #[test]
 fn bindgen_test_layout_rt_mq_message() {
@@ -3450,7 +3451,7 @@ fn bindgen_test_layout_rt_mq_message() {
     let ptr = UNINIT.as_ptr();
     assert_eq!(
         ::core::mem::size_of::<rt_mq_message>(),
-        8usize,
+        12usize,
         concat!("Size of: ", stringify!(rt_mq_message))
     );
     assert_eq!(
@@ -3476,6 +3477,16 @@ fn bindgen_test_layout_rt_mq_message() {
             stringify!(rt_mq_message),
             "::",
             stringify!(length)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).prio) as usize - ptr as usize },
+        8usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(rt_mq_message),
+            "::",
+            stringify!(prio)
         )
     );
 }
@@ -3578,6 +3589,26 @@ extern "C" {
         cmd: core::ffi::c_int,
         arg: *mut core::ffi::c_void,
     ) -> rt_err_t;
+}
+extern "C" {
+    pub fn rt_mq_send_wait_prio(
+        mq: rt_mq_t,
+        buffer: *const core::ffi::c_void,
+        size: rt_size_t,
+        prio: rt_int32_t,
+        timeout: rt_int32_t,
+        suspend_flag: core::ffi::c_int,
+    ) -> rt_err_t;
+}
+extern "C" {
+    pub fn rt_mq_recv_prio(
+        mq: rt_mq_t,
+        buffer: *mut core::ffi::c_void,
+        size: rt_size_t,
+        prio: *mut rt_int32_t,
+        timeout: rt_int32_t,
+        suspend_flag: core::ffi::c_int,
+    ) -> rt_ssize_t;
 }
 extern "C" {
     pub fn rt_thread_defunct_enqueue(thread: rt_thread_t);
