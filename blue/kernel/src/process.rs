@@ -1,11 +1,11 @@
 use crate::{
     klibc::rt_strncmp,
-    linked_list::ListHead,
     object::*,
     scheduler::{rt_enter_critical, rt_exit_critical},
     static_init::UnsafeStaticInit,
     sync::RawSpin,
 };
+use blue_infra::list::doubly_linked_list::ListHead;
 
 use ::rt_bindings;
 use core::{

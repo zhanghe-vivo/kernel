@@ -1,7 +1,8 @@
 use crate::{
-    cpu::Cpu, linked_list::ListHead, object::*, print, println, static_init::UnsafeStaticInit,
-    sync::RawSpin, thread::RtThread, thread::ThreadWithStack,
+    cpu::Cpu, object::*, print, println, static_init::UnsafeStaticInit, sync::RawSpin,
+    thread::RtThread, thread::ThreadWithStack,
 };
+use blue_infra::list::doubly_linked_list::ListHead;
 use core::{ffi::c_char, ffi::c_void, pin::Pin, ptr, ptr::addr_of_mut};
 use pinned_init::*;
 use rt_bindings;

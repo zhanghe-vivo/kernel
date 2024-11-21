@@ -1,7 +1,8 @@
 use crate::cpu::Cpus;
-use crate::{cpu::Cpu, linked_list::ListHead, thread::RtThread};
+use crate::{cpu::Cpu, thread::RtThread};
 use blue_arch::arch::Arch;
 use blue_arch::{ICore, IInterrupt, IScheduler};
+use blue_infra::list::doubly_linked_list::ListHead;
 
 #[cfg(feature = "RT_USING_SMP")]
 use crate::{cpu::CPUS_NUMBER, sync::RawSpin};

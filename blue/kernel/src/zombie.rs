@@ -1,7 +1,7 @@
 use crate::{
-    linked_list::ListHead, new_spinlock, object, static_init::UnsafeStaticInit, sync::SpinLock,
-    thread::RtThread,
+    new_spinlock, object, static_init::UnsafeStaticInit, sync::SpinLock, thread::RtThread,
 };
+use blue_infra::list::doubly_linked_list::ListHead;
 use core::{pin::Pin, ptr::NonNull};
 use pinned_init::*;
 

@@ -3,7 +3,8 @@ use core::alloc::Layout;
 use core::ptr::NonNull;
 use core::{cmp, fmt, mem};
 
-use crate::{allocator::block_hdr::*, linked_list::LinkedList};
+use crate::allocator::block_hdr::*;
+use blue_infra::list::doubly_linked_list::LinkedList;
 /// A heap that uses buddy system with configurable order.
 ///
 /// # Usage

@@ -35,3 +35,26 @@ macro_rules! caller_address {
         unsafe { return_address(0) }
     };
 }
+
+/// Get the struct for this entry.
+#[macro_export]
+macro_rules! list_head_entry {
+    ($node:expr, $type:ty, $($f:tt)*) => {
+        rt_bindings::container_of!($node, $type, $($f)*)
+    };
+}
+
+/// Iterate over a doubly linked list.
+#[macro_export]
+macro_rules! list_head_for_each {
+    ($pos:ident, $head:expr, $code:block) => {
+        let mut $pos = $head;
+        while let Some(next) = $pos.next() {
+            $pos = unsafe { &*next.as_ptr() };
+            if core::ptr::eq($pos, $head) {
+                break;
+            }
+            $code
+        }
+    };
+}
