@@ -1,7 +1,8 @@
 use crate::{
-    cpu::Cpu, linked_list::ListHead, object::*, print, println, static_init::UnsafeStaticInit,
-    sync::RawSpin, thread::RtThread, thread::ThreadWithStack,
+    cpu::Cpu, object::*, print, println, static_init::UnsafeStaticInit, sync::RawSpin,
+    thread::RtThread, thread::ThreadWithStack,
 };
+use blue_infra::list::doubly_linked_list::ListHead;
 use core::{ffi::c_char, ffi::c_void, pin::Pin, ptr, ptr::addr_of_mut};
 use pinned_init::*;
 use rt_bindings;
@@ -138,7 +139,7 @@ impl TimerWheel {
     ///This function will return the next timeout tick of timer wheel.
     fn next_timeout_tick(&mut self) -> u32 {
         let mut next_timeout_tick = rt_bindings::RT_TICK_MAX;
-        self.timer_wheel_lock.acquire();
+        let _ = self.timer_wheel_lock.acquire();
         for i in 0..TIMER_WHEEL_SIZE - 1 {
             if let Some(timer_node) = self.row[i].next() {
                 unsafe {
@@ -363,7 +364,7 @@ impl Timer {
     /// This function will get or set some options of the timer
     pub fn timer_control(&mut self, cmd: u32, arg: *mut c_void) {
         let time_wheel = self.get_timer_wheel();
-        time_wheel.timer_wheel_lock.acquire();
+        let _ = time_wheel.timer_wheel_lock.acquire();
         match cmd {
             rt_bindings::RT_TIMER_CTRL_GET_TIME => unsafe { *(arg as *mut u32) = self.init_tick },
             rt_bindings::RT_TIMER_CTRL_SET_TIME => {

@@ -1,8 +1,8 @@
 use crate::{
-    linked_list::ListHead,
     object::{KObjectBase, KernelObject, ObjectClassType},
     print, println, thread,
 };
+use blue_infra::list::doubly_linked_list::ListHead;
 use rt_bindings;
 
 #[macro_export]

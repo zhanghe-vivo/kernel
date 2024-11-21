@@ -6,7 +6,6 @@ use crate::{
     clock,
     cpu::Cpu,
     error::{code, Error},
-    linked_list::ListHead,
     object,
     object::{KObjectBase, ObjectClassType},
     print, println,
@@ -19,6 +18,7 @@ use crate::{
 use alloc::alloc;
 use blue_arch::arch::Arch;
 use blue_arch::IScheduler;
+use blue_infra::list::doubly_linked_list::ListHead;
 use core::{
     alloc::{AllocError, Layout},
     cell::{Cell, UnsafeCell},

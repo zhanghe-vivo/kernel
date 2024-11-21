@@ -1,13 +1,13 @@
 use crate::{
     allocator::{align_up_size, rt_free, rt_malloc},
     error::Error,
-    linked_list::ListHead,
     object::*,
     print, println,
     sync::ipc_common::*,
     thread::{rt_thread_self, RtThread},
     timer::{rt_timer_control, rt_timer_start, Timer},
 };
+use blue_infra::list::doubly_linked_list::ListHead;
 #[allow(unused_imports)]
 use core::{
     cell::UnsafeCell,

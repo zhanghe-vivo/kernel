@@ -2,7 +2,7 @@ use core::alloc::Layout;
 use core::ptr::NonNull;
 
 use crate::allocator::{align_down_size, align_up_size, buddy::buddy_system_heap};
-use crate::linked_list::LinkedList;
+use blue_infra::list::doubly_linked_list::LinkedList;
 
 pub struct Slab {
     block_size: usize,

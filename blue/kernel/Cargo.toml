@@ -20,6 +20,7 @@ paste = "1.0.6"
 pinned-init = { version = "0.0.8", features = ["alloc"], default-features = false }
 blue_arch = { path = "../arch" }
 rt_bindings = { path = "../os_compat/rt_thread" }  # todo: dependency by cfg
+blue_infra = { path = "../infra" }
 
 [profile.dev]
 opt-level = 0

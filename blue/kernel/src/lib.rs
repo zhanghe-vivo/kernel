@@ -25,7 +25,6 @@ mod ext_types;
 mod idle;
 pub mod irq;
 pub mod klibc;
-mod linked_list;
 mod macros;
 pub mod object;
 mod print;
@@ -40,6 +39,7 @@ pub mod timer;
 mod zombie;
 
 use core::sync::atomic::{self, Ordering};
+
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
     if unsafe { cpu::CPUS.is_inited() } {

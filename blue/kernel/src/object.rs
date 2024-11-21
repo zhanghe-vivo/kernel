@@ -1,14 +1,13 @@
 use crate::{
     allocator::{rt_free, rt_malloc},
     klibc::{rt_memset, rt_strncpy},
-    linked_list::ListHead,
     print, println,
     process::*,
     thread::RtThread,
     rt_bindings::*,
     *,
 };
-
+use blue_infra::list::doubly_linked_list::ListHead;
 use core::{ffi, fmt::Debug, mem, ptr, slice};
 use pinned_init::*;
 
@@ -47,7 +46,17 @@ impl KObjectBase {
         }
     }
 
-    pub(crate) fn new(type_: u8, name: *const i8) -> *mut KObjectBase {
+    /// This new function called by rust
+    pub(crate) fn new(type_: u8, name: [i8; NAME_MAX]) -> impl PinInit<Self> {
+        pin_init!(Self {
+            name: name,
+            type_: type_,
+            list <- ListHead::new(),
+        })
+    }
+
+    /// This new function called by c
+    pub(crate) fn new_raw(type_: u8, name: *const i8) -> *mut KObjectBase {
         use core::ffi::c_void;
         let object_size = ObjectClassType::get_object_size(type_ as u8);
 
@@ -340,7 +349,7 @@ pub extern "C" fn rt_object_allocate(
     type_: rt_object_class_type,
     name: *const ffi::c_char,
 ) -> rt_object_t {
-    KObjectBase::new(type_ as u8, name) as rt_object_t
+    KObjectBase::new_raw(type_ as u8, name) as rt_object_t
 }
 
 /// This function will delete an object and release object memory.

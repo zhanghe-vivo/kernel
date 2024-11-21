@@ -97,10 +97,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "blue_infra"
+version = "0.1.0"
+dependencies = [
+ "pinned-init",
+]
+
+[[package]]
 name = "blue_kernel"
 version = "0.1.0"
 dependencies = [
  "blue_arch",
+ "blue_infra",
  "cbindgen",
  "const-default",
  "downcast-rs",
