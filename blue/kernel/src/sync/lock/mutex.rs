@@ -1,22 +1,27 @@
 use crate::alloc::boxed::Box;
 use crate::cpu::Cpu;
 use crate::impl_kobject;
-use crate::linked_list::*;
 use crate::object::{
     rt_object_put_hook, rt_object_take_hook, rt_object_trytake_hook, KObjectBase, KernelObject,
     ObjectClassType, NAME_MAX,
 };
-use crate::rt_bindings::{self, *};
+use crate::rt_bindings::{
+    rt_debug_in_thread_context, rt_debug_not_in_interrupt, rt_debug_scheduler_available, rt_err_t,
+    rt_int32_t, rt_object, rt_object_hook_call, rt_set_errno, RT_EFULL, RT_EINVAL, RT_EOK,
+    RT_ERROR, RT_ETIMEOUT, RT_INTERRUPTIBLE, RT_IPC_FLAG_FIFO, RT_IPC_FLAG_PRIO, RT_KILLABLE,
+    RT_MUTEX_HOLD_MAX, RT_THREAD_CTRL_CHANGE_PRIORITY, RT_THREAD_PRIORITY_MAX,
+    RT_TIMER_CTRL_SET_TIME, RT_UNINTERRUPTIBLE, RT_WAITING_FOREVER, RT_WAITING_NO,
+};
 use crate::sync::ipc_common::*;
 use crate::thread::{rt_thread_control, RtThread};
 use crate::{current_thread_ptr, list_head_for_each, print, println};
+use blue_infra::list::doubly_linked_list::ListHead;
 
 use core::ffi;
 use core::marker::PhantomPinned;
 use core::pin::Pin;
 use core::ptr::null_mut;
 use core::{cell::UnsafeCell, ops::Deref, ops::DerefMut};
-use kernel::rt_bindings::rt_object;
 use kernel::{fmt, str::CString};
 use pinned_init::*;
 
@@ -291,7 +296,7 @@ impl RtMutex {
                             (&mut timeout) as *mut i32 as *mut ffi::c_void,
                         );
 
-                        thread.thread_timer.timer_start();
+                        thread.thread_timer.start();
                     }
 
                     self.parent.unlock();

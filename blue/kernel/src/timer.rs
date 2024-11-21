@@ -237,7 +237,7 @@ impl Timer {
     }
 
     /// This function will start the timer
-    pub fn timer_start(&mut self) {
+    fn timer_start(&mut self) {
         let mut is_thread_timer = false;
         let mut need_schedule = false;
         let mut level = 0;
@@ -317,7 +317,7 @@ impl Timer {
     }
 
     /// This function will stop the timer
-    pub fn timer_stop(&mut self) {
+    fn timer_stop(&mut self) {
         unsafe {
             rt_bindings::rt_object_hook_call!(
                 rt_object_put_hook,

@@ -1,8 +1,11 @@
-use crate::linked_list::ListHead;
 use crate::list_head_for_each;
 use crate::object::{KObjectBase, NAME_MAX};
-use crate::rt_bindings::{self, *};
+use crate::rt_bindings::{
+    rt_err_t, rt_uint8_t, RT_EOK, RT_ERROR, RT_IPC_FLAG_FIFO, RT_IPC_FLAG_PRIO,
+    RT_THREAD_SUSPEND_MASK,
+};
 use crate::thread::RtThread;
+use blue_infra::list::doubly_linked_list::ListHead;
 
 use crate::impl_kobject;
 use crate::sync::RawSpin;
@@ -177,11 +180,4 @@ pub fn char_ptr_to_array(char_ptr: *const i8) -> [i8; NAME_MAX] {
     let mut array: [i8; NAME_MAX] = [0; NAME_MAX];
     array.copy_from_slice(slice);
     array
-}
-
-#[no_mangle]
-pub extern "C" fn _ipc_object_init(list: &mut IPCObject) {
-    unsafe {
-        let _ = ListHead::new().__pinned_init(&mut list.wait_list as *mut ListHead);
-    }
 }
