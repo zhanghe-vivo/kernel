@@ -6,15 +6,11 @@ use crate::{
     impl_kobject,
     linked_list::ListHead,
     list_head_for_each,
-    object::{
-        rt_object_allocate, rt_object_delete, rt_object_detach, rt_object_get_type, rt_object_init,
-        rt_object_is_systemobject, ObjectClassType, NAME_MAX, *,
-    },
+    object::{ObjectClassType, NAME_MAX, *},
     print, println,
     rt_bindings::*,
     sync::ipc_common::*,
     thread::RtThread,
-    timer::{rt_timer_control, rt_timer_start, Timer},
 };
 
 #[allow(unused_imports)]
@@ -32,7 +28,6 @@ use crate::alloc::boxed::Box;
 use core::pin::Pin;
 use kernel::{fmt, str::CString};
 
-use crate::sync::RawSpin;
 use pinned_init::*;
 
 #[pin_data(PinnedDrop)]
@@ -81,7 +76,7 @@ impl KMailbox {
                 Ok(())
             };
             unsafe { pin_init_from_closure(init) }
-        };
+        }
 
         Box::pin_init(pin_init!(Self {
             raw<-init_raw(size),
@@ -194,6 +189,9 @@ impl RtMailbox {
 
     #[inline]
     pub fn init_new_storage(&mut self, name: *const i8, size: usize, flag: u8) -> i32 {
+        self.parent
+            .init(ObjectClassType::ObjectClassMailBox as u8, name, flag);
+
         self.size = size as u16;
         // SAFETY: Ensure the alloc is successful
         unsafe {

@@ -7,15 +7,11 @@ use crate::{
     klibc::rt_memcpy,
     linked_list::ListHead,
     list_head_for_each,
-    object::{
-        rt_object_allocate, rt_object_delete, rt_object_detach, rt_object_get_type, rt_object_init,
-        rt_object_is_systemobject, ObjectClassType, NAME_MAX, *,
-    },
+    object::{ObjectClassType, NAME_MAX, *},
     print, println,
     rt_bindings::*,
     sync::ipc_common::*,
     thread::RtThread,
-    timer::{rt_timer_control, rt_timer_start, Timer},
 };
 #[allow(unused_imports)]
 use core::{
@@ -33,7 +29,6 @@ use crate::alloc::boxed::Box;
 use core::pin::Pin;
 use kernel::{fmt, str::CString};
 
-use crate::sync::RawSpin;
 use cfg_if;
 use pinned_init::*;
 
@@ -85,7 +80,7 @@ impl KMessageQueue {
                 Ok(())
             };
             unsafe { pin_init_from_closure(init) }
-        };
+        }
 
         Box::pin_init(pin_init!(Self {
             raw<-init_raw(msg_size, max_msgs),
@@ -284,6 +279,9 @@ impl RtMessageQueue {
         max_msgs: u16,
         flag: u8,
     ) -> i32 {
+        self.parent
+            .init(ObjectClassType::ObjectClassMessageQueue as u8, name, flag);
+
         self.msg_size = msg_size;
         self.max_msgs = max_msgs;
         self.entry = 0;

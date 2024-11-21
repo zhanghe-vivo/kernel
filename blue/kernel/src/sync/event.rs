@@ -14,22 +14,14 @@ use crate::{
     thread::RtThread,
     timer,
 };
-use core::{
-    ffi::{self, c_char, c_void},
-    marker::PhantomPinned,
-    ptr::null_mut,
-};
-use kernel::rt_bindings::{
-    rt_debug_scheduler_available, rt_hw_interrupt_disable, rt_hw_interrupt_enable,
-    rt_object_hook_call,
-};
+use core::{ffi::c_void, marker::PhantomPinned, ptr::null_mut};
+use kernel::rt_bindings::{rt_debug_scheduler_available, rt_object_hook_call};
 
 use crate::alloc::boxed::Box;
 use core::cell::UnsafeCell;
 use core::pin::Pin;
 use kernel::{fmt, str::CString};
 
-use crate::sync::RawSpin;
 use pinned_init::*;
 
 #[pin_data(PinnedDrop)]
@@ -70,7 +62,7 @@ impl KEvent {
                 Ok(())
             };
             unsafe { pin_init_from_closure(init) }
-        };
+        }
 
         Box::pin_init(pin_init!(Self {
             raw<-init_raw(),

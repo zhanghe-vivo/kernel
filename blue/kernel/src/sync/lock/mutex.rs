@@ -3,8 +3,8 @@ use crate::cpu::Cpu;
 use crate::impl_kobject;
 use crate::linked_list::*;
 use crate::object::{
-    rt_object_get_type, rt_object_put_hook, rt_object_take_hook, rt_object_trytake_hook,
-    KObjectBase, KernelObject, ObjectClassType, NAME_MAX,
+    rt_object_put_hook, rt_object_take_hook, rt_object_trytake_hook, KObjectBase, KernelObject,
+    ObjectClassType, NAME_MAX,
 };
 use crate::rt_bindings::{self, *};
 use crate::sync::ipc_common::*;
@@ -17,7 +17,6 @@ use core::pin::Pin;
 use core::ptr::null_mut;
 use core::{cell::UnsafeCell, ops::Deref, ops::DerefMut};
 use kernel::rt_bindings::rt_object;
-use kernel::sync::RawSpin;
 use kernel::{fmt, str::CString};
 use pinned_init::*;
 
@@ -542,15 +541,12 @@ impl RtMutex {
             prev_priority = self.ceiling_priority;
             self.ceiling_priority = priority;
             let owner_thread = self.owner;
-            // SAFETY: owner_thread is null checked
-            unsafe {
-                if !owner_thread.is_null() {
-                    // SAFETY: owner_thread is null checked
-                    unsafe {
-                        let priority = (*owner_thread).get_mutex_priority();
-                        if priority != (*owner_thread).current_priority {
-                            (*owner_thread).update_priority(priority, RT_UNINTERRUPTIBLE as u32);
-                        }
+            if !owner_thread.is_null() {
+                // SAFETY: owner_thread is null checked
+                unsafe {
+                    let priority = (*owner_thread).get_mutex_priority();
+                    if priority != (*owner_thread).current_priority {
+                        (*owner_thread).update_priority(priority, RT_UNINTERRUPTIBLE as u32);
                     }
                 }
             }

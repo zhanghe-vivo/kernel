@@ -1,14 +1,11 @@
 use crate::linked_list::ListHead;
 use crate::list_head_for_each;
-use crate::object::{self, KObjectBase, ObjectClassType, NAME_MAX};
+use crate::object::{KObjectBase, NAME_MAX};
 use crate::rt_bindings::{self, *};
 use crate::thread::RtThread;
 
 use crate::impl_kobject;
-use crate::str::CStr;
 use crate::sync::RawSpin;
-use core::ffi;
-use core::mem;
 use core::pin::Pin;
 use core::slice;
 use pinned_init::*;
@@ -63,9 +60,9 @@ impl IPCObject {
     }
 
     #[inline]
-    pub(crate) fn reinit(ipcobject: &mut IPCObject) -> ffi::c_long {
+    pub(crate) fn reinit(ipcobject: &mut IPCObject) -> i32 {
         unsafe { Pin::new_unchecked(&mut ipcobject.wait_list).reinit() };
-        RT_EOK as core::ffi::c_long
+        RT_EOK as i32
     }
 
     pub(crate) fn lock(&mut self) {
@@ -77,19 +74,19 @@ impl IPCObject {
     }
 
     #[inline]
-    pub(crate) fn resume_thread(list: *mut ListHead) -> ffi::c_long {
+    pub(crate) fn resume_thread(list: *mut ListHead) -> i32 {
         unsafe {
             if let Some(node) = (*list).next() {
                 let thread: *mut RtThread = crate::thread_list_node_entry!(node.as_ptr());
-                (*thread).error = RT_EOK as ffi::c_int;
+                (*thread).error = RT_EOK as i32;
                 (*thread).resume();
             }
         }
-        RT_EOK as ffi::c_long
+        RT_EOK as i32
     }
 
     #[inline]
-    pub(crate) fn resume_all_threads(list: *mut ListHead) -> ffi::c_long {
+    pub(crate) fn resume_all_threads(list: *mut ListHead) -> i32 {
         unsafe {
             while !(*list).is_empty() {
                 if let Some(node) = (*list).next() {
@@ -103,7 +100,7 @@ impl IPCObject {
             }
         }
 
-        RT_EOK as ffi::c_long
+        RT_EOK as i32
     }
 
     pub(crate) fn suspend_thread(
@@ -111,7 +108,7 @@ impl IPCObject {
         thread: *mut RtThread,
         flag: rt_uint8_t,
         suspend_flag: u32,
-    ) -> ffi::c_long {
+    ) -> i32 {
         unsafe {
             if ((*thread).stat as u32 & RT_THREAD_SUSPEND_MASK) != RT_THREAD_SUSPEND_MASK {
                 let ret = if (*thread).suspend(suspend_flag) {
@@ -148,7 +145,7 @@ impl IPCObject {
                 }
             }
 
-            RT_EOK as ffi::c_long
+            RT_EOK as i32
         }
     }
 
@@ -158,22 +155,17 @@ impl IPCObject {
     }
 
     #[inline]
-    pub(crate) fn wake_one(&mut self) -> ffi::c_long {
+    pub(crate) fn wake_one(&mut self) -> i32 {
         Self::resume_thread(&mut self.wait_list)
     }
 
     #[inline]
-    pub(crate) fn wake_all(&mut self) -> ffi::c_long {
+    pub(crate) fn wake_all(&mut self) -> i32 {
         Self::resume_all_threads(&mut self.wait_list)
     }
 
     #[inline]
-    pub(crate) fn wait(
-        &mut self,
-        thread: *mut RtThread,
-        flag: ffi::c_uchar,
-        suspend_flag: u32,
-    ) -> ffi::c_long {
+    pub(crate) fn wait(&mut self, thread: *mut RtThread, flag: u8, suspend_flag: u32) -> i32 {
         Self::suspend_thread(&mut self.wait_list, thread, flag, suspend_flag)
     }
 }

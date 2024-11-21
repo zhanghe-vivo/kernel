@@ -1,32 +1,22 @@
 use crate::{
     cpu::Cpu,
-    error::Error,
     impl_kobject,
     linked_list::ListHead,
     list_head_for_each,
-    object::{
-        rt_object_allocate, rt_object_delete, rt_object_detach, rt_object_get_type,
-        rt_object_is_systemobject, ObjectClassType, NAME_MAX, *,
-    },
+    object::{ObjectClassType, NAME_MAX, *},
     print, println,
     rt_bindings::*,
     sync::ipc_common::*,
-    sync::lock::spinlock::RawSpin,
     thread::RtThread,
     timer,
 };
 use core::pin::Pin;
-use core::{
-    ffi::{self, c_char, c_void},
-    marker::PhantomPinned,
-    ptr::null_mut,
-};
+use core::{ffi::c_void, marker::PhantomPinned, ptr::null_mut};
 
 use crate::alloc::boxed::Box;
 use core::cell::UnsafeCell;
 use kernel::{fmt, str::CString};
 
-use crate::str::CStr;
 use pinned_init::*;
 
 #[pin_data(PinnedDrop)]
@@ -67,7 +57,7 @@ impl KSemaphore {
                 Ok(())
             };
             unsafe { pin_init_from_closure(init) }
-        };
+        }
 
         Box::pin_init(pin_init!(Self {
             raw<-init_raw(value as u16),
