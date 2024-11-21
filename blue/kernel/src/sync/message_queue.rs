@@ -106,12 +106,18 @@ impl KMessageQueue {
         }
     }
 
-    pub fn receive(&self, timeout: i32) -> Result<&[u8], Error> {
+    pub fn receive(&self, timeout: i32) -> Result<Box<[u8]>, Error> {
         let mut buffer = null_mut();
         let mut size = 0 as usize;
         let result = unsafe { (*self.raw.get()).receive(buffer, size, timeout) };
-        if result == RT_EOK as rt_err_t {
-            Ok(unsafe { slice::from_raw_parts(buffer, size) })
+        if result == RT_EOK as i32 {
+            if buffer.is_null() || size == 0 {
+                return Ok(Box::new([]));
+            }
+            unsafe {
+                let slice_ptr = slice::from_raw_parts_mut(buffer, size);
+                Ok(Box::from_raw(slice_ptr))
+            }
         } else {
             Err(Error::from_errno(result))
         }

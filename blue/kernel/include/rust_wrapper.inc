@@ -61,7 +61,7 @@ typedef struct rt_ipc_object {
   /**
    * IPC flag to use
    */
-  unsigned char flag;
+  uint8_t flag;
   /**
    * Spin lock IPCObject used
    */

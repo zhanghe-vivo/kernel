@@ -21,7 +21,7 @@ pub struct IPCObject {
     /// Inherit from KObjectBase
     pub(crate) parent: KObjectBase,
     /// IPC flag to use
-    pub(crate) flag: ffi::c_uchar,
+    pub(crate) flag: u8,
     /// Spin lock IPCObject used
     pub(crate) spinlock: RawSpin,
     #[pin]

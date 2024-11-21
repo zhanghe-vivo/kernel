@@ -432,7 +432,7 @@ pub struct rt_ipc_object {
     #[doc = " Inherit from KObjectBase"]
     pub parent: rt_object,
     #[doc = " IPC flag to use"]
-    pub flag: core::ffi::c_uchar,
+    pub flag: rt_uint8_t,
     #[doc = " Spin lock IPCObject used"]
     pub spinlock: rt_spinlock,
     #[doc = " Threads pended on this IPC object"]
