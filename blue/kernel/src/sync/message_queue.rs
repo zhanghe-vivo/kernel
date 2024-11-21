@@ -175,7 +175,9 @@ impl PinnedDrop for RtMessageQueue {
         let mq_raw = unsafe { Pin::get_unchecked_mut(self) };
 
         if !mq_raw.msg_pool.is_null() {
-            mq_raw.delete_raw();
+            unsafe {
+                rt_free(mq_raw.msg_pool as *mut ffi::c_void);
+            }
         }
     }
 }

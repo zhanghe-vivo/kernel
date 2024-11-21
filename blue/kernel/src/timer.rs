@@ -223,7 +223,7 @@ impl Timer {
         unsafe { pin_init_from_closure(init) }
     }
 
-    pub fn timer_is_timeout(&mut self) {
+    fn timer_is_timeout(&mut self) {
         self.flag |= rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8;
         if (self.flag & rt_bindings::RT_TIMER_FLAG_PERIODIC as u8) == 0 {
             self.flag &= !rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8;
@@ -329,7 +329,7 @@ impl Timer {
     }
 
     /// This function will remove the timer
-    pub fn timer_remove(&mut self) {
+    fn timer_remove(&mut self) {
         unsafe { Pin::new_unchecked(&mut self.node).remove() };
     }
 
