@@ -10,7 +10,7 @@ use crate::rt_bindings::{
     RT_TIMER_CTRL_SET_TIME, RT_UNINTERRUPTIBLE, RT_WAITING_FOREVER, RT_WAITING_NO,
 };
 use crate::sync::ipc_common::*;
-use crate::thread::{rt_thread_control, RtThread};
+use crate::thread::RtThread;
 use crate::{current_thread_ptr, list_head_for_each, print, println};
 use blue_infra::list::doubly_linked_list::ListHead;
 
@@ -410,11 +410,7 @@ impl RtMutex {
             if self.ceiling_priority != 0xFF || thread.current_priority == self.priority {
                 let mut priority = thread.get_mutex_priority();
 
-                rt_thread_control(
-                    thread_ptr,
-                    RT_THREAD_CTRL_CHANGE_PRIORITY,
-                    &mut priority as *mut u8 as *mut ffi::c_void,
-                );
+                thread.change_priority(priority);
 
                 need_schedule = true;
             }
