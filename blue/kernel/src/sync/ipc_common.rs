@@ -1,8 +1,7 @@
 use crate::list_head_for_each;
-use crate::object::{KObjectBase, NAME_MAX};
+use crate::object::*;
 use crate::rt_bindings::{
-    rt_err_t, rt_uint8_t, RT_EOK, RT_ERROR, RT_IPC_FLAG_FIFO, RT_IPC_FLAG_PRIO,
-    RT_THREAD_SUSPEND_MASK,
+    RT_EOK, RT_ERROR, RT_IPC_FLAG_FIFO, RT_IPC_FLAG_PRIO, RT_THREAD_SUSPEND_MASK,
 };
 use crate::thread::RtThread;
 use blue_infra::list::doubly_linked_list::ListHead;
@@ -92,7 +91,7 @@ impl IPCObject {
                     let spin_lock = RawSpin::new();
                     spin_lock.lock();
                     let thread: *mut RtThread = crate::thread_list_node_entry!(node.as_ptr());
-                    (*thread).error = -(RT_ERROR as rt_err_t);
+                    (*thread).error = -(RT_ERROR as i32);
                     (*thread).resume();
                     spin_lock.unlock();
                 }
@@ -105,18 +104,18 @@ impl IPCObject {
     pub(crate) fn suspend_thread(
         list: *mut ListHead,
         thread: *mut RtThread,
-        flag: rt_uint8_t,
+        flag: u8,
         suspend_flag: u32,
     ) -> i32 {
         unsafe {
             if ((*thread).stat as u32 & RT_THREAD_SUSPEND_MASK) != RT_THREAD_SUSPEND_MASK {
                 let ret = if (*thread).suspend(suspend_flag) {
-                    RT_EOK as rt_err_t
+                    RT_EOK as i32
                 } else {
-                    -(RT_ERROR as rt_err_t)
+                    -(RT_ERROR as i32)
                 };
 
-                if ret != RT_EOK as rt_err_t {
+                if ret != RT_EOK as i32 {
                     return ret;
                 }
             }
