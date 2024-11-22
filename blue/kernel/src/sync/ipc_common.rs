@@ -90,11 +90,11 @@ impl IPCObject {
             while !(*list).is_empty() {
                 if let Some(node) = (*list).next() {
                     let spin_lock = RawSpin::new();
-                    let level = spin_lock.lock_irqsave();
+                    spin_lock.lock();
                     let thread: *mut RtThread = crate::thread_list_node_entry!(node.as_ptr());
                     (*thread).error = -(RT_ERROR as rt_err_t);
                     (*thread).resume();
-                    spin_lock.unlock_irqrestore(level);
+                    spin_lock.unlock();
                 }
             }
         }
