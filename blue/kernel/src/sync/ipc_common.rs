@@ -27,8 +27,6 @@ pub struct IPCObject {
     #[pin]
     /// Threads pended on this IPC object
     pub(crate) wait_list: ListHead,
-    /// IRQ lock saved
-    pub(crate) irq_saved: i32,
 }
 
 impl_kobject!(IPCObject);
@@ -41,7 +39,6 @@ impl IPCObject {
             flag: flag,
             spinlock: RawSpin::new(),
             wait_list <- ListHead::new(),
-            irq_saved: 0,
         })
     }
 
@@ -51,7 +48,6 @@ impl IPCObject {
         self.parent.init(type_, name);
         self.flag = flag;
         self.spinlock = RawSpin::new();
-        self.irq_saved = 0;
         self.init_wait_list();
     }
 
@@ -69,11 +65,11 @@ impl IPCObject {
     }
 
     pub(crate) fn lock(&mut self) {
-        self.irq_saved = self.spinlock.lock_irqsave();
+        self.spinlock.lock();
     }
 
     pub(crate) fn unlock(&self) {
-        self.spinlock.unlock_irqrestore(self.irq_saved);
+        self.spinlock.unlock();
     }
 
     #[inline]

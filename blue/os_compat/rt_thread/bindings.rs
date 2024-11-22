@@ -437,8 +437,6 @@ pub struct rt_ipc_object {
     pub spinlock: rt_spinlock,
     #[doc = " Threads pended on this IPC object"]
     pub wait_list: rt_list_t,
-    #[doc = " IRQ lock saved"]
-    pub irq_saved: rt_int32_t,
 }
 #[test]
 fn bindgen_test_layout_rt_ipc_object() {
@@ -446,7 +444,7 @@ fn bindgen_test_layout_rt_ipc_object() {
     let ptr = UNINIT.as_ptr();
     assert_eq!(
         ::core::mem::size_of::<rt_ipc_object>(),
-        40usize,
+        36usize,
         concat!("Size of: ", stringify!(rt_ipc_object))
     );
     assert_eq!(
@@ -494,16 +492,6 @@ fn bindgen_test_layout_rt_ipc_object() {
             stringify!(wait_list)
         )
     );
-    assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).irq_saved) as usize - ptr as usize },
-        36usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(rt_ipc_object),
-            "::",
-            stringify!(irq_saved)
-        )
-    );
 }
 #[doc = " Event flag raw structure"]
 #[repr(C)]
@@ -520,7 +508,7 @@ fn bindgen_test_layout_rt_event() {
     let ptr = UNINIT.as_ptr();
     assert_eq!(
         ::core::mem::size_of::<rt_event>(),
-        44usize,
+        40usize,
         concat!("Size of: ", stringify!(rt_event))
     );
     assert_eq!(
@@ -540,7 +528,7 @@ fn bindgen_test_layout_rt_event() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).set) as usize - ptr as usize },
-        40usize,
+        36usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_event),
@@ -1006,7 +994,7 @@ fn bindgen_test_layout_rt_mutex() {
     let ptr = UNINIT.as_ptr();
     assert_eq!(
         ::core::mem::size_of::<rt_mutex>(),
-        56usize,
+        52usize,
         concat!("Size of: ", stringify!(rt_mutex))
     );
     assert_eq!(
@@ -1026,7 +1014,7 @@ fn bindgen_test_layout_rt_mutex() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).ceiling_priority) as usize - ptr as usize },
-        40usize,
+        36usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_mutex),
@@ -1036,7 +1024,7 @@ fn bindgen_test_layout_rt_mutex() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).priority) as usize - ptr as usize },
-        41usize,
+        37usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_mutex),
@@ -1046,7 +1034,7 @@ fn bindgen_test_layout_rt_mutex() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).hold) as usize - ptr as usize },
-        42usize,
+        38usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_mutex),
@@ -1056,7 +1044,7 @@ fn bindgen_test_layout_rt_mutex() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).owner) as usize - ptr as usize },
-        44usize,
+        40usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_mutex),
@@ -1066,7 +1054,7 @@ fn bindgen_test_layout_rt_mutex() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).taken_list) as usize - ptr as usize },
-        48usize,
+        44usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_mutex),
@@ -1100,7 +1088,7 @@ fn bindgen_test_layout_rt_mailbox() {
     let ptr = UNINIT.as_ptr();
     assert_eq!(
         ::core::mem::size_of::<rt_mailbox>(),
-        60usize,
+        56usize,
         concat!("Size of: ", stringify!(rt_mailbox))
     );
     assert_eq!(
@@ -1120,7 +1108,7 @@ fn bindgen_test_layout_rt_mailbox() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).msg_pool) as usize - ptr as usize },
-        40usize,
+        36usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_mailbox),
@@ -1130,7 +1118,7 @@ fn bindgen_test_layout_rt_mailbox() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).size) as usize - ptr as usize },
-        44usize,
+        40usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_mailbox),
@@ -1140,7 +1128,7 @@ fn bindgen_test_layout_rt_mailbox() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).entry) as usize - ptr as usize },
-        46usize,
+        42usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_mailbox),
@@ -1150,7 +1138,7 @@ fn bindgen_test_layout_rt_mailbox() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).in_offset) as usize - ptr as usize },
-        48usize,
+        44usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_mailbox),
@@ -1160,7 +1148,7 @@ fn bindgen_test_layout_rt_mailbox() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).out_offset) as usize - ptr as usize },
-        50usize,
+        46usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_mailbox),
@@ -1170,7 +1158,7 @@ fn bindgen_test_layout_rt_mailbox() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).suspend_sender_thread) as usize - ptr as usize },
-        52usize,
+        48usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_mailbox),
@@ -1208,7 +1196,7 @@ fn bindgen_test_layout_rt_messagequeue() {
     let ptr = UNINIT.as_ptr();
     assert_eq!(
         ::core::mem::size_of::<rt_messagequeue>(),
-        72usize,
+        68usize,
         concat!("Size of: ", stringify!(rt_messagequeue))
     );
     assert_eq!(
@@ -1228,7 +1216,7 @@ fn bindgen_test_layout_rt_messagequeue() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).msg_pool) as usize - ptr as usize },
-        40usize,
+        36usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_messagequeue),
@@ -1238,7 +1226,7 @@ fn bindgen_test_layout_rt_messagequeue() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).msg_size) as usize - ptr as usize },
-        44usize,
+        40usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_messagequeue),
@@ -1248,7 +1236,7 @@ fn bindgen_test_layout_rt_messagequeue() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).max_msgs) as usize - ptr as usize },
-        46usize,
+        42usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_messagequeue),
@@ -1258,7 +1246,7 @@ fn bindgen_test_layout_rt_messagequeue() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).entry) as usize - ptr as usize },
-        48usize,
+        44usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_messagequeue),
@@ -1268,7 +1256,7 @@ fn bindgen_test_layout_rt_messagequeue() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).msg_queue_head) as usize - ptr as usize },
-        52usize,
+        48usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_messagequeue),
@@ -1278,7 +1266,7 @@ fn bindgen_test_layout_rt_messagequeue() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).msg_queue_tail) as usize - ptr as usize },
-        56usize,
+        52usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_messagequeue),
@@ -1288,7 +1276,7 @@ fn bindgen_test_layout_rt_messagequeue() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).msg_queue_free) as usize - ptr as usize },
-        60usize,
+        56usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_messagequeue),
@@ -1298,7 +1286,7 @@ fn bindgen_test_layout_rt_messagequeue() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).suspend_sender_thread) as usize - ptr as usize },
-        64usize,
+        60usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_messagequeue),
@@ -1322,7 +1310,7 @@ fn bindgen_test_layout_rt_semaphore() {
     let ptr = UNINIT.as_ptr();
     assert_eq!(
         ::core::mem::size_of::<rt_semaphore>(),
-        44usize,
+        40usize,
         concat!("Size of: ", stringify!(rt_semaphore))
     );
     assert_eq!(
@@ -1342,7 +1330,7 @@ fn bindgen_test_layout_rt_semaphore() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).value) as usize - ptr as usize },
-        40usize,
+        36usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_semaphore),

@@ -70,10 +70,6 @@ typedef struct rt_ipc_object {
    * Threads pended on this IPC object
    */
   rt_list_t wait_list;
-  /**
-   * IRQ lock saved
-   */
-  int32_t irq_saved;
 } rt_ipc_object;
 
 /**

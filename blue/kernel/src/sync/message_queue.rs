@@ -6,7 +6,7 @@ use crate::{
     impl_kobject,
     klibc::rt_memcpy,
     list_head_for_each,
-    object::{ObjectClassType, NAME_MAX, *},
+    object::*,
     print, println,
     rt_bindings::{
         rt_debug_not_in_interrupt, rt_debug_scheduler_available, rt_err_t, rt_int32_t, rt_object,
