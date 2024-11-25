@@ -2,19 +2,24 @@
 use crate::{cpu::Cpu, thread::RtThread};
 #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
 use crate::{irq::IrqLock, println};
-
+#[cfg(feature = "RT_USING_SMP")]
 use blue_arch::{arch::Arch, IInterrupt};
 #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
-use core::{cell::Cell, ptr::NonNull};
-use core::{cell::UnsafeCell, fmt, ops::Deref, ops::DerefMut};
+use core::ptr::NonNull;
+use core::{
+    cell::{Cell, UnsafeCell},
+    fmt,
+    ops::Deref,
+    ops::DerefMut,
+};
 use rt_bindings;
 
 pub struct RawSpin {
     #[cfg(not(feature = "RT_USING_SMP"))]
-    lock: rt_bindings::rt_spinlock_t,
+    lock: Cell<rt_bindings::rt_spinlock_t>,
 
     #[cfg(feature = "RT_USING_SMP")]
-    lock: rt_bindings::rt_hw_spinlock_t,
+    lock: Cell<rt_bindings::rt_hw_spinlock_t>,
 
     #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
     pub(crate) owner: Cell<Option<NonNull<RtThread>>>,
@@ -30,10 +35,10 @@ impl RawSpin {
             owner: Cell::new(None),
 
             #[cfg(feature = "RT_USING_SMP")]
-            lock: rt_bindings::rt_hw_spinlock_t { slock: 0 },
+            lock: Cell::new(rt_bindings::rt_hw_spinlock_t { slock: 0 }),
 
             #[cfg(not(feature = "RT_USING_SMP"))]
-            lock: 0,
+            lock: Cell::new(0),
         }
     }
 
@@ -60,7 +65,11 @@ impl RawSpin {
             thread.set_wait(self);
         }
         unsafe {
+            #[cfg(feature = "RT_USING_SMP")]
             rt_bindings::rt_hw_spin_lock((&self.lock) as *const _ as *mut _);
+
+            #[cfg(not(feature = "RT_USING_SMP"))]
+            self.lock.set(rt_bindings::rt_hw_interrupt_disable());
         }
 
         #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
@@ -77,7 +86,11 @@ impl RawSpin {
             self.owner.set(None);
         }
         unsafe {
+            #[cfg(feature = "RT_USING_SMP")]
             rt_bindings::rt_hw_spin_unlock((&self.lock) as *const _ as *mut _);
+
+            #[cfg(not(feature = "RT_USING_SMP"))]
+            rt_bindings::rt_hw_interrupt_enable(self.lock.get());
         }
     }
 

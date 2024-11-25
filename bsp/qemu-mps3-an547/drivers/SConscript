@@ -1,0 +1,29 @@
+import rtconfig
+from building import *
+
+cwd  = GetCurrentDir()
+src  = Glob('*.c')
+src += ['ARMCM55/Source/startup_ARMCM55.c']
+src += ['ARMCM55/Source/system_ARMCM55.c']
+src += ['Board/Device_Definition/device_definition.c']
+
+list = os.listdir(cwd)
+CPPPATH = [cwd]
+CPPPATH += [cwd + '/ARMCM55/Include']
+CPPPATH += [cwd + '/cmsis/core/include']
+CPPPATH += [cwd + '/Board/Device_Definition']
+CPPPATH += [cwd + '/Board/Platform']
+CPPPATH += [cwd + '/Device/Config']
+CPPPATH += [cwd + '/Device/Include']
+objs = []
+
+group = DefineGroup('Drivers', src, depend = [''], CPPPATH = CPPPATH)
+
+for d in list:
+    path = os.path.join(cwd, d)
+    if os.path.isfile(os.path.join(path, 'SConscript')):
+        objs = objs + SConscript(os.path.join(d, 'SConscript'))
+objs = objs + group
+
+
+Return('objs')

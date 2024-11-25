@@ -139,7 +139,7 @@ impl TimerWheel {
     ///This function will return the next timeout tick of timer wheel.
     fn next_timeout_tick(&mut self) -> u32 {
         let mut next_timeout_tick = rt_bindings::RT_TICK_MAX;
-        let _ = self.timer_wheel_lock.acquire();
+        let _guard = self.timer_wheel_lock.acquire();
         for i in 0..TIMER_WHEEL_SIZE - 1 {
             if let Some(timer_node) = self.row[i].next() {
                 unsafe {
@@ -231,7 +231,7 @@ impl Timer {
         (self.timeout_func)(self.parameter);
         if self.init_tick != 0 {
             let time_wheel = self.get_timer_wheel();
-            let _ = time_wheel.timer_wheel_lock.acquire();
+            let _guard = time_wheel.timer_wheel_lock.acquire();
             self.timer_start();
         }
     }
@@ -298,17 +298,14 @@ impl Timer {
         self.flag |= rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8;
         if self.flag & rt_bindings::RT_TIMER_FLAG_SOFT_TIMER as u8 != 0 {
             unsafe {
-                if !Cpu::get_current_scheduler().is_sched_locked() {
-                    level = Cpu::get_current_scheduler().sched_lock();
-                }
                 if SOFT_TIMER_STATUS == TimerStatus::Idle && TIMER_THREAD.is_suspended() {
-                    Cpu::get_current_scheduler().sched_unlock(level);
                     TIMER_THREAD.resume();
                     need_schedule = true;
                 }
             }
         }
-        if is_thread_timer && Cpu::get_current_scheduler().is_sched_locked() {
+        if is_thread_timer {
+            debug_assert!(Cpu::get_current_scheduler().is_sched_locked());
             Cpu::get_current_scheduler().sched_unlock(level);
         }
         if need_schedule {
@@ -338,14 +335,14 @@ impl Timer {
             self.timer_is_timeout();
         } else {
             let time_wheel = self.get_timer_wheel();
-            let _ = time_wheel.timer_wheel_lock.acquire();
+            let _guard = time_wheel.timer_wheel_lock.acquire();
             self.timer_start();
         }
     }
 
     pub fn stop(&mut self) -> bool {
         let time_wheel = self.get_timer_wheel();
-        let _ = time_wheel.timer_wheel_lock.acquire();
+        let _guard = time_wheel.timer_wheel_lock.acquire();
         if (self.flag & rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8) == 0 {
             return false;
         }
@@ -355,7 +352,7 @@ impl Timer {
 
     pub fn detach(&mut self) {
         let time_wheel = self.get_timer_wheel();
-        let _ = time_wheel.timer_wheel_lock.acquire();
+        let _guard = time_wheel.timer_wheel_lock.acquire();
         self.timer_remove();
         self.flag &= !rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8;
         rt_object_detach((&mut self.parent) as *mut _ as *mut rt_bindings::rt_object);
@@ -364,7 +361,7 @@ impl Timer {
     /// This function will get or set some options of the timer
     pub fn timer_control(&mut self, cmd: u32, arg: *mut c_void) {
         let time_wheel = self.get_timer_wheel();
-        let _ = time_wheel.timer_wheel_lock.acquire();
+        let _guard = time_wheel.timer_wheel_lock.acquire();
         match cmd {
             rt_bindings::RT_TIMER_CTRL_GET_TIME => unsafe { *(arg as *mut u32) = self.init_tick },
             rt_bindings::RT_TIMER_CTRL_SET_TIME => {
@@ -470,7 +467,7 @@ pub extern "C" fn rt_timer_detach(timer: *mut Timer) -> rt_bindings::rt_err_t {
     assert!(timer_ref.type_name() == ObjectClassType::ObjectClassTimer as u8);
     assert!(timer_ref.is_static_kobject() != false);
     let time_wheel = timer_ref.get_timer_wheel();
-    let _ = time_wheel.timer_wheel_lock.acquire();
+    let _guard = time_wheel.timer_wheel_lock.acquire();
     timer_ref.timer_remove();
     timer_ref.flag &= !rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8;
     rt_object_detach((&mut timer_ref.parent) as *mut _ as *mut rt_bindings::rt_object);
@@ -505,7 +502,7 @@ pub extern "C" fn rt_timer_delete(timer: *mut Timer) -> rt_bindings::rt_err_t {
     assert!(timer_ref.type_name() == ObjectClassType::ObjectClassTimer as u8);
     assert!(timer_ref.is_static_kobject() == false);
     let time_wheel = timer_ref.get_timer_wheel();
-    let _ = time_wheel.timer_wheel_lock.acquire();
+    let _guard = time_wheel.timer_wheel_lock.acquire();
     timer_ref.timer_remove();
     timer_ref.flag &= !rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8;
     rt_object_delete(unsafe { (&mut (*timer).parent) as *mut _ as *mut rt_bindings::rt_object });

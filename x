@@ -27,7 +27,13 @@ def ParseRTConfig(config, toml):
 
 def Build(config, toml):
     target = config.target
+    toml_path = os.path.join(ROOT, 'blue/Cargo.toml')
+    out_path = os.path.join(ROOT, 'blue/target')
     bsp_path = os.path.join(ROOT, f'bsp/{target}')
+    gcc_path = os.getenv('RTT_EXEC_PATH', os.path.join(ROOT, '/bin'))
+    gcc_include_path = os.path.join(gcc_path, 'include')
+    include_path = f'{bsp_path};{ROOT}/include;{ROOT}/components/finsh;{gcc_include_path}'
+    compat_os = 'rt_thread'
     if config.reconfigure:
         rc = subprocess.call(['scons', '--menuconfig'], cwd=bsp_path)
         if rc != 0:
@@ -41,8 +47,7 @@ def Build(config, toml):
     features = ParseRTConfig(config, toml)
     if 'USE_RUST' in features:
         toolchain = toml['target'][config.target]['toolchain']
-        cmd = f'INCLUDE_PATH={bsp_path} cargo build --target {toolchain} --features ' + shlex.quote(
-            features)
+        cmd = f'COMPAT_OS="{compat_os}" INCLUDE_PATH="{include_path}" cargo build --manifest-path {toml_path} --target {toolchain} --artifact-dir {out_path} -Z unstable-options --features ' + shlex.quote(features)
         rc = subprocess.call(cmd, shell=True, cwd=os.path.join(ROOT, 'blue'))
         if rc != 0:
             logging.error(cmd)

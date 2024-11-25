@@ -126,7 +126,7 @@ pub unsafe extern "C" fn rt_event_send(
 
     (*event).set |= set;
 
-    rt_bindings::rt_object_hook_call!(rt_object_put_hook, (&mut ((*event).parent.parent)));
+    rt_bindings::rt_object_hook_call!(rt_object_put_hook, &mut ((*event).parent.parent));
 
     if (*event).parent.suspend_thread.is_empty() == false {
         let mut n = (*event).parent.suspend_thread.next;
@@ -201,7 +201,7 @@ unsafe extern "C" fn _rt_event_recv(
     let thread = rt_bindings::rt_thread_self();
     (*thread).error = -(rt_bindings::RT_EINTR as rt_bindings::rt_err_t);
 
-    rt_bindings::rt_object_hook_call!(rt_object_trytake_hook, (&mut ((*event).parent.parent)));
+    rt_bindings::rt_object_hook_call!(rt_object_trytake_hook, &mut ((*event).parent.parent));
 
     let mut level = rt_bindings::rt_hw_interrupt_disable();
 
@@ -275,7 +275,7 @@ unsafe extern "C" fn _rt_event_recv(
 
     rt_bindings::rt_hw_interrupt_enable(level);
 
-    rt_bindings::rt_object_hook_call!(rt_object_take_hook, (&mut (*event).parent.parent));
+    rt_bindings::rt_object_hook_call!(rt_object_take_hook, &mut (*event).parent.parent);
 
     (*thread).error
 }

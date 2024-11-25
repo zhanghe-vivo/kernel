@@ -4,7 +4,7 @@ use crate::{
     object::*,
     print, println,
     sync::ipc_common::*,
-    thread::{rt_thread_self, RtThread},
+    thread::RtThread,
     timer::{rt_timer_control, rt_timer_start, Timer},
 };
 use blue_infra::list::doubly_linked_list::ListHead;

@@ -242,9 +242,7 @@ bss_loop:
 #endif
 
     /* start RT-Thread Kernel */
-    ldr     pc, _rtthread_startup
-_rtthread_startup:
-    .word rtthread_startup
+    b kernel_startup
 
 .weak rt_asm_cpu_id
 rt_asm_cpu_id:
