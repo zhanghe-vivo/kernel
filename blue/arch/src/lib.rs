@@ -1,14 +1,13 @@
 #![no_std]
 #![feature(naked_functions)]
+#![feature(stmt_expr_attributes)]
 #![allow(unused)]
 
-pub mod core;
 pub mod interrupt;
 pub mod scheduler;
 pub mod smp;
 
 // re-exports
-pub use crate::core::ICore;
 pub use crate::interrupt::IInterrupt;
 pub use crate::scheduler::IScheduler;
 

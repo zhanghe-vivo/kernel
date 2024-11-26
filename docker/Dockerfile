@@ -1,12 +1,19 @@
 FROM rust:latest
 LABEL author jianghan <jianghan@vivo.com>
 
-ENV RUSTUP_DIST_SERVER https://mirrors.tuna.tsinghua.edu.cn/rustup
-ENV RUSTUP_UPDATE_ROOT https://mirrors.tuna.tsinghua.edu.cn/rustup/rustup
+# Install zsh
+RUN sudo apt install -y git zsh \
+    && git clone https://github.com/ohmyzsh/ohmyzsh.git ~/.oh-my-zsh \
+    && cp ~/.oh-my-zsh/templates/zshrc.zsh-template ~/.zshrc \
+    && sed -i "s/robbyrussell/bira/" ~/.zshrc
+
+ENV RUSTUP_UPDATE_ROOT=https://mirrors.aliyun.com/rustup/rustup
+ENV RUSTUP_DIST_SERVER=https://mirrors.aliyun.com/rustup
 RUN rustup default nightly && \
     rustup target add armv7a-none-eabi && \
     rustup target add thumbv7m-none-eabi && \
     rustup target add thumbv8m.main-none-eabi && \
+    rustup target add thumbv8m.main-none-eabihf && \
     cargo install cargo-binutils && \
     rustup component add llvm-tools-preview && \
     rustup component add rust-src && \

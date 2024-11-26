@@ -1,9 +1,9 @@
 ## Use docker
 ```bash
-sudo docker build -t compile_rtt .
-sudo docker images
-sudo docker run -d --user "$(id -u)":"$(id -g)" -v "$PWD":/usr/src/rtt -w /usr/src/rtt compile_rtt tail -f /dev/null
-sudo docker exec -it compile_rtt bash
+docker build -t compile_rtt .
+docker images
+docker run -d --user 0 -v "$PWD":/usr/src/rtt -w /usr/src/rtt compile_rtt tail -f /dev/null
+docker exec -it compile_rtt zsh
 ```
 
 ## Use `colima` and `nerdctl`
@@ -14,7 +14,7 @@ colima nerdctl install
 nerdctl build -t compile_rtt .
 nerdctl images
 nerdctl run -d -v "$PWD":/usr/src/rtt -w /usr/src/rtt compile_rtt tail -f /dev/null
-nerdctl exec -it compile_rtt bash
+nerdctl exec -it compile_rtt zsh
 ```
 
 ## Compile and run in docker

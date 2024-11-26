@@ -400,6 +400,7 @@ impl RtThread {
             cur_ref.stack = Stack::new(stack_start, stack_size);
             let sp = Arch::init_task_stack(
                 stack_start.offset(stack_size as isize) as *mut usize,
+                stack_start as *mut usize,
                 mem::transmute(entry),
                 parameter,
                 Self::exit as *const usize,

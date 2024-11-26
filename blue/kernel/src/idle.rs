@@ -91,6 +91,16 @@ unsafe impl PinInit<IdleTheads> for IdleTheadsInit {
 }
 
 impl IdleTheads {
+    pub(crate) fn init_once() {
+        unsafe {
+            IDLE_THREADS.init_once();
+            zombie::ZOMBIE_MANAGER.init_once();
+            #[cfg(feature = "RT_USING_SMP")]
+            zombie::ZOMBIE_MANAGER.start_up();
+            IDLE_THREADS.start_up();
+        }
+    }
+
     #[cfg(feature = "RT_USING_SMP")]
     #[inline]
     pub(crate) fn new() -> impl PinInit<Self> {
@@ -142,15 +152,6 @@ impl IdleTheads {
             };
         }
     }
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn rt_thread_idle_init() {
-    IDLE_THREADS.init_once();
-    zombie::ZOMBIE_MANAGER.init_once();
-    #[cfg(feature = "RT_USING_SMP")]
-    zombie::ZOMBIE_MANAGER.start_up();
-    IDLE_THREADS.start_up();
 }
 
 #[cfg(feature = "RT_USING_IDLE_HOOK")]
