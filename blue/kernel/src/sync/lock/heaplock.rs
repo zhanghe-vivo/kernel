@@ -1,5 +1,4 @@
-use crate::thread;
-use rt_bindings;
+use crate::{rt_bindings, sync::lock::mutex::*, thread};
 
 #[cfg(feature = "RT_USING_HEAP_ISR")]
 use crate::sync::lock::spinlock::SpinLockBackend;
@@ -26,13 +25,13 @@ pub struct HeapLockBackend;
 
 // SAFETY: The underlying kernel `struct mutex` object ensures mutual exclusion.
 unsafe impl super::Backend for HeapLockBackend {
-    type State = rt_bindings::rt_mutex;
+    type State = RtMutex;
     type GuardState = ();
 
     unsafe fn init(ptr: *mut Self::State, name: *const core::ffi::c_char) {
         // SAFETY: The safety requirements ensure that `ptr` is valid for writes, and `name` and
         // `key` are valid for read indefinitely.
-        unsafe { rt_bindings::rt_mutex_init(ptr, name, rt_bindings::RT_IPC_FLAG_PRIO as u8) };
+        unsafe { (*ptr).init(name, rt_bindings::RT_IPC_FLAG_PRIO as u8) };
     }
 
     unsafe fn lock(ptr: *mut Self::State) -> Self::GuardState {
@@ -40,7 +39,7 @@ unsafe impl super::Backend for HeapLockBackend {
         // memory, and that it has been initialised before.
         unsafe {
             if !thread::rt_thread_self().is_null() {
-                rt_bindings::rt_mutex_take(ptr, rt_bindings::RT_WAITING_FOREVER)
+                (*ptr).take(rt_bindings::RT_WAITING_FOREVER)
             } else {
                 rt_bindings::RT_EOK as i32
             }
@@ -52,7 +51,7 @@ unsafe impl super::Backend for HeapLockBackend {
         // caller is the owner of the mutex.
         unsafe {
             if !thread::rt_thread_self().is_null() {
-                rt_bindings::rt_mutex_release(ptr);
+                (*ptr).release();
             }
         }
     }

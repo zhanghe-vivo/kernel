@@ -1,405 +1,395 @@
 use crate::{
-    error::Error,
+    cpu::Cpu,
+    impl_kobject, list_head_for_each,
     object::*,
     print, println,
+    rt_bindings::{
+        rt_debug_not_in_interrupt, rt_debug_scheduler_available, rt_err_t, rt_int32_t, rt_object,
+        rt_object_hook_call, rt_size_t, rt_ssize_t, rt_ubase_t, rt_uint32_t, rt_uint8_t, RT_EFULL,
+        RT_EINTR, RT_EINVAL, RT_ENOMEM, RT_EOK, RT_ERROR, RT_ETIMEOUT, RT_INTERRUPTIBLE,
+        RT_IPC_CMD_RESET, RT_IPC_FLAG_FIFO, RT_IPC_FLAG_PRIO, RT_KILLABLE, RT_SEM_VALUE_MAX,
+        RT_TIMER_CTRL_SET_TIME, RT_UNINTERRUPTIBLE, RT_WAITING_FOREVER,
+    },
     sync::ipc_common::*,
-    thread::{rt_thread_self, RtThread},
+    thread::RtThread,
     timer,
 };
 use blue_infra::list::doubly_linked_list::ListHead;
-use core::{
-    cell::UnsafeCell,
-    ffi::{c_char, c_void},
-    marker::PhantomPinned,
-    mem::MaybeUninit,
-    ptr::null_mut,
-};
+use core::pin::Pin;
+use core::{ffi::c_void, marker::PhantomPinned, ptr::null_mut};
+
+use crate::alloc::boxed::Box;
+use core::cell::UnsafeCell;
+use kernel::{fmt, str::CString};
+
 use pinned_init::*;
-use rt_bindings;
+
+#[pin_data(PinnedDrop)]
+pub struct KSemaphore {
+    #[pin]
+    raw: UnsafeCell<RtSemaphore>,
+    #[pin]
+    pin: PhantomPinned,
+}
+
+unsafe impl Send for KSemaphore {}
+unsafe impl Sync for KSemaphore {}
+
+#[pinned_drop]
+impl PinnedDrop for KSemaphore {
+    fn drop(self: Pin<&mut Self>) {
+        unsafe {
+            (*self.raw.get()).detach();
+        }
+    }
+}
+
+impl KSemaphore {
+    pub fn new(value: u32) -> Pin<Box<Self>> {
+        fn init_raw(value: u16) -> impl PinInit<UnsafeCell<RtSemaphore>> {
+            let init = move |slot: *mut UnsafeCell<RtSemaphore>| {
+                let slot: *mut RtSemaphore = slot.cast();
+                unsafe {
+                    let cur_ref = &mut *slot;
+
+                    if let Ok(s) = CString::try_from_fmt(fmt!("{:p}", slot)) {
+                        cur_ref.init(s.as_ptr() as *const i8, value, RT_IPC_FLAG_PRIO as u8);
+                    } else {
+                        let default = "default";
+                        cur_ref.init(default.as_ptr() as *const i8, value, RT_IPC_FLAG_PRIO as u8);
+                    }
+                }
+                Ok(())
+            };
+            unsafe { pin_init_from_closure(init) }
+        }
+
+        Box::pin_init(pin_init!(Self {
+            raw<-init_raw(value as u16),
+            pin: PhantomPinned,
+        }))
+        .unwrap()
+    }
+
+    pub fn acquire(&self) -> KSemaphoreGuard<'_> {
+        unsafe {
+            (*self.raw.get()).take(RT_WAITING_FOREVER);
+        };
+        KSemaphoreGuard { sem: self }
+    }
+}
+pub struct KSemaphoreGuard<'a> {
+    sem: &'a KSemaphore,
+}
+
+impl<'a> Drop for KSemaphoreGuard<'a> {
+    fn drop(&mut self) {
+        unsafe { (*self.sem.raw.get()).release() };
+    }
+}
+
+/// Semaphore raw structure
+#[repr(C)]
+#[pin_data]
+pub struct RtSemaphore {
+    /// Inherit from IPCObject
+    #[pin]
+    pub(crate) parent: IPCObject,
+    /// Value of semaphore
+    pub(crate) value: u16,
+}
+
+impl_kobject!(RtSemaphore);
+
+impl RtSemaphore {
+    #[inline]
+    pub fn new(name: [i8; NAME_MAX], value: u16, flag: u8) -> impl PinInit<Self> {
+        assert!((flag == RT_IPC_FLAG_FIFO as u8) || (flag == RT_IPC_FLAG_PRIO as u8));
+
+        rt_debug_not_in_interrupt!();
+
+        pin_init!(Self {
+            parent<-IPCObject::new(ObjectClassType::ObjectClassSemaphore as u8, name, flag),
+            value: value,
+        })
+    }
+
+    #[inline]
+    pub fn init(&mut self, name: *const i8, value: u16, flag: u8) {
+        assert!((flag == RT_IPC_FLAG_FIFO as u8) || (flag == RT_IPC_FLAG_PRIO as u8));
+
+        self.parent
+            .init(ObjectClassType::ObjectClassSemaphore as u8, name, flag);
+        self.value = value;
+    }
+
+    #[inline]
+    pub fn detach(&mut self) {
+        assert_eq!(
+            self.type_name(),
+            ObjectClassType::ObjectClassSemaphore as u8
+        );
+        assert!(self.is_static_kobject());
+
+        self.parent.wake_all();
+        self.parent.parent.detach();
+    }
+
+    #[inline]
+    pub fn new_raw(name: *const i8, value: u16, flag: u8) -> *mut Self {
+        let semaphore = Box::pin_init(RtSemaphore::new(char_ptr_to_array(name), value, flag));
+        match semaphore {
+            Ok(sem) => unsafe { Box::leak(Pin::into_inner_unchecked(sem)) },
+            Err(_) => return null_mut(),
+        }
+    }
+
+    #[inline]
+    pub fn delete_raw(&mut self) {
+        assert_eq!(
+            self.type_name(),
+            ObjectClassType::ObjectClassSemaphore as u8
+        );
+        assert!(!self.is_static_kobject());
+
+        rt_debug_not_in_interrupt!();
+
+        self.parent.wake_all();
+        self.parent.parent.delete();
+    }
+
+    fn take_internal(&mut self, timeout: i32, suspend_flag: u32) -> i32 {
+        let mut time_out = timeout as i32;
+        assert_eq!(
+            self.type_name(),
+            ObjectClassType::ObjectClassSemaphore as u8
+        );
+        // SAFETY: only one thread can take the semaphore
+        unsafe {
+            rt_object_hook_call!(
+                rt_object_trytake_hook,
+                &mut self.parent.parent as *mut KObjectBase as *mut rt_object
+            );
+        }
+
+        #[allow(unused_variables)]
+        let check = self.value == 0 && timeout != 0;
+        rt_debug_scheduler_available!(check);
+
+        self.parent.lock();
+
+        if self.value > 0 {
+            self.value -= 1;
+            self.parent.unlock();
+        } else {
+            if timeout == 0 {
+                self.parent.unlock();
+
+                /* FIXME: -2 is as expected, while C -RT_ETIMEOUT is -116. */
+                return -116; //(RT_ETIMEOUT as rt_err_t);
+            } else {
+                let thread = unsafe { crate::current_thread!().unwrap().as_mut() };
+
+                (*thread).error = -(RT_EINTR as i32);
+
+                let ret = self
+                    .parent
+                    .wait(thread, self.parent.flag, suspend_flag as u32);
+
+                if ret != RT_EOK as i32 {
+                    self.parent.unlock();
+                    return ret;
+                }
+
+                if timeout > 0 {
+                    (*thread).thread_timer.timer_control(
+                        RT_TIMER_CTRL_SET_TIME as u32,
+                        (&mut time_out) as *mut i32 as *mut c_void,
+                    );
+                    (*thread).thread_timer.start();
+                }
+
+                self.parent.unlock();
+
+                Cpu::get_current_scheduler().do_task_schedule();
+
+                if (*thread).error != RT_EOK as i32 {
+                    return (*thread).error;
+                }
+            }
+        }
+        // SAFETY: only one thread can take the semaphore
+        unsafe {
+            rt_object_hook_call!(
+                rt_object_take_hook,
+                &mut self.parent.parent as *mut KObjectBase as *mut rt_object
+            );
+        }
+
+        RT_EOK as i32
+    }
+
+    pub fn take(&mut self, timeout: i32) -> i32 {
+        self.take_internal(timeout, RT_UNINTERRUPTIBLE as u32)
+    }
+
+    pub fn try_take(&mut self) -> i32 {
+        self.take(0)
+    }
+
+    pub fn take_interruptible(&mut self, timeout: i32) -> i32 {
+        self.take_internal(timeout, RT_INTERRUPTIBLE as u32)
+    }
+
+    pub fn take_killable(&mut self, timeout: i32) -> i32 {
+        self.take_internal(timeout, RT_KILLABLE as u32)
+    }
+
+    pub fn release(&mut self) -> i32 {
+        assert_eq!(
+            self.type_name(),
+            ObjectClassType::ObjectClassSemaphore as u8
+        );
+        // SAFETY: only one thread can take the semaphore
+        unsafe {
+            rt_object_hook_call!(
+                rt_object_put_hook,
+                &mut self.parent.parent as *mut KObjectBase as *mut rt_object
+            );
+        }
+
+        let mut need_schedule = false;
+        self.parent.lock();
+
+        if self.parent.has_waiting() {
+            self.parent.wake_one();
+            need_schedule = true;
+        } else {
+            if self.value < RT_SEM_VALUE_MAX as u16 {
+                self.value += 1;
+            } else {
+                self.parent.unlock();
+                return -(RT_EFULL as i32);
+            }
+        }
+
+        self.parent.unlock();
+
+        if need_schedule {
+            Cpu::get_current_scheduler().do_task_schedule();
+        }
+
+        RT_EOK as i32
+    }
+
+    pub fn control(&mut self, cmd: i32, arg: *const c_void) -> i32 {
+        assert_eq!(
+            self.type_name(),
+            ObjectClassType::ObjectClassSemaphore as u8
+        );
+
+        if cmd == RT_IPC_CMD_RESET as i32 {
+            self.parent.lock();
+
+            self.parent.wake_all();
+
+            self.value = arg as u16;
+
+            self.parent.unlock();
+
+            Cpu::get_current_scheduler().do_task_schedule();
+
+            return RT_EOK as i32;
+        }
+
+        -(RT_ERROR as rt_err_t)
+    }
+}
 
 #[cfg(feature = "RT_USING_SEMAPHORE")]
 #[no_mangle]
 pub unsafe extern "C" fn rt_sem_init(
-    sem: *mut rt_bindings::rt_semaphore,
+    sem: *mut RtSemaphore,
     name: *const core::ffi::c_char,
-    value: rt_bindings::rt_uint32_t,
-    flag: rt_bindings::rt_uint8_t,
-) -> rt_bindings::rt_err_t {
-    assert!(sem != null_mut());
-    assert!(value < 0x10000 as rt_bindings::rt_uint32_t);
-    assert!(
-        (flag == rt_bindings::RT_IPC_FLAG_FIFO as rt_bindings::rt_uint8_t)
-            || (flag == rt_bindings::RT_IPC_FLAG_PRIO as rt_bindings::rt_uint8_t)
-    );
-    rt_object_init(
-        &mut ((*sem).parent.parent),
-        rt_bindings::rt_object_class_type_RT_Object_Class_Semaphore as u32,
-        name,
-    );
-
-    _rt_ipc_object_init(&mut ((*sem).parent));
-
-    (*sem).value = value as rt_bindings::rt_uint16_t;
-    (*sem).parent.flag = flag;
-
-    rt_bindings::RT_EOK as rt_bindings::rt_err_t
+    value: rt_uint32_t,
+    flag: rt_uint8_t,
+) -> rt_err_t {
+    assert!(!sem.is_null());
+    (*sem).init(name, value as u16, flag);
+    RT_EOK as rt_err_t
 }
 #[cfg(feature = "RT_USING_SEMAPHORE")]
 #[no_mangle]
-pub unsafe extern "C" fn rt_sem_detach(
-    sem: *mut rt_bindings::rt_semaphore,
-) -> rt_bindings::rt_err_t {
-    assert!(sem != null_mut());
-    assert!(
-        rt_object_get_type(&mut (*sem).parent.parent)
-            == rt_bindings::rt_object_class_type_RT_Object_Class_Semaphore as u8
-    );
-    assert!(rt_object_is_systemobject(&mut (*sem).parent.parent) == rt_bindings::RT_TRUE as i32);
-
-    _rt_ipc_list_resume_all(&mut ((*sem).parent.suspend_thread));
-    rt_object_detach(&mut ((*sem).parent.parent));
-
-    rt_bindings::RT_EOK as rt_bindings::rt_err_t
+pub unsafe extern "C" fn rt_sem_detach(sem: *mut RtSemaphore) -> rt_err_t {
+    assert!(!sem.is_null());
+    (*sem).detach();
+    RT_EOK as rt_err_t
 }
 #[cfg(all(feature = "RT_USING_SEMAPHORE", feature = "RT_USING_HEAP"))]
 #[no_mangle]
 pub unsafe extern "C" fn rt_sem_create(
     name: *const core::ffi::c_char,
-    value: rt_bindings::rt_uint32_t,
-    flag: rt_bindings::rt_uint8_t,
-) -> rt_bindings::rt_sem_t {
-    assert!(value < 0x10000 as rt_bindings::rt_uint32_t);
-    assert!(
-        (flag == rt_bindings::RT_IPC_FLAG_FIFO as rt_bindings::rt_uint8_t)
-            || (flag == rt_bindings::RT_IPC_FLAG_PRIO as rt_bindings::rt_uint8_t)
-    );
-    rt_bindings::rt_debug_not_in_interrupt!();
-    let sem = rt_object_allocate(
-        rt_bindings::rt_object_class_type_RT_Object_Class_Semaphore as u32,
-        name,
-    ) as rt_bindings::rt_sem_t;
-    if sem == null_mut() {
-        return sem;
-    }
-
-    _rt_ipc_object_init(&mut (*sem).parent);
-
-    (*sem).value = value as u16;
-    (*sem).parent.flag = flag;
-
-    sem
+    value: rt_uint32_t,
+    flag: rt_uint8_t,
+) -> *mut RtSemaphore {
+    RtSemaphore::new_raw(name, value as u16, flag)
 }
 
 #[cfg(all(feature = "RT_USING_SEMAPHORE", feature = "RT_USING_HEAP"))]
 #[no_mangle]
-pub unsafe extern "C" fn rt_sem_delete(
-    sem: *mut rt_bindings::rt_semaphore,
-) -> rt_bindings::rt_err_t {
-    assert!(sem != null_mut());
-    assert!(
-        rt_object_get_type(&mut (*sem).parent.parent)
-            == rt_bindings::rt_object_class_type_RT_Object_Class_Semaphore as u8
-    );
-    assert!(rt_object_is_systemobject(&mut (*sem).parent.parent) == rt_bindings::RT_FALSE as i32);
-
-    rt_bindings::rt_debug_not_in_interrupt!();
-
-    _rt_ipc_list_resume_all(&mut ((*sem).parent.suspend_thread));
-
-    rt_object_delete(&mut ((*sem).parent.parent));
-
-    rt_bindings::RT_EOK as rt_bindings::rt_err_t
+pub unsafe extern "C" fn rt_sem_delete(sem: *mut RtSemaphore) -> rt_err_t {
+    assert!(!sem.is_null());
+    (*sem).delete_raw();
+    RT_EOK as rt_err_t
 }
 
 #[cfg(feature = "RT_USING_SEMAPHORE")]
 #[no_mangle]
-unsafe extern "C" fn _rt_sem_take(
-    sem: rt_bindings::rt_sem_t,
-    timeout: rt_bindings::rt_int32_t,
-    suspend_flag: i32,
-) -> rt_bindings::rt_err_t {
-    let mut time_out = timeout as i32;
-    assert!(sem != null_mut());
-    assert!(
-        rt_object_get_type(&mut (*sem).parent.parent)
-            == rt_bindings::rt_object_class_type_RT_Object_Class_Semaphore as u8
-    );
-
-    rt_bindings::rt_object_hook_call!(rt_object_trytake_hook, &mut ((*sem).parent.parent));
-
-    #[allow(unused_variables)]
-    let check = (*sem).value == 0 && timeout != 0;
-    rt_bindings::rt_debug_scheduler_available!(check);
-
-    let level = rt_bindings::rt_hw_interrupt_disable();
-
-    if (*sem).value > 0 {
-        (*sem).value -= 1;
-        rt_bindings::rt_hw_interrupt_enable(level);
-    } else {
-        if timeout == 0 {
-            rt_bindings::rt_hw_interrupt_enable(level);
-            return -(rt_bindings::RT_ETIMEOUT as rt_bindings::rt_err_t);
-        } else {
-            let thread = rt_bindings::rt_thread_self();
-
-            (*thread).error = -(rt_bindings::RT_EINTR as rt_bindings::rt_err_t);
-
-            let ret = _rt_ipc_list_suspend(
-                &mut ((*sem).parent.suspend_thread),
-                thread,
-                (*sem).parent.flag,
-                suspend_flag,
-            );
-
-            if ret != rt_bindings::RT_EOK as rt_bindings::rt_err_t {
-                rt_bindings::rt_hw_interrupt_enable(level);
-                return ret;
-            }
-
-            if timeout > 0 {
-                timer::rt_timer_control(
-                    &mut (*thread).thread_timer as *const _ as *mut timer::Timer,
-                    rt_bindings::RT_TIMER_CTRL_SET_TIME as i32,
-                    (&mut time_out) as *mut i32 as *mut c_void,
-                );
-                timer::rt_timer_start(
-                    &mut ((*thread).thread_timer) as *const _ as *mut timer::Timer,
-                );
-            }
-
-            rt_bindings::rt_hw_interrupt_enable(level);
-
-            rt_bindings::rt_schedule();
-
-            if (*thread).error != rt_bindings::RT_EOK as rt_bindings::rt_err_t {
-                return (*thread).error;
-            }
-        }
-    }
-
-    rt_bindings::rt_object_hook_call!(rt_object_take_hook, &mut ((*sem).parent.parent));
-
-    rt_bindings::RT_EOK as rt_bindings::rt_err_t
-}
-
-#[cfg(feature = "RT_USING_SEMAPHORE")]
-#[no_mangle]
-pub unsafe extern "C" fn rt_sem_take(
-    sem: rt_bindings::rt_sem_t,
-    time: rt_bindings::rt_int32_t,
-) -> rt_bindings::rt_err_t {
-    _rt_sem_take(sem, time, rt_bindings::RT_UNINTERRUPTIBLE as i32)
+pub unsafe extern "C" fn rt_sem_take(sem: *mut RtSemaphore, time: rt_int32_t) -> rt_err_t {
+    assert!(!sem.is_null());
+    (*sem).take(time)
 }
 
 #[cfg(feature = "RT_USING_SEMAPHORE")]
 #[no_mangle]
 pub unsafe extern "C" fn rt_sem_take_interruptible(
-    sem: rt_bindings::rt_sem_t,
-    time: rt_bindings::rt_int32_t,
-) -> rt_bindings::rt_err_t {
-    _rt_sem_take(sem, time, rt_bindings::RT_INTERRUPTIBLE as i32)
+    sem: *mut RtSemaphore,
+    time: rt_int32_t,
+) -> rt_err_t {
+    assert!(!sem.is_null());
+    (*sem).take_interruptible(time)
 }
 
 #[cfg(feature = "RT_USING_SEMAPHORE")]
 #[no_mangle]
-pub unsafe extern "C" fn rt_sem_take_killable(
-    sem: rt_bindings::rt_sem_t,
-    time: rt_bindings::rt_int32_t,
-) -> rt_bindings::rt_err_t {
-    _rt_sem_take(sem, time, rt_bindings::RT_KILLABLE as i32)
+pub unsafe extern "C" fn rt_sem_take_killable(sem: *mut RtSemaphore, time: rt_int32_t) -> rt_err_t {
+    assert!(!sem.is_null());
+    (*sem).take_killable(time)
 }
 
 #[cfg(feature = "RT_USING_SEMAPHORE")]
 #[no_mangle]
-pub unsafe extern "C" fn rt_sem_trytake(sem: rt_bindings::rt_sem_t) -> rt_bindings::rt_err_t {
-    rt_sem_take(sem, rt_bindings::RT_WAITING_NO as i32)
+pub unsafe extern "C" fn rt_sem_trytake(sem: *mut RtSemaphore) -> rt_err_t {
+    assert!(!sem.is_null());
+    (*sem).try_take()
 }
 
 #[cfg(feature = "RT_USING_SEMAPHORE")]
 #[no_mangle]
-pub unsafe extern "C" fn rt_sem_release(sem: rt_bindings::rt_sem_t) -> rt_bindings::rt_err_t {
-    assert!(sem != null_mut());
-    assert!(
-        rt_object_get_type(&mut (*sem).parent.parent)
-            == rt_bindings::rt_object_class_type_RT_Object_Class_Semaphore as u8
-    );
-    rt_bindings::rt_object_hook_call!(rt_object_put_hook, &mut ((*sem).parent.parent));
-
-    let mut need_schedule = rt_bindings::RT_FALSE;
-    let level = rt_bindings::rt_hw_interrupt_disable();
-
-    if (*sem).parent.suspend_thread.is_empty() == false {
-        _rt_ipc_list_resume(&mut ((*sem).parent.suspend_thread));
-        need_schedule = rt_bindings::RT_TRUE;
-    } else {
-        if (*sem).value < rt_bindings::RT_SEM_VALUE_MAX as rt_bindings::rt_uint16_t {
-            (*sem).value += 1;
-        } else {
-            rt_bindings::rt_hw_interrupt_enable(level);
-            return -(rt_bindings::RT_EFULL as rt_bindings::rt_err_t);
-        }
-    }
-
-    rt_bindings::rt_hw_interrupt_enable(level);
-
-    if need_schedule == rt_bindings::RT_TRUE {
-        rt_bindings::rt_schedule();
-    }
-
-    rt_bindings::RT_EOK as rt_bindings::rt_err_t
+pub unsafe extern "C" fn rt_sem_release(sem: *mut RtSemaphore) -> rt_err_t {
+    assert!(!sem.is_null());
+    (*sem).release()
 }
 
 #[cfg(feature = "RT_USING_SEMAPHORE")]
 #[no_mangle]
 pub unsafe extern "C" fn rt_sem_control(
-    sem: rt_bindings::rt_sem_t,
+    sem: *mut RtSemaphore,
     cmd: i32,
     arg: *const c_void,
-) -> rt_bindings::rt_err_t {
-    assert!(sem != null_mut());
-    assert!(
-        rt_object_get_type(&mut (*sem).parent.parent)
-            == rt_bindings::rt_object_class_type_RT_Object_Class_Semaphore as u8
-    );
-
-    if cmd == rt_bindings::RT_IPC_CMD_RESET as i32 {
-        let value = arg as rt_bindings::rt_ubase_t;
-        let level = rt_bindings::rt_hw_interrupt_disable();
-
-        _rt_ipc_list_resume_all(&mut (*sem).parent.suspend_thread);
-
-        (*sem).value = value as rt_bindings::rt_uint16_t;
-
-        rt_bindings::rt_hw_interrupt_enable(level);
-
-        rt_bindings::rt_schedule();
-
-        return rt_bindings::RT_EOK as rt_bindings::rt_err_t;
-    }
-
-    -(rt_bindings::RT_ERROR as rt_bindings::rt_err_t)
-}
-
-pub struct SemaphoreGuard<'a> {
-    _sem: &'a Semaphore,
-}
-impl<'a> Drop for SemaphoreGuard<'a> {
-    fn drop(&mut self) {
-        self._sem.release();
-    }
-}
-
-#[pin_data]
-pub struct Semaphore {
-    #[pin]
-    sem_ptr: rt_bindings::rt_sem_t,
-    #[pin]
-    _pin: PhantomPinned,
-}
-
-unsafe impl Send for Semaphore {}
-unsafe impl Sync for Semaphore {}
-
-impl Semaphore {
-    pub fn new(name: &str, value: u32) -> Result<Self, Error> {
-        let result = unsafe {
-            rt_sem_create(
-                name.as_ptr() as *const c_char,
-                value,
-                rt_bindings::RT_IPC_FLAG_PRIO as u8,
-            )
-        };
-        if result == rt_bindings::RT_NULL as rt_bindings::rt_sem_t {
-            Err(Error::from_errno(rt_bindings::RT_ERROR as i32))
-        } else {
-            Ok(Self {
-                sem_ptr: result,
-                _pin: PhantomPinned {},
-            })
-        }
-    }
-
-    pub fn delete(self) -> Result<(), Error> {
-        let result = unsafe { rt_sem_delete(self.sem_ptr) };
-        if result == rt_bindings::RT_EOK as rt_bindings::rt_err_t {
-            Ok(())
-        } else {
-            Err(Error::from_errno(result as i32))
-        }
-    }
-
-    pub fn acquire(&self) {
-        let _result = unsafe { rt_sem_take(self.sem_ptr, rt_bindings::RT_WAITING_FOREVER) };
-    }
-
-    pub fn acquire_wait(&self, tick: i32) {
-        let _result = unsafe { rt_sem_take(self.sem_ptr, tick) };
-    }
-
-    pub fn acquire_no_wait(&self) {
-        let _result = unsafe { rt_sem_trytake(self.sem_ptr) };
-    }
-
-    pub fn release(&self) {
-        let _result = unsafe { rt_sem_release(self.sem_ptr) };
-    }
-
-    pub fn access(&self) -> SemaphoreGuard {
-        self.acquire();
-        SemaphoreGuard { _sem: self }
-    }
-}
-
-#[pin_data]
-pub struct SemaphoreStatic {
-    #[pin]
-    sem_: UnsafeCell<MaybeUninit<rt_bindings::rt_semaphore>>,
-    #[pin]
-    pinned_: PhantomPinned,
-}
-
-unsafe impl Send for SemaphoreStatic {}
-unsafe impl Sync for SemaphoreStatic {}
-
-impl SemaphoreStatic {
-    pub const fn new() -> Self {
-        SemaphoreStatic {
-            sem_: UnsafeCell::new(MaybeUninit::uninit()),
-            pinned_: PhantomPinned {},
-        }
-    }
-    pub fn init(&'static self, name: &str, value: u32) -> Result<(), Error> {
-        let result = unsafe {
-            rt_sem_init(
-                self.sem_.get().cast(),
-                name.as_ptr() as *const c_char,
-                value,
-                rt_bindings::RT_IPC_FLAG_PRIO as u8,
-            )
-        };
-        if result == rt_bindings::RT_EOK as i32 {
-            Ok(())
-        } else {
-            Err(Error::from_errno(result))
-        }
-    }
-
-    pub fn detach(&'static self) -> Result<(), Error> {
-        let result = unsafe { rt_sem_detach(self.sem_.get().cast()) };
-        if result == rt_bindings::RT_EOK as i32 {
-            Ok(())
-        } else {
-            Err(Error::from_errno(result))
-        }
-    }
-
-    pub fn get(&'static self) -> Semaphore {
-        Semaphore {
-            sem_ptr: self.sem_.get().cast(),
-            _pin: PhantomPinned {},
-        }
-    }
+) -> rt_err_t {
+    assert!(!sem.is_null());
+    (*sem).control(cmd, arg)
 }
 
 #[no_mangle]
@@ -410,25 +400,19 @@ pub extern "C" fn rt_sem_info() {
         println!("-------- --- --------------");
     };
     let callback = |node: &ListHead| unsafe {
-        let sem = &*(crate::list_head_entry!(node.as_ptr(), KObjectBase, list)
-            as *const rt_bindings::rt_semaphore);
+        let sem =
+            &*(crate::list_head_entry!(node.as_ptr(), KObjectBase, list) as *const RtSemaphore);
         let _ = crate::format_name!(sem.parent.parent.name.as_ptr(), 8);
         print!(" {:03} ", sem.value);
-        if sem.parent.suspend_thread.is_empty() {
-            println!("{}", sem.parent.suspend_thread.len());
+        if sem.parent.wait_list.is_empty() {
+            println!("{}", sem.parent.wait_list.size());
         } else {
-            print!("{}:", sem.parent.suspend_thread.len());
-            let head = &sem.parent.suspend_thread;
-            let mut list = head.next;
-            loop {
-                let thread_node = list;
-                if thread_node == head as *const _ as *mut rt_bindings::rt_list_node {
-                    break;
-                }
-                let thread = &*rt_bindings::container_of!(thread_node, RtThread, tlist);
-                let _ = crate::format_name!(thread.parent.name.as_ptr(), 8);
-                list = (*list).next;
-            }
+            print!("{}:", sem.parent.wait_list.size());
+            let head = &sem.parent.wait_list;
+            list_head_for_each!(node, head, {
+                let thread = crate::thread_list_node_entry!(node.as_ptr()) as *mut RtThread;
+                let _ = crate::format_name!((*thread).parent.name.as_ptr(), 8);
+            });
             print!("\n");
         }
     };

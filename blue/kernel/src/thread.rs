@@ -6,13 +6,13 @@ use crate::{
     clock,
     cpu::Cpu,
     error::{code, Error},
-    object,
+    list_head_entry, list_head_for_each, object,
     object::{KObjectBase, ObjectClassType},
     print, println,
     stack::Stack,
     static_init::UnsafeStaticInit,
     str::CStr,
-    sync::RawSpin,
+    sync::{ipc_common::*, lock::mutex::*, RawSpin},
     timer, zombie,
 };
 use alloc::alloc;
@@ -45,11 +45,30 @@ macro_rules! current_thread {
 pub use current_thread;
 
 #[macro_export]
+macro_rules! current_thread_ptr {
+    () => {
+        unsafe {
+            if let Some(mut curth) = $crate::current_thread!() {
+                curth.as_mut()
+            } else {
+                null_mut()
+            }
+        }
+    };
+}
+pub use current_thread_ptr;
+
+#[macro_export]
 macro_rules! thread_list_node_entry {
     ($node:expr) => {
         rt_bindings::container_of!($node, crate::thread::RtThread, tlist)
     };
 }
+use crate::object::rt_object_get_type;
+use crate::rt_bindings::{
+    rt_err_t, rt_object, rt_uint8_t, RT_EOK, RT_ERROR, RT_THREAD_CTRL_CHANGE_PRIORITY,
+    RT_THREAD_SUSPEND_MASK,
+};
 pub use thread_list_node_entry;
 
 #[cfg(all(feature = "RT_USING_HOOK", feature = "RT_HOOK_USING_FUNC_PTR"))]
@@ -114,7 +133,7 @@ pub struct RtThread {
 
     /// built-in thread timer, used for wait timeout
     #[pin]
-    pub thread_timer: timer::Timer,
+    pub(crate) thread_timer: timer::Timer,
 
     /// stack point and entry
     pub(crate) stack: Stack,
@@ -141,15 +160,15 @@ pub struct RtThread {
     /// mutexes holded by this thread
     #[cfg(feature = "RT_USING_MUTEX")]
     #[pin]
-    taken_object_list: ListHead,
+    pub(crate) taken_object_list: ListHead,
     /// mutex object
     #[cfg(feature = "RT_USING_MUTEX")]
-    pending_object: *mut KObjectBase,
+    pub(crate) pending_object: *mut KObjectBase,
 
     #[cfg(feature = "RT_USING_EVENT")]
-    pub event_set: ffi::c_uint,
+    pub(crate) event_set: ffi::c_uint,
     #[cfg(feature = "RT_USING_EVENT")]
-    pub event_info: ffi::c_uchar,
+    pub(crate) event_info: ffi::c_uchar,
 
     #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
     wait_lock: Cell<Option<NonNull<RawSpin>>>,
@@ -659,24 +678,18 @@ impl RtThread {
     fn detach_from_mutex(&mut self) {
         let level = self.spinlock.lock_irqsave();
 
-        // as rt_mutex_release may use sched_lock.
-        if self.pending_object != ptr::null_mut()
-            && object::rt_object_get_type(self.pending_object as *mut rt_bindings::rt_object)
-                == ObjectClassType::ObjectClassMutex as u8
-        {
-            unsafe {
-                rt_bindings::rt_mutex_drop_thread(
-                    self.pending_object as *mut rt_bindings::rt_mutex,
-                    self as *mut RtThread as *mut rt_bindings::rt_thread,
-                )
+        // as mutex release may use sched_lock.
+        unsafe {
+            if self.pending_object != ptr::null_mut()
+                && (*self.pending_object).type_name() == ObjectClassType::ObjectClassMutex as u8
+            {
+                let mutex = self.pending_object as *mut RtMutex;
+                if !mutex.is_null() {
+                    (*mutex).drop_thread(self);
+                }
             };
             self.pending_object = ptr::null_mut();
         }
-
-        // crate::list_for_each_safe!(node, tmp, &self.taken_object_list, {
-        //     let mutex = rt_bindings::rt_list_entry!(node, rt_bindings::rt_mutex, taken_list);
-        //     unsafe { rt_bindings::rt_mutex_release(mutex) };
-        // });
 
         let mut inspect = &self.taken_object_list;
         while let Some(next) = inspect.next() {
@@ -685,12 +698,14 @@ impl RtThread {
                 break;
             }
             unsafe {
-                let mutex = rt_bindings::rt_list_entry!(
+                let mutex = list_head_entry!(
                     inspect as *const ListHead as *mut ListHead,
-                    rt_bindings::rt_mutex,
+                    RtMutex,
                     taken_list
                 );
-                rt_bindings::rt_mutex_release(mutex);
+                if !mutex.is_null() {
+                    (*mutex).release();
+                }
             }
         }
 
@@ -707,6 +722,86 @@ impl RtThread {
         self.number_mask = 1 << self.number;
         // FIXME: RT_THREAD_PRIORITY_MAX <= 32
         // self.number_mask = 1 << self.current_priority
+    }
+
+    #[inline]
+    pub(crate) fn get_mutex_priority(&self) -> u8 {
+        unsafe {
+            let mut priority = self.init_priority;
+
+            list_head_for_each!(node, &self.taken_object_list, {
+                let mutex = list_head_entry!(node.as_ptr(), RtMutex, taken_list);
+                let mut mutex_prio = (*mutex).priority;
+                mutex_prio = if mutex_prio < (*mutex).ceiling_priority {
+                    mutex_prio
+                } else {
+                    (*mutex).ceiling_priority
+                };
+
+                if priority > mutex_prio {
+                    priority = mutex_prio;
+                }
+            });
+
+            priority
+        }
+    }
+
+    #[inline]
+    pub(crate) fn update_priority(&mut self, priority: u8, suspend_flag: u32) -> rt_err_t {
+        unsafe {
+            // Change priority of the thread
+            let mut priority = priority;
+            let mut ret = rt_thread_control(
+                self,
+                RT_THREAD_CTRL_CHANGE_PRIORITY,
+                (&mut priority) as *mut u8 as *mut ffi::c_void,
+            );
+
+            while (ret == RT_EOK as rt_err_t)
+                && (self.stat & RT_THREAD_SUSPEND_MASK as rt_uint8_t
+                    == RT_THREAD_SUSPEND_MASK as rt_uint8_t)
+            {
+                //Whether change the priority of the taken mutex
+                let pending_obj = self.pending_object;
+
+                if !pending_obj.is_null()
+                    && rt_object_get_type(pending_obj as *mut rt_object)
+                        == ObjectClassType::ObjectClassMutex as rt_uint8_t
+                {
+                    let mut mutex_priority: rt_uint8_t = 0xff;
+                    let pending_mutex = pending_obj as *mut RtMutex;
+                    let owner = (*pending_mutex).owner;
+                    // Re-insert thread to suspended thread list
+                    self.remove_tlist();
+
+                    ret = IPCObject::suspend_thread(
+                        &mut (*pending_mutex).parent.wait_list,
+                        self,
+                        (*pending_mutex).parent.flag as rt_uint8_t,
+                        suspend_flag as u32,
+                    );
+                    if ret == RT_EOK as rt_err_t {
+                        // Update priority
+                        (*pending_mutex).update_priority();
+                        mutex_priority = (*owner).get_mutex_priority();
+                        if mutex_priority != (*owner).current_priority {
+                            ret = rt_thread_control(
+                                owner,
+                                RT_THREAD_CTRL_CHANGE_PRIORITY,
+                                (&mut mutex_priority) as *mut u8 as *mut ffi::c_void,
+                            );
+                        } else {
+                            ret = -(RT_ERROR as rt_err_t);
+                        }
+                    }
+                } else {
+                    ret = -(RT_ERROR as rt_err_t);
+                }
+            }
+
+            ret
+        }
     }
 
     pub fn start(&mut self) {

@@ -71,6 +71,7 @@ extern void (*rt_object_take_hook)(struct rt_object *object);
 extern void (*rt_object_put_hook)(struct rt_object *object);
 #endif /* RT_USING_HOOK */
 
+#ifndef USE_RUST
 /**
  * @addtogroup IPC
  * @{
@@ -266,7 +267,7 @@ rt_inline rt_err_t _ipc_list_resume_all(rt_list_t *list)
 
     return RT_EOK;
 }
-#ifndef USE_RUST
+
 #ifdef RT_USING_SEMAPHORE
 /**
  * @addtogroup semaphore
@@ -745,7 +746,6 @@ RTM_EXPORT(rt_sem_control);
 
 /**@}*/
 #endif /* RT_USING_SEMAPHORE */
-#endif /* USE_RUST */
 
 #ifdef RT_USING_MUTEX
 /* iterate over each suspended thread to update highest priority in pending threads */
@@ -1573,7 +1573,6 @@ RTM_EXPORT(rt_mutex_control);
 /**@}*/
 #endif /* RT_USING_MUTEX */
 
-#ifndef USE_RUST
 #ifdef RT_USING_EVENT
 /**
  * @addtogroup event

@@ -110,6 +110,7 @@ dependencies = [
  "blue_arch",
  "blue_infra",
  "cbindgen",
+ "cfg-if",
  "const-default",
  "downcast-rs",
  "log",

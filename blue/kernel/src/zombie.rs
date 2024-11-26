@@ -4,10 +4,13 @@ use crate::{
 use blue_infra::list::doubly_linked_list::ListHead;
 use core::{pin::Pin, ptr::NonNull};
 use pinned_init::*;
-use rt_bindings;
 
 #[cfg(feature = "RT_USING_SMP")]
-use crate::thread::{ThreadEntryFn, ThreadWithStack};
+use crate::{
+    c_str,
+    str::CStr,
+    thread::{ThreadEntryFn, ThreadWithStack},
+};
 
 #[cfg(feature = "RT_USING_SMP")]
 const ZOMBIE_THREAD_STACK_SIZE: usize = rt_bindings::IDLE_THREAD_STACK_SIZE as usize;
@@ -43,7 +46,7 @@ pub(crate) struct ZombieManager {
     #[pin]
     thread: ThreadWithStack<ZOMBIE_THREAD_STACK_SIZE>,
     #[pin]
-    sem: rt_bindings::rt_semaphore,
+    sem: RtSemaphore,
 }
 
 impl ZombieManager {
@@ -62,7 +65,7 @@ impl ZombieManager {
                 core::ptr::null_mut(), (rt_bindings::RT_THREAD_PRIORITY_MAX - 2) as u8, 32),
             sem <- unsafe {
                 pin_init_from_closure::<_, ::core::convert::Infallible>(|slot| {
-                    rt_bindings::rt_sem_init(slot, ZOMBIE_NAME.as_char_ptr(), 0, rt_bindings::RT_IPC_FLAG_FIFO as u8);
+                    (*slot).init(ZOMBIE_NAME.as_char_ptr(), 0, rt_bindings::RT_IPC_FLAG_FIFO as u8);
                     Ok(())
                 })
             },
@@ -75,10 +78,7 @@ impl ZombieManager {
 
         loop {
             unsafe {
-                let ret = rt_bindings::rt_sem_take(
-                    &ZOMBIE_MANAGER.sem as *const _ as *mut _,
-                    rt_bindings::RT_WAITING_FOREVER,
-                );
+                let ret = (&mut ZOMBIE_MANAGER.sem as *mut _).take(rt_bindings::RT_WAITING_FOREVER);
                 assert!(ret == rt_bindings::RT_EOK as i32);
                 ZOMBIE_MANAGER.reclaim();
             }
@@ -131,7 +131,7 @@ impl ZombieManager {
         drop(list);
         #[cfg(feature = "RT_USING_SMP")]
         unsafe {
-            rt_bindings::rt_sem_release((&mut self.sem) as *mut _);
+            ((&mut self.sem) as *mut _).release();
         }
     }
 
