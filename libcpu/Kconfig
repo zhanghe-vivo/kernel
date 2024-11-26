@@ -99,6 +99,12 @@ config ARCH_ARM_CORTEX_M33
     select RT_USING_CPU_FFS
     select RT_USING_HW_ATOMIC
 
+config ARCH_ARM_CORTEX_M55
+    bool
+    select ARCH_ARM_CORTEX_M
+    select RT_USING_CPU_FFS
+    select RT_USING_HW_ATOMIC
+
 config ARCH_ARM_CORTEX_R
     bool
     select ARCH_ARM

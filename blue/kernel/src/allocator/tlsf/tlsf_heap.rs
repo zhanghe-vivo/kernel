@@ -105,45 +105,19 @@ struct FreeBlockHdr {
     prev_free: Option<NonNull<FreeBlockHdr>>,
 }
 
-impl<FLBitmap: BinInteger, SLBitmap: BinInteger, const FLLEN: usize, const SLLEN: usize> Default
-    for Tlsf<'_, FLBitmap, SLBitmap, FLLEN, SLLEN>
+impl<
+        'pool,
+        FLBitmap: BinInteger,
+        SLBitmap: BinInteger + Zeroable,
+        const FLLEN: usize,
+        const SLLEN: usize,
+    > Tlsf<'pool, FLBitmap, SLBitmap, FLLEN, SLLEN>
 {
-    fn default() -> Self {
-        Self::const_new()
-    }
-}
-
-impl<FLBitmap: BinInteger, SLBitmap: BinInteger, const FLLEN: usize, const SLLEN: usize>
-    ConstDefault for Tlsf<'_, FLBitmap, SLBitmap, FLLEN, SLLEN>
-{
-    const DEFAULT: Self = Self::const_new();
-}
-
-impl<'pool, FLBitmap: BinInteger, SLBitmap: BinInteger, const FLLEN: usize, const SLLEN: usize>
-    Tlsf<'pool, FLBitmap, SLBitmap, FLLEN, SLLEN>
-{
-    /// Construct an empty pool.
-    #[inline]
-    pub const fn const_new() -> Self {
-        Self {
-            fl_bitmap: FLBitmap::ZERO,
-            sl_bitmap: [SLBitmap::ZERO; FLLEN],
-            first_free: [[None; SLLEN]; FLLEN],
-            total: 0,
-            allocated: 0,
-            maximum: 0,
-            _phantom: {
-                let () = Self::VALID;
-                PhantomData
-            },
-        }
-    }
-
     pub fn new() -> impl Init<Self> {
         init!(Self {
             fl_bitmap: FLBitmap::ZERO,
-            sl_bitmap: [SLBitmap::ZERO; FLLEN],
-            first_free: [[None; SLLEN]; FLLEN],
+            sl_bitmap <- zeroed(),
+            first_free <- zeroed(),
             total: 0,
             allocated: 0,
             maximum: 0,

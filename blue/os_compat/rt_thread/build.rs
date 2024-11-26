@@ -14,9 +14,7 @@ fn main() {
         include_paths.push(full_path);
     }
 
-    let compat_os = env::var("COMPAT_OS")
-        .map(|val| val)
-        .unwrap_or_else(|_e| String::from(""));
+    let compat_os = env::var("COMPAT_OS").expect("Failed to get target build os");
 
     if compat_os == "rt_thread" {
         // bindgen

@@ -328,10 +328,10 @@ pub extern "C" fn rt_application_init() {
 ///This function will call all levels of initialization functions to complete the initialization of the system, and finally start the scheduler.
 #[cfg(feature = "RT_USING_USER_MAIN")]
 #[no_mangle]
-pub extern "C" fn rtthread_startup() -> i32 {
+pub extern "C" fn kernel_startup() -> ! {
+    Arch::disable_interrupts();
+    cpu::init_cpus();
     unsafe {
-        Arch::disable_interrupts();
-        cpu::init_cpus();
         rt_hw_board_init();
         rt_bindings::rt_show_version();
         rt_bindings::rt_system_timer_init();
@@ -339,14 +339,15 @@ pub extern "C" fn rtthread_startup() -> i32 {
         {
             rt_bindings::rt_system_signal_init();
         }
-        rt_application_init();
-        timer::rt_system_timer_thread_init();
-        idle::rt_thread_idle_init();
-        #[cfg(feature = "RT_USING_SMP")]
-        {
-            cpu::Cpus::lock_cpus();
-        }
-        cpu::Cpu::get_current_scheduler().start();
     }
-    0
+    rt_application_init();
+    timer::rt_system_timer_thread_init();
+    idle::IdleTheads::init_once();
+    #[cfg(feature = "RT_USING_SMP")]
+    {
+        cpu::Cpus::lock_cpus();
+    }
+    cpu::Cpu::get_current_scheduler().start();
+
+    panic!("!!!system not start!!!");
 }

@@ -1,7 +1,7 @@
 {
     "target": {
         "qemu-mps2-an385": {"toolchain": "thumbv7m-none-eabi"},
-        "qemu-mps3-an547": {"toolchain": "thumbv8m.main-none-eabi"},
+        "qemu-mps3-an547": {"toolchain": "thumbv8m.main-none-eabihf"},
         "qemu-vexpress-a9": {"toolchain": "armv7a-none-eabi"},
         "qemu-virt64-aarch64": {"toolchain": "aarch64-unknown-none"},
         "qemu-virt64-riscv": {"toolchain": "riscv64gc-unknown-none-elf"}
