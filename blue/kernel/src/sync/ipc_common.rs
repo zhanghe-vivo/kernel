@@ -1,16 +1,191 @@
+use crate::error::Error;
+use crate::impl_kobject;
 use crate::list_head_for_each;
 use crate::object::*;
 use crate::rt_bindings::{
     RT_EOK, RT_ERROR, RT_IPC_FLAG_FIFO, RT_IPC_FLAG_PRIO, RT_THREAD_SUSPEND_MASK,
 };
+use crate::sync::RawSpin;
 use crate::thread::RtThread;
 use blue_infra::list::doubly_linked_list::ListHead;
-
-use crate::impl_kobject;
-use crate::sync::RawSpin;
 use core::pin::Pin;
 use core::slice;
 use pinned_init::*;
+
+/// WaitQueue for IPC
+#[repr(C)]
+#[pin_data]
+pub(crate) struct RtWaitQueue {
+    /// WaitQueue impl by ListHead
+    #[pin]
+    pub(crate) working_queue: ListHead,
+    /// WaitQueue working mode, FIFO or PRIO
+    waiting_mode: u32,
+}
+
+impl RtWaitQueue {
+    #[inline]
+    pub(crate) fn new(waiting_mode: u32) -> impl PinInit<Self> {
+        pin_init!(Self {
+            working_queue<-ListHead::new(),
+            waiting_mode: waiting_mode
+        })
+    }
+
+    #[inline]
+    pub(crate) fn init(&mut self, waiting_mode: u32) {
+        unsafe {
+            let _ = ListHead::new().__pinned_init(&mut self.working_queue as *mut ListHead);
+        }
+        self.waiting_mode = waiting_mode;
+    }
+
+    #[inline]
+    pub(crate) fn waiting_mode(&self) -> u32 {
+        self.waiting_mode
+    }
+
+    #[inline]
+    pub(crate) fn is_empty(&self) -> bool {
+        self.working_queue.is_empty()
+    }
+
+    #[inline]
+    pub(crate) fn count(&self) -> usize {
+        self.working_queue.size()
+    }
+
+    pub(crate) fn wait(&mut self, thread: &mut RtThread, pending_mode: u32) -> i32 {
+        if (thread.stat as u32 & RT_THREAD_SUSPEND_MASK) != RT_THREAD_SUSPEND_MASK {
+            let ret = if thread.suspend(pending_mode) {
+                RT_EOK as i32
+            } else {
+                -(RT_ERROR as i32)
+            };
+
+            if ret != RT_EOK as i32 {
+                return ret;
+            }
+        }
+
+        match self.waiting_mode as u32 {
+            RT_IPC_FLAG_FIFO => {
+                unsafe {
+                    Pin::new_unchecked(&mut self.working_queue).insert_prev(&mut thread.tlist)
+                };
+            }
+            RT_IPC_FLAG_PRIO => {
+                list_head_for_each!(node, &self.working_queue, {
+                    let queued_thread_ptr =
+                        unsafe { crate::thread_list_node_entry!(node.as_ptr()) as *mut RtThread };
+
+                    if queued_thread_ptr.is_null() {
+                        return -(RT_ERROR as i32);
+                    }
+
+                    let queued_thread = unsafe { &mut *queued_thread_ptr };
+
+                    if thread.current_priority < queued_thread.current_priority {
+                        let insert_to = unsafe { Pin::new_unchecked(&mut queued_thread.tlist) };
+                        insert_to.insert_prev(&mut (thread.tlist));
+                    }
+                });
+
+                if node.as_ptr() == &self.working_queue as *const ListHead {
+                    unsafe {
+                        Pin::new_unchecked(&mut self.working_queue).insert_prev(&mut thread.tlist)
+                    };
+                }
+            }
+            _ => {
+                assert!(false);
+            }
+        }
+
+        RT_EOK as i32
+    }
+
+    #[inline]
+
+    pub(crate) fn wake(&mut self) -> bool {
+        if let Some(node) = self.working_queue.next() {
+            let thread: *mut RtThread = unsafe { crate::thread_list_node_entry!(node.as_ptr()) };
+            if !thread.is_null() {
+                unsafe {
+                    (*thread).error = RT_EOK as i32;
+                }
+                return unsafe { (*thread).resume() };
+            }
+        }
+
+        false
+    }
+
+    #[inline]
+
+    pub(crate) fn inner_locked_wake(&mut self) -> bool {
+        if let Some(node) = self.working_queue.next() {
+            let thread: *mut RtThread = unsafe { crate::thread_list_node_entry!(node.as_ptr()) };
+            if !thread.is_null() {
+                let spin_lock = RawSpin::new();
+                unsafe {
+                    (*thread).error = RT_EOK as i32;
+                }
+                let ret = unsafe { (*thread).resume() };
+                spin_lock.unlock();
+                return ret;
+            }
+        }
+
+        false
+    }
+
+    #[inline]
+    pub(crate) fn wake_all(&mut self) -> bool {
+        let mut ret = true;
+        while !self.working_queue.is_empty() {
+            if let Some(node) = self.working_queue.next() {
+                unsafe {
+                    let thread: *mut RtThread = crate::thread_list_node_entry!(node.as_ptr());
+                    if !thread.is_null() {
+                        (*thread).error = -(RT_ERROR as i32);
+                        let resume_stat = (*thread).resume();
+                        if !resume_stat {
+                            ret = resume_stat;
+                        }
+                    }
+                }
+            }
+        }
+
+        ret
+    }
+
+    #[inline]
+
+    pub(crate) fn inner_locked_wake_all(&mut self) -> bool {
+        let mut ret = true;
+        while !self.working_queue.is_empty() {
+            if let Some(node) = self.working_queue.next() {
+                let spin_lock = RawSpin::new();
+                spin_lock.lock();
+                unsafe {
+                    let thread: *mut RtThread = crate::thread_list_node_entry!(node.as_ptr());
+                    if !thread.is_null() {
+                        (*thread).error = -(RT_ERROR as i32);
+                        let resume_stat = (*thread).resume();
+                        if !resume_stat {
+                            ret = resume_stat;
+                        }
+                    }
+                }
+                spin_lock.unlock();
+            }
+        }
+
+        ret
+    }
+}
 
 /// Base structure of IPC object
 #[repr(C)]

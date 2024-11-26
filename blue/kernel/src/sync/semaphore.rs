@@ -10,7 +10,7 @@ use crate::{
         RT_IPC_CMD_RESET, RT_IPC_FLAG_FIFO, RT_IPC_FLAG_PRIO, RT_KILLABLE, RT_SEM_VALUE_MAX,
         RT_TIMER_CTRL_SET_TIME, RT_UNINTERRUPTIBLE, RT_WAITING_FOREVER,
     },
-    sync::ipc_common::*,
+    sync::{ipc_common::*, lock::spinlock::RawSpin},
     thread::RtThread,
     timer,
 };
@@ -92,35 +92,47 @@ impl<'a> Drop for KSemaphoreGuard<'a> {
 #[repr(C)]
 #[pin_data]
 pub struct RtSemaphore {
-    /// Inherit from IPCObject
+    /// Inherit from KObject
     #[pin]
-    pub(crate) parent: IPCObject,
+    parent: KObjectBase,
     /// Value of semaphore
-    pub(crate) value: u16,
+    value: u16,
+    /// Spin lock semaphore used
+    spinlock: RawSpin,
+    #[pin]
+    /// WaitQueue for semaphore
+    wait_queue: RtWaitQueue,
 }
 
 impl_kobject!(RtSemaphore);
 
 impl RtSemaphore {
     #[inline]
-    pub fn new(name: [i8; NAME_MAX], value: u16, flag: u8) -> impl PinInit<Self> {
-        assert!((flag == RT_IPC_FLAG_FIFO as u8) || (flag == RT_IPC_FLAG_PRIO as u8));
+    pub fn new(name: [i8; NAME_MAX], value: u16, waiting_mode: u8) -> impl PinInit<Self> {
+        assert!(
+            (waiting_mode == RT_IPC_FLAG_FIFO as u8) || (waiting_mode == RT_IPC_FLAG_PRIO as u8)
+        );
 
         rt_debug_not_in_interrupt!();
 
         pin_init!(Self {
-            parent<-IPCObject::new(ObjectClassType::ObjectClassSemaphore as u8, name, flag),
+            parent<-KObjectBase::new(ObjectClassType::ObjectClassSemaphore as u8, name),
             value: value,
+            spinlock: RawSpin::new(),
+            wait_queue<-RtWaitQueue::new(waiting_mode as u32)
         })
     }
 
     #[inline]
-    pub fn init(&mut self, name: *const i8, value: u16, flag: u8) {
-        assert!((flag == RT_IPC_FLAG_FIFO as u8) || (flag == RT_IPC_FLAG_PRIO as u8));
-
+    pub fn init(&mut self, name: *const i8, value: u16, waiting_mode: u8) {
+        assert!(
+            (waiting_mode == RT_IPC_FLAG_FIFO as u8) || (waiting_mode == RT_IPC_FLAG_PRIO as u8)
+        );
         self.parent
-            .init(ObjectClassType::ObjectClassSemaphore as u8, name, flag);
+            .init(ObjectClassType::ObjectClassSemaphore as u8, name);
         self.value = value;
+        self.spinlock = RawSpin::new();
+        self.wait_queue.init(waiting_mode as u32);
     }
 
     #[inline]
@@ -131,8 +143,8 @@ impl RtSemaphore {
         );
         assert!(self.is_static_kobject());
 
-        self.parent.wake_all();
-        self.parent.parent.detach();
+        self.wait_queue.inner_locked_wake_all();
+        self.parent.detach();
     }
 
     #[inline]
@@ -154,11 +166,15 @@ impl RtSemaphore {
 
         rt_debug_not_in_interrupt!();
 
-        self.parent.wake_all();
-        self.parent.parent.delete();
+        self.wait_queue.inner_locked_wake_all();
+        self.parent.delete();
     }
 
-    fn take_internal(&mut self, timeout: i32, suspend_flag: u32) -> i32 {
+    pub(crate) fn count(&self) -> u16 {
+        self.value
+    }
+
+    fn take_internal(&mut self, timeout: i32, pending_mode: u32) -> i32 {
         let mut time_out = timeout as i32;
         assert_eq!(
             self.type_name(),
@@ -168,7 +184,7 @@ impl RtSemaphore {
         unsafe {
             rt_object_hook_call!(
                 rt_object_trytake_hook,
-                &mut self.parent.parent as *mut KObjectBase as *mut rt_object
+                &mut self.parent as *mut KObjectBase as *mut rt_object
             );
         }
 
@@ -176,45 +192,48 @@ impl RtSemaphore {
         let check = self.value == 0 && timeout != 0;
         rt_debug_scheduler_available!(check);
 
-        self.parent.lock();
+        self.spinlock.lock();
 
         if self.value > 0 {
             self.value -= 1;
-            self.parent.unlock();
+            self.spinlock.unlock();
         } else {
             if timeout == 0 {
-                self.parent.unlock();
+                self.spinlock.unlock();
 
                 /* FIXME: -2 is as expected, while C -RT_ETIMEOUT is -116. */
                 return -116; //(RT_ETIMEOUT as rt_err_t);
             } else {
-                let thread = unsafe { crate::current_thread!().unwrap().as_mut() };
+                let thread_ptr = crate::current_thread_ptr!();
+                if thread_ptr.is_null() {
+                    return -(RT_ERROR as i32);
+                }
 
-                (*thread).error = -(RT_EINTR as i32);
+                // SAFETY: thread_ptr is null checked
+                let thread = unsafe { &mut *thread_ptr };
 
-                let ret = self
-                    .parent
-                    .wait(thread, self.parent.flag, suspend_flag as u32);
+                thread.error = -(RT_EINTR as i32);
 
+                let ret = self.wait_queue.wait(thread, pending_mode);
                 if ret != RT_EOK as i32 {
-                    self.parent.unlock();
+                    self.spinlock.unlock();
                     return ret;
                 }
 
                 if timeout > 0 {
-                    (*thread).thread_timer.timer_control(
+                    thread.thread_timer.timer_control(
                         RT_TIMER_CTRL_SET_TIME as u32,
                         (&mut time_out) as *mut i32 as *mut c_void,
                     );
-                    (*thread).thread_timer.start();
+                    thread.thread_timer.start();
                 }
 
-                self.parent.unlock();
+                self.spinlock.unlock();
 
                 Cpu::get_current_scheduler().do_task_schedule();
 
-                if (*thread).error != RT_EOK as i32 {
-                    return (*thread).error;
+                if thread.error != RT_EOK as i32 {
+                    return thread.error;
                 }
             }
         }
@@ -222,30 +241,30 @@ impl RtSemaphore {
         unsafe {
             rt_object_hook_call!(
                 rt_object_take_hook,
-                &mut self.parent.parent as *mut KObjectBase as *mut rt_object
+                &mut self.parent as *mut KObjectBase as *mut rt_object
             );
         }
 
         RT_EOK as i32
     }
 
-    pub fn take(&mut self, timeout: i32) -> i32 {
+    pub(crate) fn take(&mut self, timeout: i32) -> i32 {
         self.take_internal(timeout, RT_UNINTERRUPTIBLE as u32)
     }
 
-    pub fn try_take(&mut self) -> i32 {
+    pub(crate) fn try_take(&mut self) -> i32 {
         self.take(0)
     }
 
-    pub fn take_interruptible(&mut self, timeout: i32) -> i32 {
+    pub(crate) fn take_interruptible(&mut self, timeout: i32) -> i32 {
         self.take_internal(timeout, RT_INTERRUPTIBLE as u32)
     }
 
-    pub fn take_killable(&mut self, timeout: i32) -> i32 {
+    pub(crate) fn take_killable(&mut self, timeout: i32) -> i32 {
         self.take_internal(timeout, RT_KILLABLE as u32)
     }
 
-    pub fn release(&mut self) -> i32 {
+    pub(crate) fn release(&mut self) -> i32 {
         assert_eq!(
             self.type_name(),
             ObjectClassType::ObjectClassSemaphore as u8
@@ -254,26 +273,26 @@ impl RtSemaphore {
         unsafe {
             rt_object_hook_call!(
                 rt_object_put_hook,
-                &mut self.parent.parent as *mut KObjectBase as *mut rt_object
+                &mut self.parent as *mut KObjectBase as *mut rt_object
             );
         }
 
         let mut need_schedule = false;
-        self.parent.lock();
+        self.spinlock.lock();
 
-        if self.parent.has_waiting() {
-            self.parent.wake_one();
+        if !self.wait_queue.is_empty() {
+            self.wait_queue.wake();
             need_schedule = true;
         } else {
             if self.value < RT_SEM_VALUE_MAX as u16 {
                 self.value += 1;
             } else {
-                self.parent.unlock();
+                self.spinlock.unlock();
                 return -(RT_EFULL as i32);
             }
         }
 
-        self.parent.unlock();
+        self.spinlock.unlock();
 
         if need_schedule {
             Cpu::get_current_scheduler().do_task_schedule();
@@ -282,27 +301,23 @@ impl RtSemaphore {
         RT_EOK as i32
     }
 
-    pub fn control(&mut self, cmd: i32, arg: *const c_void) -> i32 {
+    pub(crate) fn reset(&mut self, value: u16) -> i32 {
         assert_eq!(
             self.type_name(),
             ObjectClassType::ObjectClassSemaphore as u8
         );
 
-        if cmd == RT_IPC_CMD_RESET as i32 {
-            self.parent.lock();
+        self.spinlock.lock();
 
-            self.parent.wake_all();
+        self.wait_queue.inner_locked_wake_all();
 
-            self.value = arg as u16;
+        self.value = value;
 
-            self.parent.unlock();
+        self.spinlock.unlock();
 
-            Cpu::get_current_scheduler().do_task_schedule();
+        Cpu::get_current_scheduler().do_task_schedule();
 
-            return RT_EOK as i32;
-        }
-
-        -(RT_ERROR as rt_err_t)
+        RT_EOK as i32
     }
 }
 
@@ -389,7 +404,13 @@ pub unsafe extern "C" fn rt_sem_control(
     arg: *const c_void,
 ) -> rt_err_t {
     assert!(!sem.is_null());
-    (*sem).control(cmd, arg)
+
+    if cmd == RT_IPC_CMD_RESET as i32 {
+        (*sem).reset(arg as u16);
+        return RT_EOK as i32;
+    }
+
+    -(RT_ERROR as rt_err_t)
 }
 
 #[no_mangle]
@@ -402,13 +423,13 @@ pub extern "C" fn rt_sem_info() {
     let callback = |node: &ListHead| unsafe {
         let sem =
             &*(crate::list_head_entry!(node.as_ptr(), KObjectBase, list) as *const RtSemaphore);
-        let _ = crate::format_name!(sem.parent.parent.name.as_ptr(), 8);
-        print!(" {:03} ", sem.value);
-        if sem.parent.wait_list.is_empty() {
-            println!("{}", sem.parent.wait_list.size());
+        let _ = crate::format_name!(sem.parent.name.as_ptr(), 8);
+        print!(" {:03} ", sem.count());
+        if sem.wait_queue.is_empty() {
+            println!("{}", sem.wait_queue.count());
         } else {
-            print!("{}:", sem.parent.wait_list.size());
-            let head = &sem.parent.wait_list;
+            print!("{}:", sem.wait_queue.count());
+            let head = &sem.wait_queue.working_queue;
             list_head_for_each!(node, head, {
                 let thread = crate::thread_list_node_entry!(node.as_ptr()) as *mut RtThread;
                 let _ = crate::format_name!((*thread).parent.name.as_ptr(), 8);
