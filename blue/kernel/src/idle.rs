@@ -93,11 +93,24 @@ unsafe impl PinInit<IdleTheads> for IdleTheadsInit {
 impl IdleTheads {
     pub(crate) fn init_once() {
         unsafe {
-            IDLE_THREADS.init_once();
-            zombie::ZOMBIE_MANAGER.init_once();
+            (&raw const IDLE_THREADS as *const UnsafeStaticInit<IdleTheads, IdleTheadsInit>)
+                .as_ref().unwrap_unchecked().init_once();
+                
+            (&raw const zombie::ZOMBIE_MANAGER as *const UnsafeStaticInit<zombie::ZombieManager, _>)
+                .as_ref().unwrap_unchecked().init_once();
+                
             #[cfg(feature = "RT_USING_SMP")]
-            zombie::ZOMBIE_MANAGER.start_up();
-            IDLE_THREADS.start_up();
+            (&raw const zombie::ZOMBIE_MANAGER as *const UnsafeStaticInit<zombie::ZombieManager, _>)
+                .cast_mut()
+                .as_mut()
+                .unwrap_unchecked()
+                .start_up();
+                
+            (&raw const IDLE_THREADS as *const UnsafeStaticInit<IdleTheads, IdleTheadsInit>)
+                .cast_mut()
+                .as_mut()
+                .unwrap_unchecked()
+                .start_up();
         }
     }
 
@@ -140,16 +153,14 @@ impl IdleTheads {
         loop {
             #[cfg(not(feature = "RT_USING_SMP"))]
             unsafe {
-                zombie::ZOMBIE_MANAGER.reclaim()
+                (&raw const zombie::ZOMBIE_MANAGER as *const UnsafeStaticInit<zombie::ZombieManager, _>)
+                    .as_ref().unwrap_unchecked().reclaim()
             };
 
             #[cfg(feature = "RT_USING_IDLE_HOOK")]
             IDLE_HOOK_LIST.hook_execute();
 
-            #[cfg(feature = "RT_USING_PM")]
-            unsafe {
-                rt_bindings::rt_system_power_manager()
-            };
+            // TODO: add power manager
         }
     }
 }

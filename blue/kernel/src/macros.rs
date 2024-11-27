@@ -25,6 +25,7 @@ macro_rules! function {
 // https://github.com/rust-lang/rust/issues/29602
 // need to add #![feature(link_llvm_intrinsics)]
 extern "C" {
+    #[allow(dead_code)]
     #[link_name = "llvm.returnaddress"]
     fn return_address(a: i32) -> *const u8;
 }

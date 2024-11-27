@@ -80,11 +80,11 @@ impl<T> Node<T> {
             val: val,
         }
     }
-
+    #[allow(dead_code)]
     fn as_ref(&self) -> &T {
         &self.val
     }
-
+    #[allow(dead_code)]
     fn as_mut(&mut self) -> &mut T {
         &mut self.val
     }
@@ -94,6 +94,7 @@ impl<T> Node<T> {
     }
 
     // O(1) insertion.
+    #[allow(dead_code)]
     fn insert(&mut self, val: T) -> &mut Self {
         let mut new_node = Box::<Node<T>>::new(Node::<T> {
             next: None,
@@ -107,6 +108,7 @@ impl<T> Node<T> {
     }
 
     // O(1) removal.
+    #[allow(dead_code)]
     fn remove(&mut self) -> Option<Self> {
         if self.next.is_none() {
             return None;

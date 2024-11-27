@@ -1,7 +1,6 @@
 use crate::{
     allocator::{rt_free, rt_malloc},
     klibc::{rt_memset, rt_strncpy},
-    print, println,
     process::*,
     sync::event::RtEvent,
     sync::lock::mutex::RtMutex,
@@ -475,7 +474,7 @@ pub extern "C" fn rt_object_for_each_callback(
     callback_fn: extern "C" fn(rt_object_t, usize, *mut ffi::c_void),
     args: *mut ffi::c_void,
 ) {
-    rt_foreach(callback_fn, obj_type, args);
+    let _ =rt_foreach(callback_fn, obj_type, args);
 }
 
 #[cfg(all(feature = "RT_USING_HOOK", feature = "RT_HOOK_USING_FUNC_PTR"))]
@@ -620,10 +619,10 @@ macro_rules! format_name {
         let name_cstr = CStr::from_char_ptr($name);
         match name_cstr.to_str() {
             Ok(name) => {
-                print!("{:<1$}", name, $width);
+                crate::print!("{:<1$}", name, $width);
             }
             Err(_) => {
-                println!("Error when converting C string to UTF-8");
+                crate::println!("Error when converting C string to UTF-8");
             }
         }
     }};

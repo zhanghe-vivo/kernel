@@ -1,12 +1,16 @@
 #![allow(dead_code)]
 use crate::{
-    object,
-    scheduler::{PriorityTableManager, Scheduler},
+    scheduler::Scheduler,
     static_init::UnsafeStaticInit,
     sync::RawSpin,
-    thread::*,
+    {thread, process},
 };
-use blue_arch::{arch::Arch, smp, IInterrupt};
+use blue_arch::smp;
+#[cfg(feature = "RT_USING_SMP")]
+use blue_arch::{arch::Arch, IInterrupt};
+#[cfg(feature = "RT_USING_SMP")]
+use crate::scheduler::PriorityTableManager;
+
 use core::{
     ptr::NonNull,
     sync::atomic::{AtomicU32, Ordering},
@@ -26,17 +30,24 @@ unsafe impl PinInit<Cpus> for CpusInit {
     }
 }
 
+#[cfg(feature = "RT_USING_SMP")]
 #[pin_data]
 pub struct Cpus {
     cpu_lock: RawSpin,
     #[pin]
     inner: [Cpu; CPUS_NUMBER],
 
-    #[cfg(feature = "RT_USING_SMP")]
     sched_lock: RawSpin,
-    #[cfg(feature = "RT_USING_SMP")]
     #[pin]
     global_priority_manager: PriorityTableManager,
+}
+
+#[cfg(not(feature = "RT_USING_SMP"))]
+#[pin_data]
+pub struct Cpus {
+    cpu_lock: RawSpin,
+    #[pin]
+    inner: [Cpu; CPUS_NUMBER],
 }
 
 // cant Send
@@ -75,77 +86,87 @@ impl Cpus {
         })
     }
 
-    #[inline]
-    pub(crate) fn is_inited() -> bool {
-        unsafe { CPUS.is_inited() }
-    }
-
     #[cfg(feature = "RT_USING_SMP")]
     #[inline]
     pub(crate) fn get_priority_group_from_global() -> u32 {
-        unsafe { CPUS.global_priority_manager.get_priority_group() }
+        let cpus = unsafe { &*(&raw const CPUS as *const UnsafeStaticInit<Cpus, CpusInit>) };
+        cpus.global_priority_manager.get_priority_group()
     }
 
     #[cfg(feature = "RT_USING_SMP")]
     #[inline]
     pub(crate) fn get_highest_priority_from_global() -> u32 {
-        unsafe { CPUS.global_priority_manager.get_highest_ready_prio() }
+        let cpus = unsafe { &*(&raw const CPUS as *const UnsafeStaticInit<Cpus, CpusInit>) };
+        cpus.global_priority_manager.get_highest_ready_prio()
     }
 
     #[cfg(feature = "RT_USING_SMP")]
     #[inline]
-    pub(crate) fn get_thread_from_global(prio: u32) -> Option<NonNull<RtThread>> {
-        unsafe { CPUS.global_priority_manager.get_thread_by_prio(prio) }
+    pub(crate) fn get_thread_from_global(prio: u32) -> Option<NonNull<thread::RtThread>> {
+        let cpus = unsafe { &*(&raw const CPUS as *const UnsafeStaticInit<Cpus, CpusInit>) };
+        cpus.global_priority_manager.get_thread_by_prio(prio)
     }
 
     #[cfg(feature = "RT_USING_SMP")]
     #[inline]
-    pub(crate) fn insert_thread_to_global(thread: &mut RtThread) {
-        unsafe { CPUS.global_priority_manager.insert_thread(thread) };
+    pub(crate) fn insert_thread_to_global(thread: &mut thread::RtThread) {
+        let cpus = unsafe { &*(&raw const CPUS as *const UnsafeStaticInit<Cpus, CpusInit>) };
+        cpus.global_priority_manager.insert_thread(thread);
     }
 
     #[cfg(feature = "RT_USING_SMP")]
     #[inline]
-    pub(crate) fn remove_thread_from_global(thread: &mut RtThread) {
-        unsafe { CPUS.global_priority_manager.remove_thread(thread) };
+    pub(crate) fn remove_thread_from_global(thread: &mut thread::RtThread) {
+        let cpus = unsafe { &*(&raw const CPUS as *const UnsafeStaticInit<Cpus, CpusInit>) };
+        cpus.global_priority_manager.remove_thread(thread);
     }
 
     #[cfg(feature = "RT_USING_SMP")]
     #[inline]
     pub(crate) fn lock_sched_fast() {
-        unsafe { CPUS.sched_lock.lock_fast() };
+        let cpus = unsafe { &*(&raw const CPUS as *const UnsafeStaticInit<Cpus, CpusInit>) };
+        cpus.sched_lock.lock_fast();
     }
 
     #[cfg(feature = "RT_USING_SMP")]
     #[inline]
     pub(crate) fn unlock_sched_fast() {
-        unsafe { CPUS.sched_lock.unlock_fast() };
+        let cpus = unsafe { &*(&raw const CPUS as *const UnsafeStaticInit<Cpus, CpusInit>) };
+        cpus.sched_lock.unlock_fast();
+    }
+
+    #[inline]
+    pub(crate) fn is_inited() -> bool {
+        let cpus = unsafe { &*(&raw const CPUS as *const UnsafeStaticInit<Cpus, CpusInit>) };
+        cpus.is_inited()
     }
 
     #[inline]
     pub(crate) fn lock_cpus() {
+        let cpus = unsafe { &*(&raw const CPUS as *const UnsafeStaticInit<Cpus, CpusInit>) };
         #[cfg(feature = "RT_USING_SMP")]
         if Cpu::cpu_lock_nest_inc() == 0 {
-            unsafe { CPUS.cpu_lock.lock() };
+            cpus.cpu_lock.lock();
         }
 
         #[cfg(not(feature = "RT_USING_SMP"))]
-        unsafe {
-            CPUS.cpu_lock.lock()
-        };
+        {
+            cpus.cpu_lock.lock();
+        }
     }
 
     #[inline]
     pub(crate) fn unlock_cpus() {
+        let cpus = unsafe { &*(&raw const CPUS as *const UnsafeStaticInit<Cpus, CpusInit>) };
         #[cfg(feature = "RT_USING_SMP")]
         if Cpu::cpu_lock_nest_dec() == 1 {
-            unsafe { CPUS.cpu_lock.unlock() };
+            cpus.cpu_lock.unlock();
         }
 
         #[cfg(not(feature = "RT_USING_SMP"))]
-        unsafe {
-            CPUS.cpu_lock.unlock()
-        };
+        {
+            cpus.cpu_lock.unlock();
+        }
     }
 }
 
@@ -205,12 +226,12 @@ impl Cpu {
     }
 
     #[inline]
-    pub fn get_current_thread() -> Option<NonNull<RtThread>> {
+    pub fn get_current_thread() -> Option<NonNull<thread::RtThread>> {
         Self::get_current_scheduler().get_current_thread()
     }
 
     #[inline]
-    pub fn set_current_thread(th: NonNull<RtThread>) {
+    pub fn set_current_thread(th: NonNull<thread::RtThread>) {
         Self::get_current_scheduler().set_current_thread(th);
     }
 
@@ -321,14 +342,17 @@ pub unsafe extern "C" fn rt_cpus_unlock(level: rt_bindings::rt_base_t) {
 #[no_mangle]
 pub extern "C" fn init_cpus() {
     unsafe {
-        crate::process::KPROCESS.init_once();
-        CPUS.init_once();
-        crate::thread::TIDS.init_once();
+        let process = &*(&raw const process::KPROCESS as *const UnsafeStaticInit<process::Kprocess, process::KprocessInit>);
+        let cpus = &*(&raw const CPUS as *const UnsafeStaticInit<Cpus, CpusInit>);
+        let tid = &*(&raw const thread::TIDS as *const UnsafeStaticInit<thread::Tid, thread::TidInit>);
+        process.init_once();
+        cpus.init_once();
+        tid.init_once();
     }
 }
 
 // #[no_mangle]
-// pub extern "C" fn rt_cpus_lock_status_restore(thread: *mut RtThread) {
+// pub extern "C" fn rt_cpus_lock_status_restore(thread: *mut thread::RtThread) {
 //     assert!(!thread.is_null());
 //     let scheduler = Cpu::get_current_scheduler();
 //     unsafe {

@@ -239,7 +239,6 @@ impl Timer {
     /// This function will start the timer
     fn timer_start(&mut self) {
         let mut need_schedule = false;
-        let mut level = 0;
         let time_wheel = self.get_timer_wheel();
         self.timer_remove();
         self.flag &= !rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8;

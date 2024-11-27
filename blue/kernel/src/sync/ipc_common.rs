@@ -2,7 +2,7 @@ use crate::error::code;
 use crate::list_head_for_each;
 use crate::object::*;
 use crate::rt_bindings::{
-    RT_EOK, RT_ERROR, RT_IPC_FLAG_FIFO, RT_IPC_FLAG_PRIO, RT_THREAD_SUSPEND_MASK,
+    RT_EOK, RT_ERROR, RT_IPC_FLAG_FIFO, RT_IPC_FLAG_PRIO,
 };
 use crate::thread::{RtThread, SuspendFlag};
 use blue_infra::list::doubly_linked_list::ListHead;
