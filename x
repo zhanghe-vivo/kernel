@@ -54,6 +54,21 @@ def Build(config, toml):
             return rc
     return subprocess.call(['scons'], cwd=bsp_path)
 
+def Clippy(config, toml):
+    target = config.target
+    toml_path = os.path.join(ROOT, 'blue/Cargo.toml')
+    out_path = os.path.join(ROOT, 'blue/target')
+    bsp_path = os.path.join(ROOT, f'bsp/{target}')
+    gcc_path = os.getenv('RTT_EXEC_PATH', os.path.join(ROOT, '/bin'))
+    gcc_include_path = os.path.join(gcc_path, 'include')
+    include_path = f'{bsp_path};{ROOT}/include;{ROOT}/components/finsh;{gcc_include_path}'
+    compat_os = 'rt_thread'
+    features = ParseRTConfig(config, toml)
+    toolchain = toml['target'][config.target]['toolchain']
+    cmd = f'cargo clippy --manifest-path {toml_path}'
+    cmd = f'COMPAT_OS="{compat_os}" INCLUDE_PATH="{include_path}" cargo clippy --manifest-path {toml_path} --target {toolchain} --features ' + shlex.quote(features) + ' -- -D clippy::undocumented_unsafe_blocks'
+    return subprocess.call(cmd, shell=True, cwd=os.path.join(ROOT, 'blue'))
+
 
 def Clean(config, toml):
     # TODO(Kai Luo)
@@ -94,6 +109,11 @@ def main():
     fmt.set_defaults(func=Format)
     lst = subparsers.add_parser('list', aliases=['l'], description=u"列出支持的目标")
     lst.set_defaults(func=ListTargets)
+    clippy = subparsers.add_parser('clippy', description=u"代码规范检测")
+    clippy.set_defaults(func=Clippy)
+    clippy.add_argument('--target',
+                       default='qemu-vexpress-a9',
+                       help=u"指定构建的目标平台")
     config = parser.parse_args()
     if not config.action:
         parser.print_help()
