@@ -15,6 +15,7 @@ use pinned_init::*;
 use rt_bindings;
 
 pub const CPUS_NUMBER: usize = rt_bindings::RT_CPUS_NR as usize;
+pub const CPU_DETACHED: u8 = CPUS_NUMBER as u8;
 pub(crate) static mut CPUS: UnsafeStaticInit<Cpus, CpusInit> = UnsafeStaticInit::new(CpusInit);
 
 pub(crate) struct CpusInit;

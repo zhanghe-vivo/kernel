@@ -109,9 +109,8 @@ impl ZombieManager {
                 }
 
                 // invoke thread cleanup
-                if let Some(func) = unsafe { (*th).get_cleanup_fn() } {
-                    func(th);
-                }
+                let func = unsafe { (*th).get_cleanup_fn() };
+                func(th);
 
                 // if need free, delete it
                 #[cfg(feature = "RT_USING_HEAP")]

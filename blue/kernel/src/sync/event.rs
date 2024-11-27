@@ -1,6 +1,6 @@
 use crate::{
     cpu::Cpu,
-    error::Error,
+    error::{code, Error},
     impl_kobject, list_head_for_each,
     object::*,
     print, println,
@@ -186,13 +186,13 @@ impl RtEvent {
 
                     if !thread.is_null() {
                         let mut status = -(RT_ERROR as i32);
-                        if (*thread).event_info as u32 & RT_EVENT_FLAG_AND > 0u32 {
-                            if (*thread).event_set & self.set == (*thread).event_set {
+                        if (*thread).event_info.info as u32 & RT_EVENT_FLAG_AND > 0u32 {
+                            if (*thread).event_info.set & self.set == (*thread).event_info.set {
                                 status = RT_EOK as i32;
                             }
-                        } else if (*thread).event_info as u32 & RT_EVENT_FLAG_OR > 0u32 {
-                            if (*thread).event_set & self.set > 0u32 {
-                                (*thread).event_set = (*thread).event_set & self.set;
+                        } else if (*thread).event_info.info as u32 & RT_EVENT_FLAG_OR > 0u32 {
+                            if (*thread).event_info.set & self.set > 0u32 {
+                                (*thread).event_info.set = (*thread).event_info.set & self.set;
                                 status = RT_EOK as i32;
                             }
                         } else {
@@ -201,12 +201,12 @@ impl RtEvent {
                         }
 
                         if status == RT_EOK as i32 {
-                            if (*thread).event_info as u32 & RT_EVENT_FLAG_CLEAR > 0u32 {
-                                need_clear_set |= (*thread).event_set;
+                            if (*thread).event_info.info as u32 & RT_EVENT_FLAG_CLEAR > 0u32 {
+                                need_clear_set |= (*thread).event_info.set;
                             }
 
                             (*thread).resume();
-                            (*thread).error = RT_EOK as i32;
+                            (*thread).error = code::EOK;
                             need_schedule = true;
                         }
                     }
@@ -254,7 +254,7 @@ impl RtEvent {
         // SAFETY: thread ensured not null
         let thread = unsafe { &mut *thread_ptr };
 
-        thread.error = -(RT_EINTR as i32);
+        thread.error = code::EINTR;
 
         unsafe {
             rt_object_hook_call!(
@@ -278,7 +278,7 @@ impl RtEvent {
         }
 
         if status == RT_EOK as i32 {
-            thread.error = RT_EOK as i32;
+            thread.error = code::EOK;
 
             if !recved.is_null() {
                 // SAFETY: recved is null checked
@@ -287,19 +287,19 @@ impl RtEvent {
                 }
             }
 
-            thread.event_set = self.set & set;
-            thread.event_info = option;
+            thread.event_info.set = self.set & set;
+            thread.event_info.info = option;
 
             if option as u32 & RT_EVENT_FLAG_CLEAR > 0u32 {
                 self.set &= !set;
             }
         } else if timeout == 0 {
-            thread.error = -(RT_ETIMEOUT as i32);
+            thread.error = code::ETIMEOUT;
             self.parent.unlock();
             return -(RT_ETIMEOUT as i32);
         } else {
-            thread.event_set = set;
-            thread.event_info = option;
+            thread.event_info.set = set;
+            thread.event_info.info = option;
 
             let ret = self
                 .parent
@@ -321,8 +321,8 @@ impl RtEvent {
 
             Cpu::get_current_scheduler().do_task_schedule();
 
-            if thread.error != RT_EOK as i32 {
-                return thread.error;
+            if thread.error != code::EOK {
+                return thread.error.to_errno();
             }
 
             self.parent.lock();
@@ -330,7 +330,7 @@ impl RtEvent {
             if recved != null_mut() {
                 // SAFETY: recved is null checked
                 unsafe {
-                    *recved = (*thread).event_set;
+                    *recved = (*thread).event_info.set;
                 }
             }
         }
@@ -344,7 +344,7 @@ impl RtEvent {
             );
         }
 
-        thread.error
+        thread.error.to_errno()
     }
 
     pub fn receive(&mut self, set: u32, option: u8, timeout: i32, recved: *mut u32) -> i32 {

@@ -31,6 +31,8 @@ enum ObjectClassType {
 };
 typedef uint8_t ObjectClassType;
 
+typedef void (*IdleHookFn)(void);
+
 /**
  * Base kernel Object
  */
@@ -49,6 +51,68 @@ typedef struct rt_object {
    */
   rt_list_t list;
 } rt_object;
+
+typedef uint8_t ThreadState;
+#define ThreadState_INIT 0
+#define ThreadState_CLOSE 1
+#define ThreadState_READY 2
+#define ThreadState_RUNNING 3
+#define ThreadState_SUSPENDED 4
+#define ThreadState_STATE_MASK 7
+#define ThreadState_YIELD 8
+#define ThreadState_SUSPENDED_INTERRUPTIBLE (ThreadState_SUSPENDED)._0
+#define ThreadState_SUSPENDED_KILLABLE ((ThreadState_SUSPENDED)._0 | 1)
+#define ThreadState_SUSPENDED_UNINTERRUPTIBLE ((ThreadState_SUSPENDED)._0 | 2)
+
+typedef struct ThreadPriority {
+  uint8_t current;
+  uint8_t initial;
+  uint8_t number;
+  uint8_t high_mask;
+  uint32_t number_mask;
+} ThreadPriority;
+
+/**
+ * Stack management structure
+ */
+typedef struct rt_stack {
+  /**
+   * Current stack pointer
+   */
+  uintptr_t *sp;
+  /**
+   * Pointer to the lowest address of the stack
+   */
+  uint8_t *bottom;
+  /**
+   * Stack size
+   */
+  uintptr_t size;
+} rt_stack;
+
+typedef void (*ThreadCleanupFn)(struct rt_thread*);
+
+typedef void (*TimeoutFn)(void*);
+
+/**
+ * The timer structure
+ */
+typedef struct rt_timer {
+  struct rt_object parent;
+  TimeoutFn timeout_func;
+  void *parameter;
+  uint32_t init_tick;
+  uint32_t timeout_tick;
+  uint8_t flag;
+  rt_list_t node;
+} rt_timer;
+
+typedef int Error;
+
+typedef struct TimeSlice {
+  uint32_t init;
+  uint32_t remaining;
+} TimeSlice;
 
 /**
  * Base structure of IPC object
@@ -71,146 +135,6 @@ typedef struct rt_ipc_object {
    */
   rt_list_t wait_list;
 } rt_ipc_object;
-
-/**
- * Event flag raw structure
- */
-typedef struct rt_event {
-  /**
-   * Inherit from IPCObject
-   */
-  struct rt_ipc_object parent;
-  /**
-   * Event flog set value
-   */
-  uint32_t set;
-} rt_event;
-
-/**
- * The timer structure
- */
-typedef struct rt_timer {
-  struct rt_object parent;
-  TimeoutFn timeout_func;
-  void *parameter;
-  uint32_t init_tick;
-  uint32_t timeout_tick;
-  uint8_t flag;
-  rt_list_t node;
-} rt_timer;
-
-/**
- * Stack management structure
- */
-typedef struct rt_stack {
-  /**
-   * Current stack pointer
-   */
-  uintptr_t *sp;
-  /**
-   * Pointer to the lowest address of the stack
-   */
-  uint8_t *bottom;
-  /**
-   * Stack size
-   */
-  uintptr_t size;
-} rt_stack;
-
-typedef struct rt_thread {
-  struct rt_object parent;
-  /**
-   * the thread list, used in ready_list\ipc wait_list\...
-   */
-  rt_list_t tlist;
-  /**
-   * thread status
-   */
-  unsigned char stat;
-  unsigned char sched_flag_ttmr_set;
-  /**
-   * priority manager
-   */
-  unsigned char current_priority;
-  unsigned char init_priority;
-  unsigned char number;
-  unsigned char high_mask;
-  unsigned int number_mask;
-  /**
-   * priority number mask
-   * time slice
-   */
-  unsigned int init_tick;
-  unsigned int remaining_tick;
-  /**
-   * built-in thread timer, used for wait timeout
-   */
-  struct rt_timer thread_timer;
-  /**
-   * stack point and entry
-   */
-  struct rt_stack stack;
-  uintptr_t *entry;
-  uintptr_t *parameter;
-  uintptr_t *cleanup;
-#if defined(RT_USING_SMP)
-  /**
-   * thread binds to cpu
-   */
-  unsigned char bind_cpu
-#endif
-  ;
-#if defined(RT_USING_SMP)
-  /**
-   * running on cpu id
-   */
-  unsigned char oncpu
-#endif
-  ;
-  /**
-   * critical lock count
-   */
-  struct RawSpin spinlock;
-  /**
-   * error code
-   */
-  int error;
-#if defined(RT_USING_MUTEX)
-  /**
-   * mutexes holded by this thread
-   */
-  rt_list_t taken_object_list
-#endif
-  ;
-#if defined(RT_USING_MUTEX)
-  /**
-   * mutex object
-   */
-  struct rt_object *pending_object
-#endif
-  ;
-#if defined(RT_USING_EVENT)
-  unsigned int event_set
-#endif
-  ;
-#if defined(RT_USING_EVENT)
-  unsigned char event_info
-#endif
-  ;
-#if defined(RT_DEBUGING_SPINLOCK)
-  struct RawSpin *wait_lock
-#endif
-  ;
-#if defined(RT_DEBUGING_SPINLOCK)
-  struct RawSpin *hold_locks[8]
-#endif
-  ;
-#if defined(RT_DEBUGING_SPINLOCK)
-  uintptr_t hold_count
-#endif
-  ;
-  uintptr_t tid;
-} rt_thread;
 
 typedef struct rt_mutex {
   /**
@@ -238,6 +162,125 @@ typedef struct rt_mutex {
    */
   rt_list_t taken_list;
 } rt_mutex;
+
+#if defined(RT_USING_MUTEX)
+typedef struct MutexInfo {
+  rt_list_t taken_list;
+  struct rt_mutex *pending_to;
+} MutexInfo;
+#endif
+
+#if !defined(RT_USING_MUTEX)
+typedef struct MutexInfo {
+
+} MutexInfo;
+#endif
+
+typedef struct EventInfo {
+#if defined(RT_USING_EVENT)
+  uint32_t set
+#endif
+  ;
+#if defined(RT_USING_EVENT)
+  uint8_t info
+#endif
+  ;
+} EventInfo;
+
+typedef struct CpuAffinity {
+#if defined(RT_USING_SMP)
+  uint8_t bind_cpu
+#endif
+  ;
+#if defined(RT_USING_SMP)
+  uint8_t oncpu
+#endif
+  ;
+} CpuAffinity;
+
+typedef struct LockInfo {
+#if defined(RT_DEBUGING_SPINLOCK)
+  struct RawSpin *wait_lock
+#endif
+  ;
+#if defined(RT_DEBUGING_SPINLOCK)
+  struct RawSpin *hold_locks[8]
+#endif
+  ;
+#if defined(RT_DEBUGING_SPINLOCK)
+  uintptr_t hold_count
+#endif
+  ;
+} LockInfo;
+
+typedef struct rt_thread {
+  struct rt_object parent;
+  rt_list_t tlist;
+  /**
+   * thread status
+   */
+  ThreadState stat;
+  /**
+   * priority manager
+   */
+  struct ThreadPriority priority;
+  /**
+   * stack point and cleanup func
+   */
+  struct rt_stack stack;
+  ThreadCleanupFn cleanup;
+  uintptr_t tid;
+  /**
+   * built-in thread timer, used for wait timeout
+   */
+  struct rt_timer thread_timer;
+  struct RawSpin spinlock;
+  /**
+   * error code
+   */
+  Error error;
+  /**
+   * time slice
+   */
+  struct TimeSlice time_slice;
+#if defined(RT_USING_MUTEX)
+  struct MutexInfo mutex_info
+#endif
+  ;
+#if defined(RT_USING_EVENT)
+  struct EventInfo event_info
+#endif
+  ;
+#if defined(RT_USING_SMP)
+  /**
+   * cpu affinity
+   */
+  struct CpuAffinity cpu_affinity
+#endif
+  ;
+#if defined(RT_DEBUGING_SPINLOCK)
+  struct LockInfo lock_info
+#endif
+  ;
+} rt_thread;
+
+typedef void (*RtSchedulerHook)(struct rt_thread *from, struct rt_thread *to);
+
+typedef void (*RtSchedulerSwitchHook)(struct rt_thread *tid);
+
+/**
+ * Event flag raw structure
+ */
+typedef struct rt_event {
+  /**
+   * Inherit from IPCObject
+   */
+  struct rt_ipc_object parent;
+  /**
+   * Event flog set value
+   */
+  uint32_t set;
+} rt_event;
 
 /**
  * Mailbox raw structure
@@ -328,5 +371,9 @@ typedef struct rt_semaphore {
    */
   uint16_t value;
 } rt_semaphore;
+
+typedef void (*ThreadEntryFn)(void*);
+
+typedef void (*IrqHookFn)(void);
 
 #endif /* KERN_RUST_WRAPPER_H */

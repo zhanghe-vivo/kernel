@@ -1,5 +1,6 @@
 use crate::alloc::boxed::Box;
 use crate::cpu::Cpu;
+use crate::error::code;
 use crate::impl_kobject;
 use crate::object::*;
 use crate::rt_bindings::{
@@ -18,6 +19,7 @@ use core::ffi;
 use core::marker::PhantomPinned;
 use core::pin::Pin;
 use core::ptr::null_mut;
+use core::ptr::NonNull;
 use core::{cell::UnsafeCell, ops::Deref, ops::DerefMut};
 use kernel::{fmt, str::CString};
 use pinned_init::*;
@@ -224,7 +226,7 @@ impl RtMutex {
             );
         }
 
-        thread.error = RT_EOK as i32;
+        thread.error = code::EOK;
 
         if self.owner == thread_ptr {
             if self.hold < RT_MUTEX_HOLD_MAX as u8 {
@@ -245,7 +247,7 @@ impl RtMutex {
 
                 if self.ceiling_priority != 0xFF {
                     // Set the priority of thread to the ceiling priority
-                    if self.ceiling_priority < mutex_owner.current_priority {
+                    if self.ceiling_priority < mutex_owner.priority.get_current() {
                         mutex_owner.update_priority(self.ceiling_priority, suspend_flag as u32);
                     }
                 }
@@ -253,19 +255,19 @@ impl RtMutex {
                 // SAFETY: list should be ensured safe
                 // Insert mutex to thread's taken object list
                 unsafe {
-                    Pin::new_unchecked(&mut thread.taken_object_list)
+                    Pin::new_unchecked(&mut thread.mutex_info.taken_list)
                         .insert_next(&mut self.taken_list);
                 }
             } else {
                 // No waiting, return with timeout
                 if timeout == 0 {
-                    thread.error = -(RT_ETIMEOUT as i32);
+                    thread.error = code::ETIMEOUT;
 
                     self.parent.unlock();
 
                     return -(RT_ETIMEOUT as i32);
                 } else {
-                    let mut priority = thread.current_priority;
+                    let mut priority = thread.priority.get_current();
                     // Suspend current thread
                     let mut ret =
                         self.parent
@@ -276,13 +278,13 @@ impl RtMutex {
                     }
 
                     // Set pending object in thread to this mutex
-                    thread.pending_object = &mut self.parent.parent as *mut KObjectBase;
+                    thread.mutex_info.pending_to = unsafe {Some(NonNull::new_unchecked(self))};
 
                     // Update the priority level of mutex
                     if priority < self.priority {
                         self.priority = priority;
                         let mutex_owner = unsafe { &mut *self.owner };
-                        if self.priority < mutex_owner.current_priority {
+                        if self.priority < mutex_owner.priority.get_current() {
                             mutex_owner.update_priority(priority, RT_UNINTERRUPTIBLE);
                         }
                     }
@@ -302,14 +304,14 @@ impl RtMutex {
 
                     self.parent.lock();
 
-                    if thread.error != RT_EOK as i32 {
+                    if thread.error != code::EOK {
                         // The mutex has not been taken and thread has detached
                         // from the pending list.
                         let mut need_update = false;
 
                         unsafe {
                             if !self.owner.is_null()
-                                && (*self.owner).current_priority == thread.current_priority
+                                && (*self.owner).priority.get_current() == thread.priority.get_current()
                             {
                                 need_update = true;
                             }
@@ -317,7 +319,7 @@ impl RtMutex {
                             if let Some(node) = self.parent.wait_list.next() {
                                 let th =
                                     crate::thread_list_node_entry!(node.as_ptr()) as *mut RtThread;
-                                self.priority = (*th).current_priority;
+                                self.priority = (*th).priority.get_current();
                             } else {
                                 self.priority = 0xff;
                             }
@@ -328,16 +330,16 @@ impl RtMutex {
                             // SAFETY: self owner is not null
                             let mutex_owner = unsafe { &mut *self.owner };
                             priority = mutex_owner.get_mutex_priority();
-                            if priority != mutex_owner.current_priority {
+                            if priority != mutex_owner.priority.get_current() {
                                 mutex_owner.update_priority(priority, RT_UNINTERRUPTIBLE);
                             }
                         }
 
                         self.parent.unlock();
 
-                        thread.pending_object = null_mut();
+                        thread.mutex_info.pending_to = None;
 
-                        ret = thread.error;
+                        ret = thread.error.to_errno();
                         return if ret > 0 { -ret } else { ret };
                     }
                 }
@@ -394,7 +396,7 @@ impl RtMutex {
         }
 
         if thread_ptr != self.owner {
-            thread.error = -(RT_ERROR as i32);
+            thread.error = code::ERROR;
             self.parent.unlock();
             return -(RT_ERROR as i32);
         }
@@ -407,7 +409,7 @@ impl RtMutex {
                 Pin::new_unchecked(&mut self.taken_list).remove();
             }
 
-            if self.ceiling_priority != 0xFF || thread.current_priority == self.priority {
+            if self.ceiling_priority != 0xFF || thread.priority.get_current() == self.priority {
                 let mut priority = thread.get_mutex_priority();
 
                 thread.change_priority(priority);
@@ -435,11 +437,11 @@ impl RtMutex {
                 self.hold = 1;
 
                 unsafe {
-                    Pin::new_unchecked(&mut next_thread.taken_object_list)
+                    Pin::new_unchecked(&mut next_thread.mutex_info.taken_list)
                         .insert_next(&self.taken_list)
                 };
 
-                next_thread.pending_object = null_mut();
+                next_thread.mutex_info.pending_to = None;
                 next_thread.resume();
 
                 if self.parent.has_waiting() {
@@ -454,7 +456,7 @@ impl RtMutex {
                     }
 
                     unsafe {
-                        self.priority = (*th).current_priority;
+                        self.priority = (*th).priority.get_current();
                     }
                 } else {
                     self.priority = 0xff;
@@ -481,7 +483,7 @@ impl RtMutex {
         if let Some(node) = self.parent.wait_list.next() {
             unsafe {
                 let thread: *mut RtThread = crate::thread_list_node_entry!(node.as_ptr());
-                self.priority = (*thread).current_priority;
+                self.priority = (*thread).priority.get_current();
             }
         } else {
             self.priority = 0xff;
@@ -509,14 +511,14 @@ impl RtMutex {
         // SAFETY: owner is null checked
         let mutex_owner = unsafe { &mut *self.owner };
 
-        if mutex_owner.current_priority == thread.current_priority {
+        if mutex_owner.priority.get_current() == thread.priority.get_current() {
             need_update = true;
         }
 
         if let Some(node) = self.parent.wait_list.next() {
             unsafe {
                 let th: *mut RtThread = crate::thread_list_node_entry!(node.as_ptr());
-                self.priority = (*th).current_priority;
+                self.priority = (*th).priority.get_current();
             }
         } else {
             self.priority = 0xff;
@@ -524,7 +526,7 @@ impl RtMutex {
 
         if need_update {
             priority = mutex_owner.get_mutex_priority();
-            if priority != mutex_owner.current_priority {
+            if priority != mutex_owner.priority.get_current() {
                 mutex_owner.update_priority(priority, RT_UNINTERRUPTIBLE as u32);
             }
         }
@@ -543,7 +545,7 @@ impl RtMutex {
                 // SAFETY: owner_thread is null checked
                 unsafe {
                     let priority = (*owner_thread).get_mutex_priority();
-                    if priority != (*owner_thread).current_priority {
+                    if priority != (*owner_thread).priority.get_current() {
                         (*owner_thread).update_priority(priority, RT_UNINTERRUPTIBLE as u32);
                     }
                 }

@@ -2,7 +2,7 @@ use crate::{
     allocator::{rt_free, rt_malloc},
     clock::rt_tick_get,
     cpu::Cpu,
-    error::Error,
+    error::{code, Error},
     impl_kobject, list_head_for_each,
     object::*,
     print, println,
@@ -273,7 +273,7 @@ impl RtMailbox {
         }
 
         while self.entry == self.size {
-            thread.error = -(RT_EINTR as i32);
+            thread.error = code::EINTR;
 
             if timeout == 0 {
                 self.parent.unlock();
@@ -307,8 +307,8 @@ impl RtMailbox {
 
             Cpu::get_current_scheduler().do_task_schedule();
 
-            if thread.error != RT_EOK as i32 {
-                return thread.error;
+            if thread.error != code::EOK {
+                return thread.error.to_errno();
             }
 
             self.parent.lock();
@@ -448,11 +448,11 @@ impl RtMailbox {
             }
 
             while self.entry == 0 {
-                (*thread).error = -(RT_EINTR as i32);
+                (*thread).error = code::EINTR;
 
                 if timeout == 0 {
                     self.parent.unlock();
-                    (*thread).error = -(RT_ETIMEOUT as i32);
+                    (*thread).error = code::ETIMEOUT;
 
                     return -(RT_ETIMEOUT as i32);
                 }
@@ -479,8 +479,8 @@ impl RtMailbox {
 
                 Cpu::get_current_scheduler().do_task_schedule();
 
-                if (*thread).error != RT_EOK as i32 {
-                    return (*thread).error;
+                if (*thread).error != code::EOK {
+                    return (*thread).error.to_errno();
                 }
 
                 self.parent.lock();

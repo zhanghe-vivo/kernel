@@ -1,7 +1,7 @@
 #![allow(dead_code)]
-use crate::{cpu::Cpu, thread::RtThread};
+use crate::cpu::Cpu;
 #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
-use crate::{irq::IrqLock, println};
+use crate::{irq::IrqLock, println, thread::RtThread};
 #[cfg(feature = "RT_USING_SMP")]
 use blue_arch::{arch::Arch, IInterrupt};
 #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
@@ -53,7 +53,7 @@ impl RawSpin {
         if let Some(thread) = crate::current_thread!() {
             let irq_lock = IrqLock::new();
             let _guard = irq_lock.lock();
-            let thread = unsafe { thread.as_ref() };
+            let thread = unsafe { thread.as_mut() };
             if thread.check_deadlock(self) {
                 println!(
                     "deadlocked, thread {} acquire lock, but is hold by thread {}",
@@ -75,7 +75,7 @@ impl RawSpin {
         #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
         if let Some(thread) = crate::current_thread!() {
             self.owner.set(Some(thread));
-            unsafe { thread.as_ref().clear_wait() };
+            unsafe { thread.as_mut().clear_wait() };
         }
     }
 

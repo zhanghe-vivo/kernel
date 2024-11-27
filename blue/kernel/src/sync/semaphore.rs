@@ -13,6 +13,7 @@ use crate::{
     sync::ipc_common::*,
     thread::RtThread,
     timer,
+    error::code,
 };
 use blue_infra::list::doubly_linked_list::ListHead;
 use core::pin::Pin;
@@ -190,7 +191,7 @@ impl RtSemaphore {
             } else {
                 let thread = unsafe { crate::current_thread!().unwrap().as_mut() };
 
-                (*thread).error = -(RT_EINTR as i32);
+                (*thread).error = code::EINTR;
 
                 let ret = self
                     .parent
@@ -213,8 +214,8 @@ impl RtSemaphore {
 
                 Cpu::get_current_scheduler().do_task_schedule();
 
-                if (*thread).error != RT_EOK as i32 {
-                    return (*thread).error;
+                if (*thread).error != code::EOK {
+                    return (*thread).error.to_errno();
                 }
             }
         }

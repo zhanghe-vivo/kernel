@@ -29,7 +29,11 @@ fn main() {
                 .to_string(),
         );
         config.documentation = true;
-        config.export.item_types = vec![cbindgen::ItemType::Structs, cbindgen::ItemType::Enums];
+        config.export.item_types = vec![
+            cbindgen::ItemType::Structs,
+            cbindgen::ItemType::Enums,
+            cbindgen::ItemType::Typedefs,
+        ];
         config.export.exclude = vec!["ListHead".to_string()];
 
         let rename_list = HashMap::from([

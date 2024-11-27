@@ -1,9 +1,10 @@
+use crate::error::code;
 use crate::list_head_for_each;
 use crate::object::*;
 use crate::rt_bindings::{
     RT_EOK, RT_ERROR, RT_IPC_FLAG_FIFO, RT_IPC_FLAG_PRIO, RT_THREAD_SUSPEND_MASK,
 };
-use crate::thread::RtThread;
+use crate::thread::{RtThread, SuspendFlag};
 use blue_infra::list::doubly_linked_list::ListHead;
 
 use crate::impl_kobject;
@@ -76,7 +77,7 @@ impl IPCObject {
         unsafe {
             if let Some(node) = (*list).next() {
                 let thread: *mut RtThread = crate::thread_list_node_entry!(node.as_ptr());
-                (*thread).error = RT_EOK as i32;
+                (*thread).error = code::EOK;
                 (*thread).resume();
             }
         }
@@ -91,7 +92,7 @@ impl IPCObject {
                     let spin_lock = RawSpin::new();
                     spin_lock.lock();
                     let thread: *mut RtThread = crate::thread_list_node_entry!(node.as_ptr());
-                    (*thread).error = -(RT_ERROR as i32);
+                    (*thread).error = code::ERROR;
                     (*thread).resume();
                     spin_lock.unlock();
                 }
@@ -108,8 +109,8 @@ impl IPCObject {
         suspend_flag: u32,
     ) -> i32 {
         unsafe {
-            if ((*thread).stat as u32 & RT_THREAD_SUSPEND_MASK) != RT_THREAD_SUSPEND_MASK {
-                let ret = if (*thread).suspend(suspend_flag) {
+            if !(*thread).stat.is_suspended() {
+                let ret = if (*thread).suspend(SuspendFlag::from_u8(suspend_flag as u8)) {
                     RT_EOK as i32
                 } else {
                     -(RT_ERROR as i32)
@@ -128,7 +129,7 @@ impl IPCObject {
                     list_head_for_each!(node, &(*list), {
                         let s_thread =
                             crate::thread_list_node_entry!(node.as_ptr()) as *mut RtThread;
-                        if (*thread).current_priority < (*s_thread).current_priority {
+                        if (*thread).priority.get_current() < (*s_thread).priority.get_current() {
                             let insert_to = Pin::new_unchecked(&mut ((*s_thread).tlist));
                             insert_to.insert_prev(&mut ((*thread).tlist));
                         }
