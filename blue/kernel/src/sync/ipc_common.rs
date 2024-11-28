@@ -1,4 +1,3 @@
-use crate::error::Error;
 use crate::impl_kobject;
 use crate::list_head_for_each;
 use crate::object::*;
@@ -9,6 +8,7 @@ use crate::sync::RawSpin;
 use crate::thread::RtThread;
 use blue_infra::list::doubly_linked_list::ListHead;
 use core::pin::Pin;
+use core::ptr::NonNull;
 use core::slice;
 use pinned_init::*;
 
@@ -48,6 +48,16 @@ impl RtWaitQueue {
     #[inline]
     pub(crate) fn is_empty(&self) -> bool {
         self.working_queue.is_empty()
+    }
+
+    #[inline]
+    pub(crate) fn head(&self) -> Option<NonNull<ListHead>> {
+        self.working_queue.next()
+    }
+
+    #[inline]
+    pub(crate) fn tail(&self) -> Option<NonNull<ListHead>> {
+        self.working_queue.prev()
     }
 
     #[inline]

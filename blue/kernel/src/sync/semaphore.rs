@@ -91,17 +91,17 @@ impl<'a> Drop for KSemaphoreGuard<'a> {
 /// Semaphore raw structure
 #[repr(C)]
 #[pin_data]
-pub struct RtSemaphore {
+pub(crate) struct RtSemaphore {
     /// Inherit from KObject
     #[pin]
-    parent: KObjectBase,
+    pub(crate) parent: KObjectBase,
     /// Value of semaphore
-    value: u16,
+    pub(crate) value: u16,
     /// Spin lock semaphore used
-    spinlock: RawSpin,
+    pub(crate) spinlock: RawSpin,
     #[pin]
     /// WaitQueue for semaphore
-    wait_queue: RtWaitQueue,
+    pub(crate) wait_queue: RtWaitQueue,
 }
 
 impl_kobject!(RtSemaphore);
@@ -130,6 +130,13 @@ impl RtSemaphore {
         );
         self.parent
             .init(ObjectClassType::ObjectClassSemaphore as u8, name);
+        self.init_without_kobject(name, value, waiting_mode);
+    }
+
+    #[inline]
+    pub fn init_without_kobject(&mut self, name: *const i8, value: u16, waiting_mode: u8) {
+        self.parent
+            .init_without_kobject(ObjectClassType::ObjectClassSemaphore as u8, name);
         self.value = value;
         self.spinlock = RawSpin::new();
         self.wait_queue.init(waiting_mode as u32);

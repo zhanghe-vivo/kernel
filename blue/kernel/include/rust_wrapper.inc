@@ -7,6 +7,8 @@ enum ObjectClassType {
   ObjectClassUninit = 0,
   ObjectClassProcess,
   ObjectClassThread,
+  ObjectClassCondVar,
+  ObjectClassRwLock,
 #if defined(RT_USING_SEMAPHORE)
   ObjectClassSemaphore,
 #endif
@@ -316,17 +318,39 @@ typedef struct rt_messagequeue {
 } rt_messagequeue;
 
 /**
+ * WaitQueue for IPC
+ */
+typedef struct RtWaitQueue {
+  /**
+   * WaitQueue impl by ListHead
+   */
+  rt_list_t working_queue;
+  /**
+   * WaitQueue working mode, FIFO or PRIO
+   */
+  uint32_t waiting_mode;
+} RtWaitQueue;
+
+/**
  * Semaphore raw structure
  */
 typedef struct rt_semaphore {
   /**
-   * Inherit from IPCObject
+   * Inherit from KObject
    */
-  struct rt_ipc_object parent;
+  struct rt_object parent;
   /**
    * Value of semaphore
    */
   uint16_t value;
+  /**
+   * Spin lock semaphore used
+   */
+  struct RawSpin spinlock;
+  /**
+   * WaitQueue for semaphore
+   */
+  struct RtWaitQueue wait_queue;
 } rt_semaphore;
 
 #endif /* KERN_RUST_WRAPPER_H */

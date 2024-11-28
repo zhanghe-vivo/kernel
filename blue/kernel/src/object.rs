@@ -39,7 +39,7 @@ impl KObjectBase {
         self.init_internal(type_ | OBJECT_CLASS_STATIC, name);
     }
 
-    pub(crate) fn init_internal(&mut self, type_: u8, name: *const i8) {
+    pub(crate) fn init_without_kobject(&mut self, type_: u8, name: *const i8) {
         self.type_ = type_;
         unsafe {
             rt_strncpy(self.name.as_mut_ptr(), name, (NAME_MAX - 1) as usize);
@@ -48,6 +48,11 @@ impl KObjectBase {
                 self as *const _ as *const rt_object
             );
         }
+    }
+
+    pub(crate) fn init_internal(&mut self, type_: u8, name: *const i8) {
+        self.init_without_kobject(type_, name);
+
         if type_ & (!OBJECT_CLASS_STATIC) != ObjectClassType::ObjectClassProcess as u8 {
             insert(type_, &mut self.list);
         }
@@ -119,6 +124,10 @@ pub enum ObjectClassType {
     ObjectClassProcess,
     //< The object is a thread.
     ObjectClassThread,
+    //< The object is a condition variable.
+    ObjectClassCondVar,
+    //< The object is a RwLock.
+    ObjectClassRwLock,
     //< The object is a semaphore.
     #[cfg(feature = "RT_USING_SEMAPHORE")]
     ObjectClassSemaphore,
@@ -230,6 +239,8 @@ impl ObjectClassType {
             x if x == Self::ObjectClassProcess as u8 => mem::size_of::<Kprocess>(),
             //< The object is a thread.
             x if x == Self::ObjectClassThread as u8 => mem::size_of::<RtThread>(),
+            //< The object is a condition variable.
+            //x if x == Self::ObjectClassCondVar as u8 => mem::size_of::<RtCondVar>(),
             //< The object is a semaphore.
             #[cfg(feature = "RT_USING_SEMAPHORE")]
             x if x == Self::ObjectClassSemaphore as u8 => mem::size_of::<RtSemaphore>(),

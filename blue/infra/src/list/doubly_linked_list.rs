@@ -229,6 +229,15 @@ impl ListHead {
     }
 
     #[inline]
+    pub fn prev(&self) -> Option<NonNull<Self>> {
+        if ptr::eq(self.prev.as_ptr(), self) {
+            None
+        } else {
+            Some(unsafe { NonNull::new_unchecked(self.prev.as_ptr() as *mut Self) })
+        }
+    }
+
+    #[inline]
     pub fn is_empty(&self) -> bool {
         ptr::eq(self.next.as_ptr(), self)
     }
