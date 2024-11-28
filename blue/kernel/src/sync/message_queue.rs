@@ -2,7 +2,7 @@ use crate::{
     allocator::{align_up_size, rt_free, rt_malloc},
     clock::rt_tick_get,
     cpu::Cpu,
-    error::Error,
+    error::{code, Error},
     impl_kobject,
     klibc::rt_memcpy,
     list_head_for_each,
@@ -10,10 +10,10 @@ use crate::{
     print, println,
     rt_bindings::{
         rt_debug_not_in_interrupt, rt_debug_scheduler_available, rt_err_t, rt_int32_t, rt_object,
-        rt_object_hook_call, rt_size_t, rt_ssize_t, rt_ubase_t, rt_uint32_t, rt_uint8_t,
-        RT_ALIGN_SIZE, RT_EFULL, RT_EINTR, RT_EINVAL, RT_ENOMEM, RT_EOK, RT_ERROR, RT_ETIMEOUT,
-        RT_INTERRUPTIBLE, RT_IPC_CMD_RESET, RT_IPC_FLAG_FIFO, RT_IPC_FLAG_PRIO, RT_KILLABLE,
-        RT_MQ_ENTRY_MAX, RT_TIMER_CTRL_SET_TIME, RT_UNINTERRUPTIBLE,
+        rt_object_hook_call, rt_size_t, rt_ssize_t, rt_uint32_t, rt_uint8_t, RT_ALIGN_SIZE,
+        RT_EFULL, RT_EINTR, RT_EINVAL, RT_ENOMEM, RT_EOK, RT_ERROR, RT_ETIMEOUT, RT_INTERRUPTIBLE,
+        RT_IPC_CMD_RESET, RT_IPC_FLAG_FIFO, RT_IPC_FLAG_PRIO, RT_KILLABLE, RT_MQ_ENTRY_MAX,
+        RT_TIMER_CTRL_SET_TIME, RT_UNINTERRUPTIBLE,
     },
     sync::ipc_common::*,
     thread::RtThread,
@@ -437,7 +437,7 @@ impl RtMessageQueue {
             msg
         } == null_mut()
         {
-            thread.error = -(RT_EINTR as i32);
+            thread.error = code::EINTR;
 
             if timeout == 0 {
                 self.parent.unlock();
@@ -469,8 +469,8 @@ impl RtMessageQueue {
 
             Cpu::get_current_scheduler().do_task_schedule();
 
-            if thread.error != RT_EOK as i32 {
-                return thread.error;
+            if thread.error != code::EOK {
+                return thread.error.to_errno();
             }
 
             self.parent.lock();
@@ -721,12 +721,12 @@ impl RtMessageQueue {
         }
 
         while self.entry == 0 {
-            thread.error = -(RT_EINTR as i32);
+            thread.error = code::EINTR;
 
             if timeout == 0 {
                 self.parent.unlock();
-                thread.error = -(RT_ETIMEOUT as i32);
-                return -(RT_ETIMEOUT as i32);
+                thread.error = code::ETIMEOUT;
+                return thread.error.to_errno();
             }
 
             let ret = self
@@ -751,8 +751,8 @@ impl RtMessageQueue {
             self.parent.unlock();
             Cpu::get_current_scheduler().do_task_schedule();
 
-            if thread.error != RT_EOK as i32 {
-                return thread.error;
+            if thread.error != code::EOK {
+                return thread.error.to_errno();
             }
 
             self.parent.lock();

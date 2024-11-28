@@ -1,5 +1,6 @@
 use crate::{
     cpu::Cpu,
+    error::code,
     impl_kobject, list_head_for_each,
     object::*,
     print, println,
@@ -130,13 +131,24 @@ impl RtSemaphore {
         );
         self.parent
             .init(ObjectClassType::ObjectClassSemaphore as u8, name);
-        self.init_without_kobject(name, value, waiting_mode);
+        self.init_internal(value, waiting_mode);
     }
 
     #[inline]
-    pub fn init_without_kobject(&mut self, name: *const i8, value: u16, waiting_mode: u8) {
+    pub fn init_dyn(&mut self, name: *const i8, value: u16, waiting_mode: u8) {
+        assert!(
+            (waiting_mode == RT_IPC_FLAG_FIFO as u8) || (waiting_mode == RT_IPC_FLAG_PRIO as u8)
+        );
         self.parent
-            .init_without_kobject(ObjectClassType::ObjectClassSemaphore as u8, name);
+            .init_dyn(ObjectClassType::ObjectClassSemaphore as u8, name);
+        self.init_internal(value, waiting_mode);
+    }
+
+    #[inline]
+    pub fn init_internal(&mut self, value: u16, waiting_mode: u8) {
+        assert!(
+            (waiting_mode == RT_IPC_FLAG_FIFO as u8) || (waiting_mode == RT_IPC_FLAG_PRIO as u8)
+        );
         self.value = value;
         self.spinlock = RawSpin::new();
         self.wait_queue.init(waiting_mode as u32);
@@ -219,7 +231,7 @@ impl RtSemaphore {
                 // SAFETY: thread_ptr is null checked
                 let thread = unsafe { &mut *thread_ptr };
 
-                thread.error = -(RT_EINTR as i32);
+                thread.error = code::EINTR;
 
                 let ret = self.wait_queue.wait(thread, pending_mode);
                 if ret != RT_EOK as i32 {
@@ -239,8 +251,8 @@ impl RtSemaphore {
 
                 Cpu::get_current_scheduler().do_task_schedule();
 
-                if thread.error != RT_EOK as i32 {
-                    return thread.error;
+                if thread.error != code::EOK {
+                    return thread.error.to_errno();
                 }
             }
         }

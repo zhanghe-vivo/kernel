@@ -49,7 +49,7 @@ codegen-units = 16
 rpath = false
 
 [features]
-default = ["tlsf", "alloc", "allocator_api", "stack_highwater_check"]
+default = ["tlsf", "alloc", "allocator_api", "rt_thread_priority_max_256", "schedule_with_time_slice"]
 slab = []
 buddy = []
 llff = []
@@ -58,6 +58,8 @@ alloc = []
 allocator_api = []
 debug_scheduler = []
 stack_highwater_check = []
+schedule_with_time_slice = []
+rt_thread_priority_max_256 = []
 
 # RT-thread config
 RT_USING_SMP = []

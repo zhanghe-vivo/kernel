@@ -71,5 +71,6 @@ struct rt_spinlock
 #define uintptr_t rt_size_t
 
 #define NAME_MAX 8
+struct rt_thread;
 #include "rust_wrapper.inc"
 typedef struct rt_object *rt_object_t;

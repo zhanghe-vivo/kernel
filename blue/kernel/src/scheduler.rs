@@ -1,5 +1,8 @@
 use crate::cpu::Cpus;
-use crate::{cpu::Cpu, thread::RtThread};
+use crate::{
+    cpu::Cpu,
+    thread::{RtThread, ThreadState},
+};
 use blue_arch::arch::Arch;
 use blue_arch::{IInterrupt, IScheduler};
 use blue_infra::list::doubly_linked_list::ListHead;
@@ -29,15 +32,21 @@ static mut RT_SCHEDULER_HOOK: Option<RtSchedulerHook> = None;
 #[cfg(all(feature = "RT_USING_HOOK", feature = "RT_HOOK_USING_FUNC_PTR"))]
 static mut RT_SCHEDULER_SWITCH_HOOK: Option<RtSchedulerSwitchHook> = None;
 
-// #[repr(C)]
+#[cfg(feature = "rt_thread_priority_max_256")]
 #[pin_data]
 pub struct PriorityTableManager {
     #[pin]
     priority_table: [ListHead; rt_bindings::RT_THREAD_PRIORITY_MAX as usize],
-
     priority_group: u32,
-    // FIXME #[cfg(RT_THREAD_PRIORITY_MAX > 32)]
     ready_table: [u8; 32],
+}
+
+#[cfg(not(feature = "rt_thread_priority_max_256"))]
+#[pin_data]
+pub struct PriorityTableManager {
+    #[pin]
+    priority_table: [ListHead; rt_bindings::RT_THREAD_PRIORITY_MAX as usize],
+    priority_group: u32,
 }
 
 // #[repr(C)]
@@ -58,6 +67,7 @@ pub struct Scheduler {
 }
 
 impl PriorityTableManager {
+    #[cfg(feature = "rt_thread_priority_max_256")]
     pub fn new() -> impl PinInit<Self> {
         pin_init!(Self {
             priority_table <- pin_init_array_from_fn(|_| ListHead::new()),
@@ -66,25 +76,29 @@ impl PriorityTableManager {
         })
     }
 
+    #[cfg(not(feature = "rt_thread_priority_max_256"))]
+    pub fn new() -> impl PinInit<Self> {
+        pin_init!(Self {
+            priority_table <- pin_init_array_from_fn(|_| ListHead::new()),
+            priority_group: 0,
+        })
+    }
+
     #[inline]
     pub fn get_priority_group(&self) -> u32 {
         self.priority_group
     }
 
-    // FIXME #[cfg(RT_THREAD_PRIORITY_MAX > 32)]
     #[inline]
     pub fn get_highest_ready_prio(&self) -> u32 {
         let num = self.priority_group.trailing_zeros();
+        #[cfg(feature = "rt_thread_priority_max_256")]
         if num != u32::MAX {
             return (num << 3) + self.ready_table[num as usize].trailing_zeros();
         }
+
         num
     }
-    // FIXME #[cfg(not(RT_THREAD_PRIORITY_MAX > 32))]
-    // #[inline]
-    // pub fn get_highest_ready_prio(&self) -> u32 {
-    //     (unsafe { rt_bindings::__rt_ffs(self.priority_group) } - 1) as u32
-    // }
 
     pub fn get_thread_by_prio(&self, prio: u32) -> Option<NonNull<RtThread>> {
         if let Some(node) = self.priority_table[prio as usize].next() {
@@ -98,20 +112,23 @@ impl PriorityTableManager {
 
     pub fn insert_thread(&mut self, thread: &mut RtThread) {
         debug_assert!(thread.tlist.is_empty());
-        // FIXME #[cfg(RT_THREAD_PRIORITY_MAX > 32)]
-        self.ready_table[thread.number as usize] |= thread.high_mask;
-        self.priority_group |= thread.number_mask;
+        #[cfg(feature = "rt_thread_priority_max_256")]
+        {
+            self.ready_table[thread.priority.get_number() as usize] |=
+                thread.priority.get_high_mask() as u8;
+        }
+        self.priority_group |= thread.priority.get_number_mask();
 
         /* there is no time slices left(YIELD), inserting thread before ready list*/
-        if thread.is_yield() {
+        if thread.stat.is_yield() {
             unsafe {
                 Pin::new_unchecked(&mut thread.tlist)
-                    .insert_prev(&self.priority_table[thread.current_priority as usize])
+                    .insert_prev(&self.priority_table[thread.priority.get_current() as usize])
             };
         } else {
             unsafe {
                 Pin::new_unchecked(&mut thread.tlist)
-                    .insert_next(&self.priority_table[thread.current_priority as usize])
+                    .insert_next(&self.priority_table[thread.priority.get_current() as usize])
             };
         }
     }
@@ -119,14 +136,19 @@ impl PriorityTableManager {
     pub fn remove_thread(&mut self, thread: &mut RtThread) {
         unsafe { Pin::new_unchecked(&mut thread.tlist).remove() };
 
-        if self.priority_table[thread.current_priority as usize].is_empty() {
-            // FIXME #[cfg(RT_THREAD_PRIORITY_MAX > 32)]
-            self.ready_table[thread.number as usize] &= !thread.high_mask;
-            if self.ready_table[thread.number as usize] == 0 {
-                self.priority_group &= !(thread.number_mask);
+        if self.priority_table[thread.priority.get_current() as usize].is_empty() {
+            #[cfg(feature = "rt_thread_priority_max_256")]
+            {
+                self.ready_table[thread.priority.get_number() as usize] &=
+                    !thread.priority.get_high_mask();
+                if self.ready_table[thread.priority.get_number() as usize] == 0 {
+                    self.priority_group &= !(thread.priority.get_number_mask());
+                }
             }
-            // FIXME #[cfg(not(RT_THREAD_PRIORITY_MAX > 32))]
-            // self.priority_group &= !(thread.number_mask);
+            #[cfg(not(feature = "rt_thread_priority_max_256"))]
+            {
+                self.priority_group &= !(thread.priority.get_number_mask());
+            }
         }
     }
 }
@@ -237,7 +259,7 @@ impl Scheduler {
     pub fn insert_thread_locked(&mut self, thread: &mut RtThread) {
         debug_assert!(self.is_sched_locked());
 
-        if thread.is_ready() {
+        if thread.stat.is_ready() {
             return;
         }
 
@@ -245,20 +267,19 @@ impl Scheduler {
         if !thread.is_cpu_detached() {
             // only YIELD -> READY, SUSPEND -> READY is allowed by this API. However,
             // this is a RUNNING thread. So here we reset it's status and let it go.
-            thread.set_running();
+            thread.stat.set_base_state(ThreadState::RUNNING);
             return;
         }
 
-        // current thread is changed in rt_cpus_lock_status_restore now. cant let it go
         // #[cfg(not(feature = "RT_USING_SMP"))]
         // if thread.is_current_runnung_thread() {
         //     // only YIELD -> READY, SUSPEND -> READY is allowed by this API. However,
         //     // this is a RUNNING thread. So here we reset it's status and let it go.
-        //     thread.set_running();
+        //     thread.stat.set_base_state(ThreadState::RUNNING);
         //     return;
         // }
 
-        thread.set_ready();
+        thread.stat.set_base_state(ThreadState::READY);
 
         #[cfg(not(feature = "RT_USING_SMP"))]
         self.priority_manager.insert_thread(thread);
@@ -313,13 +334,13 @@ impl Scheduler {
         debug_assert!(self.is_sched_locked());
         assert!(priority < rt_bindings::RT_THREAD_PRIORITY_MAX as u8);
 
-        if thread.is_ready() {
+        if thread.stat.is_ready() {
             self.remove_thread_locked(thread);
-            thread.set_priority(priority);
-            thread.set_init_stat();
+            thread.priority.update(priority);
+            thread.stat.set_base_state(ThreadState::INIT);
             self.insert_thread_locked(thread);
         } else {
-            thread.set_priority(priority);
+            thread.priority.update(priority);
         }
     }
 
@@ -348,13 +369,11 @@ impl Scheduler {
 
                         let cur_th = unsafe { cur_th.as_mut() };
                         /* check if current thread can be running on current core again */
-                        if cur_th.is_running() {
-                            let switch_current = cur_th.current_priority
+                        if cur_th.stat.is_running() {
+                            let switch_current = cur_th.priority.get_current()
                                 < highest_ready_priority as u8
-                                || (cur_th.current_priority == highest_ready_priority as u8
-                                    && (cur_th.stat
-                                        & rt_bindings::RT_THREAD_STAT_YIELD_MASK as u8)
-                                        == 0);
+                                || (cur_th.priority.get_current() == highest_ready_priority as u8
+                                    && !cur_th.stat.is_yield());
                             #[cfg(feature = "RT_USING_SMP")]
                             let some_cpu = cur_th.get_bind_cpu() == CPUS_NUMBER as u8
                                 || cur_th.get_bind_cpu() == cpu_id;
@@ -363,18 +382,18 @@ impl Scheduler {
 
                             if switch_current {
                                 // run current thread again.
-                                cur_th.stat &= !(rt_bindings::RT_THREAD_STAT_YIELD_MASK as u8);
+                                cur_th.stat.clear_yield();
                                 return None;
                             }
 
                             #[cfg(feature = "RT_USING_SMP")]
                             {
-                                cur_th.oncpu = rt_bindings::RT_CPU_DETACHED as u8;
+                                cur_th.oncpu = CPU_DETACHED as u8;
                             }
 
                             self.insert_thread_locked(cur_th);
                             /* consume the yield flags after scheduling */
-                            cur_th.stat &= !(rt_bindings::RT_THREAD_STAT_YIELD_MASK as u8);
+                            cur_th.stat.clear_yield();
                         }
                     }
 
@@ -386,7 +405,7 @@ impl Scheduler {
                     {
                         to_th.oncpu = cpu_id;
                     }
-                    to_th.set_running();
+                    to_th.stat.set_base_state(ThreadState::RUNNING);
 
                     return Some(new_thread);
                 }
@@ -418,7 +437,7 @@ impl Scheduler {
                 {
                     to_th.oncpu = self.get_current_id();
                 }
-                to_th.set_running();
+                to_th.stat.set_base_state(ThreadState::RUNNING);
 
                 #[cfg(feature = "debug_scheduler")]
                 println!(
@@ -697,17 +716,14 @@ impl Scheduler {
     pub(crate) fn insert_ready_locked(&mut self, thread: &mut RtThread) -> bool {
         debug_assert!(self.is_sched_locked());
 
-        if thread.is_suspended() {
-            // Quiet timeout timer first if set. ffand don't continue if we
-            // failed, because it probably means that a timeout ISR racing to
-            // resume thread before us.
-            if thread.timer_stop() {
-                // remove from suspend list
-                thread.remove_tlist();
-                // insert to schedule ready list and remove from susp list
-                self.insert_thread_locked(thread);
-                return true;
-            }
+        if thread.stat.is_suspended() {
+            // stop thread timer anyway
+            thread.timer_stop();
+            // remove from suspend list
+            thread.remove_tlist();
+            // insert to schedule ready list and remove from susp list
+            self.insert_thread_locked(thread);
+            return true;
         }
         false
     }

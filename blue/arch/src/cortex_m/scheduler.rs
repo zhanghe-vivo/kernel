@@ -329,7 +329,7 @@ impl Arch {
         //                  Behavior is UNPREDICTABLE if the Security Extension is not implemented and this field is not zero.
         //                  If the Security Extension is not implemented, this bit is RES0.
         0xFFFFFFFD // thread mode using psp
-        // TODO: add trustzone support
+                   // TODO: add trustzone support
     }
 
     #[inline]

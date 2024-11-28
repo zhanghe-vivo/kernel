@@ -243,7 +243,7 @@ static void static_thread1_entry(void *param)
 
     /*  thread3 hode mutex  thread2 take mutex */
     /* check thread2 and thread3 priority */
-    if (tid2->current_priority != tid3->current_priority)
+    if (tid2->priority.current != tid3->priority.current)
     {
         uassert_true(RT_FALSE);
     }
@@ -564,7 +564,7 @@ static void dynamic_thread1_entry(void *param)
 
     /*  thread3 hode mutex  thread2 take mutex */
     /* check thread2 and thread3 priority */
-    if (tid2->current_priority != tid3->current_priority)
+    if (tid2->priority.current != tid3->priority.current)
     {
         uassert_true(RT_FALSE);
     }

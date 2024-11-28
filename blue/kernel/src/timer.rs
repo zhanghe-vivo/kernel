@@ -95,7 +95,7 @@ impl TimerWheel {
         let current_tick = Cpu::get_by_id(0).tick_load();
         crate::list_head_for_each!(time_node, &self.row[cursor], {
             let timer = unsafe {
-                &mut *rt_bindings::container_of!(time_node.as_ptr() as *mut ListHead, Timer, node)
+                &mut *crate::container_of!(time_node.as_ptr() as *mut ListHead, Timer, node)
             };
             if current_tick.wrapping_sub(timer.timeout_tick) < rt_bindings::RT_TICK_MAX / 2 {
                 unsafe {
@@ -143,7 +143,7 @@ impl TimerWheel {
         for i in 0..TIMER_WHEEL_SIZE - 1 {
             if let Some(timer_node) = self.row[i].next() {
                 unsafe {
-                    let timer = rt_bindings::container_of!(timer_node.as_ptr(), Timer, node);
+                    let timer = crate::container_of!(timer_node.as_ptr(), Timer, node);
                     if (*timer).timeout_tick < next_timeout_tick {
                         next_timeout_tick = (*timer).timeout_tick;
                     }
@@ -229,7 +229,7 @@ impl Timer {
             self.flag &= !rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8;
         }
         (self.timeout_func)(self.parameter);
-        if self.init_tick != 0 {
+        if self.init_tick != 0 && self.flag & rt_bindings::RT_TIMER_FLAG_PERIODIC as u8 != 0 {
             let time_wheel = self.get_timer_wheel();
             let _guard = time_wheel.timer_wheel_lock.acquire();
             self.timer_start();
@@ -238,24 +238,9 @@ impl Timer {
 
     /// This function will start the timer
     fn timer_start(&mut self) {
-        let mut is_thread_timer = false;
         let mut need_schedule = false;
         let mut level = 0;
         let time_wheel = self.get_timer_wheel();
-        if self.flag & rt_bindings::RT_TIMER_FLAG_THREAD_TIMER as u8 != 0 {
-            is_thread_timer = true;
-            level = Cpu::get_current_scheduler().sched_lock();
-            let thread = unsafe {
-                rt_bindings::container_of!(self as *mut Self, crate::thread::RtThread, thread_timer)
-            };
-            assert!(
-                rt_object_get_type(thread as rt_bindings::rt_object_t)
-                    == ObjectClassType::ObjectClassThread as u8
-            );
-            unsafe {
-                (*thread).sched_flag_ttmr_set = 1;
-            }
-        }
         self.timer_remove();
         self.flag &= !rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8;
         unsafe {
@@ -277,8 +262,7 @@ impl Timer {
                     break;
                 }
                 Some(mut timer_node) => {
-                    let timer =
-                        unsafe { &*rt_bindings::container_of!(timer_node.as_ptr(), Timer, node) };
+                    let timer = unsafe { &*crate::container_of!(timer_node.as_ptr(), Timer, node) };
                     if timeout_tick <= timer.timeout_tick {
                         unsafe {
                             Pin::new_unchecked(&mut self.node).insert_prev(timer_node.as_mut())
@@ -298,15 +282,11 @@ impl Timer {
         self.flag |= rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8;
         if self.flag & rt_bindings::RT_TIMER_FLAG_SOFT_TIMER as u8 != 0 {
             unsafe {
-                if SOFT_TIMER_STATUS == TimerStatus::Idle && TIMER_THREAD.is_suspended() {
+                if SOFT_TIMER_STATUS == TimerStatus::Idle && TIMER_THREAD.stat.is_suspended() {
                     TIMER_THREAD.resume();
                     need_schedule = true;
                 }
             }
-        }
-        if is_thread_timer {
-            debug_assert!(Cpu::get_current_scheduler().is_sched_locked());
-            Cpu::get_current_scheduler().sched_unlock(level);
         }
         if need_schedule {
             Cpu::get_current_scheduler().do_task_schedule();
@@ -358,6 +338,32 @@ impl Timer {
         rt_object_detach((&mut self.parent) as *mut _ as *mut rt_bindings::rt_object);
     }
 
+    pub fn set_timeout(&mut self, tick: u32) {
+        let time_wheel = self.get_timer_wheel();
+        let _guard = time_wheel.timer_wheel_lock.acquire();
+        if (self.flag & rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8) != 0 {
+            self.timer_remove();
+            self.flag &= !rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8;
+        }
+        self.init_tick = tick;
+    }
+
+    pub fn restart(&mut self, tick: u32) {
+        let time_wheel = self.get_timer_wheel();
+        let _guard = time_wheel.timer_wheel_lock.acquire();
+        if (self.flag & rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8) != 0 {
+            self.timer_remove();
+            self.flag &= !rt_bindings::RT_TIMER_FLAG_ACTIVATED as u8;
+        }
+        self.init_tick = tick;
+
+        if self.init_tick == 0 {
+            self.timer_is_timeout();
+        } else {
+            self.timer_start();
+        }
+    }
+
     /// This function will get or set some options of the timer
     pub fn timer_control(&mut self, cmd: u32, arg: *mut c_void) {
         let time_wheel = self.get_timer_wheel();
@@ -406,12 +412,14 @@ impl Timer {
     /// system timer thread entry
     #[cfg(feature = "RT_USING_TIMER_SOFT")]
     extern "C" fn timer_thread_entry(_parameter: *mut c_void) {
+        use crate::thread::SuspendFlag;
+
         let timer_wheel = unsafe { &mut *addr_of_mut!(SOFT_TIMER_WHEEL) };
         loop {
             let mut next_timeout = timer_wheel.next_timeout_tick();
             if next_timeout == rt_bindings::RT_TICK_MAX {
                 if let Some(mut thread) = crate::current_thread!() {
-                    unsafe { (thread.as_mut()).suspend(rt_bindings::RT_UNINTERRUPTIBLE) };
+                    unsafe { (thread.as_mut()).suspend(SuspendFlag::Uninterruptible) };
                     Cpu::get_current_scheduler().do_task_schedule();
                 };
             } else {

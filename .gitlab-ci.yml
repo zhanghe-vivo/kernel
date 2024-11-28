@@ -3,6 +3,7 @@ variables:
   GIT_SUBMODULE_UPDATE_FLAGS: --jobs 16
 
 stages:
+  - infra-tests
   - mps2-an385-build
   - mps2-an385-ut
   - mps3-an547-build
@@ -16,6 +17,16 @@ before_script:
   - export PATH="$PATH:/home/vivoadmin/.cargo/bin"
   - rustup toolchain link mygnutoolchain "/home/vivoadmin/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu"
   - rustup default mygnutoolchain
+
+run-infra-tests:
+  stage: infra-tests
+  script:
+    - cd blue
+    - cargo test -p blue_infra --release
+  tags:
+    - ubuntu
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
 
 build-mps2-an385:
   stage: mps2-an385-build

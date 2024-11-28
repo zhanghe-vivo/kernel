@@ -36,11 +36,20 @@ macro_rules! caller_address {
     };
 }
 
+#[macro_export]
+macro_rules! container_of {
+    ($ptr:expr, $type:path, $field:ident) => {
+        $ptr.cast::<u8>()
+            .sub(core::mem::offset_of!($type, $field))
+            .cast::<$type>()
+    };
+}
+
 /// Get the struct for this entry.
 #[macro_export]
 macro_rules! list_head_entry {
     ($node:expr, $type:ty, $($f:tt)*) => {
-        rt_bindings::container_of!($node, $type, $($f)*)
+        crate::container_of!($node, $type, $($f)*)
     };
 }
 
