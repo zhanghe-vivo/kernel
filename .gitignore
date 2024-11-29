@@ -52,4 +52,6 @@ cmake-build-debug
 *.mk
 *log.txt
 
+*.DS_Store
 blue/target
+blue/os_compat/rt_thread/bindings.rs

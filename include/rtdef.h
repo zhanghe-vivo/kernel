@@ -979,6 +979,8 @@ typedef struct rt_thread *rt_thread_t;
 #define RT_WAITING_FOREVER              -1              /**< Block forever until get resource. */
 #define RT_WAITING_NO                   0               /**< Non-block. */
 
+
+#ifndef USE_RUST
 /**
  * Base structure of IPC object
  */
@@ -988,8 +990,10 @@ struct rt_ipc_object
     rt_uint8_t  flag;
     rt_list_t        suspend_thread;                    /**< threads pended on this resource */
 };
+#endif /* rt_ipc_object USE_RUST */
 
 #ifdef RT_USING_SEMAPHORE
+#ifndef USE_RUST
 /**
  * Semaphore structure
  */
@@ -1000,10 +1004,12 @@ struct rt_semaphore
     rt_uint16_t          value;                         /**< value of semaphore. */
     rt_uint16_t          reserved;                      /**< reserved field */
 };
+#endif /* rt_semaphore USE_RUST */
 typedef struct rt_semaphore *rt_sem_t;
 #endif /* RT_USING_SEMAPHORE */
 
 #ifdef RT_USING_MUTEX
+#ifndef USE_RUST
 /**
  * Mutual exclusion (mutex) structure
  */
@@ -1019,6 +1025,7 @@ struct rt_mutex
     struct rt_thread    *owner;                         /**< current owner of mutex */
     rt_list_t            taken_list;                    /**< the object list taken by thread */
 };
+#endif /* rt_mutex USE_RUST */
 typedef struct rt_mutex *rt_mutex_t;
 #endif /* RT_USING_MUTEX */
 
@@ -1029,7 +1036,7 @@ typedef struct rt_mutex *rt_mutex_t;
 #define RT_EVENT_FLAG_AND               0x01            /**< logic and */
 #define RT_EVENT_FLAG_OR                0x02            /**< logic or */
 #define RT_EVENT_FLAG_CLEAR             0x04            /**< clear flag */
-
+#ifndef USE_RUST
 /*
  * event structure
  */
@@ -1039,10 +1046,12 @@ struct rt_event
 
     rt_uint32_t          set;                           /**< event set */
 };
+#endif /* rt_event USE_RUST */
 typedef struct rt_event *rt_event_t;
 #endif /* RT_USING_EVENT */
 
 #ifdef RT_USING_MAILBOX
+#ifndef USE_RUST
 /**
  * mailbox structure
  */
@@ -1060,6 +1069,7 @@ struct rt_mailbox
 
     rt_list_t            suspend_sender_thread;         /**< sender thread suspended on this mailbox */
 };
+#endif /* rt_event USE_RUST */
 typedef struct rt_mailbox *rt_mailbox_t;
 #endif /* RT_USING_MAILBOX */
 
@@ -1067,6 +1077,7 @@ typedef struct rt_mailbox *rt_mailbox_t;
 /**
  * message queue structure
  */
+ #ifndef USE_RUST
 struct rt_messagequeue
 {
     struct rt_ipc_object parent;                        /**< inherit from ipc_object */
@@ -1083,10 +1094,11 @@ struct rt_messagequeue
     void                *msg_queue_free;                /**< pointer indicated the free node of queue */
 
     rt_list_t            suspend_sender_thread;         /**< sender thread suspended on this message queue */
+    struct rt_spinlock          spinlock;
 };
+#endif /* rt_messagequeue USE_RUST */
 typedef struct rt_messagequeue *rt_mq_t;
 #endif /* RT_USING_MESSAGEQUEUE */
-
 /**@}*/
 
 /**

@@ -56,7 +56,7 @@ static void test_dynamic_thread(void)
                             thread1_entry,
                             (void *)1,
                             THREAD_STACK_SIZE,
-                            __current_thread->current_priority + 1,
+                            __current_thread->priority.current + 1,
                             THREAD_TIMESLICE - 5);
     if (tid1 == RT_NULL)
     {
@@ -105,7 +105,7 @@ static void test_static_thread(void)
                               (void *)2,
                               &thread2_stack[0],
                               sizeof(thread2_stack),
-                              __current_thread->current_priority + 1,
+                              __current_thread->priority.current + 1,
                               THREAD_TIMESLICE);
     if (ret_init != RT_EOK)
     {
@@ -160,7 +160,7 @@ static void test_thread_delay(void)
                             thread3_entry,
                             RT_NULL,
                             THREAD_STACK_SIZE,
-                            __current_thread->current_priority - 1,
+                            __current_thread->priority.current - 1,
                             THREAD_TIMESLICE);
     if (tid3 == RT_NULL)
     {
@@ -210,7 +210,7 @@ static void test_idle_hook(void)
                             thread4_entry,
                             RT_NULL,
                             THREAD_STACK_SIZE,
-                            __current_thread->current_priority - 1,
+                            __current_thread->priority.current - 1,
                             THREAD_TIMESLICE);
     if (tid4 == RT_NULL)
     {
@@ -264,7 +264,7 @@ static void test_thread_yield(void)
                             thread5_entry,
                             RT_NULL,
                             THREAD_STACK_SIZE,
-                            __current_thread->current_priority - 1,
+                            __current_thread->priority.current - 1,
                             THREAD_TIMESLICE);
     if (tid5 == RT_NULL)
     {
@@ -283,7 +283,7 @@ static void test_thread_yield(void)
                             thread6_entry,
                             RT_NULL,
                             THREAD_STACK_SIZE,
-                            __current_thread->current_priority - 1,
+                            __current_thread->priority.current - 1,
                             THREAD_TIMESLICE);
     if (tid6 == RT_NULL)
     {
@@ -324,7 +324,7 @@ static void test_thread_control(void)
                             thread7_entry,
                             RT_NULL,
                             THREAD_STACK_SIZE,
-                            __current_thread->current_priority + 1,
+                            __current_thread->priority.current + 1,
                             THREAD_TIMESLICE);
     if (tid7 == RT_NULL)
     {
@@ -342,7 +342,7 @@ static void test_thread_control(void)
     }
     rt_thread_mdelay(200);
     rt_thread_control(tid7, RT_THREAD_CTRL_CHANGE_PRIORITY, &change_priority);
-    if (tid7->current_priority != change_priority)
+    if (tid7->priority.current != change_priority)
     {
         LOG_E("rt_thread_control failed!");
         uassert_false(1);
@@ -380,7 +380,7 @@ static void test_thread_priority(void)
                             thread8_entry,
                             RT_NULL,
                             THREAD_STACK_SIZE,
-                            __current_thread->current_priority - 1,
+                            __current_thread->priority.current - 1,
                             THREAD_TIMESLICE);
     if (tid8 == RT_NULL)
     {
@@ -439,7 +439,7 @@ void test_timeslice(void)
     timeslice_cntB2 = 0;
 
     tidA = rt_thread_create("timeslice", test_timeslice_threadA_entry, RT_NULL,
-                           2048, __current_thread->current_priority + 1, 10);
+                           2048, __current_thread->priority.current + 1, 10);
     if (!tidA)
     {
         LOG_E("rt_thread_create failed!");
@@ -456,7 +456,7 @@ void test_timeslice(void)
     }
 
     tidB1 = rt_thread_create("timeslice", test_timeslice_threadB1_entry, RT_NULL,
-                           2048, __current_thread->current_priority + 2, 2);
+                           2048, __current_thread->priority.current + 2, 2);
     if (!tidB1)
     {
         LOG_E("rt_thread_create failed!");
@@ -473,7 +473,7 @@ void test_timeslice(void)
     }
 
     tidB2 = rt_thread_create("timeslice", test_timeslice_threadB2_entry, RT_NULL,
-                           2048, __current_thread->current_priority + 2, 2);
+                           2048, __current_thread->priority.current + 2, 2);
     if (!tidB2)
     {
         LOG_E("rt_thread_create failed!");
@@ -599,7 +599,7 @@ void test_thread_yield_nosmp(void)
 //                            thread9_entry,
 //                            RT_NULL,
 //                            THREAD_STACK_SIZE,
-//                            __current_thread->current_priority + 1,
+//                            __current_thread->priority.current + 1,
 //                            THREAD_TIMESLICE);
 //     if (tid == RT_NULL)
 //     {
@@ -639,7 +639,7 @@ void test_thread_yield_nosmp(void)
 static rt_err_t utest_tc_init(void)
 {
     __current_thread = rt_thread_self();
-    change_priority = __current_thread->current_priority + 5;
+    change_priority = __current_thread->priority.current + 5;
     tid3_delay_pass_flag = 0;
     tid3_finish_flag = 0;
     tid4_finish_flag = 0;

@@ -16,6 +16,7 @@ cbindgen = "0.24.0"
 [dependencies]
 log = "0.4"
 const_default1 = { version = "1", package = "const-default", default-features = false }
+cfg-if = "1"
 paste = "1.0.6"
 pinned-init = { version = "0.0.8", features = ["alloc"], default-features = false }
 blue_arch = { path = "../arch" }
@@ -47,7 +48,7 @@ codegen-units = 16
 rpath = false
 
 [features]
-default = ["tlsf", "alloc", "allocator_api", "stack_highwater_check"]
+default = ["tlsf", "alloc", "allocator_api", "rt_thread_priority_max_256", "schedule_with_time_slice"]
 slab = []
 buddy = []
 llff = []
@@ -56,6 +57,8 @@ alloc = []
 allocator_api = []
 debug_scheduler = []
 stack_highwater_check = []
+schedule_with_time_slice = []
+rt_thread_priority_max_256 = []
 
 # RT-thread config
 RT_USING_SMP = []
@@ -191,9 +194,10 @@ RT_USING_MODULE = []
 RT_USING_HEAP_ISR = []
 RT_KSERVICE_USING_STDLIB_MEMORY = []
 
-# Add for arm mps2 an385
+# Add for arm mps boards
 ARCH_ARM_CORTEX_M = []
 ARCH_ARM_CORTEX_M3 = []
+ARCH_ARM_CORTEX_M55 = []
 BSP_USING_UART0 = []
 RT_KSERVICE_USING_STDLIB = []
 RT_THREAD_PRIORITY_32 = []

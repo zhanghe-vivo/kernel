@@ -90,7 +90,7 @@ Reset_Handler:
                 b        .L_loop2
 .L_loop2_done:
 
-                bl       rtthread_startup
+                bl       kernel_startup
 
                 .fnend
                 .size    Reset_Handler, . - Reset_Handler

@@ -1,6 +1,10 @@
 #!/bin/bash
 
 project_path=$(pwd)
+toml_path="$project_path/blue/Cargo.toml"
+out_path="$project_path/blue/target"
+gcc_path="${RTT_EXEC_PATH%/bin}"
+gcc_include_path="$gcc_path/include"
 
 macros=""
 parse_config(){
@@ -37,31 +41,31 @@ if [ $# -eq 0 ]; then
             echo "build qemu-vexpress-a9"
             bsp_path="qemu-vexpress-a9"
             target_toolchain="armv7a-none-eabi"
-            include_path="$project_path/bsp/$bsp_path;$project_path/include;$project_path/components/drivers/include;$project_path/components/finsh;$project_path/components/legacy;$project_path/libcpu/arm/cortex-a"
+            include_path="$project_path/bsp/$bsp_path;$project_path/include;$project_path/components/drivers/include;$project_path/components/finsh;$project_path/components/legacy;$project_path/libcpu/arm/cortex-a;$gcc_include_path"
             ;;
         2)
             echo "build qemu-mps2-an385"
             bsp_path="qemu-mps2-an385"
             target_toolchain="thumbv7m-none-eabi"
-            include_path="$project_path/bsp/$bsp_path;$project_path/include;$project_path/components/drivers/include;$project_path/components/finsh;$project_path/components/legacy;$project_path/libcpu/arm/cortex-m3"
+            include_path="$project_path/bsp/$bsp_path;$project_path/include;$project_path/components/drivers/include;$project_path/components/finsh;$project_path/components/legacy;$project_path/libcpu/arm/cortex-m3;$gcc_include_path"
             ;;
         3)
             echo "build qemu-mps3-an547"
             bsp_path="qemu-mps3-an547"
-            target_toolchain="thumbv8m.main-none-eabi"
-            include_path="$project_path/bsp/$bsp_path;$project_path/include;$project_path/components/drivers/include;$project_path/components/finsh;$project_path/components/legacy;$project_path/libcpu/arm/cortex-m55"
+            target_toolchain="thumbv8m.main-none-eabihf"
+            include_path="$project_path/bsp/$bsp_path;$project_path/include;$project_path/components/drivers/include;$project_path/components/finsh;$project_path/components/legacy;$project_path/libcpu/arm/cortex-m55;$gcc_include_path"
             ;;
         4)
             echo "build qemu-virt64-aarch64"
             bsp_path="qemu-virt64-aarch64"
             target_toolchain="aarch64-unknown-none"
-            include_path="$project_path/bsp/$bsp_path;$project_path/include;$project_path/components/drivers/include;$project_path/components/finsh;$project_path/components/legacy;$project_path/libcpu/aarch64/cortex-a"
+            include_path="$project_path/bsp/$bsp_path;$project_path/include;$project_path/components/drivers/include;$project_path/components/finsh;$project_path/components/legacy;$project_path/libcpu/aarch64/cortex-a;$gcc_include_path"
             ;;
         *)
             echo "build qemu-virt64-riscv"
             bsp_path="qemu-virt64-riscv"
             target_toolchain="riscv64gc-unknown-none-elf"
-            include_path="$project_path/bsp/$bsp_path;$project_path/include;$project_path/components/drivers/include;$project_path/components/finsh;$project_path/components/legacy;$project_path/libcpu/risc-v/virt64"
+            include_path="$project_path/bsp/$bsp_path;$project_path/include;$project_path/components/drivers/include;$project_path/components/finsh;$project_path/components/legacy;$project_path/libcpu/risc-v/virt64;$gcc_include_path"
             ;;
     esac
 
@@ -82,15 +86,12 @@ if [ $# -eq 0 ]; then
     sleep 1 &
     if [ "$clean_config" = "y" ]; then
         scons --clean
-        cd ../../blue
-        cargo clean
-        cd ../bsp/$bsp_path
+        cargo clean --manifest-path $toml_path
+        cargo fmt --manifest-path $toml_path --all
     fi
 
     if [[ "$macros" == *"USE_RUST"* ]]; then
-        cd ../../blue
-        COMPAT_OS="rt_thread" INCLUDE_PATH="$include_path" cargo build --target $target_toolchain --features "$macros" 
-        cd ../bsp/$bsp_path
+        RUSTFLAGS="--emit=llvm-ir" COMPAT_OS="rt_thread" INCLUDE_PATH="$include_path" cargo build --manifest-path $toml_path --target $target_toolchain --features "$macros" --artifact-dir $out_path -Z unstable-options
     fi
 
     scons
@@ -100,38 +101,34 @@ else
     if [ "$target" = "qemu-vexpress-a9" ]; then
         bsp_path="qemu-vexpress-a9"
         target_toolchain="armv7a-none-eabi"
-        include_path="$project_path/bsp/$bsp_path;$project_path/include;$project_path/components/drivers/include;$project_path/components/finsh;$project_path/components/legacy;$project_path/libcpu/arm/cortex-a"
+        include_path="$project_path/bsp/$bsp_path;$project_path/include;$project_path/components/drivers/include;$project_path/components/finsh;$project_path/components/legacy;$project_path/libcpu/arm/cortex-a;$gcc_include_path"
     elif [ "$target" = "qemu-mps2-an385" ]; then
         bsp_path="qemu-mps2-an385"
         target_toolchain="thumbv7m-none-eabi"
-        include_path="$project_path/bsp/$bsp_path;$project_path/include;$project_path/components/drivers/include;$project_path/components/finsh;$project_path/components/legacy;$project_path/libcpu/arm/cortex-m3"
+        include_path="$project_path/bsp/$bsp_path;$project_path/include;$project_path/components/drivers/include;$project_path/components/finsh;$project_path/components/legacy;$project_path/libcpu/arm/cortex-m3;$gcc_include_path"
     elif [ "$target" = "qemu-mps3-an547" ]; then
         bsp_path="qemu-mps3-an547"
-        target_toolchain="thumbv8m.main-none-eabi"
-        include_path="$project_path/bsp/$bsp_path;$project_path/include;$project_path/components/drivers/include;$project_path/components/finsh;$project_path/components/legacy;$project_path/libcpu/arm/cortex-m55"
+        target_toolchain="thumbv8m.main-none-eabihf"
+        include_path="$project_path/bsp/$bsp_path;$project_path/include;$project_path/components/drivers/include;$project_path/components/finsh;$project_path/components/legacy;$project_path/libcpu/arm/cortex-m55;$gcc_include_path"
     elif [ "$target" = "qemu-virt64-aarch64" ]; then
         bsp_path="qemu-virt64-aarch64"
         target_toolchain="aarch64-unknown-none"
-        include_path="$project_path/bsp/$bsp_path;$project_path/include;$project_path/components/drivers/include;$project_path/components/finsh;$project_path/components/legacy;$project_path/libcpu/aarch64/cortex-a"
+        include_path="$project_path/bsp/$bsp_path;$project_path/include;$project_path/components/drivers/include;$project_path/components/finsh;$project_path/components/legacy;$project_path/libcpu/aarch64/cortex-a;$gcc_include_path"
     elif [ "$target" = "qemu-virt64-riscv" ]; then
         bsp_path="qemu-virt64-riscv"
         target_toolchain="riscv64gc-unknown-none-elf"
-        include_path="$project_path/bsp/$bsp_path;$project_path/include;$project_path/components/drivers/include;$project_path/components/finsh;$project_path/components/legacy;$project_path/libcpu/risc-v/virt64"
+        include_path="$project_path/bsp/$bsp_path;$project_path/include;$project_path/components/drivers/include;$project_path/components/finsh;$project_path/components/legacy;$project_path/libcpu/risc-v/virt64;$gcc_include_path"
     fi
 
     cd bsp/$bsp_path
     scons --clean
-    cd ../../blue
-    cargo clean
-    cargo fmt
-    cd ../bsp/$bsp_path
+    cargo clean --manifest-path $toml_path
+    cargo fmt --manifest-path $toml_path --all
     
     parse_config
 
     if [[ "$macros" == *"USE_RUST"* ]]; then
-        cd ../../blue
-        COMPAT_OS="rt_thread" INCLUDE_PATH="$include_path" cargo build --target $target_toolchain --features "$macros"
-        cd ../bsp/$bsp_path
+        RUSTFLAGS="--emit=llvm-ir" COMPAT_OS="rt_thread" INCLUDE_PATH="$include_path" cargo build --manifest-path $toml_path --target $target_toolchain --features "$macros" --artifact-dir $out_path -Z unstable-options
     fi
     scons
 fi

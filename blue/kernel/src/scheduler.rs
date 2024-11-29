@@ -1,7 +1,10 @@
 use crate::cpu::Cpus;
-use crate::{cpu::Cpu, thread::RtThread};
+use crate::{
+    cpu::Cpu,
+    thread::{RtThread, ThreadState},
+};
 use blue_arch::arch::Arch;
-use blue_arch::{ICore, IInterrupt, IScheduler};
+use blue_arch::{IInterrupt, IScheduler};
 use blue_infra::list::doubly_linked_list::ListHead;
 
 #[cfg(feature = "RT_USING_SMP")]
@@ -29,15 +32,21 @@ static mut RT_SCHEDULER_HOOK: Option<RtSchedulerHook> = None;
 #[cfg(all(feature = "RT_USING_HOOK", feature = "RT_HOOK_USING_FUNC_PTR"))]
 static mut RT_SCHEDULER_SWITCH_HOOK: Option<RtSchedulerSwitchHook> = None;
 
-// #[repr(C)]
+#[cfg(feature = "rt_thread_priority_max_256")]
 #[pin_data]
 pub struct PriorityTableManager {
     #[pin]
     priority_table: [ListHead; rt_bindings::RT_THREAD_PRIORITY_MAX as usize],
-
     priority_group: u32,
-    // FIXME #[cfg(RT_THREAD_PRIORITY_MAX > 32)]
     ready_table: [u8; 32],
+}
+
+#[cfg(not(feature = "rt_thread_priority_max_256"))]
+#[pin_data]
+pub struct PriorityTableManager {
+    #[pin]
+    priority_table: [ListHead; rt_bindings::RT_THREAD_PRIORITY_MAX as usize],
+    priority_group: u32,
 }
 
 // #[repr(C)]
@@ -58,6 +67,7 @@ pub struct Scheduler {
 }
 
 impl PriorityTableManager {
+    #[cfg(feature = "rt_thread_priority_max_256")]
     pub fn new() -> impl PinInit<Self> {
         pin_init!(Self {
             priority_table <- pin_init_array_from_fn(|_| ListHead::new()),
@@ -66,25 +76,29 @@ impl PriorityTableManager {
         })
     }
 
+    #[cfg(not(feature = "rt_thread_priority_max_256"))]
+    pub fn new() -> impl PinInit<Self> {
+        pin_init!(Self {
+            priority_table <- pin_init_array_from_fn(|_| ListHead::new()),
+            priority_group: 0,
+        })
+    }
+
     #[inline]
     pub fn get_priority_group(&self) -> u32 {
         self.priority_group
     }
 
-    // FIXME #[cfg(RT_THREAD_PRIORITY_MAX > 32)]
     #[inline]
     pub fn get_highest_ready_prio(&self) -> u32 {
         let num = self.priority_group.trailing_zeros();
+        #[cfg(feature = "rt_thread_priority_max_256")]
         if num != u32::MAX {
             return (num << 3) + self.ready_table[num as usize].trailing_zeros();
         }
+
         num
     }
-    // FIXME #[cfg(not(RT_THREAD_PRIORITY_MAX > 32))]
-    // #[inline]
-    // pub fn get_highest_ready_prio(&self) -> u32 {
-    //     (unsafe { rt_bindings::__rt_ffs(self.priority_group) } - 1) as u32
-    // }
 
     pub fn get_thread_by_prio(&self, prio: u32) -> Option<NonNull<RtThread>> {
         if let Some(node) = self.priority_table[prio as usize].next() {
@@ -98,20 +112,23 @@ impl PriorityTableManager {
 
     pub fn insert_thread(&mut self, thread: &mut RtThread) {
         debug_assert!(thread.tlist.is_empty());
-        // FIXME #[cfg(RT_THREAD_PRIORITY_MAX > 32)]
-        self.ready_table[thread.number as usize] |= thread.high_mask;
-        self.priority_group |= thread.number_mask;
+        #[cfg(feature = "rt_thread_priority_max_256")]
+        {
+            self.ready_table[thread.priority.get_number() as usize] |=
+                thread.priority.get_high_mask() as u8;
+        }
+        self.priority_group |= thread.priority.get_number_mask();
 
         /* there is no time slices left(YIELD), inserting thread before ready list*/
-        if thread.is_yield() {
+        if thread.stat.is_yield() {
             unsafe {
                 Pin::new_unchecked(&mut thread.tlist)
-                    .insert_prev(&self.priority_table[thread.current_priority as usize])
+                    .insert_prev(&self.priority_table[thread.priority.get_current() as usize])
             };
         } else {
             unsafe {
                 Pin::new_unchecked(&mut thread.tlist)
-                    .insert_next(&self.priority_table[thread.current_priority as usize])
+                    .insert_next(&self.priority_table[thread.priority.get_current() as usize])
             };
         }
     }
@@ -119,14 +136,19 @@ impl PriorityTableManager {
     pub fn remove_thread(&mut self, thread: &mut RtThread) {
         unsafe { Pin::new_unchecked(&mut thread.tlist).remove() };
 
-        if self.priority_table[thread.current_priority as usize].is_empty() {
-            // FIXME #[cfg(RT_THREAD_PRIORITY_MAX > 32)]
-            self.ready_table[thread.number as usize] &= !thread.high_mask;
-            if self.ready_table[thread.number as usize] == 0 {
-                self.priority_group &= !(thread.number_mask);
+        if self.priority_table[thread.priority.get_current() as usize].is_empty() {
+            #[cfg(feature = "rt_thread_priority_max_256")]
+            {
+                self.ready_table[thread.priority.get_number() as usize] &=
+                    !thread.priority.get_high_mask();
+                if self.ready_table[thread.priority.get_number() as usize] == 0 {
+                    self.priority_group &= !(thread.priority.get_number_mask());
+                }
             }
-            // FIXME #[cfg(not(RT_THREAD_PRIORITY_MAX > 32))]
-            // self.priority_group &= !(thread.number_mask);
+            #[cfg(not(feature = "rt_thread_priority_max_256"))]
+            {
+                self.priority_group &= !(thread.priority.get_number_mask());
+            }
         }
     }
 }
@@ -237,7 +259,7 @@ impl Scheduler {
     pub fn insert_thread_locked(&mut self, thread: &mut RtThread) {
         debug_assert!(self.is_sched_locked());
 
-        if thread.is_ready() {
+        if thread.stat.is_ready() {
             return;
         }
 
@@ -245,20 +267,19 @@ impl Scheduler {
         if !thread.is_cpu_detached() {
             // only YIELD -> READY, SUSPEND -> READY is allowed by this API. However,
             // this is a RUNNING thread. So here we reset it's status and let it go.
-            thread.set_running();
+            thread.stat.set_base_state(ThreadState::RUNNING);
             return;
         }
 
-        // current thread is changed in rt_cpus_lock_status_restore now. cant let it go
         // #[cfg(not(feature = "RT_USING_SMP"))]
         // if thread.is_current_runnung_thread() {
         //     // only YIELD -> READY, SUSPEND -> READY is allowed by this API. However,
         //     // this is a RUNNING thread. So here we reset it's status and let it go.
-        //     thread.set_running();
+        //     thread.stat.set_base_state(ThreadState::RUNNING);
         //     return;
         // }
 
-        thread.set_ready();
+        thread.stat.set_base_state(ThreadState::READY);
 
         #[cfg(not(feature = "RT_USING_SMP"))]
         self.priority_manager.insert_thread(thread);
@@ -313,13 +334,13 @@ impl Scheduler {
         debug_assert!(self.is_sched_locked());
         assert!(priority < rt_bindings::RT_THREAD_PRIORITY_MAX as u8);
 
-        if thread.is_ready() {
+        if thread.stat.is_ready() {
             self.remove_thread_locked(thread);
-            thread.set_priority(priority);
-            thread.set_init_stat();
+            thread.priority.update(priority);
+            thread.stat.set_base_state(ThreadState::INIT);
             self.insert_thread_locked(thread);
         } else {
-            thread.set_priority(priority);
+            thread.priority.update(priority);
         }
     }
 
@@ -333,61 +354,59 @@ impl Scheduler {
             || self.priority_manager.priority_group != 0;
     }
 
-    fn prepare_context_switch_locked(&mut self) -> Option<NonNull<RtThread>> {
+    fn prepare_context_switch_locked(
+        &mut self,
+        cur_th: Option<NonNull<RtThread>>,
+    ) -> Option<NonNull<RtThread>> {
         /* quickly check if any other ready threads queuing */
         if self.has_ready_thread() {
             let to_thread = self.get_highest_priority_thread_locked();
             match to_thread {
                 Some((mut new_thread, highest_ready_priority)) => {
-                    debug_assert!(self.get_current_thread() != None);
-                    // cur_th must not be Null here
-                    let cur_th = unsafe { self.get_current_thread().unwrap_unchecked().as_mut() };
-                    #[cfg(feature = "RT_USING_SMP")]
-                    let cpu_id = self.get_current_id();
-
-                    /* check if current thread can be running on current core again */
-                    if cur_th.is_running() {
-                        let switch_current = cur_th.current_priority < highest_ready_priority as u8
-                            || (cur_th.current_priority == highest_ready_priority as u8
-                                && (cur_th.stat & rt_bindings::RT_THREAD_STAT_YIELD_MASK as u8)
-                                    == 0);
+                    if let Some(mut cur_th) = cur_th {
                         #[cfg(feature = "RT_USING_SMP")]
-                        let some_cpu = cur_th.get_bind_cpu() == CPUS_NUMBER as u8
-                            || cur_th.get_bind_cpu() == cpu_id;
-                        #[cfg(feature = "RT_USING_SMP")]
-                        let switch_current = some_cpu && switch_current;
+                        let cpu_id = self.get_current_id();
 
-                        if switch_current {
-                            // run current thread again.
-                            cur_th.stat &= !(rt_bindings::RT_THREAD_STAT_YIELD_MASK as u8);
-                            return None;
+                        let cur_th = unsafe { cur_th.as_mut() };
+                        /* check if current thread can be running on current core again */
+                        if cur_th.stat.is_running() {
+                            let switch_current = cur_th.priority.get_current()
+                                < highest_ready_priority as u8
+                                || (cur_th.priority.get_current() == highest_ready_priority as u8
+                                    && !cur_th.stat.is_yield());
+                            #[cfg(feature = "RT_USING_SMP")]
+                            let some_cpu = cur_th.get_bind_cpu() == CPUS_NUMBER as u8
+                                || cur_th.get_bind_cpu() == cpu_id;
+                            #[cfg(feature = "RT_USING_SMP")]
+                            let switch_current = some_cpu && switch_current;
+
+                            if switch_current {
+                                // run current thread again.
+                                cur_th.stat.clear_yield();
+                                return None;
+                            }
+
+                            #[cfg(feature = "RT_USING_SMP")]
+                            {
+                                cur_th.oncpu = CPU_DETACHED as u8;
+                            }
+
+                            self.insert_thread_locked(cur_th);
+                            /* consume the yield flags after scheduling */
+                            cur_th.stat.clear_yield();
                         }
-
-                        #[cfg(feature = "RT_USING_SMP")]
-                        {
-                            cur_th.oncpu = rt_bindings::RT_CPU_DETACHED as u8;
-                        }
-
-                        self.insert_thread_locked(cur_th);
-                        /* consume the yield flags after scheduling */
-                        cur_th.stat &= !(rt_bindings::RT_THREAD_STAT_YIELD_MASK as u8);
                     }
 
                     let to_th = unsafe { new_thread.as_mut() };
                     self.current_priority = highest_ready_priority as u8;
-                    unsafe {
-                        rt_bindings::rt_object_hook_call!(RT_SCHEDULER_HOOK, cur_th, to_th);
-                    }
+
                     self.remove_thread_locked(to_th);
                     #[cfg(feature = "RT_USING_SMP")]
                     {
                         to_th.oncpu = cpu_id;
                     }
-                    to_th.set_running();
-                    // TODO: RT_SCHEDULER_STACK_CHECK
-                    unsafe {
-                        rt_bindings::rt_object_hook_call!(RT_SCHEDULER_SWITCH_HOOK, cur_th);
-                    }
+                    to_th.stat.set_base_state(ThreadState::RUNNING);
+
                     return Some(new_thread);
                 }
                 None => unreachable!(),
@@ -396,6 +415,13 @@ impl Scheduler {
         None
     }
 
+    #[cfg(hardware_schedule)]
+    pub fn start(&mut self) {
+        self.irq_switch_flag = 1;
+        Arch::start_switch();
+    }
+
+    #[cfg(not(hardware_schedule))]
     pub fn start(&mut self) {
         #[cfg(feature = "RT_USING_SMP")]
         Cpus::unlock_cpus();
@@ -411,7 +437,7 @@ impl Scheduler {
                 {
                     to_th.oncpu = self.get_current_id();
                 }
-                to_th.set_running();
+                to_th.stat.set_base_state(ThreadState::RUNNING);
 
                 #[cfg(feature = "debug_scheduler")]
                 println!(
@@ -420,7 +446,6 @@ impl Scheduler {
                     to_th.stack.usage()
                 );
 
-                Cpus::arch_start();
                 self.set_current_thread(thread);
                 self.ctx_switch_unlock();
                 // enable interrupt in context_switch_to
@@ -484,10 +509,9 @@ impl Scheduler {
             } else if self.scheduler_lock_nest.load(Ordering::Relaxed) > 1 {
                 self.ctx_switch_unlock();
             } else {
-                // TODO: SCHED_THREAD_PREPROCESS_SIGNAL
-                if let Some(to_thread) = self.prepare_context_switch_locked() {
+                let cur_thread = self.get_current_thread();
+                if let Some(to_thread) = self.prepare_context_switch_locked(cur_thread) {
                     unsafe {
-                        let cur_thread = self.get_current_thread().unwrap_unchecked();
                         #[cfg(feature = "debug_scheduler")]
                         println!(
                             "cpu{} switch from {}: usage: {} to {}: usage: {}",
@@ -500,7 +524,7 @@ impl Scheduler {
 
                         #[cfg(feature = "RT_USING_OVERFLOW_CHECK")]
                         assert!(!cur_thread.as_ref().stack.check_overflow());
-
+                        // TODO: no rt_cpus_lock_status_restore anymore
                         rt_bindings::rt_hw_context_switch(
                             cur_thread.as_ref().sp_ptr() as rt_bindings::rt_ubase_t,
                             to_thread.as_ref().sp_ptr() as rt_bindings::rt_ubase_t,
@@ -572,35 +596,33 @@ impl Scheduler {
             #[cfg(feature = "RT_USING_SMP")]
             self.sched_lock_mp();
             /* pick the highest runnable thread, and pass the control to it */
-            match self.prepare_context_switch_locked() {
-                Some(to_thread) => {
-                    let cur_thread = unsafe { self.get_current_thread().unwrap_unchecked() };
-                    // sched_unlock_mp will call in rt_cpus_lock_status_restore
-                    unsafe {
-                        #[cfg(feature = "debug_scheduler")]
-                        println!(
-                            "cpu{} switch from {}: usage: {} to {}: usage: {}",
-                            self.id,
-                            cur_thread.as_ref().get_name(),
-                            cur_thread.as_ref().stack.usage(),
-                            to_thread.as_ref().get_name(),
-                            to_thread.as_ref().stack.usage(),
-                        );
+            let cur_thread = self.get_current_thread();
+            if let Some(to_thread) = self.prepare_context_switch_locked(cur_thread) {
+                // sched_unlock_mp will call in rt_cpus_lock_status_restore
+                unsafe {
+                    #[cfg(feature = "debug_scheduler")]
+                    println!(
+                        "cpu{} switch from {}: usage: {} to {}: usage: {}",
+                        self.id,
+                        cur_thread.as_ref().get_name(),
+                        cur_thread.as_ref().stack.usage(),
+                        to_thread.as_ref().get_name(),
+                        to_thread.as_ref().stack.usage(),
+                    );
 
-                        #[cfg(feature = "RT_USING_OVERFLOW_CHECK")]
-                        assert!(!cur_thread.as_ref().stack.check_overflow());
+                    #[cfg(feature = "RT_USING_OVERFLOW_CHECK")]
+                    assert!(!cur_thread.as_ref().stack.check_overflow());
 
-                        rt_bindings::rt_hw_context_switch(
-                            cur_thread.as_ref().sp_ptr() as rt_bindings::rt_ubase_t,
-                            to_thread.as_ref().sp_ptr() as rt_bindings::rt_ubase_t,
-                            to_thread.as_ptr() as *mut rt_bindings::rt_thread,
-                        )
-                        // cur_thread will back here
-                    };
+                    // TODO: no rt_cpus_lock_status_restore anymore
+                    rt_bindings::rt_hw_context_switch(
+                        cur_thread.as_ref().sp_ptr() as rt_bindings::rt_ubase_t,
+                        to_thread.as_ref().sp_ptr() as rt_bindings::rt_ubase_t,
+                        to_thread.as_ptr() as *mut rt_bindings::rt_thread,
+                    )
+                    // cur_thread will back here
                 }
-                None => {
-                    self.ctx_switch_unlock();
-                }
+            } else {
+                self.ctx_switch_unlock();
             }
         }
 
@@ -612,7 +634,6 @@ impl Scheduler {
     #[no_mangle]
     pub extern "C" fn switch_context_in_irq(stack_ptr: *mut usize) -> *mut usize {
         let scheduler = Cpu::get_current_scheduler();
-        debug_assert!(scheduler.get_current_thread() != None);
         let level = Arch::disable_interrupts();
 
         // TODO: add Signal preprocess.
@@ -634,40 +655,49 @@ impl Scheduler {
                 scheduler.sched_lock_mp();
 
                 /* pick the highest runnable thread, and pass the control to it */
-                match scheduler.prepare_context_switch_locked() {
-                    Some(to_thread) => {
-                        // current_thread always not None
-                        let mut cur_thread =
-                            unsafe { scheduler.get_current_thread().unwrap_unchecked().as_mut() };
+                let cur_thread = scheduler.get_current_thread();
+                if let Some(to_thread) = scheduler.prepare_context_switch_locked(cur_thread) {
+                    if let Some(mut cur_th) = cur_thread {
                         #[cfg(feature = "debug_scheduler")]
                         unsafe {
                             println!(
                                 "cpu{} switch from {}: usage: {} to {}: usage: {}",
                                 scheduler.id,
-                                cur_thread.get_name(),
-                                cur_thread.stack().usage(),
+                                cur_th.as_ref().get_name(),
+                                cur_th.as_ref().stack().usage(),
                                 to_thread.as_ref().get_name(),
                                 to_thread.as_ref().stack().usage(),
                             );
                         }
-
                         #[cfg(feature = "RT_USING_OVERFLOW_CHECK")]
-                        if cur_thread.stack_mut().check_overflow() {
-                            panic!("stack overflow");
+                        unsafe {
+                            if cur_th.as_mut().stack_mut().check_overflow() {
+                                panic!("stack overflow");
+                            }
                         }
                         #[cfg(feature = "stack_highwater_check")]
-                        if cur_thread.stack_mut().highwater() == 0 {
-                            panic!("stack overflow");
+                        unsafe {
+                            if cur_th.as_mut().stack_mut().highwater() == 0 {
+                                panic!("stack overflow");
+                            }
                         }
-
-                        cur_thread.stack_mut().set_sp(stack_ptr);
-                        scheduler.set_current_thread(to_thread);
-                        scheduler.ctx_switch_unlock();
-                        return unsafe { to_thread.as_ref().stack().sp() };
+                        unsafe { cur_th.as_mut().stack_mut().set_sp(stack_ptr) };
+                    } else {
+                        #[cfg(feature = "debug_scheduler")]
+                        unsafe {
+                            println!(
+                                "cpu{} switch to {}: usage: {}",
+                                scheduler.id,
+                                to_thread.as_ref().get_name(),
+                                to_thread.as_ref().stack().usage(),
+                            );
+                        }
                     }
-                    None => {
-                        scheduler.ctx_switch_unlock();
-                    }
+                    scheduler.set_current_thread(to_thread);
+                    scheduler.ctx_switch_unlock();
+                    return unsafe { to_thread.as_ref().stack().sp() };
+                } else {
+                    scheduler.ctx_switch_unlock();
                 }
             } else {
                 debug_assert!(scheduler.scheduler_lock_nest.load(Ordering::Relaxed) > 0);
@@ -686,17 +716,14 @@ impl Scheduler {
     pub(crate) fn insert_ready_locked(&mut self, thread: &mut RtThread) -> bool {
         debug_assert!(self.is_sched_locked());
 
-        if thread.is_suspended() {
-            // Quiet timeout timer first if set. ffand don't continue if we
-            // failed, because it probably means that a timeout ISR racing to
-            // resume thread before us.
-            if thread.timer_stop() {
-                // remove from suspend list
-                thread.remove_tlist();
-                // insert to schedule ready list and remove from susp list
-                self.insert_thread_locked(thread);
-                return true;
-            }
+        if thread.stat.is_suspended() {
+            // stop thread timer anyway
+            thread.timer_stop();
+            // remove from suspend list
+            thread.remove_tlist();
+            // insert to schedule ready list and remove from susp list
+            self.insert_thread_locked(thread);
+            return true;
         }
         false
     }

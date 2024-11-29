@@ -29,13 +29,24 @@ fn main() {
                 .to_string(),
         );
         config.documentation = true;
-        config.export.item_types = vec![cbindgen::ItemType::Structs, cbindgen::ItemType::Enums];
+        config.export.item_types = vec![
+            cbindgen::ItemType::Structs,
+            cbindgen::ItemType::Enums,
+            cbindgen::ItemType::Typedefs,
+        ];
         config.export.exclude = vec!["ListHead".to_string()];
 
         let rename_list = HashMap::from([
             ("KObjectBase".to_string(), "rt_object".to_string()),
             ("Stack".to_string(), "rt_stack".to_string()),
             ("RtThread".to_string(), "rt_thread".to_string()),
+            ("IPCObject".to_string(), "rt_ipc_object".to_string()),
+            ("RtSemaphore".to_string(), "rt_semaphore".to_string()),
+            ("RtMutex".to_string(), "rt_mutex".to_string()),
+            ("RtEvent".to_string(), "rt_event".to_string()),
+            ("RtMailbox".to_string(), "rt_mailbox".to_string()),
+            ("RtMessage".to_string(), "rt_mq_message".to_string()),
+            ("RtMessageQueue".to_string(), "rt_messagequeue".to_string()),
             ("Timer".to_string(), "rt_timer".to_string()),
             ("ListHead".to_string(), "rt_list_t".to_string()),
             (
@@ -54,8 +65,20 @@ fn main() {
                 "RT_USING_MUTEX".to_string(),
             ),
             (
+                "feature = RT_USING_SEMAPHORE".to_string(),
+                "RT_USING_SEMAPHORE".to_string(),
+            ),
+            (
                 "feature = RT_USING_EVENT".to_string(),
                 "RT_USING_EVENT".to_string(),
+            ),
+            (
+                "feature = RT_USING_MAILBOX".to_string(),
+                "RT_USING_MAILBOX".to_string(),
+            ),
+            (
+                "feature = RT_USING_MESSAGEQUEUE".to_string(),
+                "RT_USING_MESSAGEQUEUE".to_string(),
             ),
             (
                 "feature = RT_DEBUGING_SPINLOCK".to_string(),

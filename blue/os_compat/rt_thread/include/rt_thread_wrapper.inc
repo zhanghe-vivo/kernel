@@ -60,11 +60,17 @@ struct rt_spinlock
 };
 #endif
 #define RawSpin rt_spinlock
+#define int8_t rt_int8_t
 #define uint8_t rt_uint8_t
+#define int16_t rt_int16_t
+#define uint16_t rt_uint16_t
+#define int32_t rt_int32_t
 #define uint32_t rt_uint32_t
+#define int64_t rt_int64_t
 #define uint64_t rt_uint64_t
 #define uintptr_t rt_size_t
-#define int8_t rt_int8_t
+
 #define NAME_MAX 8
+struct rt_thread;
 #include "rust_wrapper.inc"
 typedef struct rt_object *rt_object_t;

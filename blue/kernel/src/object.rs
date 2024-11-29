@@ -3,6 +3,11 @@ use crate::{
     klibc::{rt_memset, rt_strncpy},
     print, println,
     process::*,
+    sync::event::RtEvent,
+    sync::lock::mutex::RtMutex,
+    sync::mailbox::RtMailbox,
+    sync::message_queue::RtMessageQueue,
+    sync::semaphore::RtSemaphore,
     thread::RtThread,
     rt_bindings::*,
     *,
@@ -223,19 +228,19 @@ impl ObjectClassType {
             x if x == Self::ObjectClassThread as u8 => mem::size_of::<RtThread>(),
             //< The object is a semaphore.
             #[cfg(feature = "RT_USING_SEMAPHORE")]
-            x if x == Self::ObjectClassSemaphore as u8 => mem::size_of::<rt_semaphore>(),
+            x if x == Self::ObjectClassSemaphore as u8 => mem::size_of::<RtSemaphore>(),
             //< The object is a mutex.
             #[cfg(feature = "RT_USING_MUTEX")]
-            x if x == Self::ObjectClassMutex as u8 => mem::size_of::<rt_mutex>(),
+            x if x == Self::ObjectClassMutex as u8 => mem::size_of::<RtMutex>(),
             //< The object is an event.
             #[cfg(feature = "RT_USING_EVENT")]
-            x if x == Self::ObjectClassEvent as u8 => mem::size_of::<rt_event>(),
+            x if x == Self::ObjectClassEvent as u8 => mem::size_of::<RtEvent>(),
             //< The object is a mailbox.
             #[cfg(feature = "RT_USING_MAILBOX")]
-            x if x == Self::ObjectClassMailBox as u8 => mem::size_of::<rt_mailbox>(),
+            x if x == Self::ObjectClassMailBox as u8 => mem::size_of::<RtMailbox>(),
             //< The object is a message queue.
             #[cfg(feature = "RT_USING_MESSAGEQUEUE")]
-            x if x == Self::ObjectClassMessageQueue as u8 => mem::size_of::<rt_messagequeue>(),
+            x if x == Self::ObjectClassMessageQueue as u8 => mem::size_of::<RtMessageQueue>(),
             //< The object is a memory heap.
             #[cfg(feature = "RT_USING_MEMHEAP")]
             x if x == Self::ObjectClassMemHeap as u8 => mem::size_of::<rt_memheap>(),

@@ -3,8 +3,11 @@ variables:
   GIT_SUBMODULE_UPDATE_FLAGS: --jobs 16
 
 stages:
+  - infra-tests
   - mps2-an385-build
   - mps2-an385-ut
+  - mps3-an547-build
+  - mps3-an547-ut
   # - a9-build-up
   # - a9-ut-up
   # - a9-build-mp
@@ -14,6 +17,16 @@ before_script:
   - export PATH="$PATH:/home/vivoadmin/.cargo/bin"
   - rustup toolchain link mygnutoolchain "/home/vivoadmin/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu"
   - rustup default mygnutoolchain
+
+run-infra-tests:
+  stage: infra-tests
+  script:
+    - cd blue
+    - cargo test -p blue_infra --release
+  tags:
+    - ubuntu
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
 
 build-mps2-an385:
   stage: mps2-an385-build
@@ -41,6 +54,37 @@ test-mps2-an385:
     - timeout 90s ./qemu-test.sh || true
     - cd ../../
     - python3 scripts/check_bsp_unittests_result.py qemu-mps2-an385
+  tags:
+    - ubuntu
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+build-mps3-an547:
+  stage: mps3-an547-build
+  script:
+    - echo "...开始NP构建..."  
+    - ./build.sh qemu-mps3-an547
+  tags:
+    - ubuntu
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  artifacts:
+        name: "rtthread.bin"
+        untracked: false
+        expire_in: 5 mins
+        paths:
+            - /data01/runner/gitlab-runner/builds/y1GSVydi/0/11154271/rt-thread/bsp/qemu-mps3-an547/rtthread.bin
+
+test-mps3-an547:
+  stage: mps3-an547-ut
+  dependencies:
+    - build-mps3-an547
+  script:
+    - echo "...测试NP代码..."  
+    - cd bsp/qemu-mps3-an547
+    - timeout 90s ./qemu-test.sh || true
+    - cd ../../
+    - python3 scripts/check_bsp_unittests_result.py qemu-mps3-an547
   tags:
     - ubuntu
   rules:

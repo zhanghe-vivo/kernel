@@ -136,7 +136,7 @@ pub unsafe extern "C" fn rt_get_errno() -> i32 {
         return RT_ERRNO.to_errno();
     }
 
-    (*tid).error
+    (*tid).error.to_errno()
 }
 
 #[no_mangle]
@@ -153,7 +153,7 @@ pub unsafe extern "C" fn rt_set_errno(error: i32) {
         return;
     }
 
-    (*tid).error = error;
+    (*tid).error = Error::from_errno(error);
 }
 
 #[no_mangle]
@@ -168,5 +168,5 @@ pub unsafe extern "C" fn _rt_errno() -> *mut i32 {
         return &RT_ERRNO.0 as *const i32 as *mut i32;
     }
 
-    &mut (*tid).error
+    &mut (*tid).error.0
 }

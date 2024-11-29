@@ -6,10 +6,7 @@ use crate::{
     sync::RawSpin,
     thread::*,
 };
-use blue_arch::{
-    arch::{Arch, ArchCore},
-    smp, ICore, IInterrupt,
-};
+use blue_arch::{arch::Arch, smp, IInterrupt};
 use core::{
     ptr::NonNull,
     sync::atomic::{AtomicU32, Ordering},
@@ -18,6 +15,7 @@ use pinned_init::*;
 use rt_bindings;
 
 pub const CPUS_NUMBER: usize = rt_bindings::RT_CPUS_NR as usize;
+pub const CPU_DETACHED: u8 = CPUS_NUMBER as u8;
 pub(crate) static mut CPUS: UnsafeStaticInit<Cpus, CpusInit> = UnsafeStaticInit::new(CpusInit);
 
 pub(crate) struct CpusInit;
@@ -31,8 +29,6 @@ unsafe impl PinInit<Cpus> for CpusInit {
 #[pin_data]
 pub struct Cpus {
     cpu_lock: RawSpin,
-    arch_core: ArchCore,
-
     #[pin]
     inner: [Cpu; CPUS_NUMBER],
 
@@ -64,7 +60,6 @@ impl Cpus {
     pub(crate) fn new() -> impl PinInit<Self> {
         pin_init!(Self {
             cpu_lock: RawSpin::new(),
-            arch_core: ArchCore::new(),
             inner <- pin_init_array_from_fn(|i| Cpu::new(i as u8)),
         })
     }
@@ -74,7 +69,6 @@ impl Cpus {
     pub(crate) fn new() -> impl PinInit<Self> {
         pin_init!(Self {
             cpu_lock: RawSpin::new(),
-            arch_core: ArchCore::new(),
             inner <- pin_init_array_from_fn(|i| Cpu::new(i as u8)),
             sched_lock: RawSpin::new(),
             global_priority_manager <- PriorityTableManager::new(),
@@ -84,11 +78,6 @@ impl Cpus {
     #[inline]
     pub(crate) fn is_inited() -> bool {
         unsafe { CPUS.is_inited() }
-    }
-
-    #[inline]
-    pub(crate) fn arch_start() {
-        unsafe { CPUS.arch_core.start() }
     }
 
     #[cfg(feature = "RT_USING_SMP")]
@@ -330,10 +319,12 @@ pub unsafe extern "C" fn rt_cpus_unlock(level: rt_bindings::rt_base_t) {
 
 // need to call before rt_enter_critical/ cpus_lock called
 #[no_mangle]
-pub unsafe extern "C" fn init_cpus() {
-    crate::process::KPROCESS.init_once();
-    CPUS.init_once();
-    crate::thread::TIDS.init_once();
+pub extern "C" fn init_cpus() {
+    unsafe {
+        crate::process::KPROCESS.init_once();
+        CPUS.init_once();
+        crate::thread::TIDS.init_once();
+    }
 }
 
 // #[no_mangle]
