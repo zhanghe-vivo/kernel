@@ -361,7 +361,7 @@ typedef struct rt_messagequeue {
 } rt_messagequeue;
 
 /**
- * WaitQueue for IPC
+ * WaitQueue for pending threads
  */
 typedef struct RtWaitQueue {
   /**
@@ -373,6 +373,60 @@ typedef struct RtWaitQueue {
    */
   uint32_t waiting_mode;
 } RtWaitQueue;
+
+/**
+ * System queue for kernel use on IPC
+ */
+typedef struct RtSysQueue {
+  /**
+   * Queue item size
+   */
+  uintptr_t item_size;
+  /**
+   * Queue item max count
+   */
+  uintptr_t item_max_count;
+  /**
+   * Count of items in queue
+   */
+  uint32_t item_in_queue;
+  /**
+   * Queue raw buffer pointer
+   */
+  uint8_t *queue_buf;
+  /**
+   * Queue memory size
+   */
+  uintptr_t queue_buf_size;
+  /**
+   * If the queue buffer from external, this will be true
+   */
+  bool is_storage_from_external;
+  /**
+   * Queue head pointer
+   */
+  uint8_t *head;
+  /**
+   * Queue tail pointer
+   */
+  uint8_t *tail;
+  /**
+   * Pointer to first 'free to use' item in queue
+   */
+  uint8_t *free;
+  /**
+   * Queue working mode: FIFO by default
+   */
+  uint32_t working_mode;
+  /**
+   * Queue for waiting to send items
+   */
+  struct RtWaitQueue sender;
+  /**
+   * Queue for waiting to receive items
+   */
+  struct RtWaitQueue receiver;
+} RtSysQueue;
 
 /**
  * Semaphore raw structure
@@ -394,6 +448,10 @@ typedef struct rt_semaphore {
    * WaitQueue for semaphore
    */
   struct RtWaitQueue wait_queue;
+  /**
+   * SysQueue for semaphore
+   */
+  struct RtSysQueue inner_queue;
 } rt_semaphore;
 
 typedef void (*ThreadEntryFn)(void*);

@@ -1,4 +1,5 @@
-use crate::error::code;
+use crate::allocator::{align_up_size, rt_free, rt_malloc};
+use crate::error::{code, Error};
 use crate::impl_kobject;
 use crate::list_head_for_each;
 use crate::object::*;
@@ -8,12 +9,183 @@ use crate::rt_bindings::{
 use crate::sync::RawSpin;
 use crate::thread::{RtThread, SuspendFlag};
 use blue_infra::list::doubly_linked_list::ListHead;
+use core::ffi;
+use core::mem;
 use core::pin::Pin;
-use core::ptr::NonNull;
+use core::ptr::{null_mut, NonNull};
 use core::slice;
 use pinned_init::*;
 
-/// WaitQueue for IPC
+/// System queue for kernel use on IPC
+#[repr(C)]
+#[pin_data(PinnedDrop)]
+pub(crate) struct RtSysQueue {
+    /// Queue item size
+    pub(crate) item_size: usize,
+    /// Queue item max count
+    pub(crate) item_max_count: usize,
+    /// Count of items in queue
+    pub(crate) item_in_queue: usize,
+    /// Queue raw buffer pointer
+    pub(crate) queue_buf: Option<NonNull<u8>>,
+    /// Queue memory size
+    pub(crate) queue_buf_size: usize,
+    /// If the queue buffer from external, this will be true
+    is_storage_from_external: bool,
+    /// Queue head pointer
+    pub(crate) head: Option<NonNull<u8>>,
+    /// Queue tail pointer
+    pub(crate) tail: Option<NonNull<u8>>,
+    /// Pointer to first 'free to use' item in queue
+    pub(crate) free: Option<NonNull<u8>>,
+    /// Queue working mode: FIFO by default
+    pub(crate) working_mode: u32,
+    /// Queue for waiting to send items
+    #[pin]
+    pub(crate) sender: RtWaitQueue,
+    /// Queue for waiting to receive items
+    #[pin]
+    pub(crate) receiver: RtWaitQueue,
+}
+
+#[pinned_drop]
+impl PinnedDrop for RtSysQueue {
+    fn drop(self: Pin<&mut Self>) {
+        let queue_raw = unsafe { Pin::get_unchecked_mut(self) };
+
+        if let Some(mut buffer) = queue_raw.queue_buf {
+            if !queue_raw.is_storage_from_external {
+                unsafe {
+                    rt_free(buffer.as_mut() as *mut u8 as *mut ffi::c_void);
+                }
+            }
+        }
+    }
+}
+
+impl RtSysQueue {
+    fn init_storage_internal(&mut self, raw_buf_ptr: *mut u8) -> usize {
+        if self.item_size == 0 || self.item_max_count == 0 {
+            return 0;
+        }
+
+        if raw_buf_ptr.is_null() {
+            self.is_storage_from_external = false;
+        }
+
+        rt_bindings::rt_debug_not_in_interrupt!();
+
+        let item_align_size = align_up_size(self.item_size, rt_bindings::RT_ALIGN_SIZE as usize);
+        self.queue_buf_size =
+            (item_align_size + mem::size_of::<RtSysQueueItemHeader>()) * self.item_max_count;
+        let buffer_raw = if self.is_storage_from_external {
+            raw_buf_ptr
+        } else {
+            // SAFETY: return null pointer when failed
+            unsafe { rt_malloc(self.queue_buf_size) as *mut u8 }
+        };
+
+        if buffer_raw.is_null() {
+            return 0;
+        } else {
+            // SAFETY: buffer_raw is null checked and allocated to the proper size
+            self.queue_buf = Some(unsafe { NonNull::new_unchecked(buffer_raw) });
+        }
+
+        let mut free_raw = null_mut();
+        for idx in 0..self.item_max_count {
+            // SAFETY: buffer_raw is null checked and allocated to the proper size
+            let head_raw = unsafe {
+                buffer_raw.offset(
+                    (idx * (item_align_size + mem::size_of::<RtSysQueueItemHeader>())) as isize,
+                ) as *mut RtSysQueueItemHeader
+            };
+
+            if head_raw.is_null() {
+                // SAFETY: header_raw is null checked and within the range
+                unsafe { (*head_raw).next = free_raw as *mut RtSysQueueItemHeader };
+            }
+
+            free_raw = head_raw;
+        }
+
+        // SAFETY: free_raw is null checked and within the range
+        self.free = if free_raw.is_null() {
+            None
+        } else {
+            Some(unsafe { NonNull::new_unchecked(free_raw as *mut u8) })
+        };
+        self.head = None;
+        self.tail = None;
+
+        self.queue_buf_size
+    }
+
+    #[inline]
+    pub(crate) fn new(
+        item_size: usize,
+        item_max_count: usize,
+        item_in_queue: usize,
+        working_mode: u32,
+        waiting_mode: u32,
+    ) -> impl PinInit<Self> {
+        let init = move |slot: *mut Self| {
+            let sysq = unsafe { &mut *(slot as *mut RtSysQueue) };
+            sysq.item_size = item_size;
+            sysq.item_max_count = item_max_count;
+            sysq.item_in_queue = 0;
+            sysq.init_storage_internal(null_mut());
+            sysq.working_mode = working_mode;
+
+            unsafe {
+                RtWaitQueue::new(waiting_mode).__pinned_init(&mut sysq.sender as *mut RtWaitQueue);
+                RtWaitQueue::new(waiting_mode)
+                    .__pinned_init(&mut sysq.receiver as *mut RtWaitQueue);
+            }
+
+            Ok(())
+        };
+        unsafe { pin_init_from_closure(init) }
+    }
+
+    #[inline]
+    pub fn init(
+        &mut self,
+        buffer: *mut u8,
+        item_size: usize,
+        item_max_count: usize,
+        item_in_queue: usize,
+        working_mode: u32,
+        waiting_mode: u32,
+    ) -> Error {
+        self.item_size = item_size;
+        self.item_max_count = item_max_count;
+        self.item_in_queue = 0;
+        let buf_size = self.init_storage_internal(buffer);
+        self.working_mode = working_mode;
+
+        unsafe {
+            RtWaitQueue::new(waiting_mode).__pinned_init(&mut self.sender as *mut RtWaitQueue);
+            RtWaitQueue::new(waiting_mode).__pinned_init(&mut self.receiver as *mut RtWaitQueue);
+        }
+
+        if buf_size > 0 {
+            code::EOK
+        } else {
+            code::ENOMEM
+        }
+    }
+}
+
+/// Sys Queue item header
+#[repr(C)]
+pub(crate) struct RtSysQueueItemHeader {
+    pub(crate) next: *mut RtSysQueueItemHeader,
+    pub(crate) len: usize,
+    pub(crate) prio: i32,
+}
+
+/// WaitQueue for pending threads
 #[repr(C)]
 #[pin_data]
 pub(crate) struct RtWaitQueue {

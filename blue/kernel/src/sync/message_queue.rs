@@ -929,6 +929,7 @@ pub unsafe extern "C" fn rt_mq_init(
     flag: rt_uint8_t,
 ) -> rt_err_t {
     assert!(!mq.is_null());
+    assert!((flag == RT_IPC_FLAG_FIFO as u8) || (flag == RT_IPC_FLAG_PRIO as u8));
     (*mq).init(
         name,
         msgpool as *mut u8,

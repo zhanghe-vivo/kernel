@@ -18,6 +18,7 @@ use crate::{
 use blue_infra::list::doubly_linked_list::ListHead;
 use core::pin::Pin;
 use core::{ffi::c_void, marker::PhantomPinned, ptr::null_mut};
+use core::{mem, ptr::null};
 
 use crate::alloc::boxed::Box;
 use core::cell::UnsafeCell;
@@ -103,6 +104,9 @@ pub(crate) struct RtSemaphore {
     #[pin]
     /// WaitQueue for semaphore
     pub(crate) wait_queue: RtWaitQueue,
+    /// SysQueue for semaphore
+    #[pin]
+    pub(crate) inner_queue: RtSysQueue,
 }
 
 impl_kobject!(RtSemaphore);
@@ -120,7 +124,8 @@ impl RtSemaphore {
             parent<-KObjectBase::new(ObjectClassType::ObjectClassSemaphore as u8, name),
             value: value,
             spinlock: RawSpin::new(),
-            wait_queue<-RtWaitQueue::new(waiting_mode as u32)
+            wait_queue<-RtWaitQueue::new(waiting_mode as u32),
+            inner_queue<-RtSysQueue::new(mem::size_of::<u32>(), value as usize, RT_IPC_FLAG_FIFO, waiting_mode as u32),
         })
     }
 
@@ -151,6 +156,13 @@ impl RtSemaphore {
         );
         self.value = value;
         self.spinlock = RawSpin::new();
+        self.inner_queue.init(
+            null_mut(),
+            mem::size_of::<u32>(),
+            value as usize,
+            RT_IPC_FLAG_FIFO,
+            waiting_mode as u32,
+        );
         self.wait_queue.init(waiting_mode as u32);
     }
 

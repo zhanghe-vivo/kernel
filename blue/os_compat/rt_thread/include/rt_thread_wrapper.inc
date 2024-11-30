@@ -69,6 +69,8 @@ struct rt_spinlock
 #define int64_t rt_int64_t
 #define uint64_t rt_uint64_t
 #define uintptr_t rt_size_t
+#define intptr_t rt_ssize_t
+#define bool rt_bool_t
 
 #define NAME_MAX 8
 struct rt_thread;
