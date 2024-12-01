@@ -168,12 +168,6 @@ impl RtSemaphore {
 
     #[inline]
     pub fn detach(&mut self) {
-        assert_eq!(
-            self.type_name(),
-            ObjectClassType::ObjectClassSemaphore as u8
-        );
-        assert!(self.is_static_kobject());
-
         self.wait_queue.inner_locked_wake_all();
         self.parent.detach();
     }
@@ -368,6 +362,11 @@ pub unsafe extern "C" fn rt_sem_init(
 #[no_mangle]
 pub unsafe extern "C" fn rt_sem_detach(sem: *mut RtSemaphore) -> rt_err_t {
     assert!(!sem.is_null());
+    assert_eq!(
+        (*sem).type_name(),
+        ObjectClassType::ObjectClassSemaphore as u8
+    );
+    assert!((*sem).is_static_kobject());
     (*sem).detach();
     RT_EOK as rt_err_t
 }

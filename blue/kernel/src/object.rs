@@ -88,13 +88,15 @@ impl KObjectBase {
     }
 
     pub(crate) fn detach(&mut self) {
-        unsafe {
-            rt_bindings::rt_object_hook_call!(
-                OBJECT_DETACH_HOOK,
-                self as *const _ as *const rt_object
-            )
-        };
-        remove(self);
+        if self.type_ & (!OBJECT_CLASS_STATIC) != ObjectClassType::ObjectClassProcess as u8 {
+            unsafe {
+                rt_bindings::rt_object_hook_call!(
+                    OBJECT_DETACH_HOOK,
+                    self as *const _ as *const rt_object
+                )
+            };
+            remove(self);
+        }
         self.type_ = ObjectClassType::ObjectClassUninit as u8;
     }
 

@@ -46,20 +46,15 @@ pub(crate) struct RtSysQueue {
     /// Queue for waiting to receive items
     #[pin]
     pub(crate) receiver: RtWaitQueue,
+    /// Spin lock for queue
+    spinlock: RawSpin,
 }
 
 #[pinned_drop]
 impl PinnedDrop for RtSysQueue {
     fn drop(self: Pin<&mut Self>) {
         let queue_raw = unsafe { Pin::get_unchecked_mut(self) };
-
-        if let Some(mut buffer) = queue_raw.queue_buf {
-            if !queue_raw.is_storage_from_external {
-                unsafe {
-                    rt_free(buffer.as_mut() as *mut u8 as *mut ffi::c_void);
-                }
-            }
-        }
+        queue_raw.free_storage_internal();
     }
 }
 
@@ -68,6 +63,8 @@ impl RtSysQueue {
         if self.item_size == 0 || self.item_max_count == 0 {
             return 0;
         }
+
+        self.free_storage_internal();
 
         if raw_buf_ptr.is_null() {
             self.is_storage_from_external = false;
@@ -121,11 +118,20 @@ impl RtSysQueue {
         self.queue_buf_size
     }
 
+    fn free_storage_internal(&mut self) {
+        if let Some(mut buffer) = self.queue_buf {
+            if !self.is_storage_from_external {
+                unsafe {
+                    rt_free(buffer.as_mut() as *mut u8 as *mut ffi::c_void);
+                }
+            }
+        }
+    }
+
     #[inline]
     pub(crate) fn new(
         item_size: usize,
         item_max_count: usize,
-        item_in_queue: usize,
         working_mode: u32,
         waiting_mode: u32,
     ) -> impl PinInit<Self> {
@@ -133,7 +139,6 @@ impl RtSysQueue {
             let sysq = unsafe { &mut *(slot as *mut RtSysQueue) };
             sysq.item_size = item_size;
             sysq.item_max_count = item_max_count;
-            sysq.item_in_queue = 0;
             sysq.init_storage_internal(null_mut());
             sysq.working_mode = working_mode;
 
@@ -142,6 +147,8 @@ impl RtSysQueue {
                 RtWaitQueue::new(waiting_mode)
                     .__pinned_init(&mut sysq.receiver as *mut RtWaitQueue);
             }
+
+            sysq.spinlock = RawSpin::new();
 
             Ok(())
         };
@@ -154,13 +161,11 @@ impl RtSysQueue {
         buffer: *mut u8,
         item_size: usize,
         item_max_count: usize,
-        item_in_queue: usize,
         working_mode: u32,
         waiting_mode: u32,
     ) -> Error {
         self.item_size = item_size;
         self.item_max_count = item_max_count;
-        self.item_in_queue = 0;
         let buf_size = self.init_storage_internal(buffer);
         self.working_mode = working_mode;
 
@@ -169,11 +174,51 @@ impl RtSysQueue {
             RtWaitQueue::new(waiting_mode).__pinned_init(&mut self.receiver as *mut RtWaitQueue);
         }
 
+        self.spinlock = RawSpin::new();
+
         if buf_size > 0 {
             code::EOK
         } else {
             code::ENOMEM
         }
+    }
+
+    #[inline]
+    pub(crate) fn is_full(&self) -> bool {
+        self.free.is_none()
+    }
+
+    #[inline]
+    pub(crate) fn is_empty(&self) -> bool {
+        self.head.is_none()
+    }
+
+    #[inline]
+    pub(crate) fn push(&mut self, buffer: *const u8, size: usize, prio: i32) -> Result<(), Error> {
+        if self.is_full() {
+            return Err(code::EFULL);
+        }
+
+        Ok(())
+    }
+
+    #[inline]
+    pub(crate) fn pop(&self) /*-> Result<RtSysQueueItemHeader, Error>*/
+    {
+        //self.head.is_none()
+    }
+
+    #[inline]
+    pub(crate) fn lock(&self) {
+        self.spinlock.lock();
+    }
+    #[inline]
+    pub(crate) fn unlock(&self) {
+        self.spinlock.unlock();
+    }
+    #[inline]
+    pub(crate) fn push_internal(&mut self, item: *mut u8) -> Result<(), Error> {
+        Ok(()) //self.push_internal(item)
     }
 }
 

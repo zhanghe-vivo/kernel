@@ -389,7 +389,7 @@ typedef struct RtSysQueue {
   /**
    * Count of items in queue
    */
-  uint32_t item_in_queue;
+  uintptr_t item_in_queue;
   /**
    * Queue raw buffer pointer
    */
@@ -426,6 +426,10 @@ typedef struct RtSysQueue {
    * Queue for waiting to receive items
    */
   struct RtWaitQueue receiver;
+  /**
+   * Spin lock for queue
+   */
+  struct RawSpin spinlock;
 } RtSysQueue;
 
 /**
