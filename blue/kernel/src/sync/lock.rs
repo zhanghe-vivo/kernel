@@ -17,6 +17,7 @@ use pinned_init::*;
 
 pub mod heaplock;
 pub mod mutex;
+pub mod rwlock;
 pub mod spinlock;
 
 /// The "backend" of a lock.
