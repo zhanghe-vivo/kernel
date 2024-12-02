@@ -1,12 +1,17 @@
+use crate::cpu::Cpu;
+use crate::error::code;
 use crate::impl_kobject;
 use crate::object::{KObjectBase, KernelObject, ObjectClassType, NAME_MAX};
 use crate::rt_bindings::{
-    rt_debug_not_in_interrupt, RT_EINVAL, RT_EOK, RT_ETIMEOUT, RT_IPC_FLAG_FIFO, RT_IPC_FLAG_PRIO,
+    rt_debug_in_thread_context, rt_debug_not_in_interrupt, RT_EINVAL, RT_EOK, RT_ERROR,
+    RT_ETIMEOUT, RT_IPC_FLAG_FIFO, RT_IPC_FLAG_PRIO, RT_TIMER_CTRL_SET_TIME, RT_UNINTERRUPTIBLE,
 };
 use crate::sync::lock::mutex::RtMutex;
 use crate::sync::semaphore::RtSemaphore;
 use crate::sync::RawSpin;
 use blue_infra::list::doubly_linked_list::ListHead;
+use core::ffi::c_void;
+use core::ptr::null_mut;
 use pinned_init::*;
 
 /// Condition variable raw structure
@@ -69,12 +74,74 @@ impl RtCondVar {
 
         self.inner_sem.detach();
     }
+    #[inline]
+    pub(crate) fn wait(&mut self, mutex: &mut RtMutex) -> i32 {
+        self.wait_timeout(mutex, RT_UNINTERRUPTIBLE, 0)
+    }
 
     #[inline]
-    pub(crate) fn wait(&self, mutex: &mut RtMutex, pending_mode: u32) {}
+    pub(crate) fn wait_timeout(
+        &mut self,
+        mutex: &mut RtMutex,
+        pending_mode: u32,
+        timeout: i32,
+    ) -> i32 {
+        let mut time_out = timeout;
+        let mut result = RT_EOK as i32;
 
-    #[inline]
-    pub(crate) fn wait_timeout(&self, timeout: u32, mutex: &RtMutex, pending_mode: u32) {}
+        let thread_ptr = crate::current_thread_ptr!();
+        if mutex.owner != thread_ptr {
+            return -(RT_ERROR as i32);
+        }
+
+        self.spinlock.lock();
+
+        if self.inner_sem.inner_queue.item_in_queue > 0 {
+            self.inner_sem.value -= 1;
+            self.spinlock.unlock();
+        } else {
+            if time_out == 0 {
+                self.spinlock.unlock();
+
+                return -(RT_ETIMEOUT as i32);
+            } else {
+                rt_debug_in_thread_context!();
+
+                let thread = unsafe { &mut (*thread_ptr) };
+
+                thread.error = code::EOK;
+                self.inner_sem
+                    .inner_queue
+                    .receiver
+                    .wait(thread, pending_mode);
+
+                if time_out > 0 {
+                    thread.thread_timer.timer_control(
+                        RT_TIMER_CTRL_SET_TIME,
+                        (&mut time_out) as *mut i32 as *mut c_void,
+                    );
+
+                    thread.thread_timer.start();
+                }
+
+                if mutex.unlock() != RT_EOK as i32 {
+                    return -(RT_ERROR as i32);
+                }
+
+                self.spinlock.unlock();
+
+                Cpu::get_current_scheduler().do_task_schedule();
+
+                if thread.error != code::EOK {
+                    result = thread.error.to_errno();
+                }
+
+                mutex.lock();
+            }
+        }
+
+        return result;
+    }
 
     #[inline]
     pub(crate) fn notify(&mut self) -> i32 {

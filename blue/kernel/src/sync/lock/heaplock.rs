@@ -39,7 +39,7 @@ unsafe impl super::Backend for HeapLockBackend {
         // memory, and that it has been initialised before.
         unsafe {
             if !thread::rt_thread_self().is_null() {
-                (*ptr).take(rt_bindings::RT_WAITING_FOREVER)
+                (*ptr).lock()
             } else {
                 rt_bindings::RT_EOK as i32
             }
@@ -51,7 +51,7 @@ unsafe impl super::Backend for HeapLockBackend {
         // caller is the owner of the mutex.
         unsafe {
             if !thread::rt_thread_self().is_null() {
-                (*ptr).release();
+                (*ptr).unlock();
             }
         }
     }

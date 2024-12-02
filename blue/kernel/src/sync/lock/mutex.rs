@@ -75,7 +75,7 @@ impl<T> KMutex<T> {
 
     pub fn lock(&self) -> KMutexGuard<'_, T> {
         unsafe {
-            (*self.raw.get()).take(RT_WAITING_FOREVER);
+            (*self.raw.get()).lock();
         };
         KMutexGuard { mtx: self }
     }
@@ -87,7 +87,7 @@ pub struct KMutexGuard<'a, T> {
 
 impl<'a, T> Drop for KMutexGuard<'a, T> {
     fn drop(&mut self) {
-        unsafe { (*self.mtx.raw.get()).release() };
+        unsafe { (*self.mtx.raw.get()).unlock() };
     }
 }
 
@@ -208,7 +208,7 @@ impl RtMutex {
         self.parent.parent.delete();
     }
 
-    fn take_internal(&mut self, timeout: i32, suspend_flag: u32) -> i32 {
+    fn lock_internal(&mut self, timeout: i32, suspend_flag: u32) -> i32 {
         // Shadow timeout for mutability
         let mut timeout = timeout;
         rt_debug_scheduler_available!(true);
@@ -363,23 +363,19 @@ impl RtMutex {
         RT_EOK as i32
     }
 
-    pub fn take(&mut self, time: i32) -> i32 {
-        self.take_internal(time, RT_UNINTERRUPTIBLE as u32)
+    pub fn lock(&mut self) -> i32 {
+        self.lock_internal(RT_WAITING_FOREVER as i32, RT_UNINTERRUPTIBLE as u32)
     }
 
-    pub fn take_interruptible(&mut self, time: i32) -> i32 {
-        self.take_internal(time, RT_INTERRUPTIBLE as u32)
+    pub fn lock_wait(&mut self, time: i32) -> i32 {
+        self.lock_internal(time, RT_UNINTERRUPTIBLE as u32)
     }
 
-    pub fn take_killable(&mut self, time: i32) -> i32 {
-        self.take_internal(time, RT_KILLABLE as u32)
+    pub fn try_lock(&mut self) -> i32 {
+        self.lock_wait(RT_WAITING_NO as i32)
     }
 
-    pub fn try_take(&mut self) -> i32 {
-        self.take(RT_WAITING_NO as i32)
-    }
-
-    pub fn release(&mut self) -> i32 {
+    pub fn unlock(&mut self) -> i32 {
         assert_eq!(self.type_name(), ObjectClassType::ObjectClassMutex as u8);
 
         //Only thread could release mutex because we need test the ownership
@@ -616,7 +612,7 @@ pub unsafe extern "C" fn rt_mutex_delete(mutex: *mut RtMutex) -> rt_err_t {
 #[no_mangle]
 pub unsafe extern "C" fn rt_mutex_take(mutex: *mut RtMutex, time: rt_int32_t) -> rt_err_t {
     assert!(!mutex.is_null());
-    (*mutex).take(time)
+    (*mutex).lock_wait(time)
 }
 
 #[cfg(feature = "RT_USING_MUTEX")]
@@ -626,28 +622,28 @@ pub unsafe extern "C" fn rt_mutex_take_interruptible(
     time: rt_int32_t,
 ) -> rt_err_t {
     assert!(!mutex.is_null());
-    (*mutex).take_interruptible(time)
+    (*mutex).lock_internal(time, RT_INTERRUPTIBLE)
 }
 
 #[cfg(feature = "RT_USING_MUTEX")]
 #[no_mangle]
 pub unsafe extern "C" fn rt_mutex_take_killable(mutex: *mut RtMutex, time: rt_int32_t) -> rt_err_t {
     assert!(!mutex.is_null());
-    (*mutex).take_killable(time)
+    (*mutex).lock_internal(time, RT_KILLABLE)
 }
 
 #[cfg(feature = "RT_USING_MUTEX")]
 #[no_mangle]
 pub unsafe extern "C" fn rt_mutex_trytake(mutex: *mut RtMutex) -> rt_err_t {
     assert!(!mutex.is_null());
-    (*mutex).try_take()
+    (*mutex).try_lock()
 }
 
 #[cfg(feature = "RT_USING_MUTEX")]
 #[no_mangle]
 pub unsafe extern "C" fn rt_mutex_release(mutex: *mut RtMutex) -> rt_err_t {
     assert!(!mutex.is_null());
-    (*mutex).release()
+    (*mutex).unlock()
 }
 #[no_mangle]
 #[allow(unused_unsafe)]

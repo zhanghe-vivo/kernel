@@ -822,7 +822,7 @@ impl RtThread {
                     taken_list
                 );
                 if !mutex.is_null() {
-                    (*mutex).release();
+                    (*mutex).unlock();
                 }
             }
         }
