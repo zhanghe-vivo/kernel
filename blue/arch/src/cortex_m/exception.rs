@@ -9,6 +9,7 @@ use cortex_m::peripheral::SCB;
 #[no_mangle]
 #[naked]
 pub unsafe extern "C" fn HardFault_Handler() {
+     // SAFETY: This is a hardware exception handler, using naked assembly is safe.
     unsafe {
         naked_asm!(
             "mrs      r0, msp",   // get fault context from handler.
@@ -73,7 +74,8 @@ struct HardFaultRegs {
 
 impl HardFaultRegs {
     pub fn from_scb() -> Self {
-        // 获取 SCB 寄存器的值
+        // Get the value of the SCB registers
+        // SAFETY: SCB::PTR comes from cortex_m crate and is a valid pointer
         let scb = unsafe { &*SCB::PTR };
 
         Self {
@@ -269,7 +271,4 @@ pub unsafe extern "C" fn HardFault(ef: &ExceptionFrame) -> ! {
         "\n=== HARD FAULT ===\n{}\n{}\n{}\n stack xpsr: {} ",
         fault_regs, xpsr, ef, stack_xpsr
     );
-
-    // TODO: add print thread info
-    loop {}
 }

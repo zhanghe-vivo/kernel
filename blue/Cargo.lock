@@ -112,7 +112,6 @@ dependencies = [
  "cbindgen",
  "cfg-if",
  "const-default",
- "downcast-rs",
  "log",
  "paste",
  "pinned-init",
@@ -205,12 +204,6 @@ dependencies = [
  "embedded-hal",
  "volatile-register",
 ]
-
-[[package]]
-name = "downcast-rs"
-version = "1.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "75b325c5dbd37f80359721ad39aca5a29fb04c89279657cffdda8736d0c0b9d2"
 
 [[package]]
 name = "either"

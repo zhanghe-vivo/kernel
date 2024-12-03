@@ -94,13 +94,14 @@ impl Xpsr {
 #[inline]
 pub fn read() -> Xpsr {
     let bits;
+    // SAFETY: Safe register read operation
     unsafe { asm!("mrs {}, XPSR", out(reg) bits, options(nomem, nostack, preserves_flags)) };
     Xpsr { bits }
 }
 
 impl core::fmt::Display for Xpsr {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        write!(f, "XPSR: 0x{:08x}\n", self.bits)?;
+        writeln!(f, "XPSR: 0x{:08x}", self.bits)?;
 
         // Display Exception Number
         writeln!(f, "  Exception Number: {}", self.e())?;

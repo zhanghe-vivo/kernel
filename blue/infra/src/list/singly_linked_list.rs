@@ -50,7 +50,7 @@ impl<T> List<T> {
 
     pub fn push(&mut self, val: T) -> &mut Self {
         let mut new_node = Box::new(Node::<T>::new(val));
-        let old_head = mem::replace(&mut self.head, None);
+        let old_head = self.head.take();
         new_node.next = old_head;
         self.head = Some(new_node);
         self.size += 1;
@@ -58,7 +58,7 @@ impl<T> List<T> {
     }
 
     pub fn pop(&mut self) -> Option<T> {
-        match mem::replace(&mut self.head, None) {
+        match self.head.take() {
             None => None,
             Some(mut old_head) => {
                 assert!(self.size > 0);
@@ -77,7 +77,7 @@ impl<T> Node<T> {
     const fn new(val: T) -> Self {
         Self {
             next: None,
-            val: val,
+            val,
         }
     }
     #[allow(dead_code)]
@@ -98,7 +98,7 @@ impl<T> Node<T> {
     fn insert(&mut self, val: T) -> &mut Self {
         let mut new_node = Box::<Node<T>>::new(Node::<T> {
             next: None,
-            val: val,
+            val,
         });
         mem::swap(&mut new_node.val, &mut self.val);
         mem::swap(&mut new_node.next, &mut self.next);
@@ -110,15 +110,15 @@ impl<T> Node<T> {
     // O(1) removal.
     #[allow(dead_code)]
     fn remove(&mut self) -> Option<Self> {
-        if self.next.is_none() {
-            return None;
+        match self.next.take() {
+            None => None,
+            Some(mut old_next) => {
+                mem::swap(&mut old_next.next, &mut self.next);
+                assert!(old_next.next.is_none());
+                mem::swap(&mut old_next.val, &mut self.val);
+                Some(*old_next)
+            }
         }
-        let mut old_next = mem::replace(&mut self.next, None).unwrap();
-        assert!(self.next.is_none());
-        mem::swap(&mut old_next.next, &mut self.next);
-        assert!(old_next.next.is_none());
-        mem::swap(&mut old_next.val, &mut self.val);
-        Some(*old_next)
     }
 }
 
