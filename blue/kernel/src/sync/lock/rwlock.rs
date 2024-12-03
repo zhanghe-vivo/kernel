@@ -99,16 +99,16 @@ impl RtRwLock {
 
         let mut result = self.mutex.lock();
         if result != RT_EOK as i32 {
-            return (result);
+            return result;
         }
 
         if self.ref_count != 0 || self.reader_waiting != 0 || self.writer_waiting != 0 {
             return -(RT_EBUSY as i32);
         } else {
             result = self.read_cond.inner_sem.try_take();
-            if (result == RT_EOK as i32) {
+            if result == RT_EOK as i32 {
                 result = self.write_cond.inner_sem.try_take();
-                if (result == RT_EOK as i32) {
+                if result == RT_EOK as i32 {
                     self.read_cond.inner_sem.release();
                     self.write_cond.inner_sem.release();
                     self.read_cond.detach();
@@ -157,7 +157,7 @@ impl RtRwLock {
         let mut result = self.mutex.lock();
 
         if result != RT_EOK as i32 {
-            return (result);
+            return result;
         }
 
         if self.ref_count < 0 || self.writer_waiting > 0 {
@@ -175,7 +175,7 @@ impl RtRwLock {
         let mut result = self.mutex.lock();
 
         if result != RT_EOK as i32 {
-            return (result);
+            return result;
         }
 
         while self.ref_count < 0 || self.writer_waiting > 0 {
@@ -202,7 +202,7 @@ impl RtRwLock {
         let mut result = self.mutex.lock();
 
         if result != RT_EOK as i32 {
-            return (result);
+            return result;
         }
 
         while self.ref_count != 0 {

@@ -23,7 +23,7 @@ pub(crate) struct RtCondVar {
     pub(crate) parent: KObjectBase,
     /// Spin lock
     pub(crate) spinlock: RawSpin,
-    /// Wait Queue
+    /// Inner semaphore condvar uses
     #[pin]
     pub(crate) inner_sem: RtSemaphore,
 }
@@ -97,7 +97,7 @@ impl RtCondVar {
         self.spinlock.lock();
 
         if self.inner_sem.inner_queue.item_in_queue > 0 {
-            self.inner_sem.value -= 1;
+            self.inner_sem.inner_queue.pop_stub();
             self.spinlock.unlock();
         } else {
             if time_out == 0 {

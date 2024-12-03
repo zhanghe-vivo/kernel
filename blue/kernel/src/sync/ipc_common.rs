@@ -60,7 +60,7 @@ impl PinnedDrop for RtSysQueue {
 
 impl RtSysQueue {
     fn init_storage_internal(&mut self, raw_buf_ptr: *mut u8) -> usize {
-        if self.item_size == 0 || self.item_max_count == 0 {
+        if self.item_size == 0 || self.item_max_count == 0 || self.working_mode == 2 {
             return 0;
         }
 
@@ -185,25 +185,61 @@ impl RtSysQueue {
 
     #[inline]
     pub(crate) fn is_full(&self) -> bool {
-        self.free.is_none()
+        self.item_max_count == self.item_in_queue
     }
 
     #[inline]
     pub(crate) fn is_empty(&self) -> bool {
-        self.head.is_none()
+        self.item_in_queue == 0
     }
 
     #[inline]
-    pub(crate) fn push(&mut self, buffer: *const u8, size: usize, prio: i32) -> Result<(), Error> {
-        if self.is_full() {
-            return Err(code::EFULL);
+    pub(crate) fn force_push_stub(&mut self) -> bool {
+        if self.item_in_queue < core::usize::MAX {
+            self.item_in_queue += 1;
+            return true;
         }
-
-        Ok(())
+        false
     }
 
     #[inline]
-    pub(crate) fn pop(&self) /*-> Result<RtSysQueueItemHeader, Error>*/
+    pub(crate) fn push_stub(&mut self) -> bool {
+        if self.is_full() {
+            return false;
+        }
+        self.force_push_stub()
+    }
+
+    #[inline]
+    pub(crate) fn pop_stub(&mut self) -> bool {
+        if self.is_empty() {
+            return false;
+        }
+        self.item_in_queue -= 1;
+        true
+    }
+
+    #[inline]
+    pub(crate) fn reset_stub(&mut self, item_in_queue: usize) {
+        self.item_in_queue = item_in_queue;
+        if self.item_in_queue > self.item_max_count {
+            self.item_max_count = self.item_in_queue;
+        }
+    }
+    /*
+        #[inline]
+        pub(crate) fn push_internal(
+            &mut self,
+            buffer: *const u8,
+            size: usize,
+            prio: i32,
+            time_out: i32,
+            pending_mode: u32,
+        ) {
+        }
+    */
+    #[inline]
+    pub(crate) fn pop_internal(&self) /*-> Result<RtSysQueueItemHeader, Error>*/
     {
         //self.head.is_none()
     }
@@ -227,7 +263,19 @@ impl RtSysQueue {
 pub(crate) struct RtSysQueueItemHeader {
     pub(crate) next: *mut RtSysQueueItemHeader,
     pub(crate) len: usize,
-    pub(crate) prio: i32,
+    pub(crate) priority: i32,
+}
+
+#[repr(C)]
+pub(crate) struct RtSysQueueItemHandleBorrowed {
+    pub(crate) addr: *mut u8,
+    pub(crate) len: usize,
+}
+
+macro_rules! sys_queue_item_data_addr {
+    ($msg:expr) => {
+        ($msg as *mut RtSysQueueItemHeader).offset(1) as *mut _
+    };
 }
 
 /// WaitQueue for pending threads

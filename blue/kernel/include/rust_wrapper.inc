@@ -441,17 +441,9 @@ typedef struct rt_semaphore {
    */
   struct rt_object parent;
   /**
-   * Value of semaphore
-   */
-  uint16_t value;
-  /**
    * Spin lock semaphore used
    */
   struct RawSpin spinlock;
-  /**
-   * WaitQueue for semaphore
-   */
-  struct RtWaitQueue wait_queue;
   /**
    * SysQueue for semaphore
    */
