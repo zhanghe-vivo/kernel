@@ -19,6 +19,7 @@ use crate::{
     thread::RtThread,
 };
 use blue_infra::list::doubly_linked_list::ListHead;
+use core::ptr::NonNull;
 #[allow(unused_imports)]
 use core::{
     alloc::AllocError,
@@ -125,6 +126,22 @@ impl KMessageQueue {
     }
 }
 
+macro_rules! get_message_addr {
+    ($msg:expr) => {
+        ($msg as *mut RtMessage).offset(1) as *mut _
+    };
+}
+
+/// MessageQueue message structure
+#[repr(C)]
+#[pin_data]
+pub struct RtMessage {
+    #[pin]
+    pub next: *mut RtMessage,
+    pub length: isize,
+    pub prio: i32,
+}
+
 /// MessageQueue raw structure
 #[repr(C)]
 #[pin_data]
@@ -149,7 +166,9 @@ impl RtMessageQueue {
         working_mode: u8,
         waiting_mode: u8,
     ) -> Result<Pin<Box<Self>>, AllocError> {
-        assert!((flag == RT_IPC_FLAG_FIFO as u8) || (flag == RT_IPC_FLAG_PRIO as u8));
+        assert!(
+            (waiting_mode == RT_IPC_FLAG_FIFO as u8) || (waiting_mode == RT_IPC_FLAG_PRIO as u8)
+        );
 
         rt_debug_not_in_interrupt!();
 
@@ -168,22 +187,24 @@ impl RtMessageQueue {
         item_size: usize,
         buffer_size: usize,
         working_mode: u8,
-        flag: u8,
+        waiting_mode: u8,
     ) -> i32 {
-        assert!((flag == RT_IPC_FLAG_FIFO as u8) || (flag == RT_IPC_FLAG_PRIO as u8));
+        assert!(
+            (waiting_mode == RT_IPC_FLAG_FIFO as u8) || (waiting_mode == RT_IPC_FLAG_PRIO as u8)
+        );
         self.parent
             .init(ObjectClassType::ObjectClassMessageQueue as u8, name);
 
         let msg_align_size = align_up_size(item_size as usize, RT_ALIGN_SIZE as usize);
 
-        if working_mode == IPC_SYS_QUEUE_FIFO {
+        if working_mode == IPC_SYS_QUEUE_FIFO as u8 {
             self.inner_queue.item_max_count = (buffer_size as usize / self.inner_queue.item_size)
-        } else if working_mode == IPC_SYS_QUEUE_PRIO {
+        } else if working_mode == IPC_SYS_QUEUE_PRIO as u8 {
             self.inner_queue.item_max_count =
                 (buffer_size as usize / (msg_align_size + mem::size_of::<RtSysQueueItemHeader>()));
         }
 
-        if self.item_max_count == 0 {
+        if self.inner_queue.item_max_count == 0 {
             return -(RT_EINVAL as i32);
         }
 
@@ -194,10 +215,10 @@ impl RtMessageQueue {
                 buffer,
                 item_size,
                 self.inner_queue.item_max_count,
-                working_mode,
-                waiting_mode,
+                working_mode as u32,
+                waiting_mode as u32,
             )
-            .to_error_no()
+            .to_errno()
     }
 
     pub fn init_new_storage(
@@ -207,44 +228,6 @@ impl RtMessageQueue {
         max_msgs: u16,
         flag: u8,
     ) -> i32 {
-        self.parent
-            .init(ObjectClassType::ObjectClassMessageQueue as u8, name, flag);
-
-        self.msg_size = msg_size;
-        self.max_msgs = max_msgs;
-        self.entry = 0;
-        self.msg_queue_head = null_mut();
-        self.msg_queue_tail = null_mut();
-
-        let msg_align_size = align_up_size(msg_size as usize, RT_ALIGN_SIZE as usize);
-        self.msg_pool =
-            // SAFETY: msg_align_size is a multiple of RT_ALIGN_SIZE and msg_pool is null checked
-            unsafe { rt_malloc((msg_align_size as usize + mem::size_of::<RtMessage>())
-                * max_msgs as usize) as *mut u8 };
-
-        if self.msg_pool.is_null() {
-            return -(RT_ENOMEM as i32);
-        }
-
-        self.msg_queue_free = null_mut();
-        for temp in 0..max_msgs as usize {
-            // SAFETY: msg_pool is null checked
-            let head = unsafe {
-                self.msg_pool.offset(
-                    (temp * (msg_align_size as usize + mem::size_of::<RtMessage>())) as isize,
-                ) as *mut RtMessage
-            };
-
-            unsafe {
-                (*head).next = self.msg_queue_free as *mut RtMessage;
-            }
-            self.msg_queue_free = head as *mut u8;
-        }
-
-        unsafe {
-            let _ = ListHead::new().__pinned_init(&mut self.suspend_sender_thread as *mut ListHead);
-        }
-
         RT_EOK as i32
     }
 
@@ -260,7 +243,7 @@ impl RtMessageQueue {
         self.inner_queue.sender.inner_locked_wake_all();
 
         if self.is_static_kobject() {
-            self.parent.parent.detach();
+            self.parent.detach();
         }
     }
 
@@ -275,6 +258,7 @@ impl RtMessageQueue {
             char_ptr_to_array(name),
             msg_size as u16,
             max_msgs as u16,
+            IPC_SYS_QUEUE_FIFO as u8,
             flag,
         );
         match message_queue {
@@ -296,7 +280,7 @@ impl RtMessageQueue {
         self.inner_queue.receiver.inner_locked_wake_all();
         self.inner_queue.sender.inner_locked_wake_all();
 
-        self.parent.parent.delete();
+        self.parent.delete();
     }
 
     fn send_wait_internal(
@@ -337,15 +321,13 @@ impl RtMessageQueue {
         unsafe {
             rt_object_hook_call!(
                 rt_object_put_hook,
-                &mut self.parent.parent as *mut KObjectBase as *mut rt_object
+                &mut self.parent as *mut KObjectBase as *mut rt_object
             );
         }
 
         self.inner_queue.lock();
 
-        let mut msg = self.msg_queue_free as *mut RtMessage;
-
-        if msg.is_null() && timeout == 0 {
+        if self.inner_queue.is_full() && timeout == 0 {
             self.inner_queue.unlock();
             return -(RT_EFULL as i32);
         }
@@ -358,7 +340,7 @@ impl RtMessageQueue {
                 return -(RT_EFULL as i32);
             }
 
-            let ret = self.sender.wait(thread, thread, suspend_flag as u32);
+            let ret = self.inner_queue.sender.wait(thread, suspend_flag as u32);
 
             if ret != RT_EOK as i32 {
                 self.inner_queue.unlock();
@@ -410,7 +392,7 @@ impl RtMessageQueue {
             return RT_EOK as i32;
         }
 
-        self.entry = self.inner_queue.item_in_queue;
+        self.entry = self.inner_queue.item_in_queue as u16;
 
         self.inner_queue.unlock();
 
@@ -449,19 +431,19 @@ impl RtMessageQueue {
         assert!(!buffer.is_null());
         assert!(size != 0);
 
-        if size > self.msg_size as usize {
+        if size > self.inner_queue.item_size {
             return -(RT_ERROR as i32);
         }
 
         unsafe {
             rt_object_hook_call!(
                 rt_object_put_hook,
-                &mut self.parent.parent as *mut KObjectBase as *mut rt_object
+                &mut self.parent as *mut KObjectBase as *mut rt_object
             );
         }
 
         let ret = self.inner_queue.urgent_prio(buffer, size);
-        self.entry = self.inner_queue.item_in_queue;
+        self.entry = self.inner_queue.item_in_queue as u16;
         ret
     }
 
@@ -498,18 +480,18 @@ impl RtMessageQueue {
         unsafe {
             rt_object_hook_call!(
                 rt_object_trytake_hook,
-                &mut self.parent.parent as *mut KObjectBase as *mut rt_object
+                &mut self.parent as *mut KObjectBase as *mut rt_object
             );
         }
 
         self.inner_queue.lock();
 
-        if self.is_empty() && timeout == 0 {
+        if self.inner_queue.is_empty() && timeout == 0 {
             self.inner_queue.unlock();
             return -(RT_ETIMEOUT as i32);
         }
 
-        while self.is_empty() {
+        while self.inner_queue.is_empty() {
             thread.error = code::EINTR;
 
             if timeout == 0 {
@@ -518,9 +500,7 @@ impl RtMessageQueue {
                 return thread.error.to_errno();
             }
 
-            let ret = self
-                .parent
-                .wait(thread_ptr, self.parent.flag, suspend_flag as u32);
+            let ret = self.inner_queue.receiver.wait(thread, suspend_flag as u32);
             if ret != RT_EOK as i32 {
                 self.inner_queue.unlock();
                 return ret;
@@ -559,20 +539,21 @@ impl RtMessageQueue {
             if #[cfg(feature = "RT_USING_MESSAGEQUEUE_PRIORITY")] {
                 self.inner_queue.pop_prio(buffer, size, prio);
             } else {
-                self.inner_queue.pop_prio(buffer, size);
+                let mut buffer_mut = buffer;
+                self.inner_queue.pop_fifo(&mut buffer_mut, size);
             }
         }
 
         unsafe {
             rt_object_hook_call!(
                 rt_object_take_hook,
-                &mut self.parent.parent as *mut KObjectBase as *mut rt_object
+                &mut self.parent as *mut KObjectBase as *mut rt_object
             );
         }
 
-        self.entry = self.inner_queue.item_in_queue;
+        self.entry = self.inner_queue.item_in_queue as u16;
 
-        len as i32
+        size as i32
     }
 
     pub fn receive(&mut self, buffer: *mut u8, size: usize, timeout: i32) -> i32 {
@@ -596,24 +577,29 @@ impl RtMessageQueue {
         if cmd == RT_IPC_CMD_RESET as i32 {
             self.inner_queue.lock();
 
-            self.parent.wake_all();
-            IPCObject::resume_all_threads(&mut self.suspend_sender_thread);
+            self.inner_queue.receiver.inner_locked_wake_all();
+            self.inner_queue.sender.inner_locked_wake_all();
 
             // SAFETY: msg is valid
             unsafe {
-                while !self.msg_queue_head.is_null() {
-                    let msg = self.msg_queue_head as *mut RtMessage;
+                while !self.inner_queue.head.is_none() {
+                    let hdr = self.inner_queue.head.unwrap().as_ptr() as *mut RtSysQueueItemHeader;
 
-                    self.msg_queue_head = (*msg).next as *mut u8;
-                    if self.msg_queue_tail == msg as *mut u8 {
-                        self.msg_queue_tail = null_mut();
+                    self.inner_queue.head =
+                        unsafe { Some(NonNull::new_unchecked((*hdr).next as *mut u8)) };
+                    if self.inner_queue.tail.unwrap().as_ptr() == hdr as *mut u8 {
+                        self.inner_queue.tail = None;
                     }
 
-                    (*msg).next = self.msg_queue_free as *mut RtMessage;
-                    self.msg_queue_free = msg as *mut u8;
+                    (*hdr).next =
+                        self.inner_queue.free.unwrap().as_ptr() as *mut RtSysQueueItemHeader;
+                    self.inner_queue.free = unsafe { Some(NonNull::new_unchecked(hdr as *mut u8)) };
                 }
             }
 
+            self.inner_queue.read_pos = 0;
+            self.inner_queue.write_pos = 0;
+            self.inner_queue.item_in_queue = 0;
             self.entry = 0;
 
             self.inner_queue.unlock();
@@ -668,6 +654,7 @@ pub unsafe extern "C" fn rt_mq_init(
         msgpool as *mut u8,
         msg_size as usize,
         pool_size as usize,
+        IPC_SYS_QUEUE_FIFO as u8,
         flag,
     )
 }
@@ -884,13 +871,13 @@ pub extern "C" fn rt_msgqueue_info() {
     let callback = |node: &ListHead| unsafe {
         let msgqueue =
             &*(crate::list_head_entry!(node.as_ptr(), KObjectBase, list) as *const RtMessageQueue);
-        let _ = crate::format_name!(msgqueue.parent.parent.name.as_ptr(), 8);
+        let _ = crate::format_name!(msgqueue.parent.name.as_ptr(), 8);
         print!(" {:04} ", msgqueue.entry);
-        if msgqueue.parent.wait_list.is_empty() {
-            println!(" {}", msgqueue.parent.wait_list.size());
+        if msgqueue.inner_queue.receiver.is_empty() {
+            println!(" {}", msgqueue.inner_queue.receiver.count());
         } else {
-            print!(" {}:", msgqueue.parent.wait_list.size());
-            let head = &msgqueue.parent.wait_list;
+            print!(" {}:", msgqueue.inner_queue.receiver.count());
+            let head = &msgqueue.inner_queue.receiver.working_queue;
             list_head_for_each!(node, head, {
                 let thread = crate::thread_list_node_entry!(node.as_ptr()) as *mut RtThread;
                 let _ = crate::format_name!((*thread).parent.name.as_ptr(), 8);
@@ -901,6 +888,6 @@ pub extern "C" fn rt_msgqueue_info() {
     let _ = KObjectBase::get_info(
         callback_forword,
         callback,
-        ObjectClassType::ObjectClassMailBox as u8,
+        ObjectClassType::ObjectClassMessageQueue as u8,
     );
 }

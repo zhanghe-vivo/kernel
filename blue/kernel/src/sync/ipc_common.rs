@@ -29,6 +29,14 @@ macro_rules! sys_queue_item_data_addr {
     };
 }
 
+/// Sys Queue item header
+#[repr(C)]
+pub(crate) struct RtSysQueueItemHeader {
+    pub(crate) next: *mut RtSysQueueItemHeader,
+    pub(crate) len: usize,
+    pub(crate) prio: i32,
+}
+
 /// System queue for kernel use on IPC
 #[repr(C)]
 #[pin_data(PinnedDrop)]
@@ -359,19 +367,21 @@ impl RtSysQueue {
 
         hdr_ref.next = null_mut();
 
-        hdr_ref.length = size as isize;
+        hdr_ref.len = size;
 
-        rt_memcpy(
-            sys_queue_item_data_addr!(hdr),
-            buffer as *const core::ffi::c_void,
-            size as usize,
-        );
+        unsafe {
+            rt_memcpy(
+                sys_queue_item_data_addr!(hdr),
+                buffer as *const core::ffi::c_void,
+                size as usize,
+            );
+        }
 
         self.spinlock.lock();
 
         hdr_ref.prio = priority;
         if self.head.is_none() {
-            self.head = Some(NonNull::new_unchecked(hdr as *mut u8));
+            self.head = unsafe { Some(NonNull::new_unchecked(hdr as *mut u8)) };
         }
 
         let mut node = self.head.unwrap().as_ptr() as *mut RtSysQueueItemHeader;
@@ -380,7 +390,7 @@ impl RtSysQueue {
         while !node.is_null() {
             if unsafe { (*node).prio < (*hdr).prio } {
                 if (prev_node == null_mut()) {
-                    self.msg_queue_head = hdr as *mut u8;
+                    self.head = unsafe { Some(NonNull::new_unchecked(hdr as *mut u8)) };
                 } else {
                     unsafe { (*prev_node).next = hdr };
                 }
@@ -395,7 +405,7 @@ impl RtSysQueue {
                 if node != hdr {
                     unsafe { (*node).next = hdr };
                 }
-                self.tail = Some(NonNull::new_unchecked(hdr as *mut u8));
+                self.tail = unsafe { Some(NonNull::new_unchecked(hdr as *mut u8)) };
                 break;
             }
             prev_node = node;
@@ -432,25 +442,27 @@ impl RtSysQueue {
 
         self.spinlock.unlock();
 
-        unsafe { (*hdr).len = size as isize };
+        unsafe { (*hdr).len = size };
 
-        rt_memcpy(
-            sys_queue_item_data_addr!(hdr),
-            buffer as *const core::ffi::c_void,
-            size as usize,
-        );
+        unsafe {
+            rt_memcpy(
+                sys_queue_item_data_addr!(hdr),
+                buffer as *const core::ffi::c_void,
+                size as usize,
+            );
+        }
 
         self.spinlock.lock();
 
         unsafe { (*hdr).next = self.head.unwrap().as_ptr() as *mut RtSysQueueItemHeader };
 
-        self.head = Some(NonNull::new_unchecked(hdr as *mut u8));
+        self.head = unsafe { Some(NonNull::new_unchecked(hdr as *mut u8)) };
 
         if self.tail.is_none() {
-            self.tail = Some(NonNull::new_unchecked(hdr as *mut u8));
+            self.tail = unsafe { Some(NonNull::new_unchecked(hdr as *mut u8)) };
         }
 
-        if self.item_in_queue < RT_MQ_ENTRY_MAX as u16 {
+        if self.item_in_queue < RT_MQ_ENTRY_MAX as usize {
             self.item_in_queue += 1;
         } else {
             self.spinlock.unlock();
@@ -490,7 +502,7 @@ impl RtSysQueue {
         self.spinlock.unlock();
 
         // SAFETY: msg is null checked
-        let mut len = unsafe { (*hdr).length as usize };
+        let mut len = unsafe { (*hdr).len as usize };
 
         if len > size {
             len = size;
@@ -515,11 +527,11 @@ impl RtSysQueue {
         // SAFETY: msg is null checked
         unsafe { (*hdr).next = self.free.unwrap().as_ptr() as *mut RtSysQueueItemHeader };
 
-        self.free = Some(NonNull::new_unchecked(hdr as *mut u8));
+        self.free = unsafe { Some(NonNull::new_unchecked(hdr as *mut u8)) };
 
         if !self.sender.is_empty() {
             self.sender.wake();
-            self.inner_queue.unlock();
+            self.spinlock.unlock();
 
             Cpu::get_current_scheduler().do_task_schedule();
 
@@ -539,14 +551,6 @@ impl RtSysQueue {
     pub(crate) fn unlock(&self) {
         self.spinlock.unlock();
     }
-}
-
-/// Sys Queue item header
-#[repr(C)]
-pub(crate) struct RtSysQueueItemHeader {
-    pub(crate) next: *mut RtSysQueueItemHeader,
-    pub(crate) len: usize,
-    pub(crate) prio: i32,
 }
 
 /// WaitQueue for pending threads

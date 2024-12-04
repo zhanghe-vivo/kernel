@@ -372,6 +372,10 @@ typedef struct rt_messagequeue {
    * SysQueue for mailbox
    */
   struct RtSysQueue inner_queue;
+  /**
+   * ABI compatibility
+   */
+  uint16_t entry;
 } rt_messagequeue;
 
 /**
