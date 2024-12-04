@@ -1,6 +1,8 @@
 #![allow(dead_code)]
-use crate::alloc::boxed::Box;
+#[cfg(feature = "RT_USING_SMP")]
+use crate::cpu::CPU_DETACHED;
 use crate::{
+    alloc::boxed::Box,
     clock,
     cpu::{Cpu, CPUS_NUMBER},
     error::{code, Error},
@@ -13,11 +15,8 @@ use crate::{
     timer::Timer,
     zombie,
 };
-#[cfg(feature = "RT_USING_SMP")]
-use crate::cpu::CPU_DETACHED;
 use alloc::alloc;
-use blue_arch::arch::Arch;
-use blue_arch::IScheduler;
+use blue_arch::{arch::Arch, IScheduler};
 use blue_infra::list::doubly_linked_list::ListHead;
 use core::{
     alloc::{AllocError, Layout},
@@ -29,7 +28,10 @@ use core::{
     ptr::{self, NonNull},
     sync::atomic::{AtomicUsize, Ordering},
 };
-use pinned_init::*;
+use pinned_init::{
+    init, pin_data, pin_init, pin_init_array_from_fn, pin_init_from_closure, pinned_drop, zeroed,
+    InPlaceInit, Init, PinInit,
+};
 use rt_bindings;
 
 // compatible with C
@@ -740,7 +742,7 @@ impl RtThread {
     pub(crate) fn new_tid() -> usize {
         static TID: AtomicUsize = AtomicUsize::new(0);
         let id = TID.fetch_add(1, Ordering::SeqCst);
-        let tids = unsafe { 
+        let tids = unsafe {
             (&raw const TIDS as *const UnsafeStaticInit<Tid, TidInit>)
                 .as_ref()
                 .unwrap_unchecked()

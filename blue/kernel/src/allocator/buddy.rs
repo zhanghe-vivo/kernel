@@ -1,8 +1,6 @@
 use crate::sync::{new_heaplock, HeapLock};
-use core::alloc::Layout;
-use core::pin::Pin;
-use core::ptr::NonNull;
-use pinned_init::*;
+use core::{alloc::Layout, pin::Pin, ptr::NonNull};
+use pinned_init::{pin_data, pin_init, pin_init_array_from_fn, pin_init_from_closure, PinInit};
 
 pub mod buddy_system_heap;
 use buddy_system_heap::Heap as BuddyHeap;

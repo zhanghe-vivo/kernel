@@ -8,7 +8,7 @@ use core::{
     pin::Pin,
     ptr::{self, NonNull},
 };
-use pinned_init::*;
+use pinned_init::{pin_data, pinned_drop, try_pin_init, PinInit};
 
 /// An intrusive linked list
 ///

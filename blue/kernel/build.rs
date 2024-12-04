@@ -1,5 +1,4 @@
-use std::collections::HashMap;
-use std::env;
+use std::{collections::HashMap, env};
 
 fn main() {
     println!("cargo::rustc-check-cfg=cfg(hardware_schedule)");
@@ -14,8 +13,7 @@ fn main() {
         //println!("cargo:rustc-cfg=fast_schedule");
     }
 
-    let compat_os = env::var("COMPAT_OS")
-        .unwrap_or_else(|_e| String::from(""));
+    let compat_os = env::var("COMPAT_OS").unwrap_or_else(|_e| String::from(""));
 
     if compat_os == "rt_thread" {
         let rename_list = HashMap::from([

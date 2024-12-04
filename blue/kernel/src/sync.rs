@@ -5,8 +5,10 @@ pub mod mailbox;
 pub mod message_queue;
 pub mod semaphore;
 
-pub use lock::heaplock::{new_heaplock, HeapLock};
-pub use lock::spinlock::{new_spinlock, RawSpin, SpinLock, SpinMutex};
+pub use lock::{
+    heaplock::{new_heaplock, HeapLock},
+    spinlock::{new_spinlock, RawSpin, SpinLock, SpinMutex},
+};
 
 /// Returns the given string, if one is provided, otherwise generates one based on the source code
 /// location.

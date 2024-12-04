@@ -1,8 +1,7 @@
 extern crate alloc;
 
 use alloc::boxed::Box;
-use core::mem;
-use core::ops::Drop;
+use core::{mem, ops::Drop};
 
 pub struct Node<T> {
     next: Link<T>,

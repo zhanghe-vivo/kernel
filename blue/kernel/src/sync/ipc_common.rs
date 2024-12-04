@@ -1,17 +1,15 @@
-use crate::error::code;
-use crate::list_head_for_each;
-use crate::object::*;
-use crate::rt_bindings::{
-    RT_EOK, RT_ERROR, RT_IPC_FLAG_FIFO, RT_IPC_FLAG_PRIO,
+use crate::{
+    error::code,
+    list_head_for_each,
+    object::*,
+    rt_bindings::{RT_EOK, RT_ERROR, RT_IPC_FLAG_FIFO, RT_IPC_FLAG_PRIO},
+    thread::{RtThread, SuspendFlag},
 };
-use crate::thread::{RtThread, SuspendFlag};
 use blue_infra::list::doubly_linked_list::ListHead;
 
-use crate::impl_kobject;
-use crate::sync::RawSpin;
-use core::pin::Pin;
-use core::slice;
-use pinned_init::*;
+use crate::{impl_kobject, sync::RawSpin};
+use core::{pin::Pin, slice};
+use pinned_init::{pin_data, pin_init, PinInit};
 
 /// Base structure of IPC object
 #[repr(C)]

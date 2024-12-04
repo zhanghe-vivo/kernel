@@ -1,7 +1,11 @@
-use crate::arch::register::xpsr;
-use crate::arch::stack_frame::{ExceptionFrame, ExceptionFrameFpu, StackSettings};
-use crate::cortex_m::Arch;
-use crate::interrupt::IInterrupt;
+use crate::{
+    arch::{
+        register::xpsr,
+        stack_frame::{ExceptionFrame, ExceptionFrameFpu, StackSettings},
+    },
+    cortex_m::Arch,
+    interrupt::IInterrupt,
+};
 use core::{arch::naked_asm, fmt};
 use cortex_m::peripheral::SCB;
 

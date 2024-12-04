@@ -10,7 +10,7 @@ use core::{
     num::NonZeroUsize,
     ptr::NonNull,
 };
-use pinned_init::*;
+use pinned_init::{init, zeroed, Init, Zeroable};
 
 use crate::allocator::{
     block_hdr::*,

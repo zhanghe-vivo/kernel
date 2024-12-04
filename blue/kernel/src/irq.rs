@@ -1,9 +1,10 @@
 #![allow(dead_code)]
 use crate::cpu::Cpu;
-use blue_arch::arch::Arch;
-use blue_arch::IInterrupt;
-use core::cell::{Cell, UnsafeCell};
-use core::ops::{Deref, DerefMut};
+use blue_arch::{arch::Arch, IInterrupt};
+use core::{
+    cell::{Cell, UnsafeCell},
+    ops::{Deref, DerefMut},
+};
 use rt_bindings;
 
 #[cfg(all(feature = "RT_USING_HOOK", feature = "RT_HOOK_USING_FUNC_PTR"))]

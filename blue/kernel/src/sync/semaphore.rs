@@ -6,8 +6,7 @@ use crate::{
     print, println,
     rt_bindings::{
         rt_debug_not_in_interrupt, rt_debug_scheduler_available, rt_err_t, rt_int32_t, rt_object,
-        rt_object_hook_call, rt_uint32_t, rt_uint8_t, RT_EFULL,
-        RT_EOK, RT_ERROR, RT_INTERRUPTIBLE,
+        rt_object_hook_call, rt_uint32_t, rt_uint8_t, RT_EFULL, RT_EOK, RT_ERROR, RT_INTERRUPTIBLE,
         RT_IPC_CMD_RESET, RT_IPC_FLAG_FIFO, RT_IPC_FLAG_PRIO, RT_KILLABLE, RT_SEM_VALUE_MAX,
         RT_TIMER_CTRL_SET_TIME, RT_UNINTERRUPTIBLE, RT_WAITING_FOREVER,
     },
@@ -15,14 +14,13 @@ use crate::{
     thread::RtThread,
 };
 use blue_infra::list::doubly_linked_list::ListHead;
-use core::pin::Pin;
-use core::{ffi::c_void, marker::PhantomPinned, ptr::null_mut};
+use core::{ffi::c_void, marker::PhantomPinned, pin::Pin, ptr::null_mut};
 
 use crate::alloc::boxed::Box;
 use core::cell::UnsafeCell;
 use kernel::{fmt, str::CString};
 
-use pinned_init::*;
+use pinned_init::{pin_data, pin_init, pin_init_from_closure, pinned_drop, InPlaceInit, PinInit};
 
 #[pin_data(PinnedDrop)]
 pub struct KSemaphore {

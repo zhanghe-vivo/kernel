@@ -1,7 +1,5 @@
 #![allow(dead_code)]
-use core::alloc::Layout;
-use core::ptr::NonNull;
-use core::{cmp, fmt, mem};
+use core::{alloc::Layout, cmp, fmt, mem, ptr::NonNull};
 
 use crate::allocator::block_hdr::*;
 use blue_infra::list::doubly_linked_list::LinkedList;

@@ -9,8 +9,7 @@ use core::ptr::NonNull;
 use core::{
     cell::{Cell, UnsafeCell},
     fmt,
-    ops::Deref,
-    ops::DerefMut,
+    ops::{Deref, DerefMut},
 };
 use rt_bindings;
 

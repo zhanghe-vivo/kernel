@@ -411,7 +411,7 @@ impl RtMutex {
             }
 
             if self.ceiling_priority != 0xFF || thread.priority.get_current() == self.priority {
-                let mut priority = thread.get_mutex_priority();
+                let priority = thread.get_mutex_priority();
 
                 thread.change_priority(priority);
 

@@ -1,17 +1,23 @@
 //! ARM Cortex-M implementation of [`IScheduler`] and context switch.
 
-use core::arch::{asm, naked_asm};
-use core::mem;
-use cortex_m::peripheral::scb;
-use cortex_m::peripheral::scb::VectActive;
-use cortex_m::peripheral::syst::SystClkSource;
-use cortex_m::peripheral::SCB;
-use cortex_m::register::control::{Fpca, Npriv, Spsel};
-use cortex_m::{asm, Peripherals};
+use core::{
+    arch::{asm, naked_asm},
+    mem,
+};
+use cortex_m::{
+    asm,
+    peripheral::{scb, scb::VectActive, syst::SystClkSource, SCB},
+    register::control::{Fpca, Npriv, Spsel},
+    Peripherals,
+};
 
-use crate::arch::stack_frame::{StackFrame, StackFrameExtension, StackSettings};
-use crate::arch::Arch;
-use crate::scheduler::IScheduler;
+use crate::{
+    arch::{
+        stack_frame::{StackFrame, StackFrameExtension, StackSettings},
+        Arch,
+    },
+    scheduler::IScheduler,
+};
 
 extern "C" {
     static __StackTop: u32;

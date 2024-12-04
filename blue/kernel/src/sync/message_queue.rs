@@ -32,11 +32,10 @@ use core::{
 };
 
 use crate::alloc::boxed::Box;
+use cfg_if;
 use core::pin::Pin;
 use kernel::{fmt, str::CString};
-
-use cfg_if;
-use pinned_init::*;
+use pinned_init::{pin_data, pin_init, pin_init_from_closure, pinned_drop, InPlaceInit, PinInit};
 
 #[pin_data(PinnedDrop)]
 pub struct KMessageQueue {
@@ -108,8 +107,8 @@ impl KMessageQueue {
     }
 
     pub fn receive(&self, timeout: i32) -> Result<Box<[u8]>, Error> {
-        let mut buffer = null_mut();
-        let mut size = 0 as usize;
+        let buffer = null_mut();
+        let size = 0 as usize;
         let result = unsafe { (*self.raw.get()).receive(buffer, size, timeout) };
         if result == RT_EOK as i32 {
             if buffer.is_null() || size == 0 {

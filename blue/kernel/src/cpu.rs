@@ -1,21 +1,16 @@
 #![allow(dead_code)]
-use crate::{
-    scheduler::Scheduler,
-    static_init::UnsafeStaticInit,
-    sync::RawSpin,
-    {thread, process},
-};
+#[cfg(feature = "RT_USING_SMP")]
+use crate::scheduler::PriorityTableManager;
+use crate::{process, scheduler::Scheduler, static_init::UnsafeStaticInit, sync::RawSpin, thread};
 use blue_arch::smp;
 #[cfg(feature = "RT_USING_SMP")]
 use blue_arch::{arch::Arch, IInterrupt};
-#[cfg(feature = "RT_USING_SMP")]
-use crate::scheduler::PriorityTableManager;
 
 use core::{
     ptr::NonNull,
     sync::atomic::{AtomicU32, Ordering},
 };
-use pinned_init::*;
+use pinned_init::{pin_data, pin_init, pin_init_array_from_fn, PinInit};
 use rt_bindings;
 
 pub const CPUS_NUMBER: usize = rt_bindings::RT_CPUS_NR as usize;
@@ -342,9 +337,11 @@ pub unsafe extern "C" fn rt_cpus_unlock(level: rt_bindings::rt_base_t) {
 #[no_mangle]
 pub extern "C" fn init_cpus() {
     unsafe {
-        let process = &*(&raw const process::KPROCESS as *const UnsafeStaticInit<process::Kprocess, process::KprocessInit>);
+        let process = &*(&raw const process::KPROCESS
+            as *const UnsafeStaticInit<process::Kprocess, process::KprocessInit>);
         let cpus = &*(&raw const CPUS as *const UnsafeStaticInit<Cpus, CpusInit>);
-        let tid = &*(&raw const thread::TIDS as *const UnsafeStaticInit<thread::Tid, thread::TidInit>);
+        let tid =
+            &*(&raw const thread::TIDS as *const UnsafeStaticInit<thread::Tid, thread::TidInit>);
         process.init_once();
         cpus.init_once();
         tid.init_once();

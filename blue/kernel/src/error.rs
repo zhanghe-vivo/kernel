@@ -3,8 +3,7 @@ use rt_bindings;
 
 use alloc::alloc::{AllocError, LayoutError};
 
-use core::num::TryFromIntError;
-use core::str::Utf8Error;
+use core::{num::TryFromIntError, str::Utf8Error};
 
 pub mod code {
     use crate::str::CStr;

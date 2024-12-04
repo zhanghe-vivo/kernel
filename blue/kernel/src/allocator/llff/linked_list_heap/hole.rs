@@ -1,7 +1,9 @@
-use core::alloc::{Layout, LayoutError};
-use core::mem;
-use core::mem::{align_of, size_of};
-use core::ptr::{null_mut, NonNull};
+use core::{
+    alloc::{Layout, LayoutError},
+    mem,
+    mem::{align_of, size_of},
+    ptr::{null_mut, NonNull},
+};
 
 use crate::allocator::{align_down_size, align_up, align_up_size, block_hdr::*, RT_ALIGN_SIZE};
 

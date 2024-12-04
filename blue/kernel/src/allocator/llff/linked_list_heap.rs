@@ -1,7 +1,5 @@
 #![allow(dead_code)]
-use core::alloc::Layout;
-use core::ptr::NonNull;
-use core::{cmp, mem};
+use core::{alloc::Layout, cmp, mem, ptr::NonNull};
 
 use crate::allocator::block_hdr::*;
 use hole::HoleList;
