@@ -74,10 +74,7 @@ type Link<T> = Option<Box<Node<T>>>;
 // A safe singly linked list. External code should **NOT** rely on the address of a node in the list.
 impl<T> Node<T> {
     const fn new(val: T) -> Self {
-        Self {
-            next: None,
-            val,
-        }
+        Self { next: None, val }
     }
     #[allow(dead_code)]
     fn as_ref(&self) -> &T {
@@ -95,10 +92,7 @@ impl<T> Node<T> {
     // O(1) insertion.
     #[allow(dead_code)]
     fn insert(&mut self, val: T) -> &mut Self {
-        let mut new_node = Box::<Node<T>>::new(Node::<T> {
-            next: None,
-            val,
-        });
+        let mut new_node = Box::<Node<T>>::new(Node::<T> { next: None, val });
         mem::swap(&mut new_node.val, &mut self.val);
         mem::swap(&mut new_node.next, &mut self.next);
         let old_next = mem::replace(&mut self.next, Some(new_node));

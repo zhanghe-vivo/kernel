@@ -1,9 +1,8 @@
 #![allow(dead_code)]
 //! The TLSF allocator core
 use core::{
-    fmt,
     alloc::Layout,
-    debug_assert, debug_assert_eq,
+    debug_assert, debug_assert_eq, fmt,
     hint::unreachable_unchecked,
     marker::PhantomData,
     mem::{self, MaybeUninit},

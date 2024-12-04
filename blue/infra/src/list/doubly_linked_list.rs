@@ -62,7 +62,7 @@ impl LinkedList {
             true => None,
             false => {
                 let item = self.head;
-                // SAFETY: We have checked that self.head is not null, and item points to 
+                // SAFETY: We have checked that self.head is not null, and item points to
                 // a valid address stored by previous push operations
                 self.head = unsafe { *item as *mut usize };
                 Some(item)
@@ -128,7 +128,7 @@ impl ListNode {
         debug_assert!(!self.prev.is_null(), "prev pointer cannot be null");
         debug_assert!(!self.curr.is_null(), "curr pointer cannot be null");
 
-         // SAFETY: We have checked that self.prev and self.curr are not null
+        // SAFETY: We have checked that self.prev and self.curr are not null
         // If prev or curr is null, the list is corrupted
         unsafe {
             // skip the curr one.
@@ -197,13 +197,13 @@ impl ListHead {
         let this: &mut Self = unsafe { self.get_unchecked_mut() };
         // SAFETY: We ensure that this is a valid pointer
         unsafe {
-        this.prev = list
-            .next
-            .prev()
-            .replace(Link::new_unchecked(NonNull::new_unchecked(this)));
-        this.next = list
-            .next
-            .replace(Link::new_unchecked(NonNull::new_unchecked(this)));
+            this.prev = list
+                .next
+                .prev()
+                .replace(Link::new_unchecked(NonNull::new_unchecked(this)));
+            this.next = list
+                .next
+                .replace(Link::new_unchecked(NonNull::new_unchecked(this)));
         }
     }
 
@@ -213,13 +213,13 @@ impl ListHead {
         let this: &mut Self = unsafe { self.get_unchecked_mut() };
         // SAFETY: We ensure that this is a valid pointer
         unsafe {
-        this.next = list
-            .prev
-            .next()
-            .replace( Link::new_unchecked(NonNull::new_unchecked(this)));
-        this.prev = list
-            .prev
-            .replace(Link::new_unchecked(NonNull::new_unchecked(this)));
+            this.next = list
+                .prev
+                .next()
+                .replace(Link::new_unchecked(NonNull::new_unchecked(this)));
+            this.prev = list
+                .prev
+                .replace(Link::new_unchecked(NonNull::new_unchecked(this)));
         }
     }
 

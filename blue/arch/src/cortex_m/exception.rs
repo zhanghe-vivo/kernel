@@ -13,7 +13,7 @@ use cortex_m::peripheral::SCB;
 #[no_mangle]
 #[naked]
 pub unsafe extern "C" fn HardFault_Handler() {
-     // SAFETY: This is a hardware exception handler, using naked assembly is safe.
+    // SAFETY: This is a hardware exception handler, using naked assembly is safe.
     unsafe {
         naked_asm!(
             "mrs      r0, msp",   // get fault context from handler.

@@ -94,18 +94,24 @@ impl IdleTheads {
     pub(crate) fn init_once() {
         unsafe {
             (&raw const IDLE_THREADS as *const UnsafeStaticInit<IdleTheads, IdleTheadsInit>)
-                .as_ref().unwrap_unchecked().init_once();
-                
-            (&raw const zombie::ZOMBIE_MANAGER as *const UnsafeStaticInit<zombie::ZombieManager, _>)
-                .as_ref().unwrap_unchecked().init_once();
-                
+                .as_ref()
+                .unwrap_unchecked()
+                .init_once();
+
+            (&raw const zombie::ZOMBIE_MANAGER
+                as *const UnsafeStaticInit<zombie::ZombieManager, _>)
+                .as_ref()
+                .unwrap_unchecked()
+                .init_once();
+
             #[cfg(feature = "RT_USING_SMP")]
-            (&raw const zombie::ZOMBIE_MANAGER as *const UnsafeStaticInit<zombie::ZombieManager, _>)
+            (&raw const zombie::ZOMBIE_MANAGER
+                as *const UnsafeStaticInit<zombie::ZombieManager, _>)
                 .cast_mut()
                 .as_mut()
                 .unwrap_unchecked()
                 .start_up();
-                
+
             (&raw const IDLE_THREADS as *const UnsafeStaticInit<IdleTheads, IdleTheadsInit>)
                 .cast_mut()
                 .as_mut()
@@ -153,8 +159,11 @@ impl IdleTheads {
         loop {
             #[cfg(not(feature = "RT_USING_SMP"))]
             unsafe {
-                (&raw const zombie::ZOMBIE_MANAGER as *const UnsafeStaticInit<zombie::ZombieManager, _>)
-                    .as_ref().unwrap_unchecked().reclaim()
+                (&raw const zombie::ZOMBIE_MANAGER
+                    as *const UnsafeStaticInit<zombie::ZombieManager, _>)
+                    .as_ref()
+                    .unwrap_unchecked()
+                    .reclaim()
             };
 
             #[cfg(feature = "RT_USING_IDLE_HOOK")]
