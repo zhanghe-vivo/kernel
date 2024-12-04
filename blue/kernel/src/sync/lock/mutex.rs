@@ -121,8 +121,6 @@ pub struct RtMutex {
     /// The object list taken by thread
     #[pin]
     pub(crate) taken_list: ListHead,
-    /// Spinlock for mutex
-    pub(crate) spinlock: RawSpin,
     /// SysQueue for mutex
     #[pin]
     pub(crate) inner_queue: RtSysQueue,
@@ -145,9 +143,13 @@ impl RtMutex {
             cur_ref.ceiling_priority = 0xFF;
             let _ = ListHead::new().__pinned_init(&mut cur_ref.taken_list as *mut ListHead);
 
-            cur_ref.spinlock = RawSpin::new();
-            let _ = RtSysQueue::new(mem::size_of::<u32>(), 1, 2, RT_IPC_FLAG_PRIO as u32)
-                .__pinned_init(&mut cur_ref.inner_queue as *mut RtSysQueue);
+            let _ = RtSysQueue::new(
+                mem::size_of::<u32>(),
+                1,
+                IPC_SYS_QUEUE_STUB,
+                RT_IPC_FLAG_PRIO as u32,
+            )
+            .__pinned_init(&mut cur_ref.inner_queue as *mut RtSysQueue);
             Ok(())
         };
         unsafe { pin_init_from_closure(init) }
@@ -178,19 +180,14 @@ impl RtMutex {
             let _ = ListHead::new().__pinned_init(&mut self.taken_list);
         }
 
-        self.spinlock = RawSpin::new();
-        /*
-        self.inner_queue.init(
-            null_mut(),
-            mem::size_of::<u32>(),
-            1,
-            2,
-            RT_IPC_FLAG_PRIO as u32,
-        );
-         */
         let _ = unsafe {
-            RtSysQueue::new(mem::size_of::<u32>(), 1, 2, RT_IPC_FLAG_PRIO as u32)
-                .__pinned_init(&mut self.inner_queue as *mut RtSysQueue)
+            RtSysQueue::new(
+                mem::size_of::<u32>(),
+                1,
+                IPC_SYS_QUEUE_STUB,
+                RT_IPC_FLAG_PRIO as u32,
+            )
+            .__pinned_init(&mut self.inner_queue as *mut RtSysQueue)
         };
     }
 
@@ -198,7 +195,7 @@ impl RtMutex {
     pub fn detach(&mut self) {
         assert_eq!(self.type_name(), ObjectClassType::ObjectClassMutex as u8);
 
-        self.spinlock.lock();
+        self.inner_queue.lock();
 
         self.inner_queue.sender.inner_locked_wake_all();
 
@@ -206,7 +203,7 @@ impl RtMutex {
             Pin::new_unchecked(&mut self.taken_list).remove();
         }
 
-        self.spinlock.unlock();
+        self.inner_queue.unlock();
 
         Cpu::get_current_scheduler().do_task_schedule();
 
@@ -231,13 +228,13 @@ impl RtMutex {
 
         rt_debug_not_in_interrupt!();
 
-        self.spinlock.lock();
+        self.inner_queue.lock();
         self.inner_queue.sender.inner_locked_wake_all();
 
         unsafe {
             Pin::new_unchecked(&mut self.taken_list).remove();
         }
-        self.spinlock.unlock();
+        self.inner_queue.unlock();
 
         self.parent.delete();
     }
@@ -251,7 +248,7 @@ impl RtMutex {
         let thread_ptr = current_thread_ptr!();
         assert!(!thread_ptr.is_null());
         let thread = unsafe { &mut *thread_ptr };
-        self.spinlock.lock();
+        self.inner_queue.lock();
 
         unsafe {
             rt_object_hook_call!(
@@ -267,7 +264,7 @@ impl RtMutex {
                 // Same thread
                 self.inner_queue.force_push_stub();
             } else {
-                self.spinlock.unlock();
+                self.inner_queue.unlock();
                 return -(RT_EFULL as i32);
             }
         } else {
@@ -298,7 +295,7 @@ impl RtMutex {
                 if timeout == 0 {
                     thread.error = code::ETIMEOUT;
 
-                    self.spinlock.unlock();
+                    self.inner_queue.unlock();
 
                     return -(RT_ETIMEOUT as i32);
                 } else {
@@ -306,7 +303,7 @@ impl RtMutex {
                     // Suspend current thread
                     let mut ret = self.inner_queue.sender.wait(thread, pending_mode);
                     if ret != RT_EOK as i32 {
-                        self.spinlock.unlock();
+                        self.inner_queue.unlock();
                         return ret;
                     }
 
@@ -332,11 +329,11 @@ impl RtMutex {
                         thread.thread_timer.start();
                     }
 
-                    self.spinlock.unlock();
+                    self.inner_queue.unlock();
 
                     Cpu::get_current_scheduler().do_task_schedule();
 
-                    self.spinlock.lock();
+                    self.inner_queue.lock();
 
                     if thread.error != code::EOK {
                         // The mutex has not been taken and thread has detached
@@ -371,7 +368,7 @@ impl RtMutex {
                             }
                         }
 
-                        self.spinlock.unlock();
+                        self.inner_queue.unlock();
 
                         thread.mutex_info.pending_to = None;
 
@@ -383,7 +380,7 @@ impl RtMutex {
             }
         }
 
-        self.spinlock.unlock();
+        self.inner_queue.unlock();
 
         unsafe {
             rt_object_hook_call!(
@@ -419,7 +416,7 @@ impl RtMutex {
         }
         let thread = unsafe { &mut *thread_ptr };
 
-        self.spinlock.lock();
+        self.inner_queue.lock();
 
         unsafe {
             rt_object_hook_call!(
@@ -430,7 +427,7 @@ impl RtMutex {
 
         if thread_ptr != self.owner {
             thread.error = code::ERROR;
-            self.spinlock.unlock();
+            self.inner_queue.unlock();
             return -(RT_ERROR as i32);
         }
 
@@ -502,7 +499,7 @@ impl RtMutex {
             }
         }
 
-        self.spinlock.unlock();
+        self.inner_queue.unlock();
 
         if need_schedule {
             Cpu::get_current_scheduler().do_task_schedule();
@@ -570,7 +567,7 @@ impl RtMutex {
 
         if priority < RT_THREAD_PRIORITY_MAX as u8 {
             //Critical section here if multiple updates to one mutex happen concurrently
-            self.spinlock.lock();
+            self.inner_queue.lock();
             prev_priority = self.ceiling_priority;
             self.ceiling_priority = priority;
             let owner_thread = self.owner;
@@ -584,7 +581,7 @@ impl RtMutex {
                     }
                 }
             }
-            self.spinlock.unlock();
+            self.inner_queue.unlock();
         } else {
             unsafe {
                 rt_set_errno(-(RT_EINVAL as rt_err_t));

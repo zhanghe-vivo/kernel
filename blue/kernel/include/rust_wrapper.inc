@@ -218,10 +218,6 @@ typedef struct rt_mutex {
    */
   rt_list_t taken_list;
   /**
-   * Spinlock for mutex
-   */
-  struct RawSpin spinlock;
-  /**
    * SysQueue for mutex
    */
   struct RtSysQueue inner_queue;
@@ -345,11 +341,7 @@ typedef struct rt_event {
    */
   uint32_t set;
   /**
-   * Spin lock semaphore used
-   */
-  struct RawSpin spinlock;
-  /**
-   * SysQueue for semaphore
+   * SysQueue for Event flag
    */
   struct RtSysQueue inner_queue;
 } rt_event;
@@ -363,77 +355,27 @@ typedef struct rt_mailbox {
    */
   struct rt_object parent;
   /**
-   * Spin lock mailbox used
-   */
-  struct RawSpin spinlock;
-  /**
    * SysQueue for mailbox
    */
   struct RtSysQueue inner_queue;
 } rt_mailbox;
 
 /**
- * Base structure of IPC object
+ * MessageQueue raw structure
  */
-typedef struct rt_ipc_object {
+typedef struct rt_messagequeue {
   /**
    * Inherit from KObjectBase
    */
   struct rt_object parent;
   /**
-   * IPC flag to use
+   * SysQueue for mailbox
    */
-  uint8_t flag;
+  struct RtSysQueue inner_queue;
   /**
-   * Spin lock IPCObject used
-   */
-  struct RawSpin spinlock;
-  /**
-   * Threads pended on this IPC object
-   */
-  rt_list_t wait_list;
-} rt_ipc_object;
-
-/**
- * MessageQueue raw structure
- */
-typedef struct rt_messagequeue {
-  /**
-   * Inherit from IPCObject
-   */
-  struct rt_ipc_object parent;
-  /**
-   * Start address of message queue
-   */
-  uint8_t *msg_pool;
-  /**
-   * Message size of each message
-   */
-  uint16_t msg_size;
-  /**
-   * Max number of messages
-   */
-  uint16_t max_msgs;
-  /**
-   * Index of messages in the queue
+   * ABI compatibility
    */
   uint16_t entry;
-  /**
-   * List head
-   */
-  uint8_t *msg_queue_head;
-  /**
-   * List tail
-   */
-  uint8_t *msg_queue_tail;
-  /**
-   * Pointer indicated the free node of queue
-   */
-  uint8_t *msg_queue_free;
-  /**
-   * Sender thread suspended on this message queue
-   */
-  rt_list_t suspend_sender_thread;
 } rt_messagequeue;
 
 /**

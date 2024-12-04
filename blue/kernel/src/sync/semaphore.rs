@@ -124,7 +124,7 @@ impl RtSemaphore {
             let _ = RtSysQueue::new(
                 mem::size_of::<u32>(),
                 value as usize,
-                2,
+                IPC_SYS_QUEUE_STUB,
                 waiting_mode as u32,
             )
             .__pinned_init(&mut cur_ref.inner_queue as *mut RtSysQueue);
@@ -164,7 +164,7 @@ impl RtSemaphore {
             null_mut(),
             mem::size_of::<u32>(),
             value as usize,
-            2,
+            IPC_SYS_QUEUE_STUB,
             waiting_mode as u32,
         );
         self.inner_queue.reset_stub(value as usize);
@@ -223,13 +223,13 @@ impl RtSemaphore {
         let check = self.count() == 0 && timeout != 0;
         rt_debug_scheduler_available!(check);
 
-        self.spinlock.lock();
+        self.inner_queue.lock();
 
         if self.inner_queue.pop_stub() {
-            self.spinlock.unlock();
+            self.inner_queue.unlock();
         } else {
             if timeout == 0 {
-                self.spinlock.unlock();
+                self.inner_queue.unlock();
 
                 /* FIXME: -2 is as expected, while C -RT_ETIMEOUT is -116. */
                 return -116; //(RT_ETIMEOUT as rt_err_t);
@@ -246,7 +246,7 @@ impl RtSemaphore {
 
                 let ret = self.inner_queue.receiver.wait(thread, pending_mode);
                 if ret != RT_EOK as i32 {
-                    self.spinlock.unlock();
+                    self.inner_queue.unlock();
                     return ret;
                 }
 
@@ -258,7 +258,7 @@ impl RtSemaphore {
                     thread.thread_timer.start();
                 }
 
-                self.spinlock.unlock();
+                self.inner_queue.unlock();
 
                 Cpu::get_current_scheduler().do_task_schedule();
 
@@ -308,7 +308,7 @@ impl RtSemaphore {
         }
 
         let mut need_schedule = false;
-        self.spinlock.lock();
+        self.inner_queue.lock();
 
         if !self.inner_queue.receiver.is_empty() {
             self.inner_queue.receiver.wake();
@@ -317,12 +317,12 @@ impl RtSemaphore {
             if self.count() < RT_SEM_VALUE_MAX as usize {
                 self.inner_queue.force_push_stub();
             } else {
-                self.spinlock.unlock();
+                self.inner_queue.unlock();
                 return -(RT_EFULL as i32);
             }
         }
 
-        self.spinlock.unlock();
+        self.inner_queue.unlock();
 
         if need_schedule {
             Cpu::get_current_scheduler().do_task_schedule();
@@ -337,13 +337,13 @@ impl RtSemaphore {
             ObjectClassType::ObjectClassSemaphore as u8
         );
 
-        self.spinlock.lock();
+        self.inner_queue.lock();
 
         self.inner_queue.receiver.inner_locked_wake_all();
 
         self.inner_queue.reset_stub(value as usize);
 
-        self.spinlock.unlock();
+        self.inner_queue.unlock();
 
         Cpu::get_current_scheduler().do_task_schedule();
 

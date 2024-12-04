@@ -125,159 +125,79 @@ impl KMessageQueue {
     }
 }
 
-macro_rules! get_message_addr {
-    ($msg:expr) => {
-        ($msg as *mut RtMessage).offset(1) as *mut _
-    };
-}
-
-/// MessageQueue message structure
-#[repr(C)]
-#[pin_data]
-pub struct RtMessage {
-    #[pin]
-    pub next: *mut RtMessage,
-    pub length: isize,
-    pub prio: i32,
-}
-
 /// MessageQueue raw structure
 #[repr(C)]
-#[pin_data(PinnedDrop)]
+#[pin_data]
 pub struct RtMessageQueue {
-    /// Inherit from IPCObject
+    /// Inherit from KObjectBase
     #[pin]
-    pub(crate) parent: IPCObject,
-    /// Start address of message queue
-    pub(crate) msg_pool: *mut u8,
-    /// Message size of each message
-    pub(crate) msg_size: u16,
-    /// Max number of messages
-    pub(crate) max_msgs: u16,
-    /// Index of messages in the queue
+    pub(crate) parent: KObjectBase,
+    /// SysQueue for mailbox
+    #[pin]
+    pub(crate) inner_queue: RtSysQueue,
+    /// ABI compatibility
     pub(crate) entry: u16,
-    /// List head
-    pub(crate) msg_queue_head: *mut u8,
-    /// List tail
-    pub(crate) msg_queue_tail: *mut u8,
-    /// Pointer indicated the free node of queue
-    pub(crate) msg_queue_free: *mut u8,
-    /// Sender thread suspended on this message queue
-    #[pin]
-    pub(crate) suspend_sender_thread: ListHead,
 }
 
 impl_kobject!(RtMessageQueue);
-
-#[pinned_drop]
-impl PinnedDrop for RtMessageQueue {
-    fn drop(self: Pin<&mut Self>) {
-        let mq_raw = unsafe { Pin::get_unchecked_mut(self) };
-
-        if !mq_raw.msg_pool.is_null() {
-            unsafe {
-                rt_free(mq_raw.msg_pool as *mut ffi::c_void);
-            }
-        }
-    }
-}
 
 impl RtMessageQueue {
     pub fn new(
         name: [i8; NAME_MAX],
         msg_size: u16,
         max_msgs: u16,
-        flag: u8,
+        working_mode: u8,
+        waiting_mode: u8,
     ) -> Result<Pin<Box<Self>>, AllocError> {
         assert!((flag == RT_IPC_FLAG_FIFO as u8) || (flag == RT_IPC_FLAG_PRIO as u8));
 
         rt_debug_not_in_interrupt!();
 
-        let msg_align_size = align_up_size(msg_size as usize, RT_ALIGN_SIZE as usize);
-        let msg_pool =
-            // SAFETY: msg_align_size is a multiple of RT_ALIGN_SIZE and msg_pool is null checked
-            unsafe { rt_malloc((msg_align_size as usize + mem::size_of::<RtMessage>())
-                * max_msgs as usize) as *mut u8 } ;
-
-        if msg_pool.is_null() {
-            return Err(AllocError);
-        }
-
-        let mut msg_queue_free = null_mut();
-        for temp in 0..max_msgs as usize {
-            // SAFETY: msg_pool is null checked
-            let head = unsafe {
-                msg_pool.offset(
-                    (temp * (msg_align_size as usize + mem::size_of::<RtMessage>())) as isize,
-                ) as *mut RtMessage
-            };
-
-            unsafe {
-                (*head).next = msg_queue_free as *mut RtMessage;
-            }
-            msg_queue_free = head as *mut u8;
-        }
-
         Box::pin_init(pin_init!(Self {
-            parent<-IPCObject::new(ObjectClassType::ObjectClassMessageQueue as u8, name, flag),
-            msg_pool: msg_pool,
-            msg_size: msg_size,
-            max_msgs: max_msgs,
+            parent<-KObjectBase::new(ObjectClassType::ObjectClassMessageQueue as u8, name),
+            inner_queue<-RtSysQueue::new(msg_size as usize, max_msgs as usize, working_mode as u32,
+                waiting_mode as u32),
             entry: 0,
-            msg_queue_head: null_mut(),
-            msg_queue_tail: null_mut(),
-            msg_queue_free: msg_queue_free,
-            suspend_sender_thread<-ListHead::new()
         }))
     }
     #[inline]
     pub fn init(
         &mut self,
         name: *const i8,
-        msg_pool: *mut u8,
-        msg_size: usize,
-        pool_size: usize,
+        buffer: *mut u8,
+        item_size: usize,
+        buffer_size: usize,
+        working_mode: u8,
         flag: u8,
     ) -> i32 {
         assert!((flag == RT_IPC_FLAG_FIFO as u8) || (flag == RT_IPC_FLAG_PRIO as u8));
-
         self.parent
-            .init(ObjectClassType::ObjectClassMessageQueue as u8, name, flag);
+            .init(ObjectClassType::ObjectClassMessageQueue as u8, name);
 
-        self.msg_pool = msg_pool as *mut u8;
+        let msg_align_size = align_up_size(item_size as usize, RT_ALIGN_SIZE as usize);
 
-        let msg_align_size = align_up_size(msg_size as usize, RT_ALIGN_SIZE as usize);
-        self.msg_size = msg_size as u16;
+        if working_mode == IPC_SYS_QUEUE_FIFO {
+            self.inner_queue.item_max_count = (buffer_size as usize / self.inner_queue.item_size)
+        } else if working_mode == IPC_SYS_QUEUE_PRIO {
+            self.inner_queue.item_max_count =
+                (buffer_size as usize / (msg_align_size + mem::size_of::<RtSysQueueItemHeader>()));
+        }
 
-        self.max_msgs =
-            (pool_size as usize / (msg_align_size + mem::size_of::<RtMessage>())) as u16;
-
-        if self.max_msgs == 0 {
+        if self.item_max_count == 0 {
             return -(RT_EINVAL as i32);
         }
 
-        self.msg_queue_head = null_mut();
-        self.msg_queue_tail = null_mut();
-
-        self.msg_queue_free = null_mut();
-
-        // SAFETY: ensure ptr not exceed the pool size
-        unsafe {
-            for temp in 0..self.max_msgs as usize {
-                let head = (self.msg_pool as *mut u8).offset(
-                    (temp * (msg_align_size as usize + mem::size_of::<RtMessage>())) as isize,
-                ) as *mut RtMessage;
-                (*head).next = self.msg_queue_free as *mut RtMessage;
-                self.msg_queue_free = head as *mut u8;
-            }
-        }
         self.entry = 0;
 
-        unsafe {
-            let _ = ListHead::new().__pinned_init(&mut self.suspend_sender_thread as *mut ListHead);
-        }
-
-        RT_EOK as i32
+        self.inner_queue
+            .init(
+                buffer,
+                item_size,
+                self.inner_queue.item_max_count,
+                working_mode,
+                waiting_mode,
+            )
+            .to_error_no()
     }
 
     pub fn init_new_storage(
@@ -336,9 +256,12 @@ impl RtMessageQueue {
         );
         assert!(self.is_static_kobject());
 
-        self.parent.wake_all();
-        IPCObject::resume_all_threads(&mut self.suspend_sender_thread);
-        self.parent.parent.detach();
+        self.inner_queue.receiver.inner_locked_wake_all();
+        self.inner_queue.sender.inner_locked_wake_all();
+
+        if self.is_static_kobject() {
+            self.parent.parent.detach();
+        }
     }
 
     #[inline]
@@ -370,14 +293,9 @@ impl RtMessageQueue {
 
         rt_debug_not_in_interrupt!();
 
-        self.parent.wake_all();
-        IPCObject::resume_all_threads(&mut self.suspend_sender_thread);
-        // SAFETY: null protection
-        unsafe {
-            if !self.msg_pool.is_null() {
-                rt_free(self.msg_pool as *mut c_void);
-            }
-        }
+        self.inner_queue.receiver.inner_locked_wake_all();
+        self.inner_queue.sender.inner_locked_wake_all();
+
         self.parent.parent.delete();
     }
 
@@ -402,7 +320,7 @@ impl RtMessageQueue {
         let scheduler = timeout != 0;
         rt_debug_scheduler_available!(scheduler);
 
-        if size > self.msg_size as usize {
+        if size > self.inner_queue.item_size {
             return -(RT_ERROR as i32);
         }
 
@@ -423,36 +341,27 @@ impl RtMessageQueue {
             );
         }
 
-        self.parent.lock();
+        self.inner_queue.lock();
 
         let mut msg = self.msg_queue_free as *mut RtMessage;
 
         if msg.is_null() && timeout == 0 {
-            self.parent.unlock();
+            self.inner_queue.unlock();
             return -(RT_EFULL as i32);
         }
 
-        while {
-            msg = self.msg_queue_free as *mut RtMessage;
-            msg
-        } == null_mut()
-        {
+        while self.inner_queue.is_full() {
             thread.error = code::EINTR;
 
             if timeout == 0 {
-                self.parent.unlock();
+                self.inner_queue.unlock();
                 return -(RT_EFULL as i32);
             }
 
-            let ret = IPCObject::suspend_thread(
-                &mut self.suspend_sender_thread,
-                thread_ptr,
-                self.parent.flag,
-                suspend_flag as u32,
-            );
+            let ret = self.sender.wait(thread, thread, suspend_flag as u32);
 
             if ret != RT_EOK as i32 {
-                self.parent.unlock();
+                self.inner_queue.unlock();
                 return ret;
             }
 
@@ -465,7 +374,7 @@ impl RtMessageQueue {
                 thread.thread_timer.start();
             }
 
-            self.parent.unlock();
+            self.inner_queue.unlock();
 
             Cpu::get_current_scheduler().do_task_schedule();
 
@@ -473,7 +382,7 @@ impl RtMessageQueue {
                 return thread.error.to_errno();
             }
 
-            self.parent.lock();
+            self.inner_queue.lock();
 
             if timeout > 0 {
                 tick_delta = rt_tick_get() - tick_delta;
@@ -484,96 +393,26 @@ impl RtMessageQueue {
             }
         }
 
-        // SAFETY: msg is null checked and buffer is legal
-        unsafe {
-            self.msg_queue_free = (*msg).next as *mut u8;
-
-            self.parent.unlock();
-
-            (*msg).next = null_mut();
-
-            (*msg).length = size as isize;
-
-            rt_memcpy(
-                get_message_addr!(msg),
-                buffer as *const core::ffi::c_void,
-                size as usize,
-            );
-        }
-
-        self.parent.lock();
-
         cfg_if::cfg_if! {
             if #[cfg(feature = "RT_USING_MESSAGEQUEUE_PRIORITY")] {
-                // SAFETY: msg is null checked
-                unsafe { (*msg).prio = prio } ;
-                if self.msg_queue_head == null_mut() {
-                    self.msg_queue_head = msg as *mut u8;
-                }
-
-                let mut node = self.msg_queue_head as *mut RtMessage;
-                let mut prev_node: *mut RtMessage = null_mut();
-
-                // SAFETY: node, msg, prev_node is null checked
-                unsafe {
-                    while !node.is_null() {
-                        if (*node).prio < (*msg).prio {
-                            if (prev_node == null_mut()) {
-                                self.msg_queue_head = msg as *mut u8;
-                            } else {
-                                (*prev_node).next = msg;
-                            }
-
-                            (*msg).next = node;
-                            break;
-                        }
-
-                        if (*node).next == null_mut() {
-                            if node != msg {
-                                (*node).next = msg;
-                            }
-                            self.msg_queue_tail = msg as *mut u8;
-                            break;
-                        }
-                        prev_node = node;
-                        node = (*node).next;
-                    }
-                }
+                self.inner_queue.push_prio(buffer, size, prio);
             } else {
-                if self.msg_queue_tail != null_mut() {
-                    // SAFETY: msg_queue_tail is not null
-                    unsafe {
-                        (*(self.msg_queue_tail as *mut RtMessage)).next = msg;
-                    }
-                }
-
-                self.msg_queue_tail = msg as *mut u8;
-
-                if self.msg_queue_head.is_null() {
-                    self.msg_queue_head = msg as *mut u8;
-                }
+                self.inner_queue.push_fifo(buffer, size);
             }
         }
 
-        if self.entry < RT_MQ_ENTRY_MAX as u16 {
-            // increase message entry
-            self.entry += 1;
-        } else {
-            self.parent.unlock();
-            return -(RT_EFULL as i32);
-        }
-
-        if self.parent.has_waiting() {
-            self.parent.wake_one();
-
-            self.parent.unlock();
+        if !self.inner_queue.receiver.is_empty() {
+            self.inner_queue.receiver.wake();
+            self.inner_queue.unlock();
 
             Cpu::get_current_scheduler().do_task_schedule();
 
             return RT_EOK as i32;
         }
 
-        self.parent.unlock();
+        self.entry = self.inner_queue.item_in_queue;
+
+        self.inner_queue.unlock();
 
         RT_EOK as i32
     }
@@ -621,59 +460,9 @@ impl RtMessageQueue {
             );
         }
 
-        self.parent.lock();
-
-        let msg = self.msg_queue_free as *mut RtMessage;
-
-        if msg.is_null() {
-            self.parent.unlock();
-            return -(RT_EFULL as i32);
-        }
-
-        // SAFETY: msg is null checked and buffer is valid
-        unsafe {
-            self.msg_queue_free = (*msg).next as *mut u8;
-
-            self.parent.unlock();
-
-            (*msg).length = size as isize;
-
-            rt_memcpy(
-                get_message_addr!(msg),
-                buffer as *const core::ffi::c_void,
-                size as usize,
-            );
-
-            self.parent.lock();
-
-            (*msg).next = self.msg_queue_head as *mut RtMessage;
-        }
-        self.msg_queue_head = msg as *mut u8;
-
-        if self.msg_queue_tail.is_null() {
-            self.msg_queue_tail = msg as *mut u8;
-        }
-
-        if self.entry < RT_MQ_ENTRY_MAX as u16 {
-            self.entry += 1;
-        } else {
-            self.parent.unlock();
-            return -(RT_EFULL as i32);
-        }
-
-        if !self.parent.has_waiting() {
-            self.parent.wake_one();
-
-            self.parent.unlock();
-
-            Cpu::get_current_scheduler().do_task_schedule();
-
-            return RT_EOK as i32;
-        }
-
-        self.parent.unlock();
-
-        RT_EOK as i32
+        let ret = self.inner_queue.urgent_prio(buffer, size);
+        self.entry = self.inner_queue.item_in_queue;
+        ret
     }
 
     fn receive_internal(
@@ -713,18 +502,18 @@ impl RtMessageQueue {
             );
         }
 
-        self.parent.lock();
+        self.inner_queue.lock();
 
-        if self.entry == 0 && timeout == 0 {
-            self.parent.unlock();
+        if self.is_empty() && timeout == 0 {
+            self.inner_queue.unlock();
             return -(RT_ETIMEOUT as i32);
         }
 
-        while self.entry == 0 {
+        while self.is_empty() {
             thread.error = code::EINTR;
 
             if timeout == 0 {
-                self.parent.unlock();
+                self.inner_queue.unlock();
                 thread.error = code::ETIMEOUT;
                 return thread.error.to_errno();
             }
@@ -733,7 +522,7 @@ impl RtMessageQueue {
                 .parent
                 .wait(thread_ptr, self.parent.flag, suspend_flag as u32);
             if ret != RT_EOK as i32 {
-                self.parent.unlock();
+                self.inner_queue.unlock();
                 return ret;
             }
 
@@ -748,14 +537,14 @@ impl RtMessageQueue {
                 (*thread).thread_timer.start();
             }
 
-            self.parent.unlock();
+            self.inner_queue.unlock();
             Cpu::get_current_scheduler().do_task_schedule();
 
             if thread.error != code::EOK {
                 return thread.error.to_errno();
             }
 
-            self.parent.lock();
+            self.inner_queue.lock();
 
             if timeout > 0 {
                 tick_delta = rt_tick_get() - tick_delta;
@@ -766,71 +555,13 @@ impl RtMessageQueue {
             }
         }
 
-        let msg = self.msg_queue_head as *mut RtMessage;
-
-        // SAFETY: msg is null checked
-        unsafe { self.msg_queue_head = (*msg).next as *mut u8 };
-
-        if self.msg_queue_tail == msg as *mut u8 {
-            self.msg_queue_tail = null_mut();
-        }
-
-        if self.entry > 0 {
-            self.entry -= 1;
-        }
-
-        self.parent.unlock();
-
-        // SAFETY: msg is null checked
-        let mut len = unsafe { (*msg).length as usize };
-
-        if len > size {
-            len = size;
-        }
-
-        // SAFETY: msg is null checked and buffer is valid
-        unsafe {
-            rt_memcpy(
-                buffer as *mut core::ffi::c_void,
-                get_message_addr!(msg),
-                len,
-            )
-        };
-
         cfg_if::cfg_if! {
             if #[cfg(feature = "RT_USING_MESSAGEQUEUE_PRIORITY")] {
-                if !prio.is_null() {
-                    //SAFETY: msg is null checked and prio is valid
-                    unsafe { *prio = (*msg).prio };
-                }
+                self.inner_queue.pop_prio(buffer, size, prio);
+            } else {
+                self.inner_queue.pop_prio(buffer, size);
             }
         }
-
-        self.parent.lock();
-
-        // SAFETY: msg is null checked
-        unsafe { (*msg).next = self.msg_queue_free as *mut RtMessage };
-
-        self.msg_queue_free = msg as *mut u8;
-
-        if !self.suspend_sender_thread.is_empty() {
-            IPCObject::resume_thread(&mut self.suspend_sender_thread);
-
-            self.parent.unlock();
-
-            unsafe {
-                rt_object_hook_call!(
-                    rt_object_take_hook,
-                    &mut self.parent.parent as *mut KObjectBase as *mut rt_object
-                );
-            }
-
-            Cpu::get_current_scheduler().do_task_schedule();
-
-            return len as i32;
-        }
-
-        self.parent.unlock();
 
         unsafe {
             rt_object_hook_call!(
@@ -838,6 +569,8 @@ impl RtMessageQueue {
                 &mut self.parent.parent as *mut KObjectBase as *mut rt_object
             );
         }
+
+        self.entry = self.inner_queue.item_in_queue;
 
         len as i32
     }
@@ -861,7 +594,7 @@ impl RtMessageQueue {
         );
 
         if cmd == RT_IPC_CMD_RESET as i32 {
-            self.parent.lock();
+            self.inner_queue.lock();
 
             self.parent.wake_all();
             IPCObject::resume_all_threads(&mut self.suspend_sender_thread);
@@ -883,7 +616,7 @@ impl RtMessageQueue {
 
             self.entry = 0;
 
-            self.parent.unlock();
+            self.inner_queue.unlock();
 
             Cpu::get_current_scheduler().do_task_schedule();
 

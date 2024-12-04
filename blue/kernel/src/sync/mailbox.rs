@@ -117,13 +117,11 @@ impl KMailbox {
 
 /// Mailbox raw structure
 #[repr(C)]
-#[pin_data(PinnedDrop)]
+#[pin_data]
 pub struct RtMailbox {
     /// Inherit from KObjectBase
     #[pin]
     pub(crate) parent: KObjectBase,
-    /// Spin lock mailbox used
-    pub(crate) spinlock: RawSpin,
     #[pin]
     /// SysQueue for mailbox
     #[pin]
@@ -131,11 +129,6 @@ pub struct RtMailbox {
 }
 
 impl_kobject!(RtMailbox);
-
-#[pinned_drop]
-impl PinnedDrop for RtMailbox {
-    fn drop(self: Pin<&mut Self>) {}
-}
 
 impl RtMailbox {
     #[inline]
@@ -146,8 +139,7 @@ impl RtMailbox {
 
         pin_init!(Self {
             parent<-KObjectBase::new(ObjectClassType::ObjectClassMailBox as u8, name),
-            spinlock:RawSpin::new(),
-            inner_queue<-RtSysQueue::new(mem::size_of::<usize>(), size, 0, flag as u32),
+            inner_queue<-RtSysQueue::new(mem::size_of::<usize>(), size, IPC_SYS_QUEUE_FIFO, flag as u32),
         })
     }
     #[inline]
@@ -157,8 +149,13 @@ impl RtMailbox {
         self.parent
             .init(ObjectClassType::ObjectClassMailBox as u8, name);
 
-        self.inner_queue
-            .init(buffer, mem::size_of::<usize>(), size, 0, flag as u32);
+        self.inner_queue.init(
+            buffer,
+            mem::size_of::<usize>(),
+            size,
+            IPC_SYS_QUEUE_FIFO,
+            flag as u32,
+        );
     }
 
     #[inline]
@@ -191,7 +188,6 @@ impl RtMailbox {
 
         self.inner_queue.receiver.inner_locked_wake_all();
         self.inner_queue.sender.inner_locked_wake_all();
-        self.inner_queue.free_storage_internal();
 
         self.parent.delete();
     }
@@ -218,10 +214,10 @@ impl RtMailbox {
             );
         }
 
-        self.spinlock.lock();
+        self.inner_queue.lock();
 
         if self.inner_queue.is_full() && timeout == 0 {
-            self.spinlock.unlock();
+            self.inner_queue.unlock();
             return -(RT_EFULL as i32);
         }
 
@@ -229,7 +225,7 @@ impl RtMailbox {
             thread.error = code::EINTR;
 
             if timeout == 0 {
-                self.spinlock.unlock();
+                self.inner_queue.unlock();
 
                 return -(RT_EFULL as i32);
             }
@@ -237,7 +233,7 @@ impl RtMailbox {
             let ret = self.inner_queue.sender.wait(thread, suspend_flag);
 
             if ret != RT_EOK as i32 {
-                self.spinlock.unlock();
+                self.inner_queue.unlock();
                 return ret;
             }
 
@@ -251,7 +247,7 @@ impl RtMailbox {
                 thread.thread_timer.start();
             }
 
-            self.spinlock.unlock();
+            self.inner_queue.unlock();
 
             Cpu::get_current_scheduler().do_task_schedule();
 
@@ -259,7 +255,7 @@ impl RtMailbox {
                 return thread.error.to_errno();
             }
 
-            self.spinlock.lock();
+            self.inner_queue.lock();
 
             if timeout > 0 {
                 tick_delta = rt_tick_get() - tick_delta;
@@ -275,21 +271,21 @@ impl RtMailbox {
             .push_fifo(&value as *const usize as *const u8, mem::size_of::<usize>())
             == 0
         {
-            self.spinlock.unlock();
+            self.inner_queue.unlock();
             return -(RT_EFULL as i32);
         }
 
         if !self.inner_queue.receiver.is_empty() {
             self.inner_queue.receiver.wake();
 
-            self.spinlock.unlock();
+            self.inner_queue.unlock();
 
             Cpu::get_current_scheduler().do_task_schedule();
 
             return RT_EOK as i32;
         }
 
-        self.spinlock.unlock();
+        self.inner_queue.unlock();
 
         return RT_EOK as i32;
     }
@@ -329,10 +325,10 @@ impl RtMailbox {
             );
         }
 
-        self.spinlock.lock();
+        self.inner_queue.lock();
 
         if self.inner_queue.is_full() {
-            self.spinlock.unlock();
+            self.inner_queue.unlock();
             return -(RT_EFULL as i32);
         }
 
@@ -342,14 +338,14 @@ impl RtMailbox {
         if !self.inner_queue.receiver.is_empty() {
             self.inner_queue.receiver.wake();
 
-            self.spinlock.unlock();
+            self.inner_queue.unlock();
 
             Cpu::get_current_scheduler().do_task_schedule();
 
             return RT_EOK as i32;
         }
 
-        self.spinlock.unlock();
+        self.inner_queue.unlock();
 
         RT_EOK as i32
     }
@@ -373,10 +369,10 @@ impl RtMailbox {
             );
         }
 
-        self.spinlock.lock();
+        self.inner_queue.lock();
 
         if self.inner_queue.is_empty() && timeout == 0 {
-            self.spinlock.unlock();
+            self.inner_queue.unlock();
             return -(RT_ETIMEOUT as i32);
         }
 
@@ -385,7 +381,7 @@ impl RtMailbox {
             thread.error = code::EINTR;
 
             if timeout == 0 {
-                self.spinlock.unlock();
+                self.inner_queue.unlock();
                 thread.error = code::ETIMEOUT;
 
                 return -(RT_ETIMEOUT as i32);
@@ -393,7 +389,7 @@ impl RtMailbox {
 
             let ret = self.inner_queue.receiver.wait(thread, suspend_flag as u32);
             if ret != RT_EOK as i32 {
-                self.spinlock.unlock();
+                self.inner_queue.unlock();
                 return ret;
             }
 
@@ -407,7 +403,7 @@ impl RtMailbox {
                 thread.thread_timer.start();
             }
 
-            self.spinlock.unlock();
+            self.inner_queue.unlock();
 
             Cpu::get_current_scheduler().do_task_schedule();
 
@@ -415,7 +411,7 @@ impl RtMailbox {
                 return thread.error.to_errno();
             }
 
-            self.spinlock.lock();
+            self.inner_queue.lock();
 
             if timeout > 0 {
                 tick_delta = rt_tick_get() - tick_delta;
@@ -441,7 +437,7 @@ impl RtMailbox {
                 }
             }
 
-            self.spinlock.unlock();
+            self.inner_queue.unlock();
 
             unsafe {
                 rt_object_hook_call!(
@@ -455,7 +451,7 @@ impl RtMailbox {
             return RT_EOK as i32;
         }
 
-        self.spinlock.unlock();
+        self.inner_queue.unlock();
 
         unsafe {
             rt_object_hook_call!(
@@ -483,7 +479,7 @@ impl RtMailbox {
         assert_eq!(self.type_name(), ObjectClassType::ObjectClassMailBox as u8);
 
         if cmd == RT_IPC_CMD_RESET as i32 {
-            self.spinlock.lock();
+            self.inner_queue.lock();
 
             self.inner_queue.receiver.inner_locked_wake_all();
             self.inner_queue.sender.inner_locked_wake_all();
@@ -492,7 +488,7 @@ impl RtMailbox {
             self.inner_queue.read_pos = 0;
             self.inner_queue.write_pos = 0;
 
-            self.spinlock.unlock();
+            self.inner_queue.unlock();
 
             Cpu::get_current_scheduler().do_task_schedule();
 

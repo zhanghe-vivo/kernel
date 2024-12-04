@@ -103,10 +103,8 @@ pub struct RtEvent {
     pub(crate) parent: KObjectBase,
     /// Event flog set value
     pub(crate) set: u32,
-    /// Spin lock semaphore used
-    pub(crate) spinlock: RawSpin,
     #[pin]
-    /// SysQueue for semaphore
+    /// SysQueue for Event flag
     #[pin]
     pub(crate) inner_queue: RtSysQueue,
 }
@@ -123,8 +121,7 @@ impl RtEvent {
         pin_init!(Self {
             parent<-KObjectBase::new(ObjectClassType::ObjectClassEvent as u8, name),
             set: 0,
-            spinlock: RawSpin::new(),
-            inner_queue<-RtSysQueue::new(mem::size_of::<u32>(), 1, 2, flag as u32)
+            inner_queue<-RtSysQueue::new(mem::size_of::<u32>(), 1, IPC_SYS_QUEUE_STUB, flag as u32)
         })
     }
 
@@ -137,10 +134,13 @@ impl RtEvent {
 
         self.set = 0;
 
-        self.spinlock = RawSpin::new();
-
-        self.inner_queue
-            .init(null_mut(), mem::size_of::<u32>(), 1, 2, flag as u32);
+        self.inner_queue.init(
+            null_mut(),
+            mem::size_of::<u32>(),
+            1,
+            IPC_SYS_QUEUE_STUB,
+            flag as u32,
+        );
     }
 
     #[inline]
@@ -184,7 +184,7 @@ impl RtEvent {
             return -(RT_ERROR as i32);
         }
 
-        self.spinlock.lock();
+        self.inner_queue.lock();
 
         self.set |= set;
 
@@ -213,7 +213,7 @@ impl RtEvent {
                                 status = RT_EOK as i32;
                             }
                         } else {
-                            self.spinlock.unlock();
+                            self.inner_queue.unlock();
                             return -(RT_EINVAL as i32);
                         }
 
@@ -235,7 +235,7 @@ impl RtEvent {
             }
         }
 
-        self.spinlock.unlock();
+        self.inner_queue.unlock();
 
         if need_schedule {
             Cpu::get_current_scheduler().do_task_schedule();
@@ -280,7 +280,7 @@ impl RtEvent {
             );
         }
 
-        self.spinlock.lock();
+        self.inner_queue.lock();
 
         if option as u32 & RT_EVENT_FLAG_AND > 0u32 {
             if (self.set & set) == set {
@@ -312,7 +312,7 @@ impl RtEvent {
             }
         } else if timeout == 0 {
             thread.error = code::ETIMEOUT;
-            self.spinlock.unlock();
+            self.inner_queue.unlock();
             return -(RT_ETIMEOUT as i32);
         } else {
             thread.event_info.set = set;
@@ -320,7 +320,7 @@ impl RtEvent {
 
             let ret = self.inner_queue.receiver.wait(thread, suspend_flag as u32);
             if ret != RT_EOK as i32 {
-                self.spinlock.unlock();
+                self.inner_queue.unlock();
                 return ret;
             }
 
@@ -332,7 +332,7 @@ impl RtEvent {
                 thread.thread_timer.start();
             }
 
-            self.spinlock.unlock();
+            self.inner_queue.unlock();
 
             Cpu::get_current_scheduler().do_task_schedule();
 
@@ -340,7 +340,7 @@ impl RtEvent {
                 return thread.error.to_errno();
             }
 
-            self.spinlock.lock();
+            self.inner_queue.lock();
 
             if recved != null_mut() {
                 // SAFETY: recved is null checked
@@ -350,7 +350,7 @@ impl RtEvent {
             }
         }
 
-        self.spinlock.unlock();
+        self.inner_queue.unlock();
 
         unsafe {
             rt_object_hook_call!(
@@ -390,13 +390,13 @@ impl RtEvent {
         assert_eq!(self.type_name(), ObjectClassType::ObjectClassEvent as u8);
 
         if cmd == RT_IPC_CMD_RESET as i32 {
-            self.spinlock.lock();
+            self.inner_queue.lock();
 
             self.inner_queue.receiver.inner_locked_wake_all();
 
             self.set = 0;
 
-            self.spinlock.unlock();
+            self.inner_queue.unlock();
 
             Cpu::get_current_scheduler().do_task_schedule();
 

@@ -1,11 +1,13 @@
 use crate::allocator::{align_up_size, rt_free, rt_malloc};
+use crate::cpu::Cpu;
 use crate::error::{code, Error};
 use crate::impl_kobject;
 use crate::klibc::rt_memcpy;
 use crate::list_head_for_each;
 use crate::object::*;
 use crate::rt_bindings::{
-    RT_EOK, RT_ERROR, RT_IPC_FLAG_FIFO, RT_IPC_FLAG_PRIO, RT_THREAD_SUSPEND_MASK,
+    RT_EFULL, RT_EOK, RT_ERROR, RT_IPC_FLAG_FIFO, RT_IPC_FLAG_PRIO, RT_MQ_ENTRY_MAX,
+    RT_THREAD_SUSPEND_MASK,
 };
 use crate::sync::RawSpin;
 use crate::thread::{RtThread, SuspendFlag};
@@ -16,6 +18,16 @@ use core::pin::Pin;
 use core::ptr::{null_mut, NonNull};
 use core::slice;
 use pinned_init::*;
+
+pub(crate) const IPC_SYS_QUEUE_FIFO: u32 = 0;
+pub(crate) const IPC_SYS_QUEUE_PRIO: u32 = 1;
+pub(crate) const IPC_SYS_QUEUE_STUB: u32 = 2;
+
+macro_rules! sys_queue_item_data_addr {
+    ($msg:expr) => {
+        ($msg as *mut RtSysQueueItemHeader).offset(1) as *mut _
+    };
+}
 
 /// System queue for kernel use on IPC
 #[repr(C)]
@@ -52,7 +64,7 @@ pub(crate) struct RtSysQueue {
     #[pin]
     pub(crate) receiver: RtWaitQueue,
     /// Spin lock for queue
-    spinlock: RawSpin,
+    pub(crate) spinlock: RawSpin,
 }
 
 #[pinned_drop]
@@ -248,7 +260,15 @@ impl RtSysQueue {
     }
 
     #[inline]
-    pub(crate) fn push_fifo(&mut self, buffer: *const u8, size: usize) -> usize {
+    pub(crate) fn reset_stub(&mut self, item_in_queue: usize) {
+        self.item_in_queue = item_in_queue;
+        if self.item_in_queue > self.item_max_count {
+            self.item_max_count = self.item_in_queue;
+        }
+    }
+
+    #[inline]
+    pub(crate) fn push_fifo(&mut self, buffer: *const u8, size: usize) -> i32 {
         assert_eq!(self.item_size, size);
         self.write_pos += self.item_size;
         if self.write_pos >= self.queue_buf_size {
@@ -269,14 +289,14 @@ impl RtSysQueue {
 
         if self.item_in_queue < rt_bindings::RT_MB_ENTRY_MAX as usize {
             self.item_in_queue += self.item_size;
-            return size;
+            return size as i32;
         } else {
             return 0;
         }
     }
 
     #[inline]
-    pub(crate) fn pop_fifo(&mut self, buffer: &mut *mut u8, size: usize) -> usize {
+    pub(crate) fn pop_fifo(&mut self, buffer: &mut *mut u8, size: usize) -> i32 {
         assert_eq!(self.item_size, size);
 
         if let Some(buffer_raw) = self.queue_buf {
@@ -300,11 +320,11 @@ impl RtSysQueue {
             self.item_in_queue -= 1;
         }
 
-        size
+        size as i32
     }
 
     #[inline]
-    pub(crate) fn urgent_fifo(&mut self, buffer: *const u8, size: usize) -> usize {
+    pub(crate) fn urgent_fifo(&mut self, buffer: *const u8, size: usize) -> i32 {
         if self.read_pos > 0 {
             self.read_pos -= self.item_size;
         } else {
@@ -324,21 +344,191 @@ impl RtSysQueue {
         }
 
         self.item_in_queue += 1;
-        size
+        size as i32
     }
 
-    #[inline]
-    pub(crate) fn reset_stub(&mut self, item_in_queue: usize) {
-        self.item_in_queue = item_in_queue;
-        if self.item_in_queue > self.item_max_count {
-            self.item_max_count = self.item_in_queue;
+    pub(crate) fn push_prio(&mut self, buffer: *const u8, size: usize, priority: i32) -> i32 {
+        assert!(!self.free.is_none());
+
+        let mut hdr = self.free.unwrap().as_ptr() as *mut RtSysQueueItemHeader;
+        let mut hdr_ref = unsafe { &mut *hdr };
+
+        self.free = unsafe { Some(NonNull::new_unchecked(hdr_ref.next as *mut u8)) };
+
+        self.spinlock.unlock();
+
+        hdr_ref.next = null_mut();
+
+        hdr_ref.length = size as isize;
+
+        rt_memcpy(
+            sys_queue_item_data_addr!(hdr),
+            buffer as *const core::ffi::c_void,
+            size as usize,
+        );
+
+        self.spinlock.lock();
+
+        hdr_ref.prio = priority;
+        if self.head.is_none() {
+            self.head = Some(NonNull::new_unchecked(hdr as *mut u8));
         }
+
+        let mut node = self.head.unwrap().as_ptr() as *mut RtSysQueueItemHeader;
+        let mut prev_node: *mut RtSysQueueItemHeader = null_mut();
+
+        while !node.is_null() {
+            if unsafe { (*node).prio < (*hdr).prio } {
+                if (prev_node == null_mut()) {
+                    self.msg_queue_head = hdr as *mut u8;
+                } else {
+                    unsafe { (*prev_node).next = hdr };
+                }
+
+                unsafe {
+                    (*hdr).next = node;
+                }
+                break;
+            }
+
+            if unsafe { (*node).next == null_mut() } {
+                if node != hdr {
+                    unsafe { (*node).next = hdr };
+                }
+                self.tail = Some(NonNull::new_unchecked(hdr as *mut u8));
+                break;
+            }
+            prev_node = node;
+            unsafe { node = (*node).next };
+        }
+
+        if self.item_in_queue < rt_bindings::RT_MQ_ENTRY_MAX as usize {
+            // increase message entry
+            self.item_in_queue += 1;
+        } else {
+            self.spinlock.unlock();
+            return -(RT_EFULL as i32);
+        }
+
+        size as i32
     }
 
     #[inline]
-    pub(crate) fn pop_internal(&self) /*-> Result<RtSysQueueItemHeader, Error>*/
-    {
-        //self.head.is_none()
+    pub(crate) fn urgent_prio(&mut self, buffer: *const u8, size: usize) -> i32 {
+        self.spinlock.lock();
+
+        let mut hdr = null_mut();
+        if self.free.is_some() {
+            hdr = self.free.unwrap().as_ptr() as *mut RtSysQueueItemHeader;
+        }
+
+        if hdr.is_null() {
+            self.spinlock.unlock();
+            return -(RT_EFULL as i32);
+        }
+
+        // SAFETY: msg is null checked and buffer is valid
+        self.free = unsafe { Some(NonNull::new_unchecked((*hdr).next as *mut u8)) };
+
+        self.spinlock.unlock();
+
+        unsafe { (*hdr).len = size as isize };
+
+        rt_memcpy(
+            sys_queue_item_data_addr!(hdr),
+            buffer as *const core::ffi::c_void,
+            size as usize,
+        );
+
+        self.spinlock.lock();
+
+        unsafe { (*hdr).next = self.head.unwrap().as_ptr() as *mut RtSysQueueItemHeader };
+
+        self.head = Some(NonNull::new_unchecked(hdr as *mut u8));
+
+        if self.tail.is_none() {
+            self.tail = Some(NonNull::new_unchecked(hdr as *mut u8));
+        }
+
+        if self.item_in_queue < RT_MQ_ENTRY_MAX as u16 {
+            self.item_in_queue += 1;
+        } else {
+            self.spinlock.unlock();
+            return -(RT_EFULL as i32);
+        }
+
+        if !self.receiver.is_empty() {
+            self.receiver.wake();
+
+            self.spinlock.unlock();
+
+            Cpu::get_current_scheduler().do_task_schedule();
+
+            return RT_EOK as i32;
+        }
+
+        self.spinlock.unlock();
+
+        size as i32
+    }
+
+    #[inline]
+    pub(crate) fn pop_prio(&mut self, buffer: *mut u8, size: usize, prio: *mut i32) -> i32 {
+        let hdr = self.head.unwrap().as_ptr() as *mut RtSysQueueItemHeader;
+
+        // SAFETY: msg is null checked
+        unsafe { self.head = Some(NonNull::new_unchecked((*hdr).next as *mut u8)) };
+
+        if self.tail.unwrap().as_ptr() == hdr as *mut u8 {
+            self.tail = None;
+        }
+
+        if self.item_in_queue > 0 {
+            self.item_in_queue -= 1;
+        }
+
+        self.spinlock.unlock();
+
+        // SAFETY: msg is null checked
+        let mut len = unsafe { (*hdr).length as usize };
+
+        if len > size {
+            len = size;
+        }
+
+        // SAFETY: hdr is null checked and buffer is valid
+        unsafe {
+            rt_memcpy(
+                buffer as *mut core::ffi::c_void,
+                sys_queue_item_data_addr!(hdr),
+                len,
+            )
+        };
+
+        if !prio.is_null() {
+            //SAFETY: msg is null checked and prio is valid
+            unsafe { *prio = (*hdr).prio };
+        }
+
+        self.spinlock.lock();
+
+        // SAFETY: msg is null checked
+        unsafe { (*hdr).next = self.free.unwrap().as_ptr() as *mut RtSysQueueItemHeader };
+
+        self.free = Some(NonNull::new_unchecked(hdr as *mut u8));
+
+        if !self.sender.is_empty() {
+            self.sender.wake();
+            self.inner_queue.unlock();
+
+            Cpu::get_current_scheduler().do_task_schedule();
+
+            return len as i32;
+        }
+
+        self.spinlock.unlock();
+
+        size as i32
     }
 
     #[inline]
@@ -349,10 +539,6 @@ impl RtSysQueue {
     pub(crate) fn unlock(&self) {
         self.spinlock.unlock();
     }
-    #[inline]
-    pub(crate) fn push_internal(&mut self, item: *mut u8) -> Result<(), Error> {
-        Ok(()) //self.push_internal(item)
-    }
 }
 
 /// Sys Queue item header
@@ -360,13 +546,7 @@ impl RtSysQueue {
 pub(crate) struct RtSysQueueItemHeader {
     pub(crate) next: *mut RtSysQueueItemHeader,
     pub(crate) len: usize,
-    pub(crate) priority: i32,
-}
-
-macro_rules! sys_queue_item_data_addr {
-    ($msg:expr) => {
-        ($msg as *mut RtSysQueueItemHeader).offset(1) as *mut _
-    };
+    pub(crate) prio: i32,
 }
 
 /// WaitQueue for pending threads
