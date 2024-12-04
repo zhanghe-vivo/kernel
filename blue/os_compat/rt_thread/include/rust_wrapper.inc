@@ -359,49 +359,27 @@ typedef struct rt_event {
  */
 typedef struct rt_mailbox {
   /**
-   * Inherit from IPCObject
-   */
-  struct rt_object parent;
-  /**
-   * Spin lock semaphore used
-   */
-  struct RawSpin spinlock;
-  /**
-   * SysQueue for semaphore
-   */
-  struct RtSysQueue inner_queue;
-} rt_mailbox;
-
-/**
- * Base structure of IPC object
- */
-typedef struct rt_ipc_object {
-  /**
    * Inherit from KObjectBase
    */
   struct rt_object parent;
   /**
-   * IPC flag to use
-   */
-  uint8_t flag;
-  /**
-   * Spin lock IPCObject used
+   * Spin lock mailbox used
    */
   struct RawSpin spinlock;
   /**
-   * Threads pended on this IPC object
+   * SysQueue for mailbox
    */
-  rt_list_t wait_list;
-} rt_ipc_object;
+  struct RtSysQueue inner_queue;
+} rt_mailbox;
 
 /**
  * MessageQueue raw structure
  */
 typedef struct rt_messagequeue {
   /**
-   * Inherit from IPCObject
+   * Inherit from KObjectBase
    */
-  struct rt_ipc_object parent;
+  struct rt_object parent;
   /**
    * Start address of message queue
    */

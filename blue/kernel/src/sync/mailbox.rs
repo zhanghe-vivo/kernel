@@ -119,13 +119,13 @@ impl KMailbox {
 #[repr(C)]
 #[pin_data(PinnedDrop)]
 pub struct RtMailbox {
-    /// Inherit from IPCObject
+    /// Inherit from KObjectBase
     #[pin]
     pub(crate) parent: KObjectBase,
-    /// Spin lock semaphore used
+    /// Spin lock mailbox used
     pub(crate) spinlock: RawSpin,
     #[pin]
-    /// SysQueue for semaphore
+    /// SysQueue for mailbox
     #[pin]
     pub(crate) inner_queue: RtSysQueue,
 }

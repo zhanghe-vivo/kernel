@@ -359,15 +359,15 @@ typedef struct rt_event {
  */
 typedef struct rt_mailbox {
   /**
-   * Inherit from IPCObject
+   * Inherit from KObjectBase
    */
   struct rt_object parent;
   /**
-   * Spin lock semaphore used
+   * Spin lock mailbox used
    */
   struct RawSpin spinlock;
   /**
-   * SysQueue for semaphore
+   * SysQueue for mailbox
    */
   struct RtSysQueue inner_queue;
 } rt_mailbox;
