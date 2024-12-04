@@ -117,32 +117,90 @@ typedef struct TimeSlice {
 } TimeSlice;
 
 /**
- * Base structure of IPC object
+ * WaitQueue for pending threads
  */
-typedef struct rt_ipc_object {
+typedef struct RtWaitQueue {
+  /**
+   * WaitQueue impl by ListHead
+   */
+  rt_list_t working_queue;
+  /**
+   * WaitQueue working mode, FIFO or PRIO
+   */
+  uint32_t waiting_mode;
+} RtWaitQueue;
+
+/**
+ * System queue for kernel use on IPC
+ */
+typedef struct RtSysQueue {
+  /**
+   * Queue item size
+   */
+  uintptr_t item_size;
+  /**
+   * Queue item max count
+   */
+  uintptr_t item_max_count;
+  /**
+   * Count of items in queue
+   */
+  uintptr_t item_in_queue;
+  /**
+   * Queue raw buffer pointer
+   */
+  uint8_t *queue_buf;
+  /**
+   * Queue memory size
+   */
+  uintptr_t queue_buf_size;
+  /**
+   * If the queue buffer from external, this will be true
+   */
+  bool is_storage_from_external;
+  /**
+   * Ringbuffer read position
+   */
+  uintptr_t read_pos;
+  /**
+   * Ringbuffer write position
+   */
+  uintptr_t write_pos;
+  /**
+   * Queue head pointer
+   */
+  uint8_t *head;
+  /**
+   * Queue tail pointer
+   */
+  uint8_t *tail;
+  /**
+   * Pointer to first 'free to use' item in queue
+   */
+  uint8_t *free;
+  /**
+   * Queue working mode: FIFO by default
+   */
+  uint32_t working_mode;
+  /**
+   * Queue for waiting to send items
+   */
+  struct RtWaitQueue sender;
+  /**
+   * Queue for waiting to receive items
+   */
+  struct RtWaitQueue receiver;
+  /**
+   * Spin lock for queue
+   */
+  struct RawSpin spinlock;
+} RtSysQueue;
+
+typedef struct rt_mutex {
   /**
    * Inherit from KObjectBase
    */
   struct rt_object parent;
-  /**
-   * IPC flag to use
-   */
-  uint8_t flag;
-  /**
-   * Spin lock IPCObject used
-   */
-  struct RawSpin spinlock;
-  /**
-   * Threads pended on this IPC object
-   */
-  rt_list_t wait_list;
-} rt_ipc_object;
-
-typedef struct rt_mutex {
-  /**
-   * Inherit from IPCObject
-   */
-  struct rt_ipc_object parent;
   /**
    * Priority ceiling of mutex
    */
@@ -152,10 +210,6 @@ typedef struct rt_mutex {
    */
   uint8_t priority;
   /**
-   * Numbers of thread hold the mutex
-   */
-  uint8_t hold;
-  /**
    * Current owner of mutex
    */
   struct rt_thread *owner;
@@ -163,6 +217,14 @@ typedef struct rt_mutex {
    * The object list taken by thread
    */
   rt_list_t taken_list;
+  /**
+   * Spinlock for mutex
+   */
+  struct RawSpin spinlock;
+  /**
+   * SysQueue for mutex
+   */
+  struct RtSysQueue inner_queue;
 } rt_mutex;
 
 #if defined(RT_USING_MUTEX)
@@ -275,13 +337,21 @@ typedef void (*RtSchedulerSwitchHook)(struct rt_thread *tid);
  */
 typedef struct rt_event {
   /**
-   * Inherit from IPCObject
+   * Inherit from KObjectBase
    */
-  struct rt_ipc_object parent;
+  struct rt_object parent;
   /**
    * Event flog set value
    */
   uint32_t set;
+  /**
+   * Spin lock semaphore used
+   */
+  struct RawSpin spinlock;
+  /**
+   * SysQueue for semaphore
+   */
+  struct RtSysQueue inner_queue;
 } rt_event;
 
 /**
@@ -291,32 +361,38 @@ typedef struct rt_mailbox {
   /**
    * Inherit from IPCObject
    */
-  struct rt_ipc_object parent;
+  struct rt_object parent;
   /**
-   * Message pool buffer of mailbox
+   * Spin lock semaphore used
    */
-  uint8_t *msg_pool;
+  struct RawSpin spinlock;
   /**
-   * Message pool buffer size
+   * SysQueue for semaphore
    */
-  uint16_t size;
-  /**
-   * Index of messages in message pool
-   */
-  uint16_t entry;
-  /**
-   * Input offset of the message buffer
-   */
-  uint16_t in_offset;
-  /**
-   * Output offset of the message buffer
-   */
-  uint16_t out_offset;
-  /**
-   * Sender thread suspended on this mailbox
-   */
-  rt_list_t suspend_sender_thread;
+  struct RtSysQueue inner_queue;
 } rt_mailbox;
+
+/**
+ * Base structure of IPC object
+ */
+typedef struct rt_ipc_object {
+  /**
+   * Inherit from KObjectBase
+   */
+  struct rt_object parent;
+  /**
+   * IPC flag to use
+   */
+  uint8_t flag;
+  /**
+   * Spin lock IPCObject used
+   */
+  struct RawSpin spinlock;
+  /**
+   * Threads pended on this IPC object
+   */
+  rt_list_t wait_list;
+} rt_ipc_object;
 
 /**
  * MessageQueue raw structure
@@ -359,78 +435,6 @@ typedef struct rt_messagequeue {
    */
   rt_list_t suspend_sender_thread;
 } rt_messagequeue;
-
-/**
- * WaitQueue for pending threads
- */
-typedef struct RtWaitQueue {
-  /**
-   * WaitQueue impl by ListHead
-   */
-  rt_list_t working_queue;
-  /**
-   * WaitQueue working mode, FIFO or PRIO
-   */
-  uint32_t waiting_mode;
-} RtWaitQueue;
-
-/**
- * System queue for kernel use on IPC
- */
-typedef struct RtSysQueue {
-  /**
-   * Queue item size
-   */
-  uintptr_t item_size;
-  /**
-   * Queue item max count
-   */
-  uintptr_t item_max_count;
-  /**
-   * Count of items in queue
-   */
-  uintptr_t item_in_queue;
-  /**
-   * Queue raw buffer pointer
-   */
-  uint8_t *queue_buf;
-  /**
-   * Queue memory size
-   */
-  uintptr_t queue_buf_size;
-  /**
-   * If the queue buffer from external, this will be true
-   */
-  bool is_storage_from_external;
-  /**
-   * Queue head pointer
-   */
-  uint8_t *head;
-  /**
-   * Queue tail pointer
-   */
-  uint8_t *tail;
-  /**
-   * Pointer to first 'free to use' item in queue
-   */
-  uint8_t *free;
-  /**
-   * Queue working mode: FIFO by default
-   */
-  uint32_t working_mode;
-  /**
-   * Queue for waiting to send items
-   */
-  struct RtWaitQueue sender;
-  /**
-   * Queue for waiting to receive items
-   */
-  struct RtWaitQueue receiver;
-  /**
-   * Spin lock for queue
-   */
-  struct RawSpin spinlock;
-} RtSysQueue;
 
 /**
  * Semaphore raw structure

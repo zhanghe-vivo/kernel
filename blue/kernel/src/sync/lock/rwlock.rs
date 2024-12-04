@@ -66,7 +66,7 @@ impl RtRwLock {
     #[inline]
     fn init_internal(&mut self, name: *const i8, waiting_mode: u8) {
         self.spinlock = RawSpin::new();
-        self.mutex.init(name, waiting_mode as u8);
+        self.mutex.init_dyn(name, waiting_mode as u8);
         self.read_cond.init_dyn(name, waiting_mode as u8);
         self.write_cond.init_dyn(name, waiting_mode as u8);
         self.ref_count = 0;

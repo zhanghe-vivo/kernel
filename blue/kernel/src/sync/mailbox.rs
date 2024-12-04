@@ -13,7 +13,7 @@ use crate::{
         RT_IPC_CMD_RESET, RT_IPC_FLAG_FIFO, RT_IPC_FLAG_PRIO, RT_KILLABLE, RT_MB_ENTRY_MAX,
         RT_TIMER_CTRL_SET_TIME, RT_UNINTERRUPTIBLE,
     },
-    sync::ipc_common::*,
+    sync::{ipc_common::*, lock::spinlock::RawSpin},
     thread::RtThread,
 };
 use blue_infra::list::doubly_linked_list::ListHead;
@@ -63,19 +63,25 @@ impl KMailbox {
                     let cur_ref = &mut *slot;
 
                     if let Ok(s) = CString::try_from_fmt(fmt!("{:p}", slot)) {
-                        cur_ref.init_new_storage(
+                        cur_ref.parent.init(
+                            ObjectClassType::ObjectClassMailBox as u8,
                             s.as_ptr() as *const i8,
-                            size,
-                            RT_IPC_FLAG_PRIO as u8,
                         );
                     } else {
                         let default = "default";
-                        cur_ref.init_new_storage(
+                        cur_ref.parent.init(
+                            ObjectClassType::ObjectClassMailBox as u8,
                             default.as_ptr() as *const i8,
-                            size,
-                            RT_IPC_FLAG_PRIO as u8,
                         );
                     }
+
+                    cur_ref.inner_queue.init(
+                        null_mut(),
+                        mem::size_of::<usize>(),
+                        size,
+                        0,
+                        RT_IPC_FLAG_FIFO as u32,
+                    );
                 }
                 Ok(())
             };
@@ -115,35 +121,20 @@ impl KMailbox {
 pub struct RtMailbox {
     /// Inherit from IPCObject
     #[pin]
-    pub(crate) parent: IPCObject,
-    /// Message pool buffer of mailbox
-    pub(crate) msg_pool: *mut u8,
-    /// Message pool buffer size
-    pub(crate) size: u16,
-    /// Index of messages in message pool
-    pub(crate) entry: u16,
-    /// Input offset of the message buffer
-    pub(crate) in_offset: u16,
-    /// Output offset of the message buffer
-    pub(crate) out_offset: u16,
-    /// Sender thread suspended on this mailbox
+    pub(crate) parent: KObjectBase,
+    /// Spin lock semaphore used
+    pub(crate) spinlock: RawSpin,
     #[pin]
-    pub(crate) suspend_sender_thread: ListHead,
+    /// SysQueue for semaphore
+    #[pin]
+    pub(crate) inner_queue: RtSysQueue,
 }
 
 impl_kobject!(RtMailbox);
 
 #[pinned_drop]
 impl PinnedDrop for RtMailbox {
-    fn drop(self: Pin<&mut Self>) {
-        let this_mb = unsafe { Pin::get_unchecked_mut(self) };
-
-        unsafe {
-            if !this_mb.msg_pool.is_null() {
-                rt_free(this_mb.msg_pool as *mut ffi::c_void);
-            }
-        }
-    }
+    fn drop(self: Pin<&mut Self>) {}
 }
 
 impl RtMailbox {
@@ -154,13 +145,9 @@ impl RtMailbox {
         rt_debug_not_in_interrupt!();
 
         pin_init!(Self {
-            parent<-IPCObject::new(ObjectClassType::ObjectClassMailBox as u8, name, flag),
-            msg_pool: unsafe{ rt_malloc(size * mem::size_of::<usize>()) as *mut u8 },
-            size: size as u16,
-            entry: 0,
-            in_offset: 0,
-            out_offset: 0,
-            suspend_sender_thread<-ListHead::new()
+            parent<-KObjectBase::new(ObjectClassType::ObjectClassMailBox as u8, name),
+            spinlock:RawSpin::new(),
+            inner_queue<-RtSysQueue::new(mem::size_of::<usize>(), size, 0, flag as u32),
         })
     }
     #[inline]
@@ -168,52 +155,22 @@ impl RtMailbox {
         assert!((flag == RT_IPC_FLAG_FIFO as u8) || (flag == RT_IPC_FLAG_PRIO as u8));
 
         self.parent
-            .init(ObjectClassType::ObjectClassMailBox as u8, name, flag);
+            .init(ObjectClassType::ObjectClassMailBox as u8, name);
 
-        self.msg_pool = msg_pool;
-        self.size = size as u16;
-        self.entry = 0;
-        self.in_offset = 0;
-        self.out_offset = 0;
-
-        unsafe {
-            let _ = ListHead::new().__pinned_init(&mut self.suspend_sender_thread as *mut ListHead);
-        }
+        self.inner_queue
+            .init(null_mut(), mem::size_of::<usize>(), size, 0, flag as u32);
     }
 
     #[inline]
     pub fn detach(&mut self) {
         assert_eq!(self.type_name(), ObjectClassType::ObjectClassMailBox as u8);
-        assert!(self.is_static_kobject());
 
-        self.parent.wake_all();
-        IPCObject::resume_all_threads(&mut self.suspend_sender_thread);
-        self.parent.parent.detach();
-    }
+        self.inner_queue.receiver.inner_locked_wake_all();
+        self.inner_queue.sender.inner_locked_wake_all();
 
-    #[inline]
-    pub fn init_new_storage(&mut self, name: *const i8, size: usize, flag: u8) -> i32 {
-        self.parent
-            .init(ObjectClassType::ObjectClassMailBox as u8, name, flag);
-
-        self.size = size as u16;
-        // SAFETY: Ensure the alloc is successful
-        unsafe {
-            self.msg_pool = rt_malloc(size * mem::size_of::<usize>()) as *mut u8;
+        if self.is_static_kobject() {
+            self.parent.detach();
         }
-        if self.msg_pool.is_null() {
-            return -(RT_ENOMEM as i32);
-        }
-
-        self.entry = 0;
-        self.in_offset = 0;
-        self.out_offset = 0;
-
-        unsafe {
-            let _ = ListHead::new().__pinned_init(&mut self.suspend_sender_thread as *mut ListHead);
-        }
-
-        RT_EOK as i32
     }
 
     #[inline]
@@ -232,15 +189,11 @@ impl RtMailbox {
 
         rt_debug_not_in_interrupt!();
 
-        self.parent.wake_all();
-        IPCObject::resume_all_threads(&mut self.suspend_sender_thread);
-        // SAFETY: null protection
-        unsafe {
-            if !self.msg_pool.is_null() {
-                rt_free(self.msg_pool as *mut ffi::c_void);
-            }
-        }
-        self.parent.parent.delete();
+        self.inner_queue.receiver.inner_locked_wake_all();
+        self.inner_queue.sender.inner_locked_wake_all();
+        self.inner_queue.free_storage_internal();
+
+        self.parent.delete();
     }
 
     fn send_wait_internal(&mut self, value: usize, timeout: i32, suspend_flag: u32) -> i32 {
@@ -261,35 +214,30 @@ impl RtMailbox {
         unsafe {
             rt_object_hook_call!(
                 rt_object_put_hook,
-                &mut self.parent.parent as *mut KObjectBase as *mut rt_object
+                &mut self.parent as *mut KObjectBase as *mut rt_object
             );
         }
 
-        self.parent.lock();
+        self.spinlock.lock();
 
-        if self.entry == self.size && timeout == 0 {
-            self.parent.unlock();
+        if self.inner_queue.is_full() && timeout == 0 {
+            self.spinlock.unlock();
             return -(RT_EFULL as i32);
         }
 
-        while self.entry == self.size {
+        while self.inner_queue.is_full() {
             thread.error = code::EINTR;
 
             if timeout == 0 {
-                self.parent.unlock();
+                self.spinlock.unlock();
 
                 return -(RT_EFULL as i32);
             }
 
-            let ret = IPCObject::suspend_thread(
-                &mut self.suspend_sender_thread,
-                thread_ptr,
-                self.parent.flag,
-                suspend_flag as u32,
-            );
+            let ret = self.inner_queue.sender.wait(thread, suspend_flag);
 
             if ret != RT_EOK as i32 {
-                self.parent.unlock();
+                self.spinlock.unlock();
                 return ret;
             }
 
@@ -303,7 +251,7 @@ impl RtMailbox {
                 thread.thread_timer.start();
             }
 
-            self.parent.unlock();
+            self.spinlock.unlock();
 
             Cpu::get_current_scheduler().do_task_schedule();
 
@@ -311,7 +259,7 @@ impl RtMailbox {
                 return thread.error.to_errno();
             }
 
-            self.parent.lock();
+            self.spinlock.lock();
 
             if timeout > 0 {
                 tick_delta = rt_tick_get() - tick_delta;
@@ -322,32 +270,26 @@ impl RtMailbox {
             }
         }
 
-        // SAFETY: msg_pool is not null and offset is within the range
-        unsafe { *((self.msg_pool as *mut usize).offset(self.in_offset as isize)) = value };
-
-        self.in_offset += 1;
-        if self.in_offset >= self.size {
-            self.in_offset = 0;
-        }
-
-        if self.entry < RT_MB_ENTRY_MAX as u16 {
-            self.entry += 1;
-        } else {
-            self.parent.unlock();
+        if self
+            .inner_queue
+            .push_fifo(&value as *const usize as *const u8, mem::size_of::<usize>())
+            == 0
+        {
+            self.spinlock.unlock();
             return -(RT_EFULL as i32);
         }
 
-        if self.parent.has_waiting() {
-            self.parent.wake_one();
+        if !self.inner_queue.receiver.is_empty() {
+            self.inner_queue.receiver.wake();
 
-            self.parent.unlock();
+            self.spinlock.unlock();
 
             Cpu::get_current_scheduler().do_task_schedule();
 
             return RT_EOK as i32;
         }
 
-        self.parent.unlock();
+        self.spinlock.unlock();
 
         return RT_EOK as i32;
     }
@@ -383,41 +325,31 @@ impl RtMailbox {
         unsafe {
             rt_object_hook_call!(
                 rt_object_put_hook,
-                &mut self.parent.parent as *mut KObjectBase as *mut rt_object
+                &mut self.parent as *mut KObjectBase as *mut rt_object
             );
         }
 
-        self.parent.lock();
+        self.spinlock.lock();
 
-        if self.entry == self.size {
-            self.parent.unlock();
+        if self.inner_queue.is_full() {
+            self.spinlock.unlock();
             return -(RT_EFULL as i32);
         }
 
-        if self.out_offset > 0 {
-            self.out_offset -= 1;
-        } else {
-            self.out_offset = self.size - 1;
-        }
+        self.inner_queue
+            .urgent_fifo(&value as *const usize as *const u8, mem::size_of::<usize>());
 
-        // SAFETY： msg_pool is not null and offset is within the range
-        unsafe {
-            *((self.msg_pool as *mut usize).offset(self.out_offset as isize)) = value;
-        }
+        if !self.inner_queue.receiver.is_empty() {
+            self.inner_queue.receiver.wake();
 
-        self.entry += 1;
-
-        if self.parent.has_waiting() {
-            self.parent.wake_one();
-
-            self.parent.unlock();
+            self.spinlock.unlock();
 
             Cpu::get_current_scheduler().do_task_schedule();
 
             return RT_EOK as i32;
         }
 
-        self.parent.unlock();
+        self.spinlock.unlock();
 
         RT_EOK as i32
     }
@@ -432,103 +364,107 @@ impl RtMailbox {
 
         let mut tick_delta = 0;
 
-        let thread = unsafe { crate::current_thread!().unwrap().as_mut() };
+        let thread_ptr = unsafe { crate::current_thread!().unwrap().as_mut() };
         // SAFETY： hook and memory operation should be ensured safe
         unsafe {
             rt_object_hook_call!(
                 rt_object_trytake_hook,
-                &mut self.parent.parent as *mut KObjectBase as *mut rt_object
+                &mut self.parent as *mut KObjectBase as *mut rt_object
             );
+        }
 
-            self.parent.lock();
+        self.spinlock.lock();
 
-            if self.entry == 0 && timeout == 0 {
-                self.parent.unlock();
+        if self.inner_queue.is_empty() && timeout == 0 {
+            self.spinlock.unlock();
+            return -(RT_ETIMEOUT as i32);
+        }
+
+        let thread = unsafe { &mut *thread_ptr };
+        while self.inner_queue.is_empty() {
+            thread.error = code::EINTR;
+
+            if timeout == 0 {
+                self.spinlock.unlock();
+                thread.error = code::ETIMEOUT;
+
                 return -(RT_ETIMEOUT as i32);
             }
 
-            while self.entry == 0 {
-                (*thread).error = code::EINTR;
+            let ret = self.inner_queue.receiver.wait(thread, suspend_flag as u32);
+            if ret != RT_EOK as i32 {
+                self.spinlock.unlock();
+                return ret;
+            }
 
-                if timeout == 0 {
-                    self.parent.unlock();
-                    (*thread).error = code::ETIMEOUT;
+            if timeout > 0 {
+                tick_delta = rt_tick_get();
 
-                    return -(RT_ETIMEOUT as i32);
+                thread.thread_timer.timer_control(
+                    RT_TIMER_CTRL_SET_TIME as u32,
+                    (&mut timeout) as *mut i32 as *mut c_void,
+                );
+                thread.thread_timer.start();
+            }
+
+            self.spinlock.unlock();
+
+            Cpu::get_current_scheduler().do_task_schedule();
+
+            if thread.error != code::EOK {
+                return thread.error.to_errno();
+            }
+
+            self.spinlock.lock();
+
+            if timeout > 0 {
+                tick_delta = rt_tick_get() - tick_delta;
+                timeout -= tick_delta as i32;
+                if timeout < 0 {
+                    timeout = 0;
                 }
+            }
+        }
 
-                let ret = self
-                    .parent
-                    .wait(thread, self.parent.flag, suspend_flag as u32);
-                if ret != RT_EOK as i32 {
-                    self.parent.unlock();
-                    return ret;
-                }
+        self.inner_queue.pop_fifo(
+            &mut (value as *mut usize as *mut u8),
+            mem::size_of::<usize>(),
+        );
 
-                if timeout > 0 {
-                    tick_delta = rt_tick_get();
-
-                    (*thread).thread_timer.timer_control(
-                        RT_TIMER_CTRL_SET_TIME as u32,
-                        (&mut timeout) as *mut i32 as *mut c_void,
-                    );
-                    (*thread).thread_timer.start();
-                }
-
-                self.parent.unlock();
-
-                Cpu::get_current_scheduler().do_task_schedule();
-
-                if (*thread).error != code::EOK {
-                    return (*thread).error.to_errno();
-                }
-
-                self.parent.lock();
-
-                if timeout > 0 {
-                    tick_delta = rt_tick_get() - tick_delta;
-                    timeout -= tick_delta as i32;
-                    if timeout < 0 {
-                        timeout = 0;
-                    }
+        if !self.inner_queue.sender.is_empty() {
+            if let Some(node) = self.inner_queue.sender.head() {
+                let thread: *mut RtThread =
+                    unsafe { crate::thread_list_node_entry!(node.as_ptr()) };
+                unsafe {
+                    (*thread).error = code::EOK;
+                    (*thread).resume();
                 }
             }
 
-            *value = *((self.msg_pool as *mut usize).offset(self.out_offset as isize));
+            self.spinlock.unlock();
 
-            self.out_offset += 1;
-            if self.out_offset >= self.size {
-                self.out_offset = 0;
-            }
-
-            if self.entry > 0 {
-                self.entry -= 1;
-            }
-
-            if !self.suspend_sender_thread.is_empty() {
-                IPCObject::resume_thread(&mut self.suspend_sender_thread);
-
-                self.parent.unlock();
-
+            unsafe {
                 rt_object_hook_call!(
                     rt_object_take_hook,
-                    &mut self.parent.parent as *mut KObjectBase as *mut rt_object
+                    &mut self.parent as *mut KObjectBase as *mut rt_object
                 );
-
-                Cpu::get_current_scheduler().do_task_schedule();
-
-                return RT_EOK as i32;
             }
 
-            self.parent.unlock();
+            Cpu::get_current_scheduler().do_task_schedule();
 
+            return RT_EOK as i32;
+        }
+
+        self.spinlock.unlock();
+
+        unsafe {
             rt_object_hook_call!(
                 rt_object_take_hook,
-                &mut self.parent.parent as *mut KObjectBase as *mut rt_object
+                &mut self.parent as *mut KObjectBase as *mut rt_object
             );
-
-            RT_EOK as i32
         }
+
+        RT_EOK as i32
     }
 
     pub fn receive(&mut self, value: &mut usize, timeout: i32) -> i32 {
@@ -547,16 +483,16 @@ impl RtMailbox {
         assert_eq!(self.type_name(), ObjectClassType::ObjectClassMailBox as u8);
 
         if cmd == RT_IPC_CMD_RESET as i32 {
-            self.parent.lock();
+            self.spinlock.lock();
 
-            self.parent.wake_all();
-            IPCObject::resume_all_threads(&mut self.suspend_sender_thread);
+            self.inner_queue.receiver.inner_locked_wake_all();
+            self.inner_queue.sender.inner_locked_wake_all();
 
-            self.entry = 0;
-            self.in_offset = 0;
-            self.out_offset = 0;
+            self.inner_queue.item_in_queue = 0;
+            self.inner_queue.read_pos = 0;
+            self.inner_queue.write_pos = 0;
 
-            self.parent.unlock();
+            self.spinlock.unlock();
 
             Cpu::get_current_scheduler().do_task_schedule();
 
@@ -740,14 +676,14 @@ pub extern "C" fn rt_mailbox_info() {
     let callback = |node: &ListHead| unsafe {
         let mailbox =
             &*(crate::list_head_entry!(node.as_ptr(), KObjectBase, list) as *const RtMailbox);
-        let _ = crate::format_name!(mailbox.parent.parent.name.as_ptr(), 8);
-        print!(" {:04} ", mailbox.entry);
-        print!(" {:04} ", mailbox.size);
-        if mailbox.parent.wait_list.is_empty() {
-            println!("{}", mailbox.parent.wait_list.size());
+        let _ = crate::format_name!(mailbox.parent.name.as_ptr(), 8);
+        print!(" {:04} ", mailbox.inner_queue.count());
+        print!(" {:04} ", mailbox.inner_queue.item_max_count);
+        if mailbox.inner_queue.receiver.is_empty() {
+            println!("{}", mailbox.inner_queue.receiver.count());
         } else {
-            print!("{}:", mailbox.parent.wait_list.size());
-            let head = &mailbox.parent.wait_list;
+            print!("{}:", mailbox.inner_queue.receiver.count());
+            let head = &mailbox.inner_queue.receiver.working_queue;
             list_head_for_each!(node, head, {
                 let thread = crate::thread_list_node_entry!(node.as_ptr()) as *mut RtThread;
                 let _ = crate::format_name!((*thread).parent.name.as_ptr(), 8);

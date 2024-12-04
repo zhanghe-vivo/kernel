@@ -19,7 +19,9 @@ use blue_infra::list::doubly_linked_list::ListHead;
 use core::{ffi::c_void, marker::PhantomPinned, ptr::null_mut};
 
 use crate::alloc::boxed::Box;
+use crate::sync::RawSpin;
 use core::cell::UnsafeCell;
+use core::mem;
 use core::pin::Pin;
 use kernel::{fmt, str::CString};
 
@@ -96,11 +98,17 @@ impl KEvent {
 #[repr(C)]
 #[pin_data]
 pub struct RtEvent {
-    /// Inherit from IPCObject
+    /// Inherit from KObjectBase
     #[pin]
-    pub(crate) parent: IPCObject,
+    pub(crate) parent: KObjectBase,
     /// Event flog set value
     pub(crate) set: u32,
+    /// Spin lock semaphore used
+    pub(crate) spinlock: RawSpin,
+    #[pin]
+    /// SysQueue for semaphore
+    #[pin]
+    pub(crate) inner_queue: RtSysQueue,
 }
 
 impl_kobject!(RtEvent);
@@ -113,8 +121,10 @@ impl RtEvent {
         rt_debug_not_in_interrupt!();
 
         pin_init!(Self {
-            parent<-IPCObject::new(ObjectClassType::ObjectClassEvent as u8, name, flag),
+            parent<-KObjectBase::new(ObjectClassType::ObjectClassEvent as u8, name),
             set: 0,
+            spinlock: RawSpin::new(),
+            inner_queue<-RtSysQueue::new(mem::size_of::<u32>(), 1, 2, flag as u32)
         })
     }
 
@@ -123,18 +133,25 @@ impl RtEvent {
         assert!((flag == RT_IPC_FLAG_FIFO as u8) || (flag == RT_IPC_FLAG_PRIO as u8));
 
         self.parent
-            .init(ObjectClassType::ObjectClassEvent as u8, name, flag);
+            .init(ObjectClassType::ObjectClassEvent as u8, name);
 
         self.set = 0;
+
+        self.spinlock = RawSpin::new();
+
+        self.inner_queue
+            .init(null_mut(), mem::size_of::<u32>(), 1, 2, flag as u32);
     }
 
     #[inline]
     pub fn detach(&mut self) {
         assert_eq!(self.type_name(), ObjectClassType::ObjectClassEvent as u8);
-        assert!(self.is_static_kobject());
 
-        self.parent.wake_all();
-        self.parent.parent.detach();
+        self.inner_queue.receiver.inner_locked_wake_all();
+
+        if self.is_static_kobject() {
+            self.parent.detach();
+        }
     }
 
     #[inline]
@@ -153,8 +170,8 @@ impl RtEvent {
 
         rt_debug_not_in_interrupt!();
 
-        self.parent.wake_all();
-        self.parent.parent.delete();
+        self.inner_queue.receiver.inner_locked_wake_all();
+        self.parent.delete();
     }
 
     pub fn send(&mut self, set: u32) -> i32 {
@@ -167,21 +184,21 @@ impl RtEvent {
             return -(RT_ERROR as i32);
         }
 
-        self.parent.lock();
+        self.spinlock.lock();
 
         self.set |= set;
 
         unsafe {
             rt_object_hook_call!(
                 rt_object_put_hook,
-                &mut self.parent.parent as *mut KObjectBase as *mut rt_object
+                &mut self.parent as *mut KObjectBase as *mut rt_object
             );
         }
 
-        if self.parent.has_waiting() {
+        if !self.inner_queue.receiver.is_empty() {
             // SAFETY: thread ensured not null
             unsafe {
-                crate::list_head_for_each!(node, &self.parent.wait_list, {
+                crate::list_head_for_each!(node, &self.inner_queue.receiver.working_queue, {
                     let thread = crate::thread_list_node_entry!(node.as_ptr()) as *mut RtThread;
 
                     if !thread.is_null() {
@@ -196,7 +213,7 @@ impl RtEvent {
                                 status = RT_EOK as i32;
                             }
                         } else {
-                            self.parent.unlock();
+                            self.spinlock.unlock();
                             return -(RT_EINVAL as i32);
                         }
 
@@ -218,7 +235,7 @@ impl RtEvent {
             }
         }
 
-        self.parent.unlock();
+        self.spinlock.unlock();
 
         if need_schedule {
             Cpu::get_current_scheduler().do_task_schedule();
@@ -259,11 +276,11 @@ impl RtEvent {
         unsafe {
             rt_object_hook_call!(
                 rt_object_trytake_hook,
-                &mut self.parent.parent as *mut KObjectBase as *mut rt_object
+                &mut self.parent as *mut KObjectBase as *mut rt_object
             );
         }
 
-        self.parent.lock();
+        self.spinlock.lock();
 
         if option as u32 & RT_EVENT_FLAG_AND > 0u32 {
             if (self.set & set) == set {
@@ -295,17 +312,15 @@ impl RtEvent {
             }
         } else if timeout == 0 {
             thread.error = code::ETIMEOUT;
-            self.parent.unlock();
+            self.spinlock.unlock();
             return -(RT_ETIMEOUT as i32);
         } else {
             thread.event_info.set = set;
             thread.event_info.info = option;
 
-            let ret = self
-                .parent
-                .wait(thread_ptr, self.parent.flag, suspend_flag as u32);
+            let ret = self.inner_queue.receiver.wait(thread, suspend_flag as u32);
             if ret != RT_EOK as i32 {
-                self.parent.unlock();
+                self.spinlock.unlock();
                 return ret;
             }
 
@@ -317,7 +332,7 @@ impl RtEvent {
                 thread.thread_timer.start();
             }
 
-            self.parent.unlock();
+            self.spinlock.unlock();
 
             Cpu::get_current_scheduler().do_task_schedule();
 
@@ -325,7 +340,7 @@ impl RtEvent {
                 return thread.error.to_errno();
             }
 
-            self.parent.lock();
+            self.spinlock.lock();
 
             if recved != null_mut() {
                 // SAFETY: recved is null checked
@@ -335,12 +350,12 @@ impl RtEvent {
             }
         }
 
-        self.parent.unlock();
+        self.spinlock.unlock();
 
         unsafe {
             rt_object_hook_call!(
                 rt_object_take_hook,
-                &mut self.parent.parent as *mut KObjectBase as *mut rt_object
+                &mut self.parent as *mut KObjectBase as *mut rt_object
             );
         }
 
@@ -375,13 +390,13 @@ impl RtEvent {
         assert_eq!(self.type_name(), ObjectClassType::ObjectClassEvent as u8);
 
         if cmd == RT_IPC_CMD_RESET as i32 {
-            self.parent.lock();
+            self.spinlock.lock();
 
-            self.parent.wake_all();
+            self.inner_queue.receiver.inner_locked_wake_all();
 
             self.set = 0;
 
-            self.parent.unlock();
+            self.spinlock.unlock();
 
             Cpu::get_current_scheduler().do_task_schedule();
 
@@ -495,13 +510,13 @@ pub extern "C" fn rt_event_info() {
     };
     let callback = |node: &ListHead| unsafe {
         let event = &*(crate::list_head_entry!(node.as_ptr(), KObjectBase, list) as *const RtEvent);
-        let _ = crate::format_name!(event.parent.parent.name.as_ptr(), 8);
+        let _ = crate::format_name!(event.parent.name.as_ptr(), 8);
         print!(" 0x{:08x} ", event.set);
-        if event.parent.wait_list.is_empty() {
+        if event.inner_queue.receiver.is_empty() {
             println!("000");
         } else {
-            print!("{}:", event.parent.wait_list.size());
-            let head = &event.parent.wait_list;
+            print!("{}:", event.inner_queue.receiver.count());
+            let head = &event.inner_queue.receiver.working_queue;
 
             list_head_for_each!(node, head, {
                 let thread = crate::thread_list_node_entry!(node.as_ptr()) as *mut RtThread;

@@ -1,6 +1,7 @@
 use crate::allocator::{align_up_size, rt_free, rt_malloc};
 use crate::error::{code, Error};
 use crate::impl_kobject;
+use crate::klibc::rt_memcpy;
 use crate::list_head_for_each;
 use crate::object::*;
 use crate::rt_bindings::{
@@ -32,6 +33,10 @@ pub(crate) struct RtSysQueue {
     pub(crate) queue_buf_size: usize,
     /// If the queue buffer from external, this will be true
     is_storage_from_external: bool,
+    /// Ringbuffer read position
+    pub(crate) read_pos: usize,
+    /// Ringbuffer write position
+    pub(crate) write_pos: usize,
     /// Queue head pointer
     pub(crate) head: Option<NonNull<u8>>,
     /// Queue tail pointer
@@ -114,16 +119,16 @@ impl RtSysQueue {
         };
         self.head = None;
         self.tail = None;
-
         self.queue_buf_size
     }
 
-    fn free_storage_internal(&mut self) {
+    pub(crate) fn free_storage_internal(&mut self) {
         if let Some(mut buffer) = self.queue_buf {
             if !self.is_storage_from_external {
                 unsafe {
                     rt_free(buffer.as_mut() as *mut u8 as *mut ffi::c_void);
                 }
+                self.queue_buf = None;
             }
         }
     }
@@ -139,6 +144,9 @@ impl RtSysQueue {
             let sysq = unsafe { &mut *(slot as *mut RtSysQueue) };
             sysq.item_size = item_size;
             sysq.item_max_count = item_max_count;
+            sysq.item_in_queue = 0;
+            sysq.read_pos = 0;
+            sysq.write_pos = 0;
             sysq.init_storage_internal(null_mut());
             sysq.working_mode = working_mode;
 
@@ -166,6 +174,9 @@ impl RtSysQueue {
     ) -> Error {
         self.item_size = item_size;
         self.item_max_count = item_max_count;
+        self.item_in_queue = 0;
+        self.read_pos = 0;
+        self.write_pos = 0;
         let buf_size = self.init_storage_internal(buffer);
         self.working_mode = working_mode;
 
@@ -191,6 +202,11 @@ impl RtSysQueue {
     #[inline]
     pub(crate) fn is_empty(&self) -> bool {
         self.item_in_queue == 0
+    }
+
+    #[inline]
+    pub(crate) fn count(&self) -> usize {
+        self.item_in_queue
     }
 
     #[inline]
@@ -220,24 +236,93 @@ impl RtSysQueue {
     }
 
     #[inline]
+    pub(crate) fn push_fifo(&mut self, buffer: *const u8, size: usize) -> usize {
+        assert_eq!(self.item_size, size);
+        self.write_pos += self.item_size;
+        if self.write_pos >= self.queue_buf_size {
+            self.write_pos = 0;
+        }
+
+        if let Some(mut buffer_raw) = self.queue_buf {
+            unsafe {
+                rt_memcpy(
+                    buffer_raw.as_ptr().offset(self.write_pos as isize) as *mut core::ffi::c_void,
+                    buffer as *const core::ffi::c_void,
+                    size as usize,
+                );
+            }
+        } else {
+            return 0;
+        }
+
+        if self.item_in_queue < rt_bindings::RT_MB_ENTRY_MAX as usize {
+            self.item_in_queue += self.item_size;
+            return size;
+        } else {
+            return 0;
+        }
+    }
+
+    #[inline]
+    pub(crate) fn pop_fifo(&mut self, buffer: &mut *mut u8, size: usize) -> usize {
+        assert_eq!(self.item_size, size);
+
+        if let Some(buffer_raw) = self.queue_buf {
+            unsafe {
+                rt_memcpy(
+                    *buffer as *mut core::ffi::c_void,
+                    buffer_raw.as_ptr().offset(self.read_pos as isize) as *const core::ffi::c_void,
+                    size as usize,
+                );
+            }
+        } else {
+            return 0;
+        }
+
+        self.read_pos += self.item_size;
+        if self.read_pos >= self.queue_buf_size {
+            self.read_pos = 0;
+        }
+
+        if self.item_in_queue > 0 {
+            self.item_in_queue -= 1;
+        }
+
+        size
+    }
+
+    #[inline]
+    pub(crate) fn urgent_fifo(&mut self, buffer: *const u8, size: usize) -> usize {
+        if self.read_pos > 0 {
+            self.read_pos -= self.item_size;
+        } else {
+            self.read_pos = self.queue_buf_size - self.item_size;
+        }
+
+        if let Some(buffer_raw) = self.queue_buf {
+            unsafe {
+                rt_memcpy(
+                    buffer_raw.as_ptr().offset(self.read_pos as isize) as *mut core::ffi::c_void,
+                    buffer as *const core::ffi::c_void,
+                    size as usize,
+                );
+            }
+        } else {
+            return 0;
+        }
+
+        self.item_in_queue += 1;
+        size
+    }
+
+    #[inline]
     pub(crate) fn reset_stub(&mut self, item_in_queue: usize) {
         self.item_in_queue = item_in_queue;
         if self.item_in_queue > self.item_max_count {
             self.item_max_count = self.item_in_queue;
         }
     }
-    /*
-        #[inline]
-        pub(crate) fn push_internal(
-            &mut self,
-            buffer: *const u8,
-            size: usize,
-            prio: i32,
-            time_out: i32,
-            pending_mode: u32,
-        ) {
-        }
-    */
+
     #[inline]
     pub(crate) fn pop_internal(&self) /*-> Result<RtSysQueueItemHeader, Error>*/
     {
@@ -264,12 +349,6 @@ pub(crate) struct RtSysQueueItemHeader {
     pub(crate) next: *mut RtSysQueueItemHeader,
     pub(crate) len: usize,
     pub(crate) priority: i32,
-}
-
-#[repr(C)]
-pub(crate) struct RtSysQueueItemHandleBorrowed {
-    pub(crate) addr: *mut u8,
-    pub(crate) len: usize,
 }
 
 macro_rules! sys_queue_item_data_addr {

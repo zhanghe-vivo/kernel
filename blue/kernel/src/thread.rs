@@ -868,11 +868,17 @@ impl RtThread {
                 self.remove_tlist();
 
                 ret = IPCObject::suspend_thread(
-                    &mut pending_mutex.parent.wait_list,
+                    &mut pending_mutex.inner_queue.sender.working_queue,
                     self,
-                    pending_mutex.parent.flag as rt_uint8_t,
+                    rt_bindings::RT_IPC_FLAG_PRIO as u8,
                     suspend_flag as u32,
                 );
+                /*
+                ret = pending_mutex
+                    .inner_queue
+                    .sender
+                    .wait(self, suspend_flag as u32);
+                */
                 if ret == RT_EOK as rt_err_t {
                     // Update priority
                     pending_mutex.update_priority();

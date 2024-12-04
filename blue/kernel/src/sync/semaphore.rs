@@ -173,7 +173,9 @@ impl RtSemaphore {
     #[inline]
     pub fn detach(&mut self) {
         self.inner_queue.receiver.inner_locked_wake_all();
-        self.parent.detach();
+        if self.is_static_kobject() {
+            self.parent.detach();
+        }
     }
 
     #[inline]

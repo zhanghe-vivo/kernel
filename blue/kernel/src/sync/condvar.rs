@@ -73,6 +73,9 @@ impl RtCondVar {
         assert_eq!(self.type_name(), ObjectClassType::ObjectClassCondVar as u8);
 
         self.inner_sem.detach();
+        if self.is_static_kobject() {
+            self.parent.detach();
+        }
     }
     #[inline]
     pub(crate) fn wait(&mut self, mutex: &mut RtMutex) -> i32 {
