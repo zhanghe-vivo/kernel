@@ -76,10 +76,15 @@ impl RtSysQueue {
         }
 
         rt_bindings::rt_debug_not_in_interrupt!();
+        let mut item_align_size = 0;
+        if self.working_mode == 0 {
+            self.queue_buf_size = self.item_size * self.item_max_count;
+        } else {
+            item_align_size = align_up_size(self.item_size, rt_bindings::RT_ALIGN_SIZE as usize);
+            self.queue_buf_size =
+                (item_align_size + mem::size_of::<RtSysQueueItemHeader>()) * self.item_max_count;
+        }
 
-        let item_align_size = align_up_size(self.item_size, rt_bindings::RT_ALIGN_SIZE as usize);
-        self.queue_buf_size =
-            (item_align_size + mem::size_of::<RtSysQueueItemHeader>()) * self.item_max_count;
         let buffer_raw = if self.is_storage_from_external {
             raw_buf_ptr
         } else {
@@ -94,31 +99,38 @@ impl RtSysQueue {
             self.queue_buf = Some(unsafe { NonNull::new_unchecked(buffer_raw) });
         }
 
-        let mut free_raw = null_mut();
-        for idx in 0..self.item_max_count {
-            // SAFETY: buffer_raw is null checked and allocated to the proper size
-            let head_raw = unsafe {
-                buffer_raw.offset(
-                    (idx * (item_align_size + mem::size_of::<RtSysQueueItemHeader>())) as isize,
-                ) as *mut RtSysQueueItemHeader
-            };
+        if self.working_mode == 0 {
+            self.free = None;
+            self.head = None;
+            self.tail = None;
+        } else if self.working_mode == 1 {
+            let mut free_raw = null_mut();
+            for idx in 0..self.item_max_count {
+                // SAFETY: buffer_raw is null checked and allocated to the proper size
+                let head_raw = unsafe {
+                    buffer_raw.offset(
+                        (idx * (item_align_size + mem::size_of::<RtSysQueueItemHeader>())) as isize,
+                    ) as *mut RtSysQueueItemHeader
+                };
 
-            if head_raw.is_null() {
-                // SAFETY: header_raw is null checked and within the range
-                unsafe { (*head_raw).next = free_raw as *mut RtSysQueueItemHeader };
+                if head_raw.is_null() {
+                    // SAFETY: header_raw is null checked and within the range
+                    unsafe { (*head_raw).next = free_raw as *mut RtSysQueueItemHeader };
+                }
+
+                free_raw = head_raw;
             }
 
-            free_raw = head_raw;
+            // SAFETY: free_raw is null checked and within the range
+            self.free = if free_raw.is_null() {
+                None
+            } else {
+                Some(unsafe { NonNull::new_unchecked(free_raw as *mut u8) })
+            };
+            self.head = None;
+            self.tail = None;
         }
 
-        // SAFETY: free_raw is null checked and within the range
-        self.free = if free_raw.is_null() {
-            None
-        } else {
-            Some(unsafe { NonNull::new_unchecked(free_raw as *mut u8) })
-        };
-        self.head = None;
-        self.tail = None;
         self.queue_buf_size
     }
 

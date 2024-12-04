@@ -151,14 +151,14 @@ impl RtMailbox {
         })
     }
     #[inline]
-    pub fn init(&mut self, name: *const i8, msg_pool: *mut u8, size: usize, flag: u8) {
+    pub fn init(&mut self, name: *const i8, buffer: *mut u8, size: usize, flag: u8) {
         assert!((flag == RT_IPC_FLAG_FIFO as u8) || (flag == RT_IPC_FLAG_PRIO as u8));
 
         self.parent
             .init(ObjectClassType::ObjectClassMailBox as u8, name);
 
         self.inner_queue
-            .init(null_mut(), mem::size_of::<usize>(), size, 0, flag as u32);
+            .init(buffer, mem::size_of::<usize>(), size, 0, flag as u32);
     }
 
     #[inline]

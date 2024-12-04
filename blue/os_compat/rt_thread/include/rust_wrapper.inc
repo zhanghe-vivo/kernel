@@ -373,13 +373,35 @@ typedef struct rt_mailbox {
 } rt_mailbox;
 
 /**
- * MessageQueue raw structure
+ * Base structure of IPC object
  */
-typedef struct rt_messagequeue {
+typedef struct rt_ipc_object {
   /**
    * Inherit from KObjectBase
    */
   struct rt_object parent;
+  /**
+   * IPC flag to use
+   */
+  uint8_t flag;
+  /**
+   * Spin lock IPCObject used
+   */
+  struct RawSpin spinlock;
+  /**
+   * Threads pended on this IPC object
+   */
+  rt_list_t wait_list;
+} rt_ipc_object;
+
+/**
+ * MessageQueue raw structure
+ */
+typedef struct rt_messagequeue {
+  /**
+   * Inherit from IPCObject
+   */
+  struct rt_ipc_object parent;
   /**
    * Start address of message queue
    */
