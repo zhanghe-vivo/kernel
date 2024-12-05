@@ -121,11 +121,11 @@ impl RtSysQueue {
             self.queue_buf = Some(unsafe { NonNull::new_unchecked(buffer_raw) });
         }
 
-        if self.working_mode == 0 {
+        if self.working_mode == IPC_SYS_QUEUE_FIFO {
             self.free = None;
             self.head = None;
             self.tail = None;
-        } else if self.working_mode == 1 {
+        } else if self.working_mode == IPC_SYS_QUEUE_PRIO {
             let mut free_raw = null_mut();
             for idx in 0..self.item_max_count {
                 // SAFETY: buffer_raw is null checked and allocated to the proper size
@@ -181,6 +181,7 @@ impl RtSysQueue {
             sysq.item_in_queue = 0;
             sysq.read_pos = 0;
             sysq.write_pos = 0;
+            sysq.queue_buf = None;
             sysq.init_storage_internal(null_mut());
             sysq.working_mode = working_mode;
 

@@ -176,7 +176,7 @@ impl RtMessageQueue {
             parent<-KObjectBase::new(ObjectClassType::ObjectClassMessageQueue as u8, name),
             inner_queue<-RtSysQueue::new(msg_size as usize, max_msgs as usize, working_mode as u32,
                 waiting_mode as u32),
-            entry: 0,
+            entry: 0u16,
         }))
     }
     #[inline]
@@ -195,16 +195,22 @@ impl RtMessageQueue {
         self.parent
             .init(ObjectClassType::ObjectClassMessageQueue as u8, name);
 
-        let msg_align_size = align_up_size(item_size as usize, RT_ALIGN_SIZE as usize);
-
-        if working_mode == IPC_SYS_QUEUE_FIFO as u8 {
-            self.inner_queue.item_max_count = (buffer_size as usize / self.inner_queue.item_size)
-        } else if working_mode == IPC_SYS_QUEUE_PRIO as u8 {
-            self.inner_queue.item_max_count =
-                (buffer_size as usize / (msg_align_size + mem::size_of::<RtSysQueueItemHeader>()));
+        if buffer.is_null() || item_size == 0 || buffer_size == 0 {
+            return -(RT_EINVAL as i32);
         }
 
-        if self.inner_queue.item_max_count == 0 {
+        let mut max_count = 1;
+        if working_mode == IPC_SYS_QUEUE_FIFO as u8 {
+            max_count = (buffer_size / item_size)
+        } else if working_mode == IPC_SYS_QUEUE_PRIO as u8 {
+            let item_align_size = align_up_size(item_size as usize, RT_ALIGN_SIZE as usize);
+            max_count =
+                (buffer_size as usize / (item_align_size + mem::size_of::<RtSysQueueItemHeader>()));
+        } else {
+            return -(RT_EINVAL as i32);
+        }
+
+        if max_count == 0 {
             return -(RT_EINVAL as i32);
         }
 
@@ -214,7 +220,7 @@ impl RtMessageQueue {
             .init(
                 buffer,
                 item_size,
-                self.inner_queue.item_max_count,
+                max_count,
                 working_mode as u32,
                 waiting_mode as u32,
             )
@@ -237,7 +243,6 @@ impl RtMessageQueue {
             self.type_name(),
             ObjectClassType::ObjectClassMessageQueue as u8
         );
-        assert!(self.is_static_kobject());
 
         self.inner_queue.receiver.inner_locked_wake_all();
         self.inner_queue.sender.inner_locked_wake_all();
@@ -252,14 +257,15 @@ impl RtMessageQueue {
         name: *const i8,
         msg_size: usize,
         max_msgs: usize,
-        flag: u8,
+        working_mode: u8,
+        waiting_mode: u8,
     ) -> *mut RtMessageQueue {
         let message_queue = RtMessageQueue::new(
             char_ptr_to_array(name),
             msg_size as u16,
             max_msgs as u16,
-            IPC_SYS_QUEUE_FIFO as u8,
-            flag,
+            working_mode,
+            waiting_mode,
         );
         match message_queue {
             Ok(mq) => unsafe { Box::leak(Pin::into_inner_unchecked(mq)) },
@@ -649,12 +655,17 @@ pub unsafe extern "C" fn rt_mq_init(
 ) -> rt_err_t {
     assert!(!mq.is_null());
     assert!((flag == RT_IPC_FLAG_FIFO as u8) || (flag == RT_IPC_FLAG_PRIO as u8));
+    let mut queue_working_mode = IPC_SYS_QUEUE_FIFO as u8;
+    #[cfg(feature = "RT_USING_MESSAGEQUEUE_PRIORITY")]
+    {
+        queue_working_mode = IPC_SYS_QUEUE_PRIO as u8;
+    }
     (*mq).init(
         name,
         msgpool as *mut u8,
         msg_size as usize,
         pool_size as usize,
-        IPC_SYS_QUEUE_FIFO as u8,
+        queue_working_mode as u8,
         flag,
     )
 }
@@ -675,7 +686,18 @@ pub unsafe extern "C" fn rt_mq_create(
     max_msgs: rt_size_t,
     flag: rt_uint8_t,
 ) -> *mut RtMessageQueue {
-    RtMessageQueue::new_raw(name, msg_size as usize, max_msgs as usize, flag)
+    let mut queue_working_mode = IPC_SYS_QUEUE_FIFO as u8;
+    #[cfg(feature = "RT_USING_MESSAGEQUEUE_PRIORITY")]
+    {
+        queue_working_mode = IPC_SYS_QUEUE_PRIO as u8;
+    }
+    RtMessageQueue::new_raw(
+        name,
+        msg_size as usize,
+        max_msgs as usize,
+        queue_working_mode,
+        flag,
+    )
 }
 
 #[cfg(all(feature = "RT_USING_MESSAGEQUEUE", feature = "RT_USING_HEAP"))]
