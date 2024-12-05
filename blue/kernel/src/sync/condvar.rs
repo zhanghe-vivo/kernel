@@ -5,6 +5,7 @@ use crate::object::{KObjectBase, KernelObject, ObjectClassType, NAME_MAX};
 use crate::rt_bindings::{
     rt_debug_in_thread_context, rt_debug_not_in_interrupt, RT_EINVAL, RT_EOK, RT_ERROR,
     RT_ETIMEOUT, RT_IPC_FLAG_FIFO, RT_IPC_FLAG_PRIO, RT_TIMER_CTRL_SET_TIME, RT_UNINTERRUPTIBLE,
+    RT_WAITING_FOREVER,
 };
 use crate::sync::lock::mutex::RtMutex;
 use crate::sync::semaphore::RtSemaphore;
@@ -79,7 +80,7 @@ impl RtCondVar {
     }
     #[inline]
     pub(crate) fn wait(&mut self, mutex: &mut RtMutex) -> i32 {
-        self.wait_timeout(mutex, RT_UNINTERRUPTIBLE, 0)
+        self.wait_timeout(mutex, RT_UNINTERRUPTIBLE, RT_WAITING_FOREVER)
     }
 
     #[inline]
@@ -154,6 +155,7 @@ impl RtCondVar {
             self.inner_sem.release();
         }
 
+        self.spinlock.unlock();
         RT_EOK as i32
     }
 

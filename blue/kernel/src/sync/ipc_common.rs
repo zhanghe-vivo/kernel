@@ -93,6 +93,8 @@ impl RtSysQueue {
 
         if raw_buf_ptr.is_null() {
             self.is_storage_from_external = false;
+        } else {
+            self.is_storage_from_external = true;
         }
 
         rt_bindings::rt_debug_not_in_interrupt!();
@@ -278,10 +280,6 @@ impl RtSysQueue {
     #[inline]
     pub(crate) fn push_fifo(&mut self, buffer: *const u8, size: usize) -> i32 {
         assert_eq!(self.item_size, size);
-        self.write_pos += self.item_size;
-        if self.write_pos >= self.queue_buf_size {
-            self.write_pos = 0;
-        }
 
         if let Some(mut buffer_raw) = self.queue_buf {
             unsafe {
@@ -295,8 +293,13 @@ impl RtSysQueue {
             return 0;
         }
 
+        self.write_pos += self.item_size;
+        if self.write_pos >= self.queue_buf_size {
+            self.write_pos = 0;
+        }
+
         if self.item_in_queue < rt_bindings::RT_MB_ENTRY_MAX as usize {
-            self.item_in_queue += self.item_size;
+            self.item_in_queue += 1;
             return size as i32;
         } else {
             return 0;
