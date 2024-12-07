@@ -480,6 +480,8 @@ rt_mq_t rt_mq_create(const char *name,
 rt_err_t rt_mq_delete(rt_mq_t mq);
 #endif /* RT_USING_HEAP */
 
+rt_uint16_t rt_mq_entry(rt_mq_t mq);
+
 rt_err_t rt_mq_send(rt_mq_t mq, const void *buffer, rt_size_t size);
 rt_err_t rt_mq_send_interruptible(rt_mq_t mq, const void *buffer, rt_size_t size);
 rt_err_t rt_mq_send_killable(rt_mq_t mq, const void *buffer, rt_size_t size);

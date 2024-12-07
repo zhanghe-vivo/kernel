@@ -63,7 +63,7 @@ static void mq_send_case(rt_mq_t testmq)
     ret = rt_mq_send_wait(testmq, &send_buf[MAX_MSGS], sizeof(send_buf[0]), RT_WAITING_FOREVER);
     uassert_true(ret == RT_EOK);
 
-    while (testmq->entry != 0)
+    while (rt_mq_entry(testmq) != 0)
     {
         rt_thread_delay(100);
     }
@@ -77,7 +77,7 @@ static void mq_send_case(rt_mq_t testmq)
     ret = rt_mq_urgent(testmq, &send_buf[0], sizeof(send_buf[0]));
     uassert_true(ret == RT_EOK);
 
-    while (testmq->entry != 0)
+    while (rt_mq_entry(testmq) != 0)
     {
         rt_thread_delay(100);
     }
@@ -95,7 +95,7 @@ static void mq_send_case(rt_mq_t testmq)
     ret = rt_mq_send_wait_prio(testmq, &send_buf[1], sizeof(send_buf[0]), 1, 0, RT_UNINTERRUPTIBLE);
     uassert_true(ret == RT_EOK);
 
-    while (testmq->entry != 0)
+    while (rt_mq_entry(testmq) != 0)
     {
         rt_thread_delay(100);
     }
@@ -105,7 +105,7 @@ static void mq_send_case(rt_mq_t testmq)
     uassert_true(ret == RT_EOK);
     ret = rt_mq_control(testmq, RT_IPC_CMD_RESET, RT_NULL);
     uassert_true(ret == RT_EOK);
-    uassert_true(testmq->entry == 0);
+    uassert_true(rt_mq_entry(testmq) == 0);
 }
 
 static void mq_send_entry(void *param)
@@ -142,7 +142,7 @@ static void mq_recv_case(rt_mq_t testmq)
     }
 #ifdef RT_USING_MESSAGEQUEUE_PRIORITY
     rt_int32_t msg_prio;
-    while (testmq->entry == MAX_MSGS)
+    while (rt_mq_entry(testmq) == MAX_MSGS)
     {
         rt_thread_delay(100);
     }

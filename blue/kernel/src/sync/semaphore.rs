@@ -93,7 +93,7 @@ impl<'a> Drop for KSemaphoreGuard<'a> {
 /// Semaphore raw structure
 #[repr(C)]
 #[pin_data]
-pub(crate) struct RtSemaphore {
+pub struct RtSemaphore {
     /// Inherit from KObject
     #[pin]
     pub(crate) parent: KObjectBase,

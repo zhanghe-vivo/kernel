@@ -10,10 +10,10 @@ use crate::{
     print, println,
     rt_bindings::{
         rt_debug_not_in_interrupt, rt_debug_scheduler_available, rt_err_t, rt_int32_t, rt_object,
-        rt_object_hook_call, rt_size_t, rt_ssize_t, rt_uint32_t, rt_uint8_t, RT_ALIGN_SIZE,
-        RT_EFULL, RT_EINTR, RT_EINVAL, RT_ENOMEM, RT_EOK, RT_ERROR, RT_ETIMEOUT, RT_INTERRUPTIBLE,
-        RT_IPC_CMD_RESET, RT_IPC_FLAG_FIFO, RT_IPC_FLAG_PRIO, RT_KILLABLE, RT_MQ_ENTRY_MAX,
-        RT_TIMER_CTRL_SET_TIME, RT_UNINTERRUPTIBLE,
+        rt_object_hook_call, rt_size_t, rt_ssize_t, rt_uint16_t, rt_uint32_t, rt_uint8_t,
+        RT_ALIGN_SIZE, RT_EFULL, RT_EINTR, RT_EINVAL, RT_ENOMEM, RT_EOK, RT_ERROR, RT_ETIMEOUT,
+        RT_INTERRUPTIBLE, RT_IPC_CMD_RESET, RT_IPC_FLAG_FIFO, RT_IPC_FLAG_PRIO, RT_KILLABLE,
+        RT_MQ_ENTRY_MAX, RT_TIMER_CTRL_SET_TIME, RT_UNINTERRUPTIBLE,
     },
     sync::ipc_common::*,
     thread::RtThread,
@@ -126,22 +126,6 @@ impl KMessageQueue {
     }
 }
 
-macro_rules! get_message_addr {
-    ($msg:expr) => {
-        ($msg as *mut RtMessage).offset(1) as *mut _
-    };
-}
-
-/// MessageQueue message structure
-#[repr(C)]
-#[pin_data]
-pub struct RtMessage {
-    #[pin]
-    pub next: *mut RtMessage,
-    pub length: isize,
-    pub prio: i32,
-}
-
 /// MessageQueue raw structure
 #[repr(C)]
 #[pin_data]
@@ -152,8 +136,6 @@ pub struct RtMessageQueue {
     /// SysQueue for mailbox
     #[pin]
     pub(crate) inner_queue: RtSysQueue,
-    /// ABI compatibility
-    pub(crate) entry: u16,
 }
 
 impl_kobject!(RtMessageQueue);
@@ -176,7 +158,6 @@ impl RtMessageQueue {
             parent<-KObjectBase::new(ObjectClassType::ObjectClassMessageQueue as u8, name),
             inner_queue<-RtSysQueue::new(msg_size as usize, max_msgs as usize, working_mode as u32,
                 waiting_mode as u32),
-            entry: 0u16,
         }))
     }
     #[inline]
@@ -213,8 +194,6 @@ impl RtMessageQueue {
         if max_count == 0 {
             return -(RT_EINVAL as i32);
         }
-
-        self.entry = 0;
 
         self.inner_queue
             .init(
@@ -398,8 +377,6 @@ impl RtMessageQueue {
             return RT_EOK as i32;
         }
 
-        self.entry = self.inner_queue.item_in_queue as u16;
-
         self.inner_queue.unlock();
 
         RT_EOK as i32
@@ -448,9 +425,7 @@ impl RtMessageQueue {
             );
         }
 
-        let ret = self.inner_queue.urgent_prio(buffer, size);
-        self.entry = self.inner_queue.item_in_queue as u16;
-        ret
+        self.inner_queue.urgent_prio(buffer, size)
     }
 
     fn receive_internal(
@@ -557,8 +532,6 @@ impl RtMessageQueue {
             );
         }
 
-        self.entry = self.inner_queue.item_in_queue as u16;
-
         size as i32
     }
 
@@ -606,7 +579,6 @@ impl RtMessageQueue {
             self.inner_queue.read_pos = 0;
             self.inner_queue.write_pos = 0;
             self.inner_queue.item_in_queue = 0;
-            self.entry = 0;
 
             self.inner_queue.unlock();
 
@@ -708,6 +680,13 @@ pub unsafe extern "C" fn rt_mq_delete(mq: *mut RtMessageQueue) -> rt_err_t {
     (*mq).delete_raw();
 
     RT_EOK as rt_err_t
+}
+
+#[cfg(feature = "RT_USING_MESSAGEQUEUE")]
+#[no_mangle]
+pub unsafe extern "C" fn rt_mq_entry(mq: *mut RtMessageQueue) -> rt_uint16_t {
+    assert!(!mq.is_null());
+    (*mq).inner_queue.count() as rt_uint16_t
 }
 
 #[cfg(feature = "RT_USING_MESSAGEQUEUE")]
@@ -894,7 +873,7 @@ pub extern "C" fn rt_msgqueue_info() {
         let msgqueue =
             &*(crate::list_head_entry!(node.as_ptr(), KObjectBase, list) as *const RtMessageQueue);
         let _ = crate::format_name!(msgqueue.parent.name.as_ptr(), 8);
-        print!(" {:04} ", msgqueue.entry);
+        print!(" {:04} ", msgqueue.inner_queue.count());
         if msgqueue.inner_queue.receiver.is_empty() {
             println!(" {}", msgqueue.inner_queue.receiver.count());
         } else {
