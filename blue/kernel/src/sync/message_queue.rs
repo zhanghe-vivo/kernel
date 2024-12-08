@@ -186,7 +186,7 @@ impl RtMessageQueue {
         } else if working_mode == IPC_SYS_QUEUE_PRIO as u8 {
             let item_align_size = align_up_size(item_size as usize, RT_ALIGN_SIZE as usize);
             max_count =
-                (buffer_size as usize / (item_align_size + mem::size_of::<RtSysQueueItemHeader>()));
+                buffer_size as usize / (item_align_size + mem::size_of::<RtSysQueueItemHeader>());
         } else {
             return -(RT_EINVAL as i32);
         }

@@ -6,10 +6,9 @@ use crate::{
     print, println,
     rt_bindings::{
         rt_debug_not_in_interrupt, rt_debug_scheduler_available, rt_err_t, rt_int32_t, rt_object,
-        rt_object_hook_call, rt_uint32_t, rt_uint8_t, RT_EFULL, RT_EINTR, RT_EINVAL, RT_ENOMEM,
-        RT_EOK, RT_ERROR, RT_ETIMEOUT, RT_INTERRUPTIBLE, RT_IPC_CMD_RESET, RT_IPC_FLAG_FIFO,
-        RT_IPC_FLAG_PRIO, RT_KILLABLE, RT_SEM_VALUE_MAX, RT_TIMER_CTRL_SET_TIME,
-        RT_UNINTERRUPTIBLE, RT_WAITING_FOREVER,
+        rt_object_hook_call, rt_uint32_t, rt_uint8_t, RT_EFULL, RT_EOK, RT_ERROR, RT_INTERRUPTIBLE,
+        RT_IPC_CMD_RESET, RT_IPC_FLAG_FIFO, RT_IPC_FLAG_PRIO, RT_KILLABLE, RT_SEM_VALUE_MAX,
+        RT_TIMER_CTRL_SET_TIME, RT_UNINTERRUPTIBLE, RT_WAITING_FOREVER,
     },
     sync::{ipc_common::*, lock::spinlock::RawSpin},
     thread::RtThread,
@@ -97,9 +96,6 @@ pub struct RtSemaphore {
     /// Inherit from KObject
     #[pin]
     pub(crate) parent: KObjectBase,
-    /// Spin lock semaphore used
-    pub(crate) spinlock: RawSpin,
-    #[pin]
     /// SysQueue for semaphore
     #[pin]
     pub(crate) inner_queue: RtSysQueue,
@@ -120,7 +116,6 @@ impl RtSemaphore {
             let cur_ref = &mut *slot;
             let _ = KObjectBase::new(ObjectClassType::ObjectClassSemaphore as u8, name)
                 .__pinned_init(&mut cur_ref.parent as *mut KObjectBase);
-            cur_ref.spinlock = RawSpin::new();
             let _ = RtSysQueue::new(
                 mem::size_of::<u32>(),
                 value as usize,
@@ -159,7 +154,6 @@ impl RtSemaphore {
         assert!(
             (waiting_mode == RT_IPC_FLAG_FIFO as u8) || (waiting_mode == RT_IPC_FLAG_PRIO as u8)
         );
-        self.spinlock = RawSpin::new();
         self.inner_queue.init(
             null_mut(),
             mem::size_of::<u32>(),

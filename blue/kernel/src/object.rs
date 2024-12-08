@@ -126,16 +126,18 @@ pub enum ObjectClassType {
     ObjectClassProcess,
     //< The object is a thread.
     ObjectClassThread,
-    //< The object is a condition variable.
-    ObjectClassCondVar,
-    //< The object is a RwLock.
-    ObjectClassRwLock,
     //< The object is a semaphore.
     #[cfg(feature = "RT_USING_SEMAPHORE")]
     ObjectClassSemaphore,
     //< The object is a mutex.
     #[cfg(feature = "RT_USING_MUTEX")]
     ObjectClassMutex,
+    //< The object is a condition variable.
+    #[cfg(feature = "RT_USING_CONDVAR")]
+    ObjectClassCondVar,
+    //< The object is a RwLock.
+    #[cfg(feature = "RT_USING_RWLOCK")]
+    ObjectClassRwLock,
     //< The object is an event.
     #[cfg(feature = "RT_USING_EVENT")]
     ObjectClassEvent,

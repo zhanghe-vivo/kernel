@@ -7,13 +7,17 @@ enum ObjectClassType {
   ObjectClassUninit = 0,
   ObjectClassProcess,
   ObjectClassThread,
-  ObjectClassCondVar,
-  ObjectClassRwLock,
 #if defined(RT_USING_SEMAPHORE)
   ObjectClassSemaphore,
 #endif
 #if defined(RT_USING_MUTEX)
   ObjectClassMutex,
+#endif
+#if defined(RT_USING_CONDVAR)
+  ObjectClassCondVar,
+#endif
+#if defined(RT_USING_RWLOCK)
+  ObjectClassRwLock,
 #endif
 #if defined(RT_USING_EVENT)
   ObjectClassEvent,
@@ -196,6 +200,7 @@ typedef struct RtSysQueue {
   struct RawSpin spinlock;
 } RtSysQueue;
 
+#if defined(RT_USING_MUTEX)
 typedef struct rt_mutex {
   /**
    * Inherit from KObjectBase
@@ -222,6 +227,7 @@ typedef struct rt_mutex {
    */
   struct RtSysQueue inner_queue;
 } rt_mutex;
+#endif
 
 #if defined(RT_USING_MUTEX)
 typedef struct MutexInfo {
@@ -328,6 +334,7 @@ typedef void (*RtSchedulerHook)(struct rt_thread *from, struct rt_thread *to);
 
 typedef void (*RtSchedulerSwitchHook)(struct rt_thread *tid);
 
+#if defined(RT_USING_EVENT)
 /**
  * Event flag raw structure
  */
@@ -345,7 +352,9 @@ typedef struct rt_event {
    */
   struct RtSysQueue inner_queue;
 } rt_event;
+#endif
 
+#if defined(RT_USING_MAILBOX)
 /**
  * Mailbox raw structure
  */
@@ -359,7 +368,9 @@ typedef struct rt_mailbox {
    */
   struct RtSysQueue inner_queue;
 } rt_mailbox;
+#endif
 
+#if defined(RT_USING_MESSAGEQUEUE)
 /**
  * MessageQueue raw structure
  */
@@ -373,7 +384,9 @@ typedef struct rt_messagequeue {
    */
   struct RtSysQueue inner_queue;
 } rt_messagequeue;
+#endif
 
+#if defined(RT_USING_SEMAPHORE)
 /**
  * Semaphore raw structure
  */
@@ -383,14 +396,11 @@ typedef struct rt_semaphore {
    */
   struct rt_object parent;
   /**
-   * Spin lock semaphore used
-   */
-  struct RawSpin spinlock;
-  /**
    * SysQueue for semaphore
    */
   struct RtSysQueue inner_queue;
 } rt_semaphore;
+#endif
 
 typedef void (*ThreadEntryFn)(void*);
 

@@ -16,7 +16,10 @@ use core::{
 use pinned_init::*;
 
 pub mod heaplock;
+
+#[cfg(feature = "RT_USING_MUTEX")]
 pub mod mutex;
+#[cfg(feature = "RT_USING_RWLOCK")]
 pub mod rwlock;
 pub mod spinlock;
 

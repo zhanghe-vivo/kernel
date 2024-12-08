@@ -69,6 +69,14 @@ fn main() {
                 "RT_USING_SEMAPHORE".to_string(),
             ),
             (
+                "feature = RT_USING_CONDVAR".to_string(),
+                "RT_USING_CONDVAR".to_string(),
+            ),
+            (
+                "feature = RT_USING_RWLOCK".to_string(),
+                "RT_USING_RWLOCK".to_string(),
+            ),
+            (
                 "feature = RT_USING_EVENT".to_string(),
                 "RT_USING_EVENT".to_string(),
             ),
