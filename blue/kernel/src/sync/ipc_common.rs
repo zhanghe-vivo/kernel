@@ -65,13 +65,13 @@ pub(crate) struct RtSysQueue {
     pub(crate) free: Option<NonNull<u8>>,
     /// Queue working mode: FIFO by default
     pub(crate) working_mode: u32,
-    /// Queue for waiting to send items
+    /// Queue for waiting to enqueue items in the working sysqueue
     #[pin]
-    pub(crate) sender: RtWaitQueue,
-    /// Queue for waiting to receive items
+    pub(crate) enqueue_waiter: RtWaitQueue,
+    /// Queue for waiting to dequeue items in the working sysqueue
     #[pin]
-    pub(crate) receiver: RtWaitQueue,
-    /// Spin lock for queue
+    pub(crate) dequeue_waiter: RtWaitQueue,
+    /// Spin lock for sysqueue
     pub(crate) spinlock: RawSpin,
 }
 
@@ -186,9 +186,10 @@ impl RtSysQueue {
             sysq.working_mode = working_mode;
 
             unsafe {
-                RtWaitQueue::new(waiting_mode).__pinned_init(&mut sysq.sender as *mut RtWaitQueue);
                 RtWaitQueue::new(waiting_mode)
-                    .__pinned_init(&mut sysq.receiver as *mut RtWaitQueue);
+                    .__pinned_init(&mut sysq.enqueue_waiter as *mut RtWaitQueue);
+                RtWaitQueue::new(waiting_mode)
+                    .__pinned_init(&mut sysq.dequeue_waiter as *mut RtWaitQueue);
             }
 
             sysq.spinlock = RawSpin::new();
@@ -216,8 +217,10 @@ impl RtSysQueue {
         self.working_mode = working_mode;
 
         unsafe {
-            RtWaitQueue::new(waiting_mode).__pinned_init(&mut self.sender as *mut RtWaitQueue);
-            RtWaitQueue::new(waiting_mode).__pinned_init(&mut self.receiver as *mut RtWaitQueue);
+            RtWaitQueue::new(waiting_mode)
+                .__pinned_init(&mut self.enqueue_waiter as *mut RtWaitQueue);
+            RtWaitQueue::new(waiting_mode)
+                .__pinned_init(&mut self.dequeue_waiter as *mut RtWaitQueue);
         }
 
         self.spinlock = RawSpin::new();
@@ -473,8 +476,8 @@ impl RtSysQueue {
             return -(RT_EFULL as i32);
         }
 
-        if !self.receiver.is_empty() {
-            self.receiver.wake();
+        if !self.dequeue_waiter.is_empty() {
+            self.dequeue_waiter.wake();
 
             self.spinlock.unlock();
 
@@ -533,8 +536,8 @@ impl RtSysQueue {
 
         self.free = unsafe { Some(NonNull::new_unchecked(hdr as *mut u8)) };
 
-        if !self.sender.is_empty() {
-            self.sender.wake();
+        if !self.enqueue_waiter.is_empty() {
+            self.enqueue_waiter.wake();
             self.spinlock.unlock();
 
             Cpu::get_current_scheduler().do_task_schedule();

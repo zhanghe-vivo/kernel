@@ -116,7 +116,7 @@ impl RtCondVar {
                 thread.error = code::EOK;
                 self.inner_sem
                     .inner_queue
-                    .receiver
+                    .dequeue_waiter
                     .wait(thread, pending_mode);
 
                 if time_out > 0 {
@@ -150,7 +150,7 @@ impl RtCondVar {
     #[inline]
     pub(crate) fn notify(&mut self) -> i32 {
         self.spinlock.lock();
-        if !self.inner_sem.inner_queue.receiver.is_empty() {
+        if !self.inner_sem.inner_queue.dequeue_waiter.is_empty() {
             self.spinlock.unlock();
             self.inner_sem.release();
         }

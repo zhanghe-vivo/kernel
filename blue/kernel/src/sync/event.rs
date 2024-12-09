@@ -147,7 +147,7 @@ impl RtEvent {
     pub fn detach(&mut self) {
         assert_eq!(self.type_name(), ObjectClassType::ObjectClassEvent as u8);
 
-        self.inner_queue.receiver.inner_locked_wake_all();
+        self.inner_queue.dequeue_waiter.inner_locked_wake_all();
 
         if self.is_static_kobject() {
             self.parent.detach();
@@ -170,7 +170,7 @@ impl RtEvent {
 
         rt_debug_not_in_interrupt!();
 
-        self.inner_queue.receiver.inner_locked_wake_all();
+        self.inner_queue.dequeue_waiter.inner_locked_wake_all();
         self.parent.delete();
     }
 
@@ -195,10 +195,10 @@ impl RtEvent {
             );
         }
 
-        if !self.inner_queue.receiver.is_empty() {
+        if !self.inner_queue.dequeue_waiter.is_empty() {
             // SAFETY: thread ensured not null
             unsafe {
-                crate::list_head_for_each!(node, &self.inner_queue.receiver.working_queue, {
+                crate::list_head_for_each!(node, &self.inner_queue.dequeue_waiter.working_queue, {
                     let thread = crate::thread_list_node_entry!(node.as_ptr()) as *mut RtThread;
 
                     if !thread.is_null() {
@@ -318,7 +318,10 @@ impl RtEvent {
             thread.event_info.set = set;
             thread.event_info.info = option;
 
-            let ret = self.inner_queue.receiver.wait(thread, suspend_flag as u32);
+            let ret = self
+                .inner_queue
+                .dequeue_waiter
+                .wait(thread, suspend_flag as u32);
             if ret != RT_EOK as i32 {
                 self.inner_queue.unlock();
                 return ret;
@@ -392,7 +395,7 @@ impl RtEvent {
         if cmd == RT_IPC_CMD_RESET as i32 {
             self.inner_queue.lock();
 
-            self.inner_queue.receiver.inner_locked_wake_all();
+            self.inner_queue.dequeue_waiter.inner_locked_wake_all();
 
             self.set = 0;
 
@@ -512,11 +515,11 @@ pub extern "C" fn rt_event_info() {
         let event = &*(crate::list_head_entry!(node.as_ptr(), KObjectBase, list) as *const RtEvent);
         let _ = crate::format_name!(event.parent.name.as_ptr(), 8);
         print!(" 0x{:08x} ", event.set);
-        if event.inner_queue.receiver.is_empty() {
+        if event.inner_queue.dequeue_waiter.is_empty() {
             println!("000");
         } else {
-            print!("{}:", event.inner_queue.receiver.count());
-            let head = &event.inner_queue.receiver.working_queue;
+            print!("{}:", event.inner_queue.dequeue_waiter.count());
+            let head = &event.inner_queue.dequeue_waiter.working_queue;
 
             list_head_for_each!(node, head, {
                 let thread = crate::thread_list_node_entry!(node.as_ptr()) as *mut RtThread;

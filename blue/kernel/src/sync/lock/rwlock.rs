@@ -22,7 +22,6 @@ pub struct RtRwLock {
     // kernel object
     #[pin]
     parent: KObjectBase,
-    spinlock: RawSpin,
     /// Mutex that inner used for condvar
     #[pin]
     mutex: RtMutex,
@@ -32,8 +31,8 @@ pub struct RtRwLock {
     /// Condition var for writer notification
     #[pin]
     write_cond: RtCondVar,
-    /// Lock refcount, which indicates >0 for readers occupied, -1 for writer occupy
-    ref_count: i32,
+    /// Lock flag, which indicates >0 for readers occupied count, -1 for writer occupy
+    rw_count: i32,
     /// Readers wait for this condition var
     reader_waiting: u32,
     /// Writers ait for this condition var
@@ -53,11 +52,10 @@ impl RtRwLock {
 
         pin_init!(Self {
             parent<-KObjectBase::new(ObjectClassType::ObjectClassRwLock as u8, name),
-            spinlock: RawSpin::new(),
             mutex<-RtMutex::new(name, waiting_mode as u8),
             read_cond<-RtCondVar::new(name, waiting_mode as u8),
             write_cond<-RtCondVar::new(name, waiting_mode as u8),
-            ref_count:0,
+            rw_count:0,
             reader_waiting:0,
             writer_waiting:0,
         })
@@ -65,11 +63,10 @@ impl RtRwLock {
 
     #[inline]
     fn init_internal(&mut self, name: *const i8, waiting_mode: u8) {
-        self.spinlock = RawSpin::new();
         self.mutex.init_dyn(name, waiting_mode as u8);
         self.read_cond.init_dyn(name, waiting_mode as u8);
         self.write_cond.init_dyn(name, waiting_mode as u8);
-        self.ref_count = 0;
+        self.rw_count = 0;
         self.reader_waiting = 0;
         self.writer_waiting = 0;
     }
@@ -102,7 +99,7 @@ impl RtRwLock {
             return result;
         }
 
-        if self.ref_count != 0 || self.reader_waiting != 0 || self.writer_waiting != 0 {
+        if self.rw_count != 0 || self.reader_waiting != 0 || self.writer_waiting != 0 {
             return -(RT_EBUSY as i32);
         } else {
             result = self.read_cond.inner_sem.try_take();
@@ -135,7 +132,7 @@ impl RtRwLock {
             return result;
         }
 
-        while self.ref_count < 0 || self.writer_waiting > 0 {
+        while self.rw_count < 0 || self.writer_waiting > 0 {
             self.reader_waiting += 1;
             result = self.read_cond.wait(&mut self.mutex);
             self.reader_waiting -= 1;
@@ -145,7 +142,7 @@ impl RtRwLock {
         }
 
         if result == RT_EOK as i32 {
-            self.ref_count += 1;
+            self.rw_count += 1;
         }
 
         self.mutex.unlock();
@@ -160,10 +157,10 @@ impl RtRwLock {
             return result;
         }
 
-        if self.ref_count < 0 || self.writer_waiting > 0 {
+        if self.rw_count < 0 || self.writer_waiting > 0 {
             result = -(RT_EBUSY as i32);
         } else {
-            self.ref_count += 1;
+            self.rw_count += 1;
         }
 
         self.mutex.unlock();
@@ -178,7 +175,7 @@ impl RtRwLock {
             return result;
         }
 
-        while self.ref_count < 0 || self.writer_waiting > 0 {
+        while self.rw_count < 0 || self.writer_waiting > 0 {
             self.reader_waiting += 1;
             result = self
                 .read_cond
@@ -190,7 +187,7 @@ impl RtRwLock {
         }
 
         if result == RT_EOK as i32 {
-            self.ref_count += 1;
+            self.rw_count += 1;
         }
 
         self.mutex.unlock();
@@ -205,7 +202,7 @@ impl RtRwLock {
             return result;
         }
 
-        while self.ref_count != 0 {
+        while self.rw_count != 0 {
             self.writer_waiting += 1;
             result = self
                 .write_cond
@@ -218,7 +215,7 @@ impl RtRwLock {
         }
 
         if result == RT_EOK as i32 {
-            self.ref_count = -1;
+            self.rw_count = -1;
         }
 
         self.mutex.unlock();
@@ -233,7 +230,7 @@ impl RtRwLock {
             return result;
         }
 
-        while self.ref_count != 0 {
+        while self.rw_count != 0 {
             self.writer_waiting += 1;
             result = self.write_cond.wait(&mut self.mutex);
             self.writer_waiting -= 1;
@@ -244,7 +241,7 @@ impl RtRwLock {
         }
 
         if result == RT_EOK as i32 {
-            self.ref_count = -1;
+            self.rw_count = -1;
         }
 
         self.mutex.unlock();
@@ -259,10 +256,10 @@ impl RtRwLock {
             return result;
         }
 
-        if self.ref_count != 0 {
+        if self.rw_count != 0 {
             result = -(RT_EBUSY as i32);
         } else {
-            self.ref_count = -1;
+            self.rw_count = -1;
         }
 
         self.mutex.unlock();
@@ -277,14 +274,14 @@ impl RtRwLock {
             return result;
         }
 
-        if self.ref_count > 0 {
-            self.ref_count -= 1;
-        } else if self.ref_count == -1 {
-            self.ref_count = 0;
+        if self.rw_count > 0 {
+            self.rw_count -= 1;
+        } else if self.rw_count == -1 {
+            self.rw_count = 0;
         }
 
         if self.writer_waiting > 0 {
-            if self.ref_count == 0 {
+            if self.rw_count == 0 {
                 result = self.write_cond.notify();
             }
         } else if self.reader_waiting > 0 {

@@ -197,7 +197,7 @@ impl RtMutex {
 
         self.inner_queue.lock();
 
-        self.inner_queue.sender.inner_locked_wake_all();
+        self.inner_queue.enqueue_waiter.inner_locked_wake_all();
 
         unsafe {
             Pin::new_unchecked(&mut self.taken_list).remove();
@@ -229,7 +229,7 @@ impl RtMutex {
         rt_debug_not_in_interrupt!();
 
         self.inner_queue.lock();
-        self.inner_queue.sender.inner_locked_wake_all();
+        self.inner_queue.enqueue_waiter.inner_locked_wake_all();
 
         unsafe {
             Pin::new_unchecked(&mut self.taken_list).remove();
@@ -301,7 +301,7 @@ impl RtMutex {
                 } else {
                     let mut priority = thread.priority.get_current();
                     // Suspend current thread
-                    let mut ret = self.inner_queue.sender.wait(thread, pending_mode);
+                    let mut ret = self.inner_queue.enqueue_waiter.wait(thread, pending_mode);
                     if ret != RT_EOK as i32 {
                         self.inner_queue.unlock();
                         return ret;
@@ -348,7 +348,7 @@ impl RtMutex {
                                 need_update = true;
                             }
 
-                            if let Some(node) = self.inner_queue.sender.head() {
+                            if let Some(node) = self.inner_queue.enqueue_waiter.head() {
                                 let th =
                                     crate::thread_list_node_entry!(node.as_ptr()) as *mut RtThread;
                                 self.priority = (*th).priority.get_current();
@@ -447,10 +447,10 @@ impl RtMutex {
                 need_schedule = true;
             }
 
-            if !self.inner_queue.sender.is_empty() {
+            if !self.inner_queue.enqueue_waiter.is_empty() {
                 let mut next_thread_ptr = null_mut();
 
-                if let Some(node) = self.inner_queue.sender.head() {
+                if let Some(node) = self.inner_queue.enqueue_waiter.head() {
                     next_thread_ptr = unsafe { crate::thread_list_node_entry!(node.as_ptr()) };
                     if next_thread_ptr.is_null() {
                         return -(RT_ERROR as i32);
@@ -474,9 +474,9 @@ impl RtMutex {
                 next_thread.mutex_info.pending_to = None;
                 next_thread.resume();
 
-                if !self.inner_queue.sender.is_empty() {
+                if !self.inner_queue.enqueue_waiter.is_empty() {
                     let mut th = null_mut();
-                    if let Some(node) = self.inner_queue.sender.head() {
+                    if let Some(node) = self.inner_queue.enqueue_waiter.head() {
                         th = unsafe { crate::thread_list_node_entry!(node.as_ptr()) };
                         if th.is_null() {
                             return -(RT_ERROR as i32);
@@ -510,7 +510,7 @@ impl RtMutex {
 
     #[inline]
     pub(crate) fn update_priority(&mut self) -> u8 {
-        if let Some(node) = self.inner_queue.sender.head() {
+        if let Some(node) = self.inner_queue.enqueue_waiter.head() {
             unsafe {
                 let thread: *mut RtThread = crate::thread_list_node_entry!(node.as_ptr());
                 self.priority = (*thread).priority.get_current();
@@ -545,7 +545,7 @@ impl RtMutex {
             need_update = true;
         }
 
-        if let Some(node) = self.inner_queue.sender.head() {
+        if let Some(node) = self.inner_queue.enqueue_waiter.head() {
             unsafe {
                 let th: *mut RtThread = crate::thread_list_node_entry!(node.as_ptr());
                 self.priority = (*th).priority.get_current();
@@ -691,11 +691,11 @@ pub extern "C" fn rt_mutex_info() {
         }
         print!("{:04}", mutex.inner_queue.count());
         print!("{:>8}  ", mutex.priority);
-        if mutex.inner_queue.sender.is_empty() {
+        if mutex.inner_queue.enqueue_waiter.is_empty() {
             println!("0000");
         } else {
-            print!("{}:", mutex.inner_queue.sender.count());
-            let head = &mutex.inner_queue.sender.working_queue;
+            print!("{}:", mutex.inner_queue.enqueue_waiter.count());
+            let head = &mutex.inner_queue.enqueue_waiter.working_queue;
             list_head_for_each!(node, head, {
                 let thread = crate::thread_list_node_entry!(node.as_ptr()) as *mut RtThread;
                 let _ = crate::format_name!((*thread).parent.name.as_ptr(), 8);

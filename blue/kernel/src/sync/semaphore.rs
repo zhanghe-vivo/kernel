@@ -166,7 +166,7 @@ impl RtSemaphore {
 
     #[inline]
     pub fn detach(&mut self) {
-        self.inner_queue.receiver.inner_locked_wake_all();
+        self.inner_queue.dequeue_waiter.inner_locked_wake_all();
         if self.is_static_kobject() {
             self.parent.detach();
         }
@@ -191,7 +191,7 @@ impl RtSemaphore {
 
         rt_debug_not_in_interrupt!();
 
-        self.inner_queue.receiver.inner_locked_wake_all();
+        self.inner_queue.dequeue_waiter.inner_locked_wake_all();
         self.parent.delete();
     }
 
@@ -238,7 +238,7 @@ impl RtSemaphore {
 
                 thread.error = code::EINTR;
 
-                let ret = self.inner_queue.receiver.wait(thread, pending_mode);
+                let ret = self.inner_queue.dequeue_waiter.wait(thread, pending_mode);
                 if ret != RT_EOK as i32 {
                     self.inner_queue.unlock();
                     return ret;
@@ -304,8 +304,8 @@ impl RtSemaphore {
         let mut need_schedule = false;
         self.inner_queue.lock();
 
-        if !self.inner_queue.receiver.is_empty() {
-            self.inner_queue.receiver.wake();
+        if !self.inner_queue.dequeue_waiter.is_empty() {
+            self.inner_queue.dequeue_waiter.wake();
             need_schedule = true;
         } else {
             if self.count() < RT_SEM_VALUE_MAX as usize {
@@ -333,7 +333,7 @@ impl RtSemaphore {
 
         self.inner_queue.lock();
 
-        self.inner_queue.receiver.inner_locked_wake_all();
+        self.inner_queue.dequeue_waiter.inner_locked_wake_all();
 
         self.inner_queue.reset_stub(value as usize);
 
@@ -454,11 +454,11 @@ pub extern "C" fn rt_sem_info() {
             &*(crate::list_head_entry!(node.as_ptr(), KObjectBase, list) as *const RtSemaphore);
         let _ = crate::format_name!(sem.parent.name.as_ptr(), 8);
         print!(" {:03} ", sem.count());
-        if sem.inner_queue.receiver.is_empty() {
-            println!("{}", sem.inner_queue.receiver.count());
+        if sem.inner_queue.dequeue_waiter.is_empty() {
+            println!("{}", sem.inner_queue.dequeue_waiter.count());
         } else {
-            print!("{}:", sem.inner_queue.receiver.count());
-            let head = &sem.inner_queue.receiver.working_queue;
+            print!("{}:", sem.inner_queue.dequeue_waiter.count());
+            let head = &sem.inner_queue.dequeue_waiter.working_queue;
             list_head_for_each!(node, head, {
                 let thread = crate::thread_list_node_entry!(node.as_ptr()) as *mut RtThread;
                 let _ = crate::format_name!((*thread).parent.name.as_ptr(), 8);

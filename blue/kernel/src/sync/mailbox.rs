@@ -162,8 +162,8 @@ impl RtMailbox {
     pub fn detach(&mut self) {
         assert_eq!(self.type_name(), ObjectClassType::ObjectClassMailBox as u8);
 
-        self.inner_queue.receiver.inner_locked_wake_all();
-        self.inner_queue.sender.inner_locked_wake_all();
+        self.inner_queue.dequeue_waiter.inner_locked_wake_all();
+        self.inner_queue.enqueue_waiter.inner_locked_wake_all();
 
         if self.is_static_kobject() {
             self.parent.detach();
@@ -186,8 +186,8 @@ impl RtMailbox {
 
         rt_debug_not_in_interrupt!();
 
-        self.inner_queue.receiver.inner_locked_wake_all();
-        self.inner_queue.sender.inner_locked_wake_all();
+        self.inner_queue.dequeue_waiter.inner_locked_wake_all();
+        self.inner_queue.enqueue_waiter.inner_locked_wake_all();
 
         self.parent.delete();
     }
@@ -230,7 +230,7 @@ impl RtMailbox {
                 return -(RT_EFULL as i32);
             }
 
-            let ret = self.inner_queue.sender.wait(thread, suspend_flag);
+            let ret = self.inner_queue.enqueue_waiter.wait(thread, suspend_flag);
 
             if ret != RT_EOK as i32 {
                 self.inner_queue.unlock();
@@ -275,8 +275,8 @@ impl RtMailbox {
             return -(RT_EFULL as i32);
         }
 
-        if !self.inner_queue.receiver.is_empty() {
-            self.inner_queue.receiver.wake();
+        if !self.inner_queue.dequeue_waiter.is_empty() {
+            self.inner_queue.dequeue_waiter.wake();
 
             self.inner_queue.unlock();
 
@@ -335,8 +335,8 @@ impl RtMailbox {
         self.inner_queue
             .urgent_fifo(&value as *const usize as *const u8, mem::size_of::<usize>());
 
-        if !self.inner_queue.receiver.is_empty() {
-            self.inner_queue.receiver.wake();
+        if !self.inner_queue.dequeue_waiter.is_empty() {
+            self.inner_queue.dequeue_waiter.wake();
 
             self.inner_queue.unlock();
 
@@ -387,7 +387,10 @@ impl RtMailbox {
                 return -(RT_ETIMEOUT as i32);
             }
 
-            let ret = self.inner_queue.receiver.wait(thread, suspend_flag as u32);
+            let ret = self
+                .inner_queue
+                .dequeue_waiter
+                .wait(thread, suspend_flag as u32);
             if ret != RT_EOK as i32 {
                 self.inner_queue.unlock();
                 return ret;
@@ -427,8 +430,8 @@ impl RtMailbox {
             mem::size_of::<usize>(),
         );
 
-        if !self.inner_queue.sender.is_empty() {
-            if let Some(node) = self.inner_queue.sender.head() {
+        if !self.inner_queue.enqueue_waiter.is_empty() {
+            if let Some(node) = self.inner_queue.enqueue_waiter.head() {
                 let thread: *mut RtThread =
                     unsafe { crate::thread_list_node_entry!(node.as_ptr()) };
                 unsafe {
@@ -481,8 +484,8 @@ impl RtMailbox {
         if cmd == RT_IPC_CMD_RESET as i32 {
             self.inner_queue.lock();
 
-            self.inner_queue.receiver.inner_locked_wake_all();
-            self.inner_queue.sender.inner_locked_wake_all();
+            self.inner_queue.dequeue_waiter.inner_locked_wake_all();
+            self.inner_queue.enqueue_waiter.inner_locked_wake_all();
 
             self.inner_queue.item_in_queue = 0;
             self.inner_queue.read_pos = 0;
@@ -675,11 +678,11 @@ pub extern "C" fn rt_mailbox_info() {
         let _ = crate::format_name!(mailbox.parent.name.as_ptr(), 8);
         print!(" {:04} ", mailbox.inner_queue.count());
         print!(" {:04} ", mailbox.inner_queue.item_max_count);
-        if mailbox.inner_queue.receiver.is_empty() {
-            println!("{}", mailbox.inner_queue.receiver.count());
+        if mailbox.inner_queue.dequeue_waiter.is_empty() {
+            println!("{}", mailbox.inner_queue.dequeue_waiter.count());
         } else {
-            print!("{}:", mailbox.inner_queue.receiver.count());
-            let head = &mailbox.inner_queue.receiver.working_queue;
+            print!("{}:", mailbox.inner_queue.dequeue_waiter.count());
+            let head = &mailbox.inner_queue.dequeue_waiter.working_queue;
             list_head_for_each!(node, head, {
                 let thread = crate::thread_list_node_entry!(node.as_ptr()) as *mut RtThread;
                 let _ = crate::format_name!((*thread).parent.name.as_ptr(), 8);

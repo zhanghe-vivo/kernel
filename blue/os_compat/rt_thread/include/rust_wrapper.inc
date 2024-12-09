@@ -187,15 +187,15 @@ typedef struct RtSysQueue {
    */
   uint32_t working_mode;
   /**
-   * Queue for waiting to send items
+   * Queue for waiting to enqueue items in the working sysqueue
    */
-  struct RtWaitQueue sender;
+  struct RtWaitQueue enqueue_waiter;
   /**
-   * Queue for waiting to receive items
+   * Queue for waiting to dequeue items in the working sysqueue
    */
-  struct RtWaitQueue receiver;
+  struct RtWaitQueue dequeue_waiter;
   /**
-   * Spin lock for queue
+   * Spin lock for sysqueue
    */
   struct RawSpin spinlock;
 } RtSysQueue;

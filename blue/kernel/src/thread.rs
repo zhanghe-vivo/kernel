@@ -867,18 +867,18 @@ impl RtThread {
                 // Re-insert thread to suspended thread list
                 self.remove_tlist();
 
-                ret = IPCObject::suspend_thread(
+                /*ret = IPCObject::suspend_thread(
                     &mut pending_mutex.inner_queue.sender.working_queue,
                     self,
                     rt_bindings::RT_IPC_FLAG_PRIO as u8,
                     suspend_flag as u32,
-                );
-                /*
+                );*/
+
                 ret = pending_mutex
                     .inner_queue
-                    .sender
+                    .enqueue_waiter
                     .wait(self, suspend_flag as u32);
-                */
+
                 if ret == RT_EOK as rt_err_t {
                     // Update priority
                     pending_mutex.update_priority();

@@ -223,8 +223,8 @@ impl RtMessageQueue {
             ObjectClassType::ObjectClassMessageQueue as u8
         );
 
-        self.inner_queue.receiver.inner_locked_wake_all();
-        self.inner_queue.sender.inner_locked_wake_all();
+        self.inner_queue.dequeue_waiter.inner_locked_wake_all();
+        self.inner_queue.enqueue_waiter.inner_locked_wake_all();
 
         if self.is_static_kobject() {
             self.parent.detach();
@@ -262,8 +262,8 @@ impl RtMessageQueue {
 
         rt_debug_not_in_interrupt!();
 
-        self.inner_queue.receiver.inner_locked_wake_all();
-        self.inner_queue.sender.inner_locked_wake_all();
+        self.inner_queue.dequeue_waiter.inner_locked_wake_all();
+        self.inner_queue.enqueue_waiter.inner_locked_wake_all();
 
         self.parent.delete();
     }
@@ -325,7 +325,10 @@ impl RtMessageQueue {
                 return -(RT_EFULL as i32);
             }
 
-            let ret = self.inner_queue.sender.wait(thread, suspend_flag as u32);
+            let ret = self
+                .inner_queue
+                .enqueue_waiter
+                .wait(thread, suspend_flag as u32);
 
             if ret != RT_EOK as i32 {
                 self.inner_queue.unlock();
@@ -368,8 +371,8 @@ impl RtMessageQueue {
             }
         }
 
-        if !self.inner_queue.receiver.is_empty() {
-            self.inner_queue.receiver.wake();
+        if !self.inner_queue.dequeue_waiter.is_empty() {
+            self.inner_queue.dequeue_waiter.wake();
             self.inner_queue.unlock();
 
             Cpu::get_current_scheduler().do_task_schedule();
@@ -494,7 +497,10 @@ impl RtMessageQueue {
                 return thread.error.to_errno();
             }
 
-            let ret = self.inner_queue.receiver.wait(thread, suspend_flag as u32);
+            let ret = self
+                .inner_queue
+                .dequeue_waiter
+                .wait(thread, suspend_flag as u32);
             if ret != RT_EOK as i32 {
                 self.inner_queue.unlock();
                 return ret;
@@ -539,8 +545,8 @@ impl RtMessageQueue {
         }
 
         let mut need_schedule = false;
-        if !self.inner_queue.sender.is_empty() {
-            self.inner_queue.sender.wake();
+        if !self.inner_queue.enqueue_waiter.is_empty() {
+            self.inner_queue.enqueue_waiter.wake();
             need_schedule = true;
         }
 
@@ -581,8 +587,8 @@ impl RtMessageQueue {
         if cmd == RT_IPC_CMD_RESET as i32 {
             self.inner_queue.lock();
 
-            self.inner_queue.receiver.inner_locked_wake_all();
-            self.inner_queue.sender.inner_locked_wake_all();
+            self.inner_queue.dequeue_waiter.inner_locked_wake_all();
+            self.inner_queue.enqueue_waiter.inner_locked_wake_all();
 
             cfg_if::cfg_if! {
                 if #[cfg(feature = "RT_USING_MESSAGEQUEUE_PRIORITY")] {
@@ -900,11 +906,11 @@ pub extern "C" fn rt_msgqueue_info() {
             &*(crate::list_head_entry!(node.as_ptr(), KObjectBase, list) as *const RtMessageQueue);
         let _ = crate::format_name!(msgqueue.parent.name.as_ptr(), 8);
         print!(" {:04} ", msgqueue.inner_queue.count());
-        if msgqueue.inner_queue.receiver.is_empty() {
-            println!(" {}", msgqueue.inner_queue.receiver.count());
+        if msgqueue.inner_queue.dequeue_waiter.is_empty() {
+            println!(" {}", msgqueue.inner_queue.dequeue_waiter.count());
         } else {
-            print!(" {}:", msgqueue.inner_queue.receiver.count());
-            let head = &msgqueue.inner_queue.receiver.working_queue;
+            print!(" {}:", msgqueue.inner_queue.dequeue_waiter.count());
+            let head = &msgqueue.inner_queue.dequeue_waiter.working_queue;
             list_head_for_each!(node, head, {
                 let thread = crate::thread_list_node_entry!(node.as_ptr()) as *mut RtThread;
                 let _ = crate::format_name!((*thread).parent.name.as_ptr(), 8);
