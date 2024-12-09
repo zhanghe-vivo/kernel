@@ -1,8 +1,7 @@
 extern crate alloc;
 
 use alloc::boxed::Box;
-use core::mem;
-use core::ops::Drop;
+use core::{mem, ops::Drop};
 
 pub struct Node<T> {
     next: Link<T>,
@@ -50,7 +49,7 @@ impl<T> List<T> {
 
     pub fn push(&mut self, val: T) -> &mut Self {
         let mut new_node = Box::new(Node::<T>::new(val));
-        let old_head = mem::replace(&mut self.head, None);
+        let old_head = self.head.take();
         new_node.next = old_head;
         self.head = Some(new_node);
         self.size += 1;
@@ -58,7 +57,7 @@ impl<T> List<T> {
     }
 
     pub fn pop(&mut self) -> Option<T> {
-        match mem::replace(&mut self.head, None) {
+        match self.head.take() {
             None => None,
             Some(mut old_head) => {
                 assert!(self.size > 0);
@@ -75,16 +74,13 @@ type Link<T> = Option<Box<Node<T>>>;
 // A safe singly linked list. External code should **NOT** rely on the address of a node in the list.
 impl<T> Node<T> {
     const fn new(val: T) -> Self {
-        Self {
-            next: None,
-            val: val,
-        }
+        Self { next: None, val }
     }
-
+    #[allow(dead_code)]
     fn as_ref(&self) -> &T {
         &self.val
     }
-
+    #[allow(dead_code)]
     fn as_mut(&mut self) -> &mut T {
         &mut self.val
     }
@@ -94,11 +90,9 @@ impl<T> Node<T> {
     }
 
     // O(1) insertion.
+    #[allow(dead_code)]
     fn insert(&mut self, val: T) -> &mut Self {
-        let mut new_node = Box::<Node<T>>::new(Node::<T> {
-            next: None,
-            val: val,
-        });
+        let mut new_node = Box::<Node<T>>::new(Node::<T> { next: None, val });
         mem::swap(&mut new_node.val, &mut self.val);
         mem::swap(&mut new_node.next, &mut self.next);
         let old_next = mem::replace(&mut self.next, Some(new_node));
@@ -107,16 +101,17 @@ impl<T> Node<T> {
     }
 
     // O(1) removal.
+    #[allow(dead_code)]
     fn remove(&mut self) -> Option<Self> {
-        if self.next.is_none() {
-            return None;
+        match self.next.take() {
+            None => None,
+            Some(mut old_next) => {
+                mem::swap(&mut old_next.next, &mut self.next);
+                assert!(old_next.next.is_none());
+                mem::swap(&mut old_next.val, &mut self.val);
+                Some(*old_next)
+            }
         }
-        let mut old_next = mem::replace(&mut self.next, None).unwrap();
-        assert!(self.next.is_none());
-        mem::swap(&mut old_next.next, &mut self.next);
-        assert!(old_next.next.is_none());
-        mem::swap(&mut old_next.val, &mut self.val);
-        Some(*old_next)
     }
 }
 

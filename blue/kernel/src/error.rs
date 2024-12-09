@@ -3,8 +3,7 @@ use rt_bindings;
 
 use alloc::alloc::{AllocError, LayoutError};
 
-use core::num::TryFromIntError;
-use core::str::Utf8Error;
+use core::{num::TryFromIntError, str::Utf8Error};
 
 pub mod code {
     use crate::str::CStr;
@@ -37,7 +36,6 @@ pub mod code {
     const EINTR_STR: &'static CStr = crate::c_str!("EINTRPT ");
     const EINVAL_STR: &'static CStr = crate::c_str!("EINVAL  ");
     const ENOENT_STR: &'static CStr = crate::c_str!("ENOENT  ");
-    const ENOSPC_STR: &'static CStr = crate::c_str!("ENOSPC  ");
     const EPERM_STR: &'static CStr = crate::c_str!("EPERM   ");
     const ETRAP_STR: &'static CStr = crate::c_str!("ETRAP   ");
     const UNKNOW_STR: &'static CStr = crate::c_str!("EUNKNOW ");
@@ -56,7 +54,6 @@ pub mod code {
             rt_bindings::RT_EINTR => EINTR_STR,
             rt_bindings::RT_EINVAL => EINVAL_STR,
             rt_bindings::RT_ENOENT => ENOENT_STR,
-            rt_bindings::RT_ENOSPC => ENOSPC_STR,
             rt_bindings::RT_EPERM => EPERM_STR,
             rt_bindings::RT_ETRAP => ETRAP_STR,
             _ => UNKNOW_STR,
@@ -160,12 +157,12 @@ pub unsafe extern "C" fn rt_set_errno(error: i32) {
 pub unsafe extern "C" fn _rt_errno() -> *mut i32 {
     let nest = irq::rt_interrupt_get_nest();
     if nest != 0 {
-        return &RT_ERRNO.0 as *const i32 as *mut i32;
+        return &raw const RT_ERRNO.0 as *const i32 as *mut i32;
     }
 
     let tid = thread::rt_thread_self();
     if tid.is_null() {
-        return &RT_ERRNO.0 as *const i32 as *mut i32;
+        return &raw const RT_ERRNO.0 as *const i32 as *mut i32;
     }
 
     &mut (*tid).error.0

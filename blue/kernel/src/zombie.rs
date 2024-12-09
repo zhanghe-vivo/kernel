@@ -3,7 +3,7 @@ use crate::{
 };
 use blue_infra::list::doubly_linked_list::ListHead;
 use core::{pin::Pin, ptr::NonNull};
-use pinned_init::*;
+use pinned_init::{pin_data, pin_init, PinInit};
 
 #[cfg(feature = "RT_USING_SMP")]
 use crate::{

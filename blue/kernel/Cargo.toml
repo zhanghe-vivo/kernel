@@ -21,7 +21,6 @@ paste = "1.0.6"
 pinned-init = { version = "0.0.8", features = ["alloc"], default-features = false }
 blue_arch = { path = "../arch" }
 rt_bindings = { path = "../os_compat/rt_thread" }  # todo: dependency by cfg
-downcast-rs = { version = "1.2", default-features = false }
 blue_infra = { path = "../infra" }
 
 [profile.dev]
@@ -196,6 +195,9 @@ RT_NAME_MAX = []
 RT_USING_MODULE = []
 RT_USING_HEAP_ISR = []
 RT_KSERVICE_USING_STDLIB_MEMORY = []
+_MSC_VER = []
+RT_TIMER_THREAD_STACK_SIZE = []
+RT_MAIN_THREAD_PRIORITY = []
 
 # Add for arm mps boards
 ARCH_ARM_CORTEX_M = []

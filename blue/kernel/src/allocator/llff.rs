@@ -1,7 +1,6 @@
 use crate::sync::{new_heaplock, HeapLock};
-use core::alloc::Layout;
-use core::ptr::NonNull;
-use pinned_init::*;
+use core::{alloc::Layout, ptr::NonNull};
+use pinned_init::{pin_data, pin_init, pin_init_array_from_fn, pin_init_from_closure, PinInit};
 
 pub mod linked_list_heap;
 use linked_list_heap::Heap as LLHeap;

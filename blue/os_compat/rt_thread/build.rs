@@ -1,7 +1,5 @@
 use bindgen::Builder;
-use std::env;
-use std::fs;
-use std::path::PathBuf;
+use std::{env, fs, path::PathBuf};
 
 fn main() {
     let current_dir = env::current_dir().expect("Failed to get current directory");

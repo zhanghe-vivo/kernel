@@ -8,8 +8,7 @@ pub mod scheduler;
 pub mod smp;
 
 // re-exports
-pub use crate::interrupt::IInterrupt;
-pub use crate::scheduler::IScheduler;
+pub use crate::{interrupt::IInterrupt, scheduler::IScheduler};
 
 #[cfg(all(cortex_m, target_os = "none"))]
 pub mod cortex_m;

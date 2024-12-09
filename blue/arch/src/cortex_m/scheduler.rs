@@ -1,17 +1,23 @@
 //! ARM Cortex-M implementation of [`IScheduler`] and context switch.
 
-use core::arch::{asm, naked_asm};
-use core::mem;
-use cortex_m::peripheral::scb;
-use cortex_m::peripheral::scb::VectActive;
-use cortex_m::peripheral::syst::SystClkSource;
-use cortex_m::peripheral::SCB;
-use cortex_m::register::control::{Fpca, Npriv, Spsel};
-use cortex_m::{asm, Peripherals};
+use core::{
+    arch::{asm, naked_asm},
+    mem,
+};
+use cortex_m::{
+    asm,
+    peripheral::{scb, scb::VectActive, syst::SystClkSource, SCB},
+    register::control::{Fpca, Npriv, Spsel},
+    Peripherals,
+};
 
-use crate::arch::stack_frame::{StackFrame, StackFrameExtension, StackSettings};
-use crate::arch::Arch;
-use crate::scheduler::IScheduler;
+use crate::{
+    arch::{
+        stack_frame::{StackFrame, StackFrameExtension, StackSettings},
+        Arch,
+    },
+    scheduler::IScheduler,
+};
 
 extern "C" {
     static __StackTop: u32;
@@ -27,6 +33,7 @@ extern "C" {
 #[no_mangle]
 #[naked]
 pub unsafe extern "C" fn PendSV_Handler() {
+    // SAFETY: Safe bare metal assembly operations
     unsafe {
         naked_asm!(
             "cpsid   I", // disable interrupt
@@ -177,6 +184,7 @@ impl IScheduler for Arch {
 
     #[cfg(any(armv7m, armv7em))]
     fn context_switch_to(stack_ptr: *const usize) -> ! {
+        // SAFETY: Safe bare metal assembly operations
         unsafe {
             asm!(
                 "ldmia r0!, {{r2, r3}}",    // pop exception_lr and control
@@ -195,7 +203,7 @@ impl IScheduler for Arch {
         }
     }
 
-    #[cfg(all(armv8m))]
+    #[cfg(armv8m)]
     fn context_switch_to(stack_ptr: *const usize) -> ! {
         unsafe {
             asm!(
@@ -227,6 +235,7 @@ impl IScheduler for Arch {
     }
 
     fn start_switch() {
+        // SAFETY: Safe register and assembly operations
         unsafe {
             let mut scb = Peripherals::steal();
             // enable systick counter
@@ -240,25 +249,25 @@ impl IScheduler for Arch {
 
             // set control register
             let mut control = cortex_m::register::control::read();
-            // 检查当前使用的堆栈指针
+            // Check current stack pointer
             if !control.spsel().is_psp() {
-                // 如果使用MSP，则读取MSP并设置PSP为相同值
+                // If using MSP, read MSP and set PSP to the same value
                 asm!(
-                    "mrs     {tmp}, msp",      // 读取 MSP
-                    "msr     psp, {tmp}",      // 设置 PSP
+                    "mrs     {tmp}, msp",      // read MSP
+                    "msr     psp, {tmp}",      // set to PSP
                     "isb sy",
                     tmp = out(reg) _,
                 );
 
                 #[cfg(armv8m)]
                 asm!(
-                    "mrs     {tmp}, msplim",  // 读取 MSPLIM
-                    "msr     psplim, {tmp}",  // 设置 PSPLIM
+                    "mrs     {tmp}, msplim",  // read MSPLIM
+                    "msr     psplim, {tmp}",  // set to PSPLIM
                     "isb sy",
                     tmp = out(reg) _,
                 );
 
-                // 切换到 psp
+                // switch to PSP
                 control.set_spsel(Spsel::Psp);
                 control.set_npriv(Npriv::Privileged);
                 #[cfg(has_fpu)]
@@ -281,7 +290,7 @@ impl IScheduler for Arch {
                 asm!("msr msplim, {}", in(reg) stack_limit);
             }
 
-            // 6. 设置 PendSV, 并打开异常和中断
+            // Set PendSV and enable exceptions and interrupts
             asm!(
                 "ldr     r0, =0xE000ED04", // SCB->ICSR
                 "ldr     r1, =(1 << 28)",  // PENDSVSET

@@ -1,8 +1,10 @@
 #![allow(dead_code)]
-use crate::alloc::boxed::Box;
+#[cfg(feature = "RT_USING_SMP")]
+use crate::cpu::CPU_DETACHED;
 use crate::{
+    alloc::boxed::Box,
     clock,
-    cpu::{Cpu, CPUS_NUMBER, CPU_DETACHED},
+    cpu::{Cpu, CPUS_NUMBER},
     error::{code, Error},
     //    list_head_entry, list_head_for_each, object,
     object::{self, KObjectBase, KernelObject, ObjectClassType},
@@ -16,8 +18,7 @@ use crate::{
     zombie,
 };
 use alloc::alloc;
-use blue_arch::arch::Arch;
-use blue_arch::IScheduler;
+use blue_arch::{arch::Arch, IScheduler};
 use blue_infra::list::doubly_linked_list::ListHead;
 use core::{
     alloc::{AllocError, Layout},
@@ -29,7 +30,10 @@ use core::{
     ptr::{self, NonNull},
     sync::atomic::{AtomicUsize, Ordering},
 };
-use pinned_init::*;
+use pinned_init::{
+    init, pin_data, pin_init, pin_init_array_from_fn, pin_init_from_closure, pinned_drop, zeroed,
+    InPlaceInit, Init, PinInit,
+};
 use rt_bindings;
 
 // compatible with C
@@ -65,11 +69,6 @@ macro_rules! thread_list_node_entry {
         crate::container_of!($node, crate::thread::RtThread, tlist)
     };
 }
-use crate::object::rt_object_get_type;
-use crate::rt_bindings::{
-    rt_err_t, rt_object, rt_uint8_t, RT_EOK, RT_ERROR, RT_THREAD_CTRL_CHANGE_PRIORITY,
-    RT_THREAD_SUSPEND_MASK,
-};
 pub use thread_list_node_entry;
 
 const MAX_THREAD_SIZE: usize = 1024;
@@ -565,7 +564,7 @@ impl RtThread {
                     Self::exit as *const usize,
                 ) as *mut usize
             };
-            unsafe { cur_ref.stack.set_sp(sp) };
+            cur_ref.stack.set_sp(sp);
             cur_ref.cleanup = Self::default_cleanup;
 
             let init = Timer::static_init(
@@ -581,7 +580,14 @@ impl RtThread {
             }
 
             cur_ref.tid = Self::new_tid();
-            unsafe { TIDS.id.lock()[cur_ref.tid as usize].set(Some(NonNull::new_unchecked(slot))) };
+            unsafe {
+                (&raw const TIDS as *const UnsafeStaticInit<Tid, TidInit>)
+                    .as_ref()
+                    .unwrap_unchecked()
+                    .id
+                    .lock()[cur_ref.tid as usize]
+                    .set(Some(NonNull::new_unchecked(slot)));
+            }
 
             cur_ref.spinlock = RawSpin::new();
             cur_ref.error = code::EOK;
@@ -738,7 +744,13 @@ impl RtThread {
     pub(crate) fn new_tid() -> usize {
         static TID: AtomicUsize = AtomicUsize::new(0);
         let id = TID.fetch_add(1, Ordering::SeqCst);
-        let tids = unsafe { TIDS.id.lock() };
+        let tids = unsafe {
+            (&raw const TIDS as *const UnsafeStaticInit<Tid, TidInit>)
+                .as_ref()
+                .unwrap_unchecked()
+                .id
+                .lock()
+        };
         if id >= MAX_THREAD_SIZE || !tids[id].get().is_none() {
             for i in 0..MAX_THREAD_SIZE {
                 if tids[i].get().is_none() {
@@ -752,7 +764,7 @@ impl RtThread {
     }
 
     #[no_mangle]
-    extern "C" fn default_cleanup(thread: *mut RtThread) {}
+    extern "C" fn default_cleanup(_thread: *mut RtThread) {}
 
     // thread timeout handler func.
     #[no_mangle]
@@ -796,8 +808,6 @@ impl RtThread {
     #[cfg(feature = "RT_USING_MUTEX")]
     #[inline]
     fn detach_from_mutex(&mut self) {
-        use core::future::pending;
-
         let level = self.spinlock.lock_irqsave();
 
         // as raw mutex release may use sched_lock.
@@ -832,54 +842,46 @@ impl RtThread {
 
     #[inline]
     pub(crate) fn get_mutex_priority(&self) -> u8 {
-        unsafe {
-            let mut priority = self.priority.get_initial();
+        let mut priority = self.priority.get_initial();
 
-            crate::list_head_for_each!(node, &self.mutex_info.taken_list, {
-                let mutex = crate::list_head_entry!(node.as_ptr(), RtMutex, taken_list);
-                let mut mutex_prio = (*mutex).priority;
-                mutex_prio = if mutex_prio < (*mutex).ceiling_priority {
-                    mutex_prio
-                } else {
-                    (*mutex).ceiling_priority
-                };
+        crate::list_head_for_each!(node, &self.mutex_info.taken_list, {
+            let mutex = unsafe { &*crate::list_head_entry!(node.as_ptr(), RtMutex, taken_list) };
+            let mut mutex_prio = mutex.priority;
+            mutex_prio = if mutex_prio < mutex.ceiling_priority {
+                mutex_prio
+            } else {
+                mutex.ceiling_priority
+            };
 
-                if priority > mutex_prio {
-                    priority = mutex_prio;
-                }
-            });
+            if priority > mutex_prio {
+                priority = mutex_prio;
+            }
+        });
 
-            priority
-        }
+        priority
     }
 
     #[inline]
-    pub(crate) fn update_priority(&mut self, priority: u8, suspend_flag: u32) -> i32 {
-        let mut ret = RT_EOK as i32;
+    pub(crate) fn update_priority(&mut self, priority: u8, suspend_flag: u32) -> Error {
+        let mut ret = code::EOK;
         // Change priority of the thread
         self.change_priority(priority);
         while self.stat.is_suspended() {
             //Whether change the priority of the taken mutex
             if let Some(mut pending_mutex) = self.mutex_info.pending_to {
-                let mut mutex_priority: u8 = 0xff;
                 let pending_mutex = unsafe { pending_mutex.as_mut() };
                 let owner_thread = unsafe { &mut *pending_mutex.owner };
                 // Re-insert thread to suspended thread list
                 self.remove_tlist();
 
-                ret = pending_mutex
-                    .inner_queue
-                    .enqueue_waiter
-                    .wait(self, suspend_flag as u32);
-
-                if ret == RT_EOK as i32 {
+                if ret == code::EOK {
                     // Update priority
                     pending_mutex.update_priority();
-                    mutex_priority = owner_thread.get_mutex_priority();
+                    let mutex_priority = owner_thread.get_mutex_priority();
                     if mutex_priority != owner_thread.priority.get_current() {
                         owner_thread.change_priority(mutex_priority);
                     } else {
-                        ret = -(RT_ERROR as i32);
+                        ret = code::ERROR;
                     }
                 }
             }
@@ -929,7 +931,12 @@ impl RtThread {
         let scheduler = Cpu::get_current_scheduler();
         scheduler.preempt_disable();
         unsafe {
-            TIDS.id.lock()[self.tid as usize].set(None);
+            (&raw const TIDS as *const UnsafeStaticInit<Tid, TidInit>)
+                .as_ref()
+                .unwrap_unchecked()
+                .id
+                .lock()[self.tid as usize]
+                .set(None);
         }
         #[cfg(feature = "debug_scheduler")]
         println!("thread detach: {:?}", self.get_name());
@@ -939,7 +946,13 @@ impl RtThread {
         #[cfg(feature = "RT_USING_MUTEX")]
         self.detach_from_mutex();
 
-        unsafe { zombie::ZOMBIE_MANAGER.zombie_enqueue(self) };
+        unsafe {
+            (&raw const zombie::ZOMBIE_MANAGER as *const UnsafeStaticInit<zombie::ZombieManager, _>)
+                .cast_mut()
+                .as_mut()
+                .unwrap_unchecked()
+                .zombie_enqueue(self)
+        };
 
         scheduler.do_task_schedule();
         scheduler.preempt_enable();

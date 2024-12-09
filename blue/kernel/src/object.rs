@@ -1,23 +1,20 @@
 use crate::{
     allocator::{rt_free, rt_malloc},
     klibc::{rt_memset, rt_strncpy},
-    print, println,
-    process::*,
-    sync::event::RtEvent,
-    sync::lock::mutex::RtMutex,
-    sync::mailbox::RtMailbox,
-    sync::message_queue::RtMessageQueue,
-    sync::semaphore::RtSemaphore,
+    process::{
+        find_object, foreach, get_objects_by_type, insert, object_addr_detect, remove, rt_foreach,
+        size, Kprocess,
+    },
+    rt_bindings::*,
+    sync::{
+        event::RtEvent, lock::mutex::RtMutex, mailbox::RtMailbox, message_queue::RtMessageQueue,
+        semaphore::RtSemaphore,
+    },
     thread::RtThread,
-    *,
 };
 use blue_infra::list::doubly_linked_list::ListHead;
 use core::{ffi, fmt::Debug, mem, ptr, slice};
-use {
-    downcast_rs::{impl_downcast, Downcast},
-    pinned_init::*,
-    rt_bindings::*,
-};
+use pinned_init::{pin_data, pin_init, PinInit};
 
 /// Base kernel Object
 #[pin_data]
@@ -165,7 +162,7 @@ pub enum ObjectClassType {
 }
 
 /// Common interface of a kernel object.
-pub trait KernelObject: Downcast {
+pub trait KernelObject {
     /// Get the name of the type of the kernel object.
     fn type_name(&self) -> u8;
     /// Get kernel object's name.
@@ -186,8 +183,6 @@ pub trait KernelObject: Downcast {
         F: Fn(&ListHead),
         Self: Sized;
 }
-
-impl_downcast!(KernelObject);
 
 impl KernelObject for KObjectBase {
     fn type_name(&self) -> u8 {
@@ -494,7 +489,7 @@ pub extern "C" fn rt_object_for_each_callback(
     callback_fn: extern "C" fn(rt_object_t, usize, *mut ffi::c_void),
     args: *mut ffi::c_void,
 ) {
-    rt_foreach(callback_fn, obj_type, args);
+    let _ = rt_foreach(callback_fn, obj_type, args);
 }
 
 #[cfg(all(feature = "RT_USING_HOOK", feature = "RT_HOOK_USING_FUNC_PTR"))]
@@ -639,10 +634,10 @@ macro_rules! format_name {
         let name_cstr = CStr::from_char_ptr($name);
         match name_cstr.to_str() {
             Ok(name) => {
-                print!("{:<1$}", name, $width);
+                crate::print!("{:<1$}", name, $width);
             }
             Err(_) => {
-                println!("Error when converting C string to UTF-8");
+                crate::println!("Error when converting C string to UTF-8");
             }
         }
     }};

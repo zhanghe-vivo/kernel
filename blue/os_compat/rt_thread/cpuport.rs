@@ -1,5 +1,4 @@
 use blue_arch::{arch::Arch, smp, IInterrupt};
-use core::arch::asm;
 
 #[no_mangle]
 #[inline(always)]

@@ -1,22 +1,23 @@
-use crate::allocator::{align_up_size, rt_free, rt_malloc};
-use crate::cpu::Cpu;
-use crate::error::{code, Error};
-use crate::impl_kobject;
-use crate::list_head_for_each;
-use crate::object::*;
-use crate::rt_bindings::{
-    RT_EFULL, RT_EOK, RT_ERROR, RT_IPC_FLAG_FIFO, RT_IPC_FLAG_PRIO, RT_MQ_ENTRY_MAX,
-    RT_THREAD_SUSPEND_MASK,
+use crate::{
+    allocator::{align_up_size, rt_free, rt_malloc},
+    cpu::Cpu,
+    error::{code, Error},
+    impl_kobject, list_head_for_each,
+    object::*,
+    rt_bindings::{
+        RT_EFULL, RT_EOK, RT_ERROR, RT_IPC_FLAG_FIFO, RT_IPC_FLAG_PRIO, RT_MQ_ENTRY_MAX,
+    },
+    sync::RawSpin,
+    thread::{RtThread, SuspendFlag},
 };
-use crate::sync::RawSpin;
-use crate::thread::{RtThread, SuspendFlag};
 use blue_infra::list::doubly_linked_list::ListHead;
-use core::ffi;
-use core::mem;
-use core::pin::Pin;
-use core::ptr::{self, null_mut, NonNull};
-use core::slice;
-use pinned_init::*;
+use core::{
+    ffi, mem,
+    pin::Pin,
+    ptr::{self, null_mut, NonNull},
+    slice,
+};
+use pinned_init::{pin_data, pin_init, pin_init_from_closure, pinned_drop, PinInit};
 
 pub(crate) const IPC_SYS_QUEUE_FIFO: u32 = 0;
 pub(crate) const IPC_SYS_QUEUE_PRIO: u32 = 1;
@@ -393,7 +394,7 @@ impl RtSysQueue {
 
         while !node.is_null() {
             if unsafe { (*node).prio < (*hdr).prio } {
-                if (prev_node == null_mut()) {
+                if prev_node == null_mut() {
                     self.head = unsafe { Some(NonNull::new_unchecked(hdr as *mut u8)) };
                 } else {
                     unsafe { (*prev_node).next = hdr };

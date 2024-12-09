@@ -1,16 +1,15 @@
 #![allow(dead_code)]
 //! The TLSF allocator core
-use const_default1::ConstDefault;
 use core::{
     alloc::Layout,
-    debug_assert, debug_assert_eq,
+    debug_assert, debug_assert_eq, fmt,
     hint::unreachable_unchecked,
     marker::PhantomData,
     mem::{self, MaybeUninit},
     num::NonZeroUsize,
     ptr::NonNull,
 };
-use pinned_init::*;
+use pinned_init::{init, zeroed, Init, Zeroable};
 
 use crate::allocator::{
     block_hdr::*,
@@ -940,9 +939,6 @@ impl<
     ///  - The call must happen-before the deallocation or reallocation of the
     ///    memory block.
     ///
-    #[cfg(feature = "unstable")]
-    #[cfg_attr(feature = "doc_cfg", doc(cfg(feature = "unstable")))]
-    // TODO: The name could use bike-shedding
     pub unsafe fn allocation_usable_size(ptr: NonNull<u8>) -> usize {
         size_of_allocation_unknown_align(ptr)
     }
@@ -1321,8 +1317,6 @@ impl<
     /// // Since we have allocated memory, we should have less free space now
     /// assert!(free_bytes2 < free_bytes1);
     /// ```
-    #[cfg(feature = "unstable")]
-    #[cfg_attr(feature = "doc_cfg", doc(cfg(feature = "unstable")))]
     pub unsafe fn iter_blocks(
         &self,
         pool: NonNull<[u8]>,
@@ -1366,13 +1360,10 @@ impl<
 /// Allows the caller of [`Tlsf::iter_blocks`] to examine the properties of a
 /// memory block in a [`Tlsf`] memory pool.
 #[derive(Clone, Copy)]
-#[cfg(feature = "unstable")]
-#[cfg_attr(feature = "doc_cfg", doc(cfg(feature = "unstable")))]
 pub struct BlockInfo<'a> {
     block_hdr: &'a BlockHdr,
 }
 
-#[cfg(feature = "unstable")]
 impl fmt::Debug for BlockInfo<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("BlockInfo")
@@ -1383,7 +1374,6 @@ impl fmt::Debug for BlockInfo<'_> {
     }
 }
 
-#[cfg(feature = "unstable")]
 impl BlockInfo<'_> {
     /// Get this block's size, including the header.
     #[inline]

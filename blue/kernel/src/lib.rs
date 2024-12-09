@@ -1,5 +1,4 @@
 #![no_std]
-#![feature(panic_info_message)]
 #![allow(internal_features)]
 #![feature(core_intrinsics)]
 #![feature(link_llvm_intrinsics)]
@@ -42,7 +41,7 @@ use core::sync::atomic::{self, Ordering};
 
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
-    if unsafe { cpu::CPUS.is_inited() } {
+    if cpu::Cpus::is_inited() {
         cpu::Cpus::lock_cpus();
     }
     println!("{}", info);

@@ -1,7 +1,6 @@
 use crate::sync::{new_heaplock, HeapLock};
-use core::alloc::Layout;
-use core::ptr::NonNull;
-use pinned_init::*;
+use core::{alloc::Layout, ptr::NonNull};
+use pinned_init::{pin_data, pin_init, PinInit};
 
 pub mod tlsf_heap;
 use tlsf_heap::Tlsf;

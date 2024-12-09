@@ -13,7 +13,7 @@ use core::{
     cell::UnsafeCell,
     marker::{PhantomData, PhantomPinned},
 };
-use pinned_init::*;
+use pinned_init::{pin_data, pin_init, pin_init_from_closure, PinInit};
 
 pub mod heaplock;
 

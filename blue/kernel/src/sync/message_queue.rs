@@ -11,7 +11,7 @@ use crate::{
     rt_bindings::{
         rt_debug_not_in_interrupt, rt_debug_scheduler_available, rt_err_t, rt_int32_t, rt_object,
         rt_object_hook_call, rt_size_t, rt_ssize_t, rt_uint16_t, rt_uint32_t, rt_uint8_t,
-        RT_ALIGN_SIZE, RT_EFULL, RT_EINTR, RT_EINVAL, RT_ENOMEM, RT_EOK, RT_ERROR, RT_ETIMEOUT,
+        RT_ALIGN_SIZE, RT_EFULL, RT_EINVAL, RT_ENOMEM, RT_EOK, RT_ERROR, RT_ETIMEOUT,
         RT_INTERRUPTIBLE, RT_IPC_CMD_RESET, RT_IPC_FLAG_FIFO, RT_IPC_FLAG_PRIO, RT_KILLABLE,
         RT_MQ_ENTRY_MAX, RT_TIMER_CTRL_SET_TIME, RT_UNINTERRUPTIBLE,
     },
@@ -33,11 +33,10 @@ use core::{
 };
 
 use crate::alloc::boxed::Box;
+use cfg_if;
 use core::pin::Pin;
 use kernel::{fmt, str::CString};
-
-use cfg_if;
-use pinned_init::*;
+use pinned_init::{pin_data, pin_init, pin_init_from_closure, pinned_drop, InPlaceInit, PinInit};
 
 #[pin_data(PinnedDrop)]
 pub struct KMessageQueue {
@@ -109,8 +108,8 @@ impl KMessageQueue {
     }
 
     pub fn receive(&self, timeout: i32) -> Result<Box<[u8]>, Error> {
-        let mut buffer = null_mut();
-        let mut size = 0 as usize;
+        let buffer = null_mut();
+        let size = 0 as usize;
         let result = unsafe { (*self.raw.get()).receive(buffer, size, timeout) };
         if result == RT_EOK as i32 {
             if buffer.is_null() || size == 0 {

@@ -1,18 +1,17 @@
-use crate::cpu::Cpu;
-use crate::error::code;
-use crate::impl_kobject;
-use crate::object::{KObjectBase, KernelObject, ObjectClassType, NAME_MAX};
-use crate::rt_bindings::{
-    rt_debug_in_thread_context, rt_debug_not_in_interrupt, RT_EINVAL, RT_EOK, RT_ERROR,
-    RT_ETIMEOUT, RT_IPC_FLAG_FIFO, RT_IPC_FLAG_PRIO, RT_TIMER_CTRL_SET_TIME, RT_UNINTERRUPTIBLE,
-    RT_WAITING_FOREVER,
+use crate::{
+    cpu::Cpu,
+    error::code,
+    impl_kobject,
+    object::{KObjectBase, KernelObject, ObjectClassType, NAME_MAX},
+    rt_bindings::{
+        rt_debug_in_thread_context, rt_debug_not_in_interrupt, RT_EINVAL, RT_EOK, RT_ERROR,
+        RT_ETIMEOUT, RT_IPC_FLAG_FIFO, RT_IPC_FLAG_PRIO, RT_TIMER_CTRL_SET_TIME,
+        RT_UNINTERRUPTIBLE, RT_WAITING_FOREVER,
+    },
+    sync::{lock::mutex::RtMutex, semaphore::RtSemaphore, RawSpin},
 };
-use crate::sync::lock::mutex::RtMutex;
-use crate::sync::semaphore::RtSemaphore;
-use crate::sync::RawSpin;
 use blue_infra::list::doubly_linked_list::ListHead;
-use core::ffi::c_void;
-use core::ptr::null_mut;
+use core::{ffi::c_void, ptr::null_mut};
 use pinned_init::*;
 
 /// Condition variable raw structure

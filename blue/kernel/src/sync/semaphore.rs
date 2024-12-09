@@ -12,18 +12,15 @@ use crate::{
     },
     sync::{ipc_common::*, lock::spinlock::RawSpin},
     thread::RtThread,
-    timer,
 };
 use blue_infra::list::doubly_linked_list::ListHead;
-use core::mem;
-use core::pin::Pin;
-use core::{ffi::c_void, marker::PhantomPinned, ptr::null_mut};
+use core::{ffi::c_void, marker::PhantomPinned, mem, pin::Pin, ptr::null_mut};
 
 use crate::alloc::boxed::Box;
 use core::cell::UnsafeCell;
 use kernel::{fmt, str::CString};
 
-use pinned_init::*;
+use pinned_init::{pin_data, pin_init, pin_init_from_closure, pinned_drop, InPlaceInit, PinInit};
 
 #[pin_data(PinnedDrop)]
 pub struct KSemaphore {

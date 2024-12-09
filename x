@@ -34,25 +34,42 @@ def Build(config, toml):
     gcc_include_path = os.path.join(gcc_path, 'include')
     include_path = f'{bsp_path};{ROOT}/include;{ROOT}/components/finsh;{gcc_include_path}'
     compat_os = 'rt_thread'
+    toolchain = toml['target'][config.target]['toolchain']
     if config.reconfigure:
         rc = subprocess.call(['scons', '--menuconfig'], cwd=bsp_path)
         if rc != 0:
             logging.error(cmd)
             return rc
+    features = ParseRTConfig(config, toml)
     if config.clean:
         rc = subprocess.call(['scons', '--clean'], cwd=bsp_path)
         if rc != 0:
             logging.error(cmd)
             return rc
-    features = ParseRTConfig(config, toml)
+        action = 'clean'
+        cmd = f'COMPAT_OS="{compat_os}" INCLUDE_PATH="{include_path}" cargo {action} --manifest-path {toml_path} --target {toolchain} -Z unstable-options'
+        rc = subprocess.call(cmd, shell=True, cwd=os.path.join(ROOT, 'blue'))
+        if rc != 0:
+            logging.error(cmd)
+            return rc
+    if config.fix:
+        action = 'fix'
+        cmd = f'COMPAT_OS="{compat_os}" INCLUDE_PATH="{include_path}" cargo {action} --allow-dirty --allow-staged --bins --lib --manifest-path {toml_path} --target {toolchain} -Z unstable-options --features ' + shlex.quote(
+            features)
+        rc = subprocess.call(cmd, shell=True, cwd=os.path.join(ROOT, 'blue'))
+        if rc != 0:
+            logging.error(cmd)
+            return rc
     if 'USE_RUST' in features:
-        toolchain = toml['target'][config.target]['toolchain']
-        cmd = f'COMPAT_OS="{compat_os}" INCLUDE_PATH="{include_path}" cargo build --manifest-path {toml_path} --target {toolchain} --artifact-dir {out_path} -Z unstable-options --features ' + shlex.quote(features)
+        action = 'build'
+        cmd = f'COMPAT_OS="{compat_os}" INCLUDE_PATH="{include_path}" cargo {action} --manifest-path {toml_path} --target {toolchain} --artifact-dir {out_path} -Z unstable-options --features ' + shlex.quote(
+            features)
         rc = subprocess.call(cmd, shell=True, cwd=os.path.join(ROOT, 'blue'))
         if rc != 0:
             logging.error(cmd)
             return rc
     return subprocess.call(['scons'], cwd=bsp_path)
+
 
 def Clippy(config, toml):
     target = config.target
@@ -66,7 +83,8 @@ def Clippy(config, toml):
     features = ParseRTConfig(config, toml)
     toolchain = toml['target'][config.target]['toolchain']
     cmd = f'cargo clippy --manifest-path {toml_path}'
-    cmd = f'COMPAT_OS="{compat_os}" INCLUDE_PATH="{include_path}" cargo clippy --manifest-path {toml_path} --target {toolchain} --features ' + shlex.quote(features) + ' -- -D clippy::undocumented_unsafe_blocks'
+    cmd = f'COMPAT_OS="{compat_os}" INCLUDE_PATH="{include_path}" cargo clippy --manifest-path {toml_path} --target {toolchain} --features ' + shlex.quote(
+        features) + ' -- -D clippy::undocumented_unsafe_blocks'
     return subprocess.call(cmd, shell=True, cwd=os.path.join(ROOT, 'blue'))
 
 
@@ -98,6 +116,10 @@ def main():
                        action='store_true',
                        default=False,
                        help=u"重新配置编译选项")
+    build.add_argument('--fix',
+                       action='store_true',
+                       default=False,
+                       help=u"构建前修复代码")
     build.add_argument('--clean',
                        action='store_true',
                        default=False,
@@ -112,8 +134,8 @@ def main():
     clippy = subparsers.add_parser('clippy', description=u"代码规范检测")
     clippy.set_defaults(func=Clippy)
     clippy.add_argument('--target',
-                       default='qemu-vexpress-a9',
-                       help=u"指定构建的目标平台")
+                        default='qemu-vexpress-a9',
+                        help=u"指定构建的目标平台")
     config = parser.parse_args()
     if not config.action:
         parser.print_help()

@@ -71,7 +71,7 @@ unsafe impl GlobalAlloc for KernelAllocator {
 
 #[cfg(feature = "allocator_api")]
 mod allocator_api {
-    use super::*;
+    use super::{ptr, KernelAllocator, Layout, HEAP};
     use core::alloc::{AllocError, Allocator};
 
     unsafe impl Allocator for KernelAllocator {

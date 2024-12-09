@@ -1,6 +1,6 @@
 use crate::{
     klibc::rt_strncmp,
-    object::*,
+    object::{KObjectBase, ObjectClassType, NAME_MAX, OBJECT_CLASS_STATIC},
     scheduler::{rt_enter_critical, rt_exit_critical},
     static_init::UnsafeStaticInit,
     sync::RawSpin,
@@ -13,7 +13,7 @@ use core::{
     pin::Pin,
     ptr::{self, addr_of_mut},
 };
-use pinned_init::*;
+use pinned_init::{pin_data, pin_init_from_closure, PinInit};
 
 pub(crate) static mut KPROCESS: UnsafeStaticInit<Kprocess, KprocessInit> =
     UnsafeStaticInit::new(KprocessInit);

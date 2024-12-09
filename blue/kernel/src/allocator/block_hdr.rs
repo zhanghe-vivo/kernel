@@ -1,7 +1,9 @@
 #![allow(dead_code)]
-use core::alloc::Layout;
-use core::mem;
-use core::ptr::{addr_of, NonNull};
+use core::{
+    alloc::Layout,
+    mem,
+    ptr::{addr_of, NonNull},
+};
 
 /// The allocation granularity.
 ///

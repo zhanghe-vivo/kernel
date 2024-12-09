@@ -3,9 +3,11 @@
 // TODO: need to rewrite later.
 #![allow(dead_code)]
 use alloc::vec::Vec;
-use core::alloc::AllocError;
-use core::fmt::{self, Write};
-use core::ops::{self, Deref, DerefMut, Index};
+use core::{
+    alloc::AllocError,
+    fmt::{self, Write},
+    ops::{self, Deref, DerefMut, Index},
+};
 
 use crate::{
     error::{code, Error},
