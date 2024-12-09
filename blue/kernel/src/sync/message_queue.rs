@@ -406,7 +406,7 @@ impl RtMessageQueue {
         self.send_wait_internal(buffer, size, 0, timeout, RT_KILLABLE as u32)
     }
 
-    pub fn urgent(&mut self, buffer: *const u8, size: usize) -> rt_err_t {
+    pub fn urgent(&mut self, buffer: *const u8, size: usize) -> i32 {
         assert_eq!(
             self.type_name(),
             ObjectClassType::ObjectClassMessageQueue as u8
@@ -425,7 +425,20 @@ impl RtMessageQueue {
             );
         }
 
-        self.inner_queue.urgent_prio(buffer, size)
+        let mut urgent_size = 0;
+        cfg_if::cfg_if! {
+            if #[cfg(feature = "RT_USING_MESSAGEQUEUE_PRIORITY")] {
+                urgent_size = self.inner_queue.urgent_prio(buffer, size, prio);
+            } else {
+                urgent_size = self.inner_queue.urgent_fifo(buffer, size);
+            }
+        }
+
+        if urgent_size > 0 {
+            RT_EOK as i32
+        } else {
+            -(RT_ERROR as i32)
+        }
     }
 
     fn receive_internal(
@@ -525,11 +538,23 @@ impl RtMessageQueue {
             }
         }
 
+        let mut need_schedule = false;
+        if !self.inner_queue.sender.is_empty() {
+            self.inner_queue.sender.wake();
+            need_schedule = true;
+        }
+
+        self.inner_queue.unlock();
+
         unsafe {
             rt_object_hook_call!(
                 rt_object_take_hook,
                 &mut self.parent as *mut KObjectBase as *mut rt_object
             );
+        }
+
+        if need_schedule {
+            Cpu::get_current_scheduler().do_task_schedule();
         }
 
         size as i32
@@ -559,27 +584,28 @@ impl RtMessageQueue {
             self.inner_queue.receiver.inner_locked_wake_all();
             self.inner_queue.sender.inner_locked_wake_all();
 
-            // SAFETY: msg is valid
-            unsafe {
-                while !self.inner_queue.head.is_none() {
-                    let hdr = self.inner_queue.head.unwrap().as_ptr() as *mut RtSysQueueItemHeader;
+            cfg_if::cfg_if! {
+                if #[cfg(feature = "RT_USING_MESSAGEQUEUE_PRIORITY")] {
+                    while !self.inner_queue.head.is_none() {
+                        let hdr = self.inner_queue.head.unwrap().as_ptr() as *mut RtSysQueueItemHeader;
 
-                    self.inner_queue.head =
-                        unsafe { Some(NonNull::new_unchecked((*hdr).next as *mut u8)) };
-                    if self.inner_queue.tail.unwrap().as_ptr() == hdr as *mut u8 {
-                        self.inner_queue.tail = None;
+                        self.inner_queue.head =
+                            unsafe { Some(NonNull::new_unchecked((*hdr).next as *mut u8)) };
+                        if self.inner_queue.tail.unwrap().as_ptr() == hdr as *mut u8 {
+                            self.inner_queue.tail = None;
+                        }
+
+                        unsafe { (*hdr).next =
+                            self.inner_queue.free.unwrap().as_ptr() as *mut RtSysQueueItemHeader };
+                        self.inner_queue.free = unsafe { Some(NonNull::new_unchecked(hdr as *mut u8)) };
                     }
-
-                    (*hdr).next =
-                        self.inner_queue.free.unwrap().as_ptr() as *mut RtSysQueueItemHeader;
-                    self.inner_queue.free = unsafe { Some(NonNull::new_unchecked(hdr as *mut u8)) };
+                } else {
+                    self.inner_queue.read_pos = 0;
+                    self.inner_queue.write_pos = 0;
                 }
             }
 
-            self.inner_queue.read_pos = 0;
-            self.inner_queue.write_pos = 0;
             self.inner_queue.item_in_queue = 0;
-
             self.inner_queue.unlock();
 
             Cpu::get_current_scheduler().do_task_schedule();
@@ -766,7 +792,7 @@ pub unsafe extern "C" fn rt_mq_urgent(
     size: rt_size_t,
 ) -> rt_err_t {
     assert!(!mq.is_null());
-    (*mq).urgent(buffer as *const u8, size as usize)
+    (*mq).urgent(buffer as *const u8, size as usize) as rt_err_t
 }
 
 #[cfg(feature = "RT_USING_MESSAGEQUEUE")]

@@ -24,8 +24,8 @@ pub(crate) const IPC_SYS_QUEUE_PRIO: u32 = 1;
 pub(crate) const IPC_SYS_QUEUE_STUB: u32 = 2;
 
 macro_rules! sys_queue_item_data_addr {
-    ($msg:expr) => {
-        ($msg as *mut RtSysQueueItemHeader).offset(1) as *mut _
+    ($addr:expr) => {
+        ($addr as *mut RtSysQueueItemHeader).offset(1) as *mut _
     };
 }
 

@@ -15,7 +15,11 @@
 #define MAX_MSGS    5
 
 static struct rt_messagequeue static_mq;
+#ifdef RT_USING_MESSAGEQUEUE_PRIORITY
 static rt_uint8_t mq_buf[RT_MQ_BUF_SIZE(MSG_SIZE, MAX_MSGS)];
+#else
+static rt_uint8_t mq_buf[MSG_SIZE * MAX_MSGS];
+#endif
 
 static struct rt_thread mq_send_thread;
 static struct rt_thread mq_recv_thread;
