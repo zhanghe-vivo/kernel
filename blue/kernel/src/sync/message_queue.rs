@@ -431,7 +431,7 @@ impl RtMessageQueue {
         let mut urgent_size = 0;
         cfg_if::cfg_if! {
             if #[cfg(feature = "RT_USING_MESSAGEQUEUE_PRIORITY")] {
-                urgent_size = self.inner_queue.urgent_prio(buffer, size, prio);
+                urgent_size = self.inner_queue.urgent_prio(buffer, size);
             } else {
                 urgent_size = self.inner_queue.urgent_fifo(buffer, size);
             }

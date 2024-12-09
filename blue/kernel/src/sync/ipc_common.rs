@@ -2,7 +2,6 @@ use crate::allocator::{align_up_size, rt_free, rt_malloc};
 use crate::cpu::Cpu;
 use crate::error::{code, Error};
 use crate::impl_kobject;
-use crate::klibc::rt_memcpy;
 use crate::list_head_for_each;
 use crate::object::*;
 use crate::rt_bindings::{
@@ -15,7 +14,7 @@ use blue_infra::list::doubly_linked_list::ListHead;
 use core::ffi;
 use core::mem;
 use core::pin::Pin;
-use core::ptr::{null_mut, NonNull};
+use core::ptr::{self, null_mut, NonNull};
 use core::slice;
 use pinned_init::*;
 
@@ -31,7 +30,9 @@ macro_rules! sys_queue_item_data_addr {
 
 /// Sys Queue item header
 #[repr(C)]
+#[pin_data]
 pub(crate) struct RtSysQueueItemHeader {
+    #[pin]
     pub(crate) next: *mut RtSysQueueItemHeader,
     pub(crate) len: usize,
     pub(crate) prio: i32,
@@ -135,7 +136,7 @@ impl RtSysQueue {
                     ) as *mut RtSysQueueItemHeader
                 };
 
-                if head_raw.is_null() {
+                if !head_raw.is_null() {
                     // SAFETY: header_raw is null checked and within the range
                     unsafe { (*head_raw).next = free_raw as *mut RtSysQueueItemHeader };
                 }
@@ -182,8 +183,8 @@ impl RtSysQueue {
             sysq.read_pos = 0;
             sysq.write_pos = 0;
             sysq.queue_buf = None;
-            sysq.init_storage_internal(null_mut());
             sysq.working_mode = working_mode;
+            sysq.init_storage_internal(null_mut());
 
             unsafe {
                 RtWaitQueue::new(waiting_mode)
@@ -213,8 +214,8 @@ impl RtSysQueue {
         self.item_in_queue = 0;
         self.read_pos = 0;
         self.write_pos = 0;
-        let buf_size = self.init_storage_internal(buffer);
         self.working_mode = working_mode;
+        let buf_size = self.init_storage_internal(buffer);
 
         unsafe {
             RtWaitQueue::new(waiting_mode)
@@ -287,10 +288,10 @@ impl RtSysQueue {
 
         if let Some(mut buffer_raw) = self.queue_buf {
             unsafe {
-                rt_memcpy(
-                    buffer_raw.as_ptr().offset(self.write_pos as isize) as *mut core::ffi::c_void,
-                    buffer as *const core::ffi::c_void,
-                    size as usize,
+                ptr::copy_nonoverlapping(
+                    buffer,
+                    buffer_raw.as_ptr().offset(self.write_pos as isize),
+                    size,
                 );
             }
         } else {
@@ -316,10 +317,10 @@ impl RtSysQueue {
 
         if let Some(buffer_raw) = self.queue_buf {
             unsafe {
-                rt_memcpy(
-                    *buffer as *mut core::ffi::c_void,
-                    buffer_raw.as_ptr().offset(self.read_pos as isize) as *const core::ffi::c_void,
-                    size as usize,
+                ptr::copy_nonoverlapping(
+                    buffer_raw.as_ptr().offset(self.read_pos as isize),
+                    *buffer,
+                    size,
                 );
             }
         } else {
@@ -348,10 +349,10 @@ impl RtSysQueue {
 
         if let Some(buffer_raw) = self.queue_buf {
             unsafe {
-                rt_memcpy(
-                    buffer_raw.as_ptr().offset(self.read_pos as isize) as *mut core::ffi::c_void,
-                    buffer as *const core::ffi::c_void,
-                    size as usize,
+                ptr::copy_nonoverlapping(
+                    buffer,
+                    buffer_raw.as_ptr().offset(self.read_pos as isize),
+                    size,
                 );
             }
         } else {
@@ -377,11 +378,7 @@ impl RtSysQueue {
         hdr_ref.len = size;
 
         unsafe {
-            rt_memcpy(
-                sys_queue_item_data_addr!(hdr),
-                buffer as *const core::ffi::c_void,
-                size as usize,
-            );
+            ptr::copy_nonoverlapping(buffer, sys_queue_item_data_addr!(hdr), size);
         }
 
         self.spinlock.lock();
@@ -452,11 +449,7 @@ impl RtSysQueue {
         unsafe { (*hdr).len = size };
 
         unsafe {
-            rt_memcpy(
-                sys_queue_item_data_addr!(hdr),
-                buffer as *const core::ffi::c_void,
-                size as usize,
-            );
+            ptr::copy_nonoverlapping(buffer, sys_queue_item_data_addr!(hdr), size);
         }
 
         self.spinlock.lock();
@@ -516,13 +509,7 @@ impl RtSysQueue {
         }
 
         // SAFETY: hdr is null checked and buffer is valid
-        unsafe {
-            rt_memcpy(
-                buffer as *mut core::ffi::c_void,
-                sys_queue_item_data_addr!(hdr),
-                len,
-            )
-        };
+        unsafe { ptr::copy_nonoverlapping(sys_queue_item_data_addr!(hdr), buffer, len) };
 
         if !prio.is_null() {
             //SAFETY: msg is null checked and prio is valid

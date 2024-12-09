@@ -854,39 +854,32 @@ impl RtThread {
     }
 
     #[inline]
-    pub(crate) fn update_priority(&mut self, priority: u8, suspend_flag: u32) -> rt_err_t {
-        let mut ret = RT_EOK as rt_err_t;
+    pub(crate) fn update_priority(&mut self, priority: u8, suspend_flag: u32) -> i32 {
+        let mut ret = RT_EOK as i32;
         // Change priority of the thread
         self.change_priority(priority);
         while self.stat.is_suspended() {
             //Whether change the priority of the taken mutex
             if let Some(mut pending_mutex) = self.mutex_info.pending_to {
-                let mut mutex_priority: rt_uint8_t = 0xff;
+                let mut mutex_priority: u8 = 0xff;
                 let pending_mutex = unsafe { pending_mutex.as_mut() };
                 let owner_thread = unsafe { &mut *pending_mutex.owner };
                 // Re-insert thread to suspended thread list
                 self.remove_tlist();
-
-                /*ret = IPCObject::suspend_thread(
-                    &mut pending_mutex.inner_queue.sender.working_queue,
-                    self,
-                    rt_bindings::RT_IPC_FLAG_PRIO as u8,
-                    suspend_flag as u32,
-                );*/
 
                 ret = pending_mutex
                     .inner_queue
                     .enqueue_waiter
                     .wait(self, suspend_flag as u32);
 
-                if ret == RT_EOK as rt_err_t {
+                if ret == RT_EOK as i32 {
                     // Update priority
                     pending_mutex.update_priority();
                     mutex_priority = owner_thread.get_mutex_priority();
                     if mutex_priority != owner_thread.priority.get_current() {
                         owner_thread.change_priority(mutex_priority);
                     } else {
-                        ret = -(RT_ERROR as rt_err_t);
+                        ret = -(RT_ERROR as i32);
                     }
                 }
             }
