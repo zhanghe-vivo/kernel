@@ -13,7 +13,7 @@ use crate::{
     stack::Stack,
     static_init::UnsafeStaticInit,
     str::CStr,
-    sync::{ipc_common::*, lock::mutex::*, RawSpin, SpinLock},
+    sync::{lock::mutex::*, RawSpin, SpinLock},
     timer::Timer,
     zombie,
 };
@@ -873,6 +873,13 @@ impl RtThread {
                 let owner_thread = unsafe { &mut *pending_mutex.owner };
                 // Re-insert thread to suspended thread list
                 self.remove_tlist();
+
+                ret = Error::from_errno(
+                    pending_mutex
+                        .inner_queue
+                        .enqueue_waiter
+                        .wait(self, suspend_flag as u32),
+                );
 
                 if ret == code::EOK {
                     // Update priority

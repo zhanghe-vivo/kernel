@@ -2,7 +2,7 @@ use crate::{
     allocator::{align_up_size, rt_free, rt_malloc},
     cpu::Cpu,
     error::{code, Error},
-    impl_kobject, list_head_for_each,
+    list_head_for_each,
     object::*,
     rt_bindings::{
         RT_EFULL, RT_EOK, RT_ERROR, RT_IPC_FLAG_FIFO, RT_IPC_FLAG_PRIO, RT_MQ_ENTRY_MAX,
@@ -188,9 +188,9 @@ impl RtSysQueue {
             sysq.init_storage_internal(null_mut());
 
             unsafe {
-                RtWaitQueue::new(waiting_mode)
+                let _ = RtWaitQueue::new(waiting_mode)
                     .__pinned_init(&mut sysq.enqueue_waiter as *mut RtWaitQueue);
-                RtWaitQueue::new(waiting_mode)
+                let _ = RtWaitQueue::new(waiting_mode)
                     .__pinned_init(&mut sysq.dequeue_waiter as *mut RtWaitQueue);
             }
 
@@ -219,9 +219,9 @@ impl RtSysQueue {
         let buf_size = self.init_storage_internal(buffer);
 
         unsafe {
-            RtWaitQueue::new(waiting_mode)
+            let _ = RtWaitQueue::new(waiting_mode)
                 .__pinned_init(&mut self.enqueue_waiter as *mut RtWaitQueue);
-            RtWaitQueue::new(waiting_mode)
+            let _ = RtWaitQueue::new(waiting_mode)
                 .__pinned_init(&mut self.dequeue_waiter as *mut RtWaitQueue);
         }
 
@@ -258,6 +258,7 @@ impl RtSysQueue {
         false
     }
 
+    #[allow(dead_code)]
     #[inline]
     pub(crate) fn push_stub(&mut self) -> bool {
         if self.is_full() {
@@ -287,7 +288,7 @@ impl RtSysQueue {
     pub(crate) fn push_fifo(&mut self, buffer: *const u8, size: usize) -> i32 {
         assert_eq!(self.item_size, size);
 
-        if let Some(mut buffer_raw) = self.queue_buf {
+        if let Some(buffer_raw) = self.queue_buf {
             unsafe {
                 ptr::copy_nonoverlapping(
                     buffer,
@@ -364,11 +365,12 @@ impl RtSysQueue {
         size as i32
     }
 
+    #[allow(dead_code)]
     pub(crate) fn push_prio(&mut self, buffer: *const u8, size: usize, priority: i32) -> i32 {
         assert!(!self.free.is_none());
 
-        let mut hdr = self.free.unwrap().as_ptr() as *mut RtSysQueueItemHeader;
-        let mut hdr_ref = unsafe { &mut *hdr };
+        let hdr = self.free.unwrap().as_ptr() as *mut RtSysQueueItemHeader;
+        let hdr_ref = unsafe { &mut *hdr };
 
         self.free = unsafe { Some(NonNull::new_unchecked(hdr_ref.next as *mut u8)) };
 
@@ -428,6 +430,7 @@ impl RtSysQueue {
         size as i32
     }
 
+    #[allow(dead_code)]
     #[inline]
     pub(crate) fn urgent_prio(&mut self, buffer: *const u8, size: usize) -> i32 {
         self.spinlock.lock();
@@ -485,6 +488,7 @@ impl RtSysQueue {
         size as i32
     }
 
+    #[allow(dead_code)]
     #[inline]
     pub(crate) fn pop_prio(&mut self, buffer: *mut u8, size: usize, prio: *mut i32) -> i32 {
         let hdr = self.head.unwrap().as_ptr() as *mut RtSysQueueItemHeader;
@@ -568,6 +572,7 @@ impl RtWaitQueue {
         })
     }
 
+    #[allow(dead_code)]
     #[inline]
     pub(crate) fn init(&mut self, waiting_mode: u32) {
         unsafe {
@@ -576,6 +581,7 @@ impl RtWaitQueue {
         self.waiting_mode = waiting_mode;
     }
 
+    #[allow(dead_code)]
     #[inline]
     pub(crate) fn waiting_mode(&self) -> u32 {
         self.waiting_mode
@@ -591,6 +597,7 @@ impl RtWaitQueue {
         self.working_queue.next()
     }
 
+    #[allow(dead_code)]
     #[inline]
     pub(crate) fn tail(&self) -> Option<NonNull<ListHead>> {
         self.working_queue.prev()
@@ -665,8 +672,8 @@ impl RtWaitQueue {
         false
     }
 
+    #[allow(dead_code)]
     #[inline]
-
     pub(crate) fn inner_locked_wake(&mut self) -> bool {
         if let Some(node) = self.working_queue.next() {
             let thread: *mut RtThread = unsafe { crate::thread_list_node_entry!(node.as_ptr()) };
@@ -684,6 +691,7 @@ impl RtWaitQueue {
         false
     }
 
+    #[allow(dead_code)]
     #[inline]
     pub(crate) fn wake_all(&mut self) -> bool {
         let mut ret = true;
@@ -728,158 +736,6 @@ impl RtWaitQueue {
         }
 
         ret
-    }
-}
-
-/// Base structure of IPC object
-#[repr(C)]
-#[pin_data]
-pub struct IPCObject {
-    #[pin]
-    /// Inherit from KObjectBase
-    pub(crate) parent: KObjectBase,
-    /// IPC flag to use
-    pub(crate) flag: u8,
-    /// Spin lock IPCObject used
-    pub(crate) spinlock: RawSpin,
-    #[pin]
-    /// Threads pended on this IPC object
-    pub(crate) wait_list: ListHead,
-}
-
-impl_kobject!(IPCObject);
-
-impl IPCObject {
-    #[inline]
-    pub(crate) fn new(type_: u8, name: [i8; NAME_MAX], flag: u8) -> impl PinInit<Self> {
-        pin_init!(Self {
-            parent<-KObjectBase::new(type_, name),
-            flag: flag,
-            spinlock: RawSpin::new(),
-            wait_list <- ListHead::new(),
-        })
-    }
-
-    #[inline]
-    pub(crate) fn init(&mut self, type_: u8, name: *const i8, flag: u8) {
-        assert!((flag == RT_IPC_FLAG_FIFO as u8) || (flag == RT_IPC_FLAG_PRIO as u8));
-        self.parent.init(type_, name);
-        self.flag = flag;
-        self.spinlock = RawSpin::new();
-        self.init_wait_list();
-    }
-
-    #[inline]
-    fn init_wait_list(&mut self) {
-        unsafe {
-            let _ = ListHead::new().__pinned_init(&mut self.wait_list as *mut ListHead);
-        }
-    }
-
-    #[inline]
-    pub(crate) fn reinit(ipcobject: &mut IPCObject) -> i32 {
-        unsafe { Pin::new_unchecked(&mut ipcobject.wait_list).reinit() };
-        RT_EOK as i32
-    }
-
-    pub(crate) fn lock(&mut self) {
-        self.spinlock.lock();
-    }
-
-    pub(crate) fn unlock(&self) {
-        self.spinlock.unlock();
-    }
-
-    #[inline]
-    pub(crate) fn resume_thread(list: *mut ListHead) -> i32 {
-        unsafe {
-            if let Some(node) = (*list).next() {
-                let thread: *mut RtThread = crate::thread_list_node_entry!(node.as_ptr());
-                (*thread).error = code::EOK;
-                (*thread).resume();
-            }
-        }
-        RT_EOK as i32
-    }
-
-    #[inline]
-    pub(crate) fn resume_all_threads(list: *mut ListHead) -> i32 {
-        unsafe {
-            while !(*list).is_empty() {
-                if let Some(node) = (*list).next() {
-                    let spin_lock = RawSpin::new();
-                    spin_lock.lock();
-                    let thread: *mut RtThread = crate::thread_list_node_entry!(node.as_ptr());
-                    (*thread).error = code::ERROR;
-                    (*thread).resume();
-                    spin_lock.unlock();
-                }
-            }
-        }
-
-        RT_EOK as i32
-    }
-
-    pub(crate) fn suspend_thread(
-        list: *mut ListHead,
-        thread: *mut RtThread,
-        flag: u8,
-        suspend_flag: u32,
-    ) -> i32 {
-        unsafe {
-            if !(*thread).stat.is_suspended() {
-                let ret = if (*thread).suspend(SuspendFlag::from_u8(suspend_flag as u8)) {
-                    RT_EOK as i32
-                } else {
-                    -(RT_ERROR as i32)
-                };
-            }
-
-            match flag as u32 {
-                RT_IPC_FLAG_FIFO => {
-                    Pin::new_unchecked(&mut *list).insert_prev(&mut (*thread).tlist);
-                }
-                RT_IPC_FLAG_PRIO => {
-                    list_head_for_each!(node, &(*list), {
-                        let s_thread =
-                            crate::thread_list_node_entry!(node.as_ptr()) as *mut RtThread;
-                        if (*thread).priority.get_current() < (*s_thread).priority.get_current() {
-                            let insert_to = Pin::new_unchecked(&mut ((*s_thread).tlist));
-                            insert_to.insert_prev(&mut ((*thread).tlist));
-                        }
-                    });
-
-                    if node.as_ptr() == list {
-                        Pin::new_unchecked(&mut *list).insert_prev(&mut (*thread).tlist);
-                    }
-                }
-                _ => {
-                    assert!(false);
-                }
-            }
-
-            RT_EOK as i32
-        }
-    }
-
-    #[inline]
-    pub(crate) fn has_waiting(&self) -> bool {
-        !self.wait_list.is_empty()
-    }
-
-    #[inline]
-    pub(crate) fn wake_one(&mut self) -> i32 {
-        Self::resume_thread(&mut self.wait_list)
-    }
-
-    #[inline]
-    pub(crate) fn wake_all(&mut self) -> i32 {
-        Self::resume_all_threads(&mut self.wait_list)
-    }
-
-    #[inline]
-    pub(crate) fn wait(&mut self, thread: *mut RtThread, flag: u8, suspend_flag: u32) -> i32 {
-        Self::suspend_thread(&mut self.wait_list, thread, flag, suspend_flag)
     }
 }
 

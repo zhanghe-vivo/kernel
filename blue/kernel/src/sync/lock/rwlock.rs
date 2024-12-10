@@ -1,18 +1,14 @@
 use crate::{
-    cpu::Cpu,
-    error::code,
     impl_kobject,
     object::{KObjectBase, KernelObject, ObjectClassType, NAME_MAX},
     rt_bindings::{
-        rt_debug_in_thread_context, rt_debug_not_in_interrupt, RT_EBUSY, RT_EINVAL, RT_EOK,
-        RT_ERROR, RT_ETIMEOUT, RT_IPC_FLAG_FIFO, RT_IPC_FLAG_PRIO, RT_TIMER_CTRL_SET_TIME,
+        rt_debug_not_in_interrupt, RT_EBUSY, RT_EOK, RT_IPC_FLAG_FIFO, RT_IPC_FLAG_PRIO,
         RT_UNINTERRUPTIBLE,
     },
-    sync::{condvar::RtCondVar, lock::mutex::RtMutex, semaphore::RtSemaphore, RawSpin},
+    sync::{condvar::RtCondVar, lock::mutex::RtMutex},
 };
 use blue_infra::list::doubly_linked_list::ListHead;
-use core::{ffi::c_void, ptr::null_mut};
-use pinned_init::*;
+use pinned_init::{pin_data, pin_init, PinInit};
 
 /// RwLock Raw Structure
 #[repr(C)]

@@ -10,7 +10,7 @@ use crate::{
         RT_IPC_CMD_RESET, RT_IPC_FLAG_FIFO, RT_IPC_FLAG_PRIO, RT_KILLABLE, RT_SEM_VALUE_MAX,
         RT_TIMER_CTRL_SET_TIME, RT_UNINTERRUPTIBLE, RT_WAITING_FOREVER,
     },
-    sync::{ipc_common::*, lock::spinlock::RawSpin},
+    sync::ipc_common::*,
     thread::RtThread,
 };
 use blue_infra::list::doubly_linked_list::ListHead;
@@ -281,6 +281,7 @@ impl RtSemaphore {
         self.take_wait(0)
     }
 
+    #[allow(dead_code)]
     pub(crate) fn take_with_pending(&mut self, timeout: i32, pending_mode: u32) -> i32 {
         self.take_internal(timeout, pending_mode)
     }

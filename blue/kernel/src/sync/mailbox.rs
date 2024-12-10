@@ -1,5 +1,4 @@
 use crate::{
-    allocator::{rt_free, rt_malloc},
     clock::rt_tick_get,
     cpu::Cpu,
     error::{code, Error},
@@ -8,11 +7,11 @@ use crate::{
     print, println,
     rt_bindings::{
         rt_debug_not_in_interrupt, rt_debug_scheduler_available, rt_err_t, rt_int32_t, rt_object,
-        rt_object_hook_call, rt_size_t, rt_ubase_t, rt_uint8_t, RT_EFULL, RT_ENOMEM, RT_EOK,
-        RT_ERROR, RT_ETIMEOUT, RT_INTERRUPTIBLE, RT_IPC_CMD_RESET, RT_IPC_FLAG_FIFO,
-        RT_IPC_FLAG_PRIO, RT_KILLABLE, RT_MB_ENTRY_MAX, RT_TIMER_CTRL_SET_TIME, RT_UNINTERRUPTIBLE,
+        rt_object_hook_call, rt_size_t, rt_ubase_t, rt_uint8_t, RT_EFULL, RT_EOK, RT_ERROR,
+        RT_ETIMEOUT, RT_INTERRUPTIBLE, RT_IPC_CMD_RESET, RT_IPC_FLAG_FIFO, RT_IPC_FLAG_PRIO,
+        RT_KILLABLE, RT_TIMER_CTRL_SET_TIME, RT_UNINTERRUPTIBLE,
     },
-    sync::{ipc_common::*, lock::spinlock::RawSpin},
+    sync::ipc_common::*,
     thread::RtThread,
 };
 use blue_infra::list::doubly_linked_list::ListHead;
@@ -374,7 +373,7 @@ impl RtMailbox {
             return -(RT_ETIMEOUT as i32);
         }
 
-        let thread = unsafe { &mut *thread_ptr };
+        let thread = &mut *thread_ptr;
         while self.inner_queue.is_empty() {
             thread.error = code::EINTR;
 

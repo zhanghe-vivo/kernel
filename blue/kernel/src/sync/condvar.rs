@@ -46,6 +46,7 @@ impl RtCondVar {
         })
     }
 
+    #[allow(dead_code)]
     #[inline]
     pub(crate) fn init(&mut self, name: *const i8, waiting_mode: u8) {
         assert!(
@@ -160,6 +161,7 @@ impl RtCondVar {
 
     #[inline]
     pub(crate) fn notify_all(&mut self) -> i32 {
+        #[allow(unused_assignments)]
         let mut result = RT_EOK as i32;
         loop {
             result = self.inner_sem.try_take();

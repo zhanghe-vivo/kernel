@@ -1,25 +1,22 @@
 use crate::{
-    allocator::{align_up_size, rt_free, rt_malloc},
+    allocator::align_up_size,
     clock::rt_tick_get,
     cpu::Cpu,
     error::{code, Error},
-    impl_kobject,
-    klibc::rt_memcpy,
-    list_head_for_each,
+    impl_kobject, list_head_for_each,
     object::*,
     print, println,
     rt_bindings::{
         rt_debug_not_in_interrupt, rt_debug_scheduler_available, rt_err_t, rt_int32_t, rt_object,
         rt_object_hook_call, rt_size_t, rt_ssize_t, rt_uint16_t, rt_uint32_t, rt_uint8_t,
-        RT_ALIGN_SIZE, RT_EFULL, RT_EINVAL, RT_ENOMEM, RT_EOK, RT_ERROR, RT_ETIMEOUT,
-        RT_INTERRUPTIBLE, RT_IPC_CMD_RESET, RT_IPC_FLAG_FIFO, RT_IPC_FLAG_PRIO, RT_KILLABLE,
-        RT_MQ_ENTRY_MAX, RT_TIMER_CTRL_SET_TIME, RT_UNINTERRUPTIBLE,
+        RT_ALIGN_SIZE, RT_EFULL, RT_EINVAL, RT_EOK, RT_ERROR, RT_ETIMEOUT, RT_INTERRUPTIBLE,
+        RT_IPC_CMD_RESET, RT_IPC_FLAG_FIFO, RT_IPC_FLAG_PRIO, RT_KILLABLE, RT_TIMER_CTRL_SET_TIME,
+        RT_UNINTERRUPTIBLE,
     },
     sync::ipc_common::*,
     thread::RtThread,
 };
 use blue_infra::list::doubly_linked_list::ListHead;
-use core::ptr::NonNull;
 #[allow(unused_imports)]
 use core::{
     alloc::AllocError,
@@ -67,19 +64,23 @@ impl KMessageQueue {
                     let cur_ref = &mut *slot;
 
                     if let Ok(s) = CString::try_from_fmt(fmt!("{:p}", slot)) {
-                        cur_ref.init_new_storage(
+                        cur_ref.init(
                             s.as_ptr() as *const i8,
-                            msg_size as u16,
-                            max_msgs as u16,
-                            RT_IPC_FLAG_PRIO as u8,
+                            null_mut(),
+                            msg_size,
+                            max_msgs,
+                            IPC_SYS_QUEUE_FIFO as u8,
+                            RT_IPC_FLAG_FIFO as u8,
                         );
                     } else {
                         let default = "default";
-                        cur_ref.init_new_storage(
+                        cur_ref.init(
                             default.as_ptr() as *const i8,
-                            msg_size as u16,
-                            max_msgs as u16,
-                            RT_IPC_FLAG_PRIO as u8,
+                            null_mut(),
+                            msg_size,
+                            max_msgs,
+                            IPC_SYS_QUEUE_FIFO as u8,
+                            RT_IPC_FLAG_FIFO as u8,
                         );
                     }
                 }
@@ -179,9 +180,10 @@ impl RtMessageQueue {
             return -(RT_EINVAL as i32);
         }
 
+        #[allow(unused_assignments)]
         let mut max_count = 1;
         if working_mode == IPC_SYS_QUEUE_FIFO as u8 {
-            max_count = (buffer_size / item_size)
+            max_count = buffer_size / item_size
         } else if working_mode == IPC_SYS_QUEUE_PRIO as u8 {
             let item_align_size = align_up_size(item_size as usize, RT_ALIGN_SIZE as usize);
             max_count =
@@ -203,16 +205,6 @@ impl RtMessageQueue {
                 waiting_mode as u32,
             )
             .to_errno()
-    }
-
-    pub fn init_new_storage(
-        &mut self,
-        name: *const i8,
-        msg_size: u16,
-        max_msgs: u16,
-        flag: u8,
-    ) -> i32 {
-        RT_EOK as i32
     }
 
     #[inline]
@@ -271,7 +263,7 @@ impl RtMessageQueue {
         &mut self,
         buffer: *const u8,
         size: usize,
-        prio: i32,
+        _prio: i32,
         timeout: i32,
         suspend_flag: u32,
     ) -> i32 {
@@ -427,6 +419,7 @@ impl RtMessageQueue {
             );
         }
 
+        #[allow(unused_assignments)]
         let mut urgent_size = 0;
         cfg_if::cfg_if! {
             if #[cfg(feature = "RT_USING_MESSAGEQUEUE_PRIORITY")] {
@@ -447,7 +440,7 @@ impl RtMessageQueue {
         &mut self,
         buffer: *mut u8,
         size: usize,
-        prio: *mut i32,
+        _prio: *mut i32,
         timeout: i32,
         suspend_flag: u32,
     ) -> i32 {
@@ -658,6 +651,7 @@ pub unsafe extern "C" fn rt_mq_init(
 ) -> rt_err_t {
     assert!(!mq.is_null());
     assert!((flag == RT_IPC_FLAG_FIFO as u8) || (flag == RT_IPC_FLAG_PRIO as u8));
+    #[allow(unused_mut)]
     let mut queue_working_mode = IPC_SYS_QUEUE_FIFO as u8;
     #[cfg(feature = "RT_USING_MESSAGEQUEUE_PRIORITY")]
     {
@@ -689,6 +683,7 @@ pub unsafe extern "C" fn rt_mq_create(
     max_msgs: rt_size_t,
     flag: rt_uint8_t,
 ) -> *mut RtMessageQueue {
+    #[allow(unused_mut)]
     let mut queue_working_mode = IPC_SYS_QUEUE_FIFO as u8;
     #[cfg(feature = "RT_USING_MESSAGEQUEUE_PRIORITY")]
     {

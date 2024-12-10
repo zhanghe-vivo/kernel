@@ -9,9 +9,9 @@ use crate::{
     rt_bindings::{
         rt_debug_in_thread_context, rt_debug_not_in_interrupt, rt_debug_scheduler_available,
         rt_err_t, rt_int32_t, rt_object, rt_object_hook_call, rt_set_errno, RT_EFULL, RT_EINVAL,
-        RT_EOK, RT_ERROR, RT_ETIMEOUT, RT_INTERRUPTIBLE, RT_IPC_FLAG_FIFO, RT_IPC_FLAG_PRIO,
-        RT_KILLABLE, RT_MUTEX_HOLD_MAX, RT_THREAD_PRIORITY_MAX, RT_TIMER_CTRL_SET_TIME,
-        RT_UNINTERRUPTIBLE, RT_WAITING_FOREVER, RT_WAITING_NO,
+        RT_EOK, RT_ERROR, RT_ETIMEOUT, RT_INTERRUPTIBLE, RT_IPC_FLAG_PRIO, RT_KILLABLE,
+        RT_MUTEX_HOLD_MAX, RT_THREAD_PRIORITY_MAX, RT_TIMER_CTRL_SET_TIME, RT_UNINTERRUPTIBLE,
+        RT_WAITING_FOREVER, RT_WAITING_NO,
     },
     sync::ipc_common::*,
     thread::RtThread,
@@ -453,6 +453,7 @@ impl RtMutex {
             }
 
             if !self.inner_queue.enqueue_waiter.is_empty() {
+                #[allow(unused_assignments)]
                 let mut next_thread_ptr = null_mut();
 
                 if let Some(node) = self.inner_queue.enqueue_waiter.head() {
@@ -480,6 +481,7 @@ impl RtMutex {
                 next_thread.resume();
 
                 if !self.inner_queue.enqueue_waiter.is_empty() {
+                    #[allow(unused_assignments)]
                     let mut th = null_mut();
                     if let Some(node) = self.inner_queue.enqueue_waiter.head() {
                         th = unsafe { crate::thread_list_node_entry!(node.as_ptr()) };
@@ -534,6 +536,7 @@ impl RtMutex {
         // SAFETY: thread is null checked
         let thread = unsafe { &mut *thread_ptr };
 
+        #[allow(unused_assignments)]
         let mut priority: u8 = 0;
         let mut need_update = false;
 

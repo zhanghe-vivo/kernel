@@ -192,39 +192,38 @@ impl RtEvent {
         }
 
         if !self.inner_queue.dequeue_waiter.is_empty() {
-            // SAFETY: thread ensured not null
-            unsafe {
-                crate::list_head_for_each!(node, &self.inner_queue.dequeue_waiter.working_queue, {
-                    let thread = crate::thread_list_node_entry!(node.as_ptr()) as *mut RtThread;
+            crate::list_head_for_each!(node, &self.inner_queue.dequeue_waiter.working_queue, {
+                let thread_ptr =
+                    unsafe { crate::thread_list_node_entry!(node.as_ptr()) as *mut RtThread };
 
-                    if !thread.is_null() {
-                        let mut status = -(RT_ERROR as i32);
-                        if (*thread).event_info.info as u32 & RT_EVENT_FLAG_AND > 0u32 {
-                            if (*thread).event_info.set & self.set == (*thread).event_info.set {
-                                status = RT_EOK as i32;
-                            }
-                        } else if (*thread).event_info.info as u32 & RT_EVENT_FLAG_OR > 0u32 {
-                            if (*thread).event_info.set & self.set > 0u32 {
-                                (*thread).event_info.set = (*thread).event_info.set & self.set;
-                                status = RT_EOK as i32;
-                            }
-                        } else {
-                            self.inner_queue.unlock();
-                            return -(RT_EINVAL as i32);
+                if !thread_ptr.is_null() {
+                    let thread = unsafe { &mut *thread_ptr };
+                    let mut status = -(RT_ERROR as i32);
+                    if thread.event_info.info as u32 & RT_EVENT_FLAG_AND > 0u32 {
+                        if thread.event_info.set & self.set == thread.event_info.set {
+                            status = RT_EOK as i32;
                         }
-
-                        if status == RT_EOK as i32 {
-                            if (*thread).event_info.info as u32 & RT_EVENT_FLAG_CLEAR > 0u32 {
-                                need_clear_set |= (*thread).event_info.set;
-                            }
-
-                            (*thread).resume();
-                            (*thread).error = code::EOK;
-                            need_schedule = true;
+                    } else if thread.event_info.info as u32 & RT_EVENT_FLAG_OR > 0u32 {
+                        if thread.event_info.set & self.set > 0u32 {
+                            thread.event_info.set = thread.event_info.set & self.set;
+                            status = RT_EOK as i32;
                         }
+                    } else {
+                        self.inner_queue.unlock();
+                        return -(RT_EINVAL as i32);
                     }
-                });
-            }
+
+                    if status == RT_EOK as i32 {
+                        if thread.event_info.info as u32 & RT_EVENT_FLAG_CLEAR > 0u32 {
+                            need_clear_set |= (*thread).event_info.set;
+                        }
+
+                        thread.resume();
+                        thread.error = code::EOK;
+                        need_schedule = true;
+                    }
+                }
+            });
 
             if need_clear_set > 0 {
                 self.set &= !need_clear_set;
