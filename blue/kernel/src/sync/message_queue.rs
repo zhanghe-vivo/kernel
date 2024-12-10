@@ -25,7 +25,7 @@ use core::{
     marker::PhantomPinned,
     mem,
     mem::MaybeUninit,
-    ptr::null_mut,
+    ptr::{null_mut, NonNull},
     slice,
 };
 
@@ -259,11 +259,12 @@ impl RtMessageQueue {
         self.parent.delete();
     }
 
+    #[allow(unused_variables)]
     fn send_wait_internal(
         &mut self,
         buffer: *const u8,
         size: usize,
-        _prio: i32,
+        prio: i32,
         timeout: i32,
         suspend_flag: u32,
     ) -> i32 {
@@ -436,11 +437,12 @@ impl RtMessageQueue {
         }
     }
 
+    #[allow(unused_variables)]
     fn receive_internal(
         &mut self,
         buffer: *mut u8,
         size: usize,
-        _prio: *mut i32,
+        prio: *mut i32,
         timeout: i32,
         suspend_flag: u32,
     ) -> i32 {
@@ -651,7 +653,7 @@ pub unsafe extern "C" fn rt_mq_init(
 ) -> rt_err_t {
     assert!(!mq.is_null());
     assert!((flag == RT_IPC_FLAG_FIFO as u8) || (flag == RT_IPC_FLAG_PRIO as u8));
-    #[allow(unused_mut)]
+    #[allow(unused_mut, unused_assignments)]
     let mut queue_working_mode = IPC_SYS_QUEUE_FIFO as u8;
     #[cfg(feature = "RT_USING_MESSAGEQUEUE_PRIORITY")]
     {
@@ -683,7 +685,7 @@ pub unsafe extern "C" fn rt_mq_create(
     max_msgs: rt_size_t,
     flag: rt_uint8_t,
 ) -> *mut RtMessageQueue {
-    #[allow(unused_mut)]
+    #[allow(unused_mut, unused_assignments)]
     let mut queue_working_mode = IPC_SYS_QUEUE_FIFO as u8;
     #[cfg(feature = "RT_USING_MESSAGEQUEUE_PRIORITY")]
     {
