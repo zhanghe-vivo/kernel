@@ -367,14 +367,19 @@ impl RtSysQueue {
 
     #[allow(dead_code)]
     pub(crate) fn push_prio(&mut self, buffer: *const u8, size: usize, priority: i32) -> i32 {
-        assert!(!self.free.is_none());
+        if self.free.is_none() {
+            return 0;
+        }
 
         let hdr = self.free.unwrap().as_ptr() as *mut RtSysQueueItemHeader;
         let hdr_ref = unsafe { &mut *hdr };
 
-        self.free = unsafe { Some(NonNull::new_unchecked(hdr_ref.next as *mut u8)) };
-
-        self.spinlock.unlock();
+        let next_free = hdr_ref.next as *mut u8;
+        if next_free.is_null() {
+            self.free = None;
+        } else {
+            self.free = unsafe { Some(NonNull::new_unchecked(next_free)) };
+        }
 
         hdr_ref.next = null_mut();
 
@@ -383,8 +388,6 @@ impl RtSysQueue {
         unsafe {
             ptr::copy_nonoverlapping(buffer, sys_queue_item_data_addr!(hdr), size);
         }
-
-        self.spinlock.lock();
 
         hdr_ref.prio = priority;
         if self.head.is_none() {
@@ -423,7 +426,6 @@ impl RtSysQueue {
             // increase message entry
             self.item_in_queue += 1;
         } else {
-            self.spinlock.unlock();
             return -(RT_EFULL as i32);
         }
 
@@ -446,7 +448,12 @@ impl RtSysQueue {
         }
 
         // SAFETY: msg is null checked and buffer is valid
-        self.free = unsafe { Some(NonNull::new_unchecked((*hdr).next as *mut u8)) };
+        let next_free = unsafe { (*hdr).next as *mut u8 };
+        if next_free.is_null() {
+            self.free = None;
+        } else {
+            self.free = unsafe { Some(NonNull::new_unchecked(next_free)) };
+        }
 
         self.spinlock.unlock();
 
@@ -491,20 +498,27 @@ impl RtSysQueue {
     #[allow(dead_code)]
     #[inline]
     pub(crate) fn pop_prio(&mut self, buffer: *mut u8, size: usize, prio: *mut i32) -> i32 {
+        if self.head.is_none() {
+            return 0;
+        }
+
         let hdr = self.head.unwrap().as_ptr() as *mut RtSysQueueItemHeader;
 
         // SAFETY: msg is null checked
-        unsafe { self.head = Some(NonNull::new_unchecked((*hdr).next as *mut u8)) };
+        let next_head = unsafe { (*hdr).next as *mut u8 };
+        if next_head.is_null() {
+            self.head = None;
+        } else {
+            self.head = unsafe { Some(NonNull::new_unchecked(next_head)) };
+        };
 
-        if self.tail.unwrap().as_ptr() == hdr as *mut u8 {
+        if !self.tail.is_none() && self.tail.unwrap().as_ptr() == hdr as *mut u8 {
             self.tail = None;
         }
 
         if self.item_in_queue > 0 {
             self.item_in_queue -= 1;
         }
-
-        self.spinlock.unlock();
 
         // SAFETY: msg is null checked
         let mut len = unsafe { (*hdr).len as usize };
@@ -521,23 +535,12 @@ impl RtSysQueue {
             unsafe { *prio = (*hdr).prio };
         }
 
-        self.spinlock.lock();
-
         // SAFETY: msg is null checked
-        unsafe { (*hdr).next = self.free.unwrap().as_ptr() as *mut RtSysQueueItemHeader };
-
-        self.free = unsafe { Some(NonNull::new_unchecked(hdr as *mut u8)) };
-
-        if !self.enqueue_waiter.is_empty() {
-            self.enqueue_waiter.wake();
-            self.spinlock.unlock();
-
-            Cpu::get_current_scheduler().do_task_schedule();
-
-            return len as i32;
+        if !self.free.is_none() {
+            unsafe { (*hdr).next = self.free.unwrap().as_ptr() as *mut RtSysQueueItemHeader };
         }
 
-        self.spinlock.unlock();
+        self.free = unsafe { Some(NonNull::new_unchecked(hdr as *mut u8)) };
 
         size as i32
     }

@@ -162,12 +162,13 @@ static void test_static_condvar_wait_notify(void)
 
     while(1)
     {
-        if(static_condvar_wait_thread_finish && static_condvar_notify_thread_finish)
+        if(static_condvar_wait_thread_finish && static_condvar_notify_thread_finish) {
+            uassert_true(1);
             return;
+        }
         else
             rt_thread_mdelay(10);
     }
-    uassert_true(1);
 }
 
 static rt_err_t utest_tc_init(void)
