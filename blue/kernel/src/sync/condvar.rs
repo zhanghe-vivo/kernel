@@ -131,6 +131,7 @@ impl RtCondVar {
                 }
 
                 if mutex.unlock() != RT_EOK as i32 {
+                    self.spinlock.unlock();
                     return -(RT_ERROR as i32);
                 }
 
