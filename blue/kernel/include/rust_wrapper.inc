@@ -390,6 +390,39 @@ typedef struct rt_event {
 } rt_event;
 #endif
 
+#if defined(RT_USING_RWLOCK)
+/**
+ * RwLock Raw Structure
+ */
+typedef struct rt_rwlock {
+  struct rt_object parent;
+  /**
+   * Mutex that inner used for rwlock
+   */
+  struct rt_mutex mutex;
+  /**
+   * Condition var for reader notification
+   */
+  struct rt_condvar read_cond;
+  /**
+   * Condition var for writer notification
+   */
+  struct rt_condvar write_cond;
+  /**
+   * Lock flag, which indicates >0 for readers occupied count, -1 for writer occupy
+   */
+  int32_t rw_count;
+  /**
+   * Readers wait for this condition var
+   */
+  uint32_t reader_waiting;
+  /**
+   * Writers ait for this condition var
+   */
+  uint32_t writer_waiting;
+} rt_rwlock;
+#endif
+
 #if defined(RT_USING_MAILBOX)
 /**
  * Mailbox raw structure

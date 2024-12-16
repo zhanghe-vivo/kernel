@@ -2,8 +2,8 @@ use crate::{
     impl_kobject,
     object::{KObjectBase, KernelObject, ObjectClassType, NAME_MAX},
     rt_bindings::{
-        rt_debug_not_in_interrupt, RT_EBUSY, RT_EOK, RT_IPC_FLAG_FIFO, RT_IPC_FLAG_PRIO,
-        RT_UNINTERRUPTIBLE,
+        rt_debug_not_in_interrupt, rt_err_t, rt_uint8_t, RT_EBUSY, RT_EOK, RT_IPC_FLAG_FIFO,
+        RT_IPC_FLAG_PRIO, RT_UNINTERRUPTIBLE,
     },
     sync::{condvar::RtCondVar, lock::mutex::RtMutex},
 };
@@ -17,7 +17,7 @@ pub struct RtRwLock {
     // kernel object
     #[pin]
     parent: KObjectBase,
-    /// Mutex that inner used for condvar
+    /// Mutex that inner used for rwlock
     #[pin]
     mutex: RtMutex,
     /// Condition var for reader notification
@@ -287,4 +287,59 @@ impl RtRwLock {
 
         result
     }
+}
+
+#[cfg(feature = "RT_USING_RWLOCK")]
+#[no_mangle]
+pub unsafe extern "C" fn rt_rwlock_init(
+    rwlock: *mut RtRwLock,
+    name: *const core::ffi::c_char,
+    flag: rt_uint8_t,
+) -> rt_err_t {
+    assert!(!rwlock.is_null());
+    (*rwlock).init(name, flag);
+    RT_EOK as rt_err_t
+}
+
+#[cfg(feature = "RT_USING_RWLOCK")]
+#[no_mangle]
+pub unsafe extern "C" fn rt_rwlock_detach(rwlock: *mut RtRwLock) -> rt_err_t {
+    assert!(!rwlock.is_null());
+    (*rwlock).detach();
+    RT_EOK as rt_err_t
+}
+
+#[cfg(feature = "RT_USING_RWLOCK")]
+#[no_mangle]
+pub unsafe extern "C" fn rt_rwlock_lock_read(rwlock: *mut RtRwLock) -> rt_err_t {
+    assert!(!rwlock.is_null());
+    (*rwlock).lock_read() as rt_err_t
+}
+
+#[cfg(feature = "RT_USING_RWLOCK")]
+#[no_mangle]
+pub unsafe extern "C" fn rt_rwlock_lock_write(rwlock: *mut RtRwLock) -> rt_err_t {
+    assert!(!rwlock.is_null());
+    (*rwlock).lock_write() as rt_err_t
+}
+
+#[cfg(feature = "RT_USING_RWLOCK")]
+#[no_mangle]
+pub unsafe extern "C" fn rt_rwlock_try_lock_read(rwlock: *mut RtRwLock) -> rt_err_t {
+    assert!(!rwlock.is_null());
+    (*rwlock).try_lock_read() as rt_err_t
+}
+
+#[cfg(feature = "RT_USING_RWLOCK")]
+#[no_mangle]
+pub unsafe extern "C" fn rt_rwlock_try_lock_write(rwlock: *mut RtRwLock) -> rt_err_t {
+    assert!(!rwlock.is_null());
+    (*rwlock).try_lock_write() as rt_err_t
+}
+
+#[cfg(feature = "RT_USING_RWLOCK")]
+#[no_mangle]
+pub unsafe extern "C" fn rt_rwlock_unlock(rwlock: *mut RtRwLock) -> rt_err_t {
+    assert!(!rwlock.is_null());
+    (*rwlock).unlock() as rt_err_t
 }

@@ -167,6 +167,7 @@ static void test_static_condvar_wait_notify(void)
         else
             rt_thread_mdelay(10);
     }
+    uassert_true(1);
 }
 
 static rt_err_t utest_tc_init(void)

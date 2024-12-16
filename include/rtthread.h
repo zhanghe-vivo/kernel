@@ -386,6 +386,26 @@ rt_err_t rt_mutex_release(rt_mutex_t mutex);
 rt_err_t rt_mutex_control(rt_mutex_t mutex, int cmd, void *arg);
 #endif /* RT_USING_MUTEX */
 
+#ifdef RT_USING_RWLOCK
+
+rt_err_t rt_rwlock_init(
+rt_rwlock* rwlock, const char *name, rt_uint8_t flag);
+
+rt_err_t rt_rwlock_detach(rt_rwlock* rwlock);
+
+rt_err_t rt_rwlock_lock_read(rt_rwlock* rwlock);
+
+rt_err_t rt_rwlock_lock_write(rt_rwlock* rwlock);
+
+rt_err_t rt_rwlock_try_lock_read(rt_rwlock* rwlock);
+
+rt_err_t rt_rwlock_try_lock_write(rt_rwlock* rwlock);
+
+rt_err_t rt_rwlock_unlock(rt_rwlock* rwlock);
+
+#endif /* RT_USING_RWLOCK */
+
+
 #ifdef RT_USING_EVENT
 /*
  * event interface

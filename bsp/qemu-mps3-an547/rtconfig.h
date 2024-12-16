@@ -146,6 +146,8 @@
 #define UTEST_MUTEX_TC
 #define UTEST_MAILBOX_TC
 #define UTEST_THREAD_TC
+#define UTEST_CONDVAR_TC
+#define UTEST_RWLOCK_TC
 
 /* CPP11 Testcase */
 
