@@ -416,6 +416,21 @@ rt_err_t rt_event_recv_killable(rt_event_t   event,
 rt_err_t rt_event_control(rt_event_t event, int cmd, void *arg);
 #endif /* RT_USING_EVENT */
 
+#ifdef RT_USING_CONDVAR
+
+rt_err_t rt_condvar_init(
+rt_condvar* condvar, const char *name, rt_uint8_t flag);
+
+rt_err_t rt_condvar_detach(rt_condvar* condvar);
+
+rt_err_t rt_condvar_wait(rt_condvar* condvar, rt_mutex_t mutex);
+
+rt_err_t rt_condvar_notify(rt_condvar*);
+
+rt_err_t rt_condvar_notify_all(rt_condvar* condvar);
+
+#endif /* RT_USING_CONDVAR */
+
 #ifdef RT_USING_MAILBOX
 /*
  * mailbox interface

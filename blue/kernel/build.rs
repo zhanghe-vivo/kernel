@@ -24,6 +24,8 @@ fn main() {
             ("RtSemaphore".to_string(), "rt_semaphore".to_string()),
             ("RtMutex".to_string(), "rt_mutex".to_string()),
             ("RtEvent".to_string(), "rt_event".to_string()),
+            ("RtCondVar".to_string(), "rt_condvar".to_string()),
+            ("RtRwLock".to_string(), "rt_rwlock".to_string()),
             ("RtMailbox".to_string(), "rt_mailbox".to_string()),
             ("RtMessage".to_string(), "rt_mq_message".to_string()),
             ("RtMessageQueue".to_string(), "rt_messagequeue".to_string()),

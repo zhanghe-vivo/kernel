@@ -334,6 +334,42 @@ typedef void (*RtSchedulerHook)(struct rt_thread *from, struct rt_thread *to);
 
 typedef void (*RtSchedulerSwitchHook)(struct rt_thread *tid);
 
+#if defined(RT_USING_SEMAPHORE)
+/**
+ * Semaphore raw structure
+ */
+typedef struct rt_semaphore {
+  /**
+   * Inherit from KObject
+   */
+  struct rt_object parent;
+  /**
+   * SysQueue for semaphore
+   */
+  struct RtSysQueue inner_queue;
+} rt_semaphore;
+#endif
+
+#if defined(RT_USING_CONDVAR)
+/**
+ * Condition variable raw structure
+ */
+typedef struct rt_condvar {
+  /**
+   * Inherit from KObjectBase
+   */
+  struct rt_object parent;
+  /**
+   * Spin lock
+   */
+  struct RawSpin spinlock;
+  /**
+   * Inner semaphore condvar uses
+   */
+  struct rt_semaphore inner_sem;
+} rt_condvar;
+#endif
+
 #if defined(RT_USING_EVENT)
 /**
  * Event flag raw structure
@@ -384,22 +420,6 @@ typedef struct rt_messagequeue {
    */
   struct RtSysQueue inner_queue;
 } rt_messagequeue;
-#endif
-
-#if defined(RT_USING_SEMAPHORE)
-/**
- * Semaphore raw structure
- */
-typedef struct rt_semaphore {
-  /**
-   * Inherit from KObject
-   */
-  struct rt_object parent;
-  /**
-   * SysQueue for semaphore
-   */
-  struct RtSysQueue inner_queue;
-} rt_semaphore;
 #endif
 
 typedef void (*ThreadEntryFn)(void*);

@@ -7,7 +7,11 @@ use crate::{
     },
     rt_bindings::*,
     sync::{
-        event::RtEvent, lock::mutex::RtMutex, mailbox::RtMailbox, message_queue::RtMessageQueue,
+        condvar::RtCondVar,
+        event::RtEvent,
+        lock::{mutex::RtMutex, rwlock::RtRwLock},
+        mailbox::RtMailbox,
+        message_queue::RtMessageQueue,
         semaphore::RtSemaphore,
     },
     thread::RtThread,
@@ -238,14 +242,18 @@ impl ObjectClassType {
             x if x == Self::ObjectClassProcess as u8 => mem::size_of::<Kprocess>(),
             //< The object is a thread.
             x if x == Self::ObjectClassThread as u8 => mem::size_of::<RtThread>(),
-            //< The object is a condition variable.
-            //x if x == Self::ObjectClassCondVar as u8 => mem::size_of::<RtCondVar>(),
             //< The object is a semaphore.
             #[cfg(feature = "RT_USING_SEMAPHORE")]
             x if x == Self::ObjectClassSemaphore as u8 => mem::size_of::<RtSemaphore>(),
             //< The object is a mutex.
             #[cfg(feature = "RT_USING_MUTEX")]
             x if x == Self::ObjectClassMutex as u8 => mem::size_of::<RtMutex>(),
+            //< The object is a condition variable.
+            #[cfg(feature = "RT_USING_CONDVAR")]
+            x if x == Self::ObjectClassCondVar as u8 => mem::size_of::<RtCondVar>(),
+            //< The object is a RwLock.
+            #[cfg(feature = "RT_USING_RWLOCK")]
+            x if x == Self::ObjectClassMutex as u8 => mem::size_of::<RtRwLock>(),
             //< The object is an event.
             #[cfg(feature = "RT_USING_EVENT")]
             x if x == Self::ObjectClassEvent as u8 => mem::size_of::<RtEvent>(),

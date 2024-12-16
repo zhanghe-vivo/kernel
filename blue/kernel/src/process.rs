@@ -44,9 +44,15 @@ pub(crate) struct Kprocess {
     #[cfg(feature = "RT_USING_MUTEX")]
     #[pin]
     mutex: ListHead,
+    #[cfg(feature = "RT_USING_RWLOCK")]
+    #[pin]
+    rwlock: ListHead,
     #[cfg(feature = "RT_USING_EVENT")]
     #[pin]
     event: ListHead,
+    #[cfg(feature = "RT_USING_CONDVAR")]
+    #[pin]
+    condvar: ListHead,
     #[cfg(feature = "RT_USING_MAILBOX")]
     #[pin]
     mailbox: ListHead,
@@ -87,8 +93,12 @@ impl Kprocess {
             let _ = ListHead::new().__pinned_init(&mut cur_ref.semaphore as *mut ListHead);
             #[cfg(feature = "RT_USING_MUTEX")]
             let _ = ListHead::new().__pinned_init(&mut cur_ref.mutex as *mut ListHead);
+            #[cfg(feature = "RT_USING_RWLOCK")]
+            let _ = ListHead::new().__pinned_init(&mut cur_ref.rwlock as *mut ListHead);
             #[cfg(feature = "RT_USING_EVENT")]
             let _ = ListHead::new().__pinned_init(&mut cur_ref.event as *mut ListHead);
+            #[cfg(feature = "RT_USING_CONDVAR")]
+            let _ = ListHead::new().__pinned_init(&mut cur_ref.condvar as *mut ListHead);
             #[cfg(feature = "RT_USING_MAILBOX")]
             let _ = ListHead::new().__pinned_init(&mut cur_ref.mailbox as *mut ListHead);
             #[cfg(feature = "RT_USING_MESSAGEQUEUE")]
@@ -118,8 +128,12 @@ impl Kprocess {
             x if x == ObjectClassType::ObjectClassSemaphore as u8 => &process.semaphore,
             #[cfg(feature = "RT_USING_MUTEX")]
             x if x == ObjectClassType::ObjectClassMutex as u8 => &process.mutex,
+            #[cfg(feature = "RT_USING_RWLOCK")]
+            x if x == ObjectClassType::ObjectClassRwLock as u8 => &process.rwlock,
             #[cfg(feature = "RT_USING_EVENT")]
             x if x == ObjectClassType::ObjectClassEvent as u8 => &process.event,
+            #[cfg(feature = "RT_USING_CONDVAR")]
+            x if x == ObjectClassType::ObjectClassCondVar as u8 => &process.condvar,
             #[cfg(feature = "RT_USING_MAILBOX")]
             x if x == ObjectClassType::ObjectClassMailBox as u8 => &process.mailbox,
             #[cfg(feature = "RT_USING_MESSAGEQUEUE")]

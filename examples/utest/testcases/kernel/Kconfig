@@ -29,6 +29,11 @@ config UTEST_EVENT_TC
     default n
     depends on RT_USING_EVENT
 
+config UTEST_CONDVAR_TC
+    bool "condition var test"
+    default n
+    depends on RT_USING_CONDVAR
+
 config UTEST_TIMER_TC
     bool "timer test"
     default n

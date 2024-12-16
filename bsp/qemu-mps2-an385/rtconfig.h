@@ -37,6 +37,7 @@
 #define RT_USING_EVENT
 #define RT_USING_MAILBOX
 #define RT_USING_MESSAGEQUEUE
+//#define RT_USING_MESSAGEQUEUE_PRIORITY
 
 /* Memory Management */
 
@@ -150,6 +151,7 @@
 #define UTEST_MUTEX_TC
 #define UTEST_MAILBOX_TC
 #define UTEST_THREAD_TC
+#define UTEST_CONDVAR_TC
 
 /* CPP11 Testcase */
 

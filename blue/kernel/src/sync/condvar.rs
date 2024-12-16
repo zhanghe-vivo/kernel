@@ -4,8 +4,8 @@ use crate::{
     impl_kobject,
     object::{KObjectBase, KernelObject, ObjectClassType, NAME_MAX},
     rt_bindings::{
-        rt_debug_in_thread_context, rt_debug_not_in_interrupt, RT_EINVAL, RT_EOK, RT_ERROR,
-        RT_ETIMEOUT, RT_IPC_FLAG_FIFO, RT_IPC_FLAG_PRIO, RT_TIMER_CTRL_SET_TIME,
+        rt_debug_in_thread_context, rt_debug_not_in_interrupt, rt_err_t, rt_uint8_t, RT_EINVAL,
+        RT_EOK, RT_ERROR, RT_ETIMEOUT, RT_IPC_FLAG_FIFO, RT_IPC_FLAG_PRIO, RT_TIMER_CTRL_SET_TIME,
         RT_UNINTERRUPTIBLE, RT_WAITING_FOREVER,
     },
     sync::{lock::mutex::RtMutex, semaphore::RtSemaphore, RawSpin},
@@ -106,7 +106,9 @@ impl RtCondVar {
         } else {
             if time_out == 0 {
                 self.spinlock.unlock();
-
+                if mutex.unlock() != RT_EOK as i32 {
+                    return -(RT_ERROR as i32);
+                }
                 return -(RT_ETIMEOUT as i32);
             } else {
                 rt_debug_in_thread_context!();
@@ -139,11 +141,9 @@ impl RtCondVar {
                 if thread.error != code::EOK {
                     result = thread.error.to_errno();
                 }
-
-                mutex.lock();
             }
         }
-
+        mutex.lock();
         return result;
     }
 
@@ -153,6 +153,7 @@ impl RtCondVar {
         if !self.inner_sem.inner_queue.dequeue_waiter.is_empty() {
             self.spinlock.unlock();
             self.inner_sem.release();
+            return RT_EOK as i32;
         }
 
         self.spinlock.unlock();
@@ -168,7 +169,6 @@ impl RtCondVar {
             if result == -(RT_ETIMEOUT as i32) {
                 self.inner_sem.release();
             } else if result == RT_EOK as i32 {
-                self.inner_sem.release();
                 break;
             } else {
                 return RT_EINVAL as i32;
@@ -177,4 +177,46 @@ impl RtCondVar {
 
         RT_EOK as i32
     }
+}
+
+#[cfg(feature = "RT_USING_CONDVAR")]
+#[no_mangle]
+pub unsafe extern "C" fn rt_condvar_init(
+    condvar: *mut RtCondVar,
+    name: *const core::ffi::c_char,
+    flag: rt_uint8_t,
+) -> rt_err_t {
+    assert!(!condvar.is_null());
+    (*condvar).init(name, flag);
+    RT_EOK as rt_err_t
+}
+
+#[cfg(feature = "RT_USING_CONDVAR")]
+#[no_mangle]
+pub unsafe extern "C" fn rt_condvar_detach(condvar: *mut RtCondVar) -> rt_err_t {
+    assert!(!condvar.is_null());
+    (*condvar).detach();
+    RT_EOK as rt_err_t
+}
+
+#[cfg(feature = "RT_USING_CONDVAR")]
+#[no_mangle]
+pub unsafe extern "C" fn rt_condvar_wait(condvar: *mut RtCondVar, mutex: *mut RtMutex) -> rt_err_t {
+    assert!(!condvar.is_null());
+    let mutex_ref = unsafe { &mut (*mutex) };
+    (*condvar).wait(mutex_ref) as rt_err_t
+}
+
+#[cfg(feature = "RT_USING_CONDVAR")]
+#[no_mangle]
+pub unsafe extern "C" fn rt_condvar_notify(condvar: *mut RtCondVar) -> rt_err_t {
+    assert!(!condvar.is_null());
+    (*condvar).notify() as rt_err_t
+}
+
+#[cfg(feature = "RT_USING_CONDVAR")]
+#[no_mangle]
+pub unsafe extern "C" fn rt_condvar_notify_all(condvar: *mut RtCondVar) -> rt_err_t {
+    assert!(!condvar.is_null());
+    (*condvar).notify_all() as rt_err_t
 }
