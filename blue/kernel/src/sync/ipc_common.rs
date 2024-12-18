@@ -19,6 +19,8 @@ use pinned_init::{pin_data, pin_init, pin_init_from_closure, pinned_drop, PinIni
 
 pub const IPC_WAIT_MODE_FIFO: u32 = 0;
 pub const IPC_WAIT_MODE_PRIO: u32 = 1;
+pub const IPC_MUTEX_NESTED_MAX: u32 = 255;
+pub const IPC_SEMAPHORE_COUNT_MAX: u32 = 65535;
 pub const IPC_RING_BUFFER_ITEM_MAX: u32 = 65535;
 pub const IPC_QUEUE_BUFFER_ITEM_MAX: u32 = 65535;
 pub(crate) const IPC_SYS_QUEUE_FIFO: u32 = 0;

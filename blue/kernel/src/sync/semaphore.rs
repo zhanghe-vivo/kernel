@@ -7,8 +7,8 @@ use crate::{
     rt_bindings::{
         rt_debug_not_in_interrupt, rt_debug_scheduler_available, rt_err_t, rt_int32_t, rt_object,
         rt_object_hook_call, rt_uint32_t, rt_uint8_t, RT_EFULL, RT_EOK, RT_ERROR, RT_INTERRUPTIBLE,
-        RT_IPC_CMD_RESET, RT_KILLABLE, RT_SEM_VALUE_MAX, RT_TIMER_CTRL_SET_TIME,
-        RT_UNINTERRUPTIBLE, RT_WAITING_FOREVER,
+        RT_IPC_CMD_RESET, RT_KILLABLE, RT_TIMER_CTRL_SET_TIME, RT_UNINTERRUPTIBLE,
+        RT_WAITING_FOREVER,
     },
     sync::ipc_common::*,
     thread::RtThread,
@@ -314,7 +314,7 @@ impl RtSemaphore {
             self.inner_queue.dequeue_waiter.wake();
             need_schedule = true;
         } else {
-            if self.count() < RT_SEM_VALUE_MAX as usize {
+            if self.count() < IPC_SEMAPHORE_COUNT_MAX as usize {
                 self.inner_queue.force_push_stub();
             } else {
                 self.inner_queue.unlock();

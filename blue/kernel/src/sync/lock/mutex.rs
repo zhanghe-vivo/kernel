@@ -9,9 +9,8 @@ use crate::{
     rt_bindings::{
         rt_debug_in_thread_context, rt_debug_not_in_interrupt, rt_debug_scheduler_available,
         rt_err_t, rt_int32_t, rt_object, rt_object_hook_call, rt_set_errno, RT_EFULL, RT_EINVAL,
-        RT_EOK, RT_ERROR, RT_ETIMEOUT, RT_INTERRUPTIBLE, RT_KILLABLE, RT_MUTEX_HOLD_MAX,
-        RT_THREAD_PRIORITY_MAX, RT_TIMER_CTRL_SET_TIME, RT_UNINTERRUPTIBLE, RT_WAITING_FOREVER,
-        RT_WAITING_NO,
+        RT_EOK, RT_ERROR, RT_ETIMEOUT, RT_INTERRUPTIBLE, RT_KILLABLE, RT_THREAD_PRIORITY_MAX,
+        RT_TIMER_CTRL_SET_TIME, RT_UNINTERRUPTIBLE, RT_WAITING_FOREVER, RT_WAITING_NO,
     },
     sync::ipc_common::*,
     thread::RtThread,
@@ -265,7 +264,7 @@ impl RtMutex {
         thread.error = code::EOK;
 
         if self.owner == thread_ptr {
-            if self.inner_queue.count() < RT_MUTEX_HOLD_MAX as usize {
+            if self.inner_queue.count() < IPC_MUTEX_NESTED_MAX as usize {
                 // Same thread
                 self.inner_queue.force_push_stub();
             } else {
