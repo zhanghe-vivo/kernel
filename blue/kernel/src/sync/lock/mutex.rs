@@ -9,9 +9,9 @@ use crate::{
     rt_bindings::{
         rt_debug_in_thread_context, rt_debug_not_in_interrupt, rt_debug_scheduler_available,
         rt_err_t, rt_int32_t, rt_object, rt_object_hook_call, rt_set_errno, RT_EFULL, RT_EINVAL,
-        RT_EOK, RT_ERROR, RT_ETIMEOUT, RT_INTERRUPTIBLE, RT_IPC_FLAG_PRIO, RT_KILLABLE,
-        RT_MUTEX_HOLD_MAX, RT_THREAD_PRIORITY_MAX, RT_TIMER_CTRL_SET_TIME, RT_UNINTERRUPTIBLE,
-        RT_WAITING_FOREVER, RT_WAITING_NO,
+        RT_EOK, RT_ERROR, RT_ETIMEOUT, RT_INTERRUPTIBLE, RT_KILLABLE, RT_MUTEX_HOLD_MAX,
+        RT_THREAD_PRIORITY_MAX, RT_TIMER_CTRL_SET_TIME, RT_UNINTERRUPTIBLE, RT_WAITING_FOREVER,
+        RT_WAITING_NO,
     },
     sync::ipc_common::*,
     thread::RtThread,
@@ -152,7 +152,7 @@ impl RtMutex {
                 mem::size_of::<u32>(),
                 1,
                 IPC_SYS_QUEUE_STUB,
-                RT_IPC_FLAG_PRIO as u32,
+                IPC_WAIT_MODE_PRIO as u32,
             )
             .__pinned_init(&mut cur_ref.inner_queue as *mut RtSysQueue);
             Ok(())
@@ -161,7 +161,7 @@ impl RtMutex {
     }
     #[inline]
     pub fn init(&mut self, name: *const i8, _waiting_mode: u8) {
-        // Flag can only be RT_IPC_FLAG_PRIO.
+        // Flag can only be IPC_WAIT_MODE_PRIO.
         self.parent
             .init(ObjectClassType::ObjectClassMutex as u8, name);
 
@@ -190,7 +190,7 @@ impl RtMutex {
                 mem::size_of::<u32>(),
                 1,
                 IPC_SYS_QUEUE_STUB,
-                RT_IPC_FLAG_PRIO as u32,
+                IPC_WAIT_MODE_PRIO as u32,
             )
             .__pinned_init(&mut self.inner_queue as *mut RtSysQueue)
         };

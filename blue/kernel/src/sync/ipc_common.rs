@@ -4,9 +4,7 @@ use crate::{
     error::{code, Error},
     list_head_for_each,
     object::*,
-    rt_bindings::{
-        RT_EFULL, RT_EOK, RT_ERROR, RT_IPC_FLAG_FIFO, RT_IPC_FLAG_PRIO, RT_MQ_ENTRY_MAX,
-    },
+    rt_bindings::{RT_EFULL, RT_EOK, RT_ERROR},
     sync::RawSpin,
     thread::{RtThread, SuspendFlag},
 };
@@ -19,6 +17,10 @@ use core::{
 };
 use pinned_init::{pin_data, pin_init, pin_init_from_closure, pinned_drop, PinInit};
 
+pub const IPC_WAIT_MODE_FIFO: u32 = 0;
+pub const IPC_WAIT_MODE_PRIO: u32 = 1;
+pub const IPC_RING_BUFFER_ITEM_MAX: u32 = 65535;
+pub const IPC_QUEUE_BUFFER_ITEM_MAX: u32 = 65535;
 pub(crate) const IPC_SYS_QUEUE_FIFO: u32 = 0;
 pub(crate) const IPC_SYS_QUEUE_PRIO: u32 = 1;
 pub(crate) const IPC_SYS_QUEUE_STUB: u32 = 2;
@@ -305,12 +307,12 @@ impl RtSysQueue {
             self.write_pos = 0;
         }
 
-        if self.item_in_queue < rt_bindings::RT_MB_ENTRY_MAX as usize {
-            self.item_in_queue += 1;
-            return size as i32;
-        } else {
+        if self.item_in_queue >= IPC_RING_BUFFER_ITEM_MAX as usize {
             return 0;
         }
+
+        self.item_in_queue += 1;
+        size as i32
     }
 
     #[inline]
@@ -422,7 +424,7 @@ impl RtSysQueue {
             unsafe { node = (*node).next };
         }
 
-        if self.item_in_queue < rt_bindings::RT_MQ_ENTRY_MAX as usize {
+        if self.item_in_queue < IPC_QUEUE_BUFFER_ITEM_MAX as usize {
             // increase message entry
             self.item_in_queue += 1;
         } else {
@@ -473,7 +475,7 @@ impl RtSysQueue {
             self.tail = unsafe { Some(NonNull::new_unchecked(hdr as *mut u8)) };
         }
 
-        if self.item_in_queue < RT_MQ_ENTRY_MAX as usize {
+        if self.item_in_queue < IPC_QUEUE_BUFFER_ITEM_MAX as usize {
             self.item_in_queue += 1;
         } else {
             self.spinlock.unlock();
@@ -625,12 +627,12 @@ impl RtWaitQueue {
         }
 
         match self.waiting_mode as u32 {
-            RT_IPC_FLAG_FIFO => {
+            IPC_WAIT_MODE_FIFO => {
                 unsafe {
                     Pin::new_unchecked(&mut self.working_queue).insert_prev(&mut thread.tlist)
                 };
             }
-            RT_IPC_FLAG_PRIO => {
+            IPC_WAIT_MODE_PRIO => {
                 list_head_for_each!(node, &self.working_queue, {
                     let queued_thread_ptr =
                         unsafe { crate::thread_list_node_entry!(node.as_ptr()) as *mut RtThread };

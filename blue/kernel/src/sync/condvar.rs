@@ -5,10 +5,10 @@ use crate::{
     object::{KObjectBase, KernelObject, ObjectClassType, NAME_MAX},
     rt_bindings::{
         rt_debug_in_thread_context, rt_debug_not_in_interrupt, rt_err_t, rt_uint8_t, RT_EINVAL,
-        RT_EOK, RT_ERROR, RT_ETIMEOUT, RT_IPC_FLAG_FIFO, RT_IPC_FLAG_PRIO, RT_TIMER_CTRL_SET_TIME,
-        RT_UNINTERRUPTIBLE, RT_WAITING_FOREVER,
+        RT_EOK, RT_ERROR, RT_ETIMEOUT, RT_TIMER_CTRL_SET_TIME, RT_UNINTERRUPTIBLE,
+        RT_WAITING_FOREVER,
     },
-    sync::{lock::mutex::RtMutex, semaphore::RtSemaphore, RawSpin},
+    sync::{ipc_common::*, lock::mutex::RtMutex, semaphore::RtSemaphore, RawSpin},
 };
 use blue_infra::list::doubly_linked_list::ListHead;
 use core::{ffi::c_void, ptr::null_mut};
@@ -34,7 +34,8 @@ impl RtCondVar {
     #[inline]
     pub(crate) fn new(name: [i8; NAME_MAX], waiting_mode: u8) -> impl PinInit<Self> {
         assert!(
-            (waiting_mode == RT_IPC_FLAG_FIFO as u8) || (waiting_mode == RT_IPC_FLAG_PRIO as u8)
+            (waiting_mode == IPC_WAIT_MODE_FIFO as u8)
+                || (waiting_mode == IPC_WAIT_MODE_PRIO as u8)
         );
 
         rt_debug_not_in_interrupt!();
@@ -50,7 +51,8 @@ impl RtCondVar {
     #[inline]
     pub(crate) fn init(&mut self, name: *const i8, waiting_mode: u8) {
         assert!(
-            (waiting_mode == RT_IPC_FLAG_FIFO as u8) || (waiting_mode == RT_IPC_FLAG_PRIO as u8)
+            (waiting_mode == IPC_WAIT_MODE_FIFO as u8)
+                || (waiting_mode == IPC_WAIT_MODE_PRIO as u8)
         );
         self.parent
             .init(ObjectClassType::ObjectClassCondVar as u8, name);
@@ -61,7 +63,8 @@ impl RtCondVar {
     #[inline]
     pub(crate) fn init_dyn(&mut self, name: *const i8, waiting_mode: u8) {
         assert!(
-            (waiting_mode == RT_IPC_FLAG_FIFO as u8) || (waiting_mode == RT_IPC_FLAG_PRIO as u8)
+            (waiting_mode == IPC_WAIT_MODE_FIFO as u8)
+                || (waiting_mode == IPC_WAIT_MODE_PRIO as u8)
         );
         self.parent
             .init_dyn(ObjectClassType::ObjectClassCondVar as u8, name);

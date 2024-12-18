@@ -10,8 +10,7 @@ use crate::{
         rt_debug_not_in_interrupt, rt_debug_scheduler_available, rt_err_t, rt_int32_t, rt_object,
         rt_object_hook_call, rt_size_t, rt_ssize_t, rt_uint16_t, rt_uint32_t, rt_uint8_t,
         RT_ALIGN_SIZE, RT_EFULL, RT_EINVAL, RT_EOK, RT_ERROR, RT_ETIMEOUT, RT_INTERRUPTIBLE,
-        RT_IPC_CMD_RESET, RT_IPC_FLAG_FIFO, RT_IPC_FLAG_PRIO, RT_KILLABLE, RT_TIMER_CTRL_SET_TIME,
-        RT_UNINTERRUPTIBLE,
+        RT_IPC_CMD_RESET, RT_KILLABLE, RT_TIMER_CTRL_SET_TIME, RT_UNINTERRUPTIBLE,
     },
     sync::ipc_common::*,
     thread::RtThread,
@@ -70,7 +69,7 @@ impl KMessageQueue {
                             msg_size,
                             max_msgs,
                             IPC_SYS_QUEUE_FIFO as u8,
-                            RT_IPC_FLAG_FIFO as u8,
+                            IPC_WAIT_MODE_FIFO as u8,
                         );
                     } else {
                         let default = "default";
@@ -80,7 +79,7 @@ impl KMessageQueue {
                             msg_size,
                             max_msgs,
                             IPC_SYS_QUEUE_FIFO as u8,
-                            RT_IPC_FLAG_FIFO as u8,
+                            IPC_WAIT_MODE_FIFO as u8,
                         );
                     }
                 }
@@ -149,7 +148,8 @@ impl RtMessageQueue {
         waiting_mode: u8,
     ) -> Result<Pin<Box<Self>>, AllocError> {
         assert!(
-            (waiting_mode == RT_IPC_FLAG_FIFO as u8) || (waiting_mode == RT_IPC_FLAG_PRIO as u8)
+            (waiting_mode == IPC_WAIT_MODE_FIFO as u8)
+                || (waiting_mode == IPC_WAIT_MODE_PRIO as u8)
         );
 
         rt_debug_not_in_interrupt!();
@@ -171,7 +171,8 @@ impl RtMessageQueue {
         waiting_mode: u8,
     ) -> i32 {
         assert!(
-            (waiting_mode == RT_IPC_FLAG_FIFO as u8) || (waiting_mode == RT_IPC_FLAG_PRIO as u8)
+            (waiting_mode == IPC_WAIT_MODE_FIFO as u8)
+                || (waiting_mode == IPC_WAIT_MODE_PRIO as u8)
         );
         self.parent
             .init(ObjectClassType::ObjectClassMessageQueue as u8, name);
@@ -661,7 +662,7 @@ pub unsafe extern "C" fn rt_mq_init(
     flag: rt_uint8_t,
 ) -> rt_err_t {
     assert!(!mq.is_null());
-    assert!((flag == RT_IPC_FLAG_FIFO as u8) || (flag == RT_IPC_FLAG_PRIO as u8));
+    assert!((flag == IPC_WAIT_MODE_FIFO as u8) || (flag == IPC_WAIT_MODE_PRIO as u8));
     #[allow(unused_mut, unused_assignments)]
     let mut queue_working_mode = IPC_SYS_QUEUE_FIFO as u8;
     #[cfg(feature = "RT_USING_MESSAGEQUEUE_PRIORITY")]

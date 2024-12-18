@@ -8,8 +8,8 @@ use crate::{
     rt_bindings::{
         rt_debug_not_in_interrupt, rt_debug_scheduler_available, rt_err_t, rt_int32_t, rt_object,
         rt_object_hook_call, rt_size_t, rt_ubase_t, rt_uint8_t, RT_EFULL, RT_EOK, RT_ERROR,
-        RT_ETIMEOUT, RT_INTERRUPTIBLE, RT_IPC_CMD_RESET, RT_IPC_FLAG_FIFO, RT_IPC_FLAG_PRIO,
-        RT_KILLABLE, RT_TIMER_CTRL_SET_TIME, RT_UNINTERRUPTIBLE,
+        RT_ETIMEOUT, RT_INTERRUPTIBLE, RT_IPC_CMD_RESET, RT_KILLABLE, RT_TIMER_CTRL_SET_TIME,
+        RT_UNINTERRUPTIBLE,
     },
     sync::ipc_common::*,
     thread::RtThread,
@@ -77,7 +77,7 @@ impl KMailbox {
                         mem::size_of::<usize>(),
                         size,
                         0,
-                        RT_IPC_FLAG_FIFO as u32,
+                        IPC_WAIT_MODE_FIFO as u32,
                     );
                 }
                 Ok(())
@@ -130,7 +130,7 @@ impl_kobject!(RtMailbox);
 impl RtMailbox {
     #[inline]
     pub fn new(name: [i8; NAME_MAX], size: usize, flag: u8) -> impl PinInit<Self> {
-        assert!((flag == RT_IPC_FLAG_FIFO as u8) || (flag == RT_IPC_FLAG_PRIO as u8));
+        assert!((flag == IPC_WAIT_MODE_FIFO as u8) || (flag == IPC_WAIT_MODE_PRIO as u8));
 
         rt_debug_not_in_interrupt!();
 
@@ -141,7 +141,7 @@ impl RtMailbox {
     }
     #[inline]
     pub fn init(&mut self, name: *const i8, buffer: *mut u8, size: usize, flag: u8) {
-        assert!((flag == RT_IPC_FLAG_FIFO as u8) || (flag == RT_IPC_FLAG_PRIO as u8));
+        assert!((flag == IPC_WAIT_MODE_FIFO as u8) || (flag == IPC_WAIT_MODE_PRIO as u8));
 
         self.parent
             .init(ObjectClassType::ObjectClassMailBox as u8, name);

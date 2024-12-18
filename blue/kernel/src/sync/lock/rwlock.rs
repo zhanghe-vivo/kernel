@@ -2,10 +2,9 @@ use crate::{
     impl_kobject,
     object::{KObjectBase, KernelObject, ObjectClassType, NAME_MAX},
     rt_bindings::{
-        rt_debug_not_in_interrupt, rt_err_t, rt_uint8_t, RT_EBUSY, RT_EOK, RT_IPC_FLAG_FIFO,
-        RT_IPC_FLAG_PRIO, RT_UNINTERRUPTIBLE,
+        rt_debug_not_in_interrupt, rt_err_t, rt_uint8_t, RT_EBUSY, RT_EOK, RT_UNINTERRUPTIBLE,
     },
-    sync::{condvar::RtCondVar, lock::mutex::RtMutex},
+    sync::{condvar::RtCondVar, ipc_common::*, lock::mutex::RtMutex},
 };
 use blue_infra::list::doubly_linked_list::ListHead;
 use pinned_init::{pin_data, pin_init, PinInit};
@@ -40,7 +39,8 @@ impl RtRwLock {
     #[inline]
     pub(crate) fn new(name: [i8; NAME_MAX], waiting_mode: u8) -> impl PinInit<Self> {
         assert!(
-            (waiting_mode == RT_IPC_FLAG_FIFO as u8) || (waiting_mode == RT_IPC_FLAG_PRIO as u8)
+            (waiting_mode == IPC_WAIT_MODE_FIFO as u8)
+                || (waiting_mode == IPC_WAIT_MODE_PRIO as u8)
         );
 
         rt_debug_not_in_interrupt!();
@@ -68,7 +68,8 @@ impl RtRwLock {
     #[inline]
     pub(crate) fn init(&mut self, name: *const i8, waiting_mode: u8) {
         assert!(
-            (waiting_mode == RT_IPC_FLAG_FIFO as u8) || (waiting_mode == RT_IPC_FLAG_PRIO as u8)
+            (waiting_mode == IPC_WAIT_MODE_FIFO as u8)
+                || (waiting_mode == IPC_WAIT_MODE_PRIO as u8)
         );
         self.parent
             .init(ObjectClassType::ObjectClassRwLock as u8, name);
@@ -78,7 +79,8 @@ impl RtRwLock {
     #[inline]
     pub(crate) fn init_dyn(&mut self, name: *const i8, waiting_mode: u8) {
         assert!(
-            (waiting_mode == RT_IPC_FLAG_FIFO as u8) || (waiting_mode == RT_IPC_FLAG_PRIO as u8)
+            (waiting_mode == IPC_WAIT_MODE_FIFO as u8)
+                || (waiting_mode == IPC_WAIT_MODE_PRIO as u8)
         );
         self.parent
             .init_dyn(ObjectClassType::ObjectClassRwLock as u8, name);
