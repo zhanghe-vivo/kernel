@@ -1,31 +1,37 @@
-FROM rust:latest
+FROM rust:1.83.0
 LABEL author jianghan <jianghan@vivo.com>
 
-# Install zsh
-RUN sudo apt install -y git zsh \
-    && git clone https://github.com/ohmyzsh/ohmyzsh.git ~/.oh-my-zsh \
-    && cp ~/.oh-my-zsh/templates/zshrc.zsh-template ~/.zshrc \
-    && sed -i "s/robbyrussell/bira/" ~/.zshrc
+ENV RUSTUP_DIST_SERVER=https://mirrors.ustc.edu.cn/rust-static
+ENV RUSTUP_UPDATE_ROOT=https://mirrors.ustc.edu.cn/rust-static/rustup
 
-ENV RUSTUP_UPDATE_ROOT=https://mirrors.aliyun.com/rustup/rustup
-ENV RUSTUP_DIST_SERVER=https://mirrors.aliyun.com/rustup
-RUN rustup default nightly && \
+ADD sources.list /etc/apt/
+RUN DEBIAN_FRONTEND=noninteractive apt-get update -y && \
+    apt-get install git   wget bzip2 \
+    build-essential  libncurses-dev  cppcheck \
+    gcc-arm-none-eabi gdb-arm-none-eabi binutils-arm-none-eabi  qemu-system-arm \
+    python3-pip  python3-requests \
+    scons libclang-dev zsh -y \
+    && apt-get clean -y
+
+RUN rustup toolchain install nightly-2024-11-22 && \
+    rustup default nightly-2024-11-22 && \
     rustup target add armv7a-none-eabi && \
     rustup target add thumbv7m-none-eabi && \
+    rustup target add thumbv7em-none-eabihf && \
     rustup target add thumbv8m.main-none-eabi && \
     rustup target add thumbv8m.main-none-eabihf && \
     cargo install cargo-binutils && \
     rustup component add llvm-tools-preview && \
     rustup component add rust-src && \
-    rustup component add rustfmt
-ADD sources.list /etc/apt/
-RUN DEBIAN_FRONTEND=noninteractive apt-get update -y && \
-    apt-get install git   wget bzip2 \
-    build-essential  libncurses-dev  cppcheck   \
-    gcc-arm-none-eabi gdb-arm-none-eabi binutils-arm-none-eabi  qemu-system-arm    \
-    python3-pip  python3-requests  -y   \
-    scons \
-    libclang-dev && \
-    apt-get clean -y
+    rustup component add rustfmt && \
+    rustup component add clippy
 
-CMD ["bash"]
+# Install ohmyzsh
+# RUN git clone https://github.com/ohmyzsh/ohmyzsh.git ~/.oh-my-zsh \
+#     && cp ~/.oh-my-zsh/templates/zshrc.zsh-template ~/.zshrc \
+#     && sed -i "s/robbyrussell/ys/" ~/.zshrc \
+#     && git clone https://github.com/zsh-users/zsh-autosuggestions ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions \
+#     && git clone https://github.com/zsh-users/zsh-syntax-highlighting.git ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting \
+#     && sed -i "s/plugins=(git.*)$/plugins=(git zsh-syntax-highlighting zsh-autosuggestions)/" ~/.zshrc
+
+CMD ["/bin/zsh"]
