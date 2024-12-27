@@ -580,7 +580,7 @@ pub extern "C" fn rt_timer_check() {
     assert!(Cpu::interrupt_nest_load() > 0);
     #[cfg(feature = "RT_USING_SMP")]
     {
-        if unsafe { blue_arch::smp::core_id() != 0u8 } {
+        if unsafe { Arch::smp::core_id() != 0u8 } {
             return;
         }
     }

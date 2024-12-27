@@ -1,5 +1,5 @@
 use crate::{c_str, cpu, idle, kprintf, timer};
-use blue_arch::{arch::Arch, IInterrupt};
+use blue_arch::arch::Arch;
 use paste::paste;
 use rt_bindings;
 

@@ -1,6 +1,7 @@
 use crate::{
     new_spinlock, object, static_init::UnsafeStaticInit, sync::SpinLock, thread::RtThread,
 };
+use alloc::alloc::{Layout, dealloc};
 use blue_infra::list::doubly_linked_list::ListHead;
 use core::{pin::Pin, ptr::NonNull};
 use pinned_init::{pin_data, pin_init, PinInit};
@@ -115,8 +116,17 @@ impl ZombieManager {
                 // if need free, delete it
                 #[cfg(feature = "RT_USING_HEAP")]
                 if object_is_systemobject == rt_bindings::RT_FALSE as i32 {
-                    // delete thread object
-                    object::rt_object_delete(th as rt_bindings::rt_object_t);
+                    // SAFETY: thread is a dynamic object, delete thread stack and thread object manually.
+                    unsafe {
+                        // free stack
+                        let layout = Layout::from_size_align_unchecked(
+                            (*th).stack().size(),
+                            rt_bindings::RT_ALIGN_SIZE as usize,
+                        );
+                        dealloc((*th).stack().bottom_ptr() as *mut u8, layout);
+                        // delete thread object
+                        (*th).parent.delete();
+                    }
                 }
             } else {
                 break;

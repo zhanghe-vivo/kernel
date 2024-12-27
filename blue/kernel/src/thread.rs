@@ -18,8 +18,8 @@ use crate::{
     zombie,
 };
 use alloc::alloc;
-use blue_arch::{arch::Arch, IScheduler};
 use blue_infra::list::doubly_linked_list::ListHead;
+use blue_arch::arch::Arch;
 use core::{
     alloc::{AllocError, Layout},
     cell::{Cell, UnsafeCell},

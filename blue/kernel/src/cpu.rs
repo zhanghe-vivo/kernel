@@ -2,9 +2,7 @@
 #[cfg(feature = "RT_USING_SMP")]
 use crate::scheduler::PriorityTableManager;
 use crate::{process, scheduler::Scheduler, static_init::UnsafeStaticInit, sync::RawSpin, thread};
-use blue_arch::smp;
-#[cfg(feature = "RT_USING_SMP")]
-use blue_arch::{arch::Arch, IInterrupt};
+use blue_arch::arch::Arch;
 
 use core::{
     ptr::NonNull,
@@ -191,7 +189,7 @@ impl Cpu {
 
     #[inline]
     pub fn get_current() -> &'static Cpu {
-        unsafe { &CPUS.inner[smp::core_id::<usize>()] }
+        unsafe { &CPUS.inner[Arch::core_id::<usize>()] }
     }
 
     #[inline]
@@ -201,7 +199,7 @@ impl Cpu {
 
     #[inline]
     pub fn get_current_mut() -> &'static mut Cpu {
-        unsafe { &mut CPUS.inner[smp::core_id::<usize>()] }
+        unsafe { &mut CPUS.inner[Arch::core_id::<usize>()] }
     }
 
     #[inline]

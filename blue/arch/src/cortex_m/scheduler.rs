@@ -1,4 +1,19 @@
-//! ARM Cortex-M implementation of [`IScheduler`] and context switch.
+//! ARM Cortex-M implementation of [`Scheduler`] and context switch.
+// Include:
+// 1. init_task_stack
+//     ```unsafe fn init_task_stack(
+//         stack_ptr: *mut usize,
+//         stack_bottom: *mut usize,
+//         entry: *const usize,
+//         arg: *const usize,
+//         exit: *const usize,
+//     ) -> *mut usize;```
+// 2. context_switch_to
+//     ```fn context_switch_to(stack_ptr: *const usize) -> !;```
+// 3. trigger_switch
+//     ```fn trigger_switch();```
+// 4. start_switch
+//     ```fn start_switch();```
 
 use core::{
     arch::{asm, naked_asm},
@@ -10,14 +25,8 @@ use cortex_m::{
     register::control::{Fpca, Npriv, Spsel},
     Peripherals,
 };
-
-use crate::{
-    arch::{
-        stack_frame::{StackFrame, StackFrameExtension, StackSettings},
-        Arch,
-    },
-    scheduler::IScheduler,
-};
+use crate::cortex_m::Arch;
+use crate::arch::stack_frame::{StackFrame, StackFrameExtension, StackSettings};
 
 extern "C" {
     static __StackTop: u32;
@@ -145,8 +154,72 @@ pub unsafe extern "C" fn PendSV_Handler() {
     }
 }
 
-impl IScheduler for Arch {
-    unsafe fn init_task_stack(
+#[inline]
+fn get_exception_lr() -> u32 {
+    // EXC_RETURN register bit assignments
+    // +---+------+------+-------+-------+
+    // | - | S    | FPCA | SPSEL | nPRIV |
+    // +---+------+------+-------+-------+
+    // S,     [6]   - Secure or Non-secure stack. Indicates whether a Secure or Non-secure stack is used to restore stack frame on exception return.
+    //                  0: Non-secure stack used.
+    //                  1: Secure stack used.
+    //                  Behavior is UNPREDICTABLE if the Security Extension is not implemented and this field is not zero.
+    //                  If the Security Extension is not implemented, this bit is RES0.
+    // DCRS,  [5]   - Default callee register stacking. Indicates whether the default stacking rules apply, or whether the Additional
+    //                  state context, also known as callee registers, are already on the stack.
+    //                  0: Stacking of the Additional state context registers skipped.
+    //                  1: Default rules for stacking the Additional state context registers followed
+    // FType, [4]   - Stack frame type. Indicates whether the stack frame is a standard integer only stack frame or an extended Floating-point stack frame.
+    //                  0: Extended stack frame.
+    //                  1: Standard stack frame.
+    //                  Behavior is UNPREDICTABLE if neither the Floating-point Extension or MVE are implemented and this field is not one.
+    //                  If neither the Floating-point Extension or MVE are implemented, this bit is RES1.
+    // Mode,   [3]  - Mode. Indicates the Mode that was stacked from.
+    //                  0: Handler mode.
+    //                  1: Thread mode.
+    // SPSEL, [2]   - Stack pointer selection. The value of this bit indicates the transitory value of the CONTROL.
+    //                SPSEL bit associated with the Security state of the exception as indicated by EXC_RETURN.ES.
+    //                  0: Main stack pointer.
+    //                  1: Process stack pointer.
+    // Bit [1]      - Reserved, RES0.
+    // ES, [0]      - Exception Secure. The security domain the exception was taken to.
+    //                  0: Non-secure.
+    //                  1: Secure.
+    //                  Behavior is UNPREDICTABLE if the Security Extension is not implemented and this field is not zero.
+    //                  If the Security Extension is not implemented, this bit is RES0.
+    0xFFFFFFFD // thread mode using psp
+               // TODO: add trustzone support
+}
+
+#[inline]
+fn get_control() -> u32 {
+    // CONTROL register bit assignments, armv7m only have SPSEL and nPRIV
+    // +---------+--------+---------+--------+------+------+-------+-------+
+    // | UPAC_EN | PAC_EN | UBTI_EN | BTI_EN | SFPA | FPCA | SPSEL | nPRIV |
+    // +---------+--------+---------+--------+------+------+-------+-------+
+    // SFPA   [3]     - Indicates that the floating-point registers contain active state that belongs to the Secure state:
+    //                   0: The floating-point registers do not contain state that belongs to the Secure state.
+    //                   1: The floating-point registers contain state that belongs to the Secure state.
+    //                   This bit is not banked between Security states and RAZ/WI from Non-secure state.
+    // FPCA   [2]     - Indicates whether floating-point context is active:
+    //                   0: No floating-point context active.
+    //                   1: Floating-point context active.
+    //                   This bit is used to determine whether to preserve floating-point state when processing an exception.
+    //                   This bit is not banked between Security states.
+    // SPSEL  [1]     - Defines the currently active stack pointer:
+    //                   0: MSP is the current stack pointer.
+    //                   1: PSP is the current stack pointer.
+    //                   In Handler mode, this bit reads as zero and ignores writes. The CortexM33 core updates this bit automatically onexception return.
+    //                   This bit is banked between Security states.
+    // nPRIV  [0]     - Defines the Thread mode privilege level:
+    //                   0: Privileged.
+    //                   1: Unprivileged.
+    //                   This bit is banked between Security states.
+    0x2 // PSP, Thread mode Privileged
+}
+
+impl Arch {
+    pub unsafe fn init_task_stack(
         stack_ptr: *mut usize,
         stack_bottom: *mut usize,
         entry: *const usize,
@@ -168,8 +241,8 @@ impl IScheduler for Arch {
         let mut stack_settings: &mut StackSettings =
             mem::transmute(&mut *stack_ptr.offset(-(stack_offset as isize)));
 
-        stack_settings.exception_lr = Self::get_exception_lr();
-        stack_settings.control = Self::get_control();
+        stack_settings.exception_lr = get_exception_lr();
+        stack_settings.control = get_control();
 
         #[cfg(armv8m)]
         {
@@ -183,7 +256,7 @@ impl IScheduler for Arch {
     }
 
     #[cfg(any(armv7m, armv7em))]
-    fn context_switch_to(stack_ptr: *const usize) -> ! {
+    pub fn context_switch_to(stack_ptr: *const usize) -> ! {
         // SAFETY: Safe bare metal assembly operations
         unsafe {
             asm!(
@@ -204,7 +277,7 @@ impl IScheduler for Arch {
     }
 
     #[cfg(armv8m)]
-    fn context_switch_to(stack_ptr: *const usize) -> ! {
+    pub fn context_switch_to(stack_ptr: *const usize) -> ! {
         unsafe {
             asm!(
                 "ldmia r0!, {{r1, r2, r3, r4}}",    // pop tz, psplim, exception_lr, control
@@ -226,7 +299,7 @@ impl IScheduler for Arch {
     }
 
     #[inline]
-    fn trigger_switch() {
+    pub fn trigger_switch() {
         SCB::set_pendsv();
         // Barriers are normally not required but do ensure the code is completely
         // within the specified behaviour for the architecture.
@@ -234,7 +307,7 @@ impl IScheduler for Arch {
         cortex_m::asm::isb();
     }
 
-    fn start_switch() {
+    pub fn start_switch() {
         // SAFETY: Safe register and assembly operations
         unsafe {
             let mut scb = Peripherals::steal();
@@ -300,71 +373,5 @@ impl IScheduler for Arch {
                 "isb"
             );
         }
-    }
-}
-
-impl Arch {
-    #[inline]
-    fn get_exception_lr() -> u32 {
-        // EXC_RETURN register bit assignments
-        // +---+------+------+-------+-------+
-        // | - | S    | FPCA | SPSEL | nPRIV |
-        // +---+------+------+-------+-------+
-        // S,     [6]   - Secure or Non-secure stack. Indicates whether a Secure or Non-secure stack is used to restore stack frame on exception return.
-        //                  0: Non-secure stack used.
-        //                  1: Secure stack used.
-        //                  Behavior is UNPREDICTABLE if the Security Extension is not implemented and this field is not zero.
-        //                  If the Security Extension is not implemented, this bit is RES0.
-        // DCRS,  [5]   - Default callee register stacking. Indicates whether the default stacking rules apply, or whether the Additional
-        //                  state context, also known as callee registers, are already on the stack.
-        //                  0: Stacking of the Additional state context registers skipped.
-        //                  1: Default rules for stacking the Additional state context registers followed
-        // FType, [4]   - Stack frame type. Indicates whether the stack frame is a standard integer only stack frame or an extended Floating-point stack frame.
-        //                  0: Extended stack frame.
-        //                  1: Standard stack frame.
-        //                  Behavior is UNPREDICTABLE if neither the Floating-point Extension or MVE are implemented and this field is not one.
-        //                  If neither the Floating-point Extension or MVE are implemented, this bit is RES1.
-        // Mode,   [3]  - Mode. Indicates the Mode that was stacked from.
-        //                  0: Handler mode.
-        //                  1: Thread mode.
-        // SPSEL, [2]   - Stack pointer selection. The value of this bit indicates the transitory value of the CONTROL.
-        //                SPSEL bit associated with the Security state of the exception as indicated by EXC_RETURN.ES.
-        //                  0: Main stack pointer.
-        //                  1: Process stack pointer.
-        // Bit [1]      - Reserved, RES0.
-        // ES, [0]      - Exception Secure. The security domain the exception was taken to.
-        //                  0: Non-secure.
-        //                  1: Secure.
-        //                  Behavior is UNPREDICTABLE if the Security Extension is not implemented and this field is not zero.
-        //                  If the Security Extension is not implemented, this bit is RES0.
-        0xFFFFFFFD // thread mode using psp
-                   // TODO: add trustzone support
-    }
-
-    #[inline]
-    fn get_control() -> u32 {
-        // CONTROL register bit assignments, armv7m only have SPSEL and nPRIV
-        // +---------+--------+---------+--------+------+------+-------+-------+
-        // | UPAC_EN | PAC_EN | UBTI_EN | BTI_EN | SFPA | FPCA | SPSEL | nPRIV |
-        // +---------+--------+---------+--------+------+------+-------+-------+
-        // SFPA   [3]     - Indicates that the floating-point registers contain active state that belongs to the Secure state:
-        //                   0: The floating-point registers do not contain state that belongs to the Secure state.
-        //                   1: The floating-point registers contain state that belongs to the Secure state.
-        //                   This bit is not banked between Security states and RAZ/WI from Non-secure state.
-        // FPCA   [2]     - Indicates whether floating-point context is active:
-        //                   0: No floating-point context active.
-        //                   1: Floating-point context active.
-        //                   This bit is used to determine whether to preserve floating-point state when processing an exception.
-        //                   This bit is not banked between Security states.
-        // SPSEL  [1]     - Defines the currently active stack pointer:
-        //                   0: MSP is the current stack pointer.
-        //                   1: PSP is the current stack pointer.
-        //                   In Handler mode, this bit reads as zero and ignores writes. The CortexM33 core updates this bit automatically onexception return.
-        //                   This bit is banked between Security states.
-        // nPRIV  [0]     - Defines the Thread mode privilege level:
-        //                   0: Privileged.
-        //                   1: Unprivileged.
-        //                   This bit is banked between Security states.
-        0x2 // PSP, Thread mode Privileged
     }
 }

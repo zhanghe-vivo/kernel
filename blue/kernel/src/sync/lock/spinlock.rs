@@ -3,7 +3,7 @@ use crate::cpu::Cpu;
 #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
 use crate::{irq::IrqLock, println, thread::RtThread};
 #[cfg(feature = "RT_USING_SMP")]
-use blue_arch::{arch::Arch, IInterrupt};
+use blue_arch::arch::Arch;
 #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
 use core::ptr::NonNull;
 use core::{

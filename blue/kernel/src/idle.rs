@@ -149,7 +149,7 @@ impl IdleTheads {
     extern "C" fn idle_thread_entry(_parameter: *mut ffi::c_void) {
         #[cfg(feature = "RT_USING_SMP")]
         unsafe {
-            if blue_arch::smp::core_id() != 0u8 {
+            if Arch::smp::core_id() != 0u8 {
                 loop {
                     rt_bindings::rt_hw_secondary_cpu_idle_exec();
                 }

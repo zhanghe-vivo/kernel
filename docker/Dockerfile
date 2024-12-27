@@ -1,8 +1,10 @@
 FROM rust:1.83.0
 LABEL author jianghan <jianghan@vivo.com>
 
-ENV RUSTUP_DIST_SERVER=https://mirrors.ustc.edu.cn/rust-static
-ENV RUSTUP_UPDATE_ROOT=https://mirrors.ustc.edu.cn/rust-static/rustup
+ENV RUSTUP_DIST_SERVER=https://mirrors.ustc.edu.cn/rust-static \
+    RUSTUP_UPDATE_ROOT=https://mirrors.ustc.edu.cn/rust-static/rustup \
+    LC_ALL=en_US.UTF-8 \
+    LANG=en_US.UTF-8
 
 ADD sources.list /etc/apt/
 RUN DEBIAN_FRONTEND=noninteractive apt-get update -y && \
@@ -29,7 +31,7 @@ RUN rustup toolchain install nightly-2024-11-22 && \
 # Install ohmyzsh
 # RUN git clone https://github.com/ohmyzsh/ohmyzsh.git ~/.oh-my-zsh \
 #     && cp ~/.oh-my-zsh/templates/zshrc.zsh-template ~/.zshrc \
-#     && sed -i "s/robbyrussell/ys/" ~/.zshrc \
+#     && sed -i "s/robbyrussell/agnoster/" ~/.zshrc \
 #     && git clone https://github.com/zsh-users/zsh-autosuggestions ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions \
 #     && git clone https://github.com/zsh-users/zsh-syntax-highlighting.git ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting \
 #     && sed -i "s/plugins=(git.*)$/plugins=(git zsh-syntax-highlighting zsh-autosuggestions)/" ~/.zshrc

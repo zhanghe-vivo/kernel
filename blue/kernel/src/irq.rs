@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 use crate::cpu::Cpu;
-use blue_arch::{arch::Arch, IInterrupt};
+use blue_arch::arch::Arch;
 use core::{
     cell::{Cell, UnsafeCell},
     ops::{Deref, DerefMut},

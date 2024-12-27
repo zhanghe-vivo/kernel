@@ -2,7 +2,7 @@ use crate::{
     cpu::Cpu,
     thread::{RtThread, ThreadState},
 };
-use blue_arch::{arch::Arch, IInterrupt, IScheduler};
+use blue_arch::arch::Arch;
 use blue_infra::list::doubly_linked_list::ListHead;
 
 #[cfg(feature = "RT_USING_SMP")]

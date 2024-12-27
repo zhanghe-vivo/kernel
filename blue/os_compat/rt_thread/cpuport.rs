@@ -1,4 +1,4 @@
-use blue_arch::{arch::Arch, smp, IInterrupt};
+use blue_arch::arch::Arch;
 
 #[no_mangle]
 #[inline(always)]
@@ -34,5 +34,5 @@ pub extern "C" fn rt_hw_interrupt_enable(level: core::ffi::c_long) {
 
 #[no_mangle]
 pub extern "C" fn rt_hw_cpu_id() -> core::ffi::c_int {
-    smp::core_id()
+    Arch::core_id()
 }

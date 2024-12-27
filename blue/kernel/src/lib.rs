@@ -9,9 +9,7 @@
 
 extern crate alloc;
 extern crate self as kernel;
-pub use blue_arch;
-#[allow(unused_imports)]
-use blue_arch::arch as _;
+pub use blue_arch::arch::Arch;
 // TODO: add os compat cfg
 pub use rt_bindings;
 
@@ -51,7 +49,6 @@ fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
     }
     #[cfg(not(debug_assertions))]
     {
-        use blue_arch::IInterrupt;
-        blue_arch::arch::Arch::sys_reset()
+        Arch::sys_reset()
     }
 }

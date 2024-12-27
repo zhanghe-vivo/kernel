@@ -1,14 +1,11 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
+//
+// Copyright (c) vivo
+
 #![no_std]
 #![feature(naked_functions)]
 #![feature(stmt_expr_attributes)]
 #![allow(unused)]
-
-pub mod interrupt;
-pub mod scheduler;
-pub mod smp;
-
-// re-exports
-pub use crate::{interrupt::IInterrupt, scheduler::IScheduler};
 
 #[cfg(all(cortex_m, target_os = "none"))]
 pub mod cortex_m;
