@@ -1,18 +1,12 @@
 use crate::{
-    clock::rt_tick_get,
+    clock::get_tick,
     cpu::Cpu,
     error::{code, Error},
-    impl_kobject, list_head_for_each,
+    impl_kobject,
     object::*,
-    print, println,
-    rt_bindings::{
-        rt_debug_not_in_interrupt, rt_debug_scheduler_available, rt_err_t, rt_int32_t, rt_object,
-        rt_object_hook_call, rt_size_t, rt_ubase_t, rt_uint8_t, RT_EFULL, RT_EOK, RT_ERROR,
-        RT_ETIMEOUT, RT_INTERRUPTIBLE, RT_IPC_CMD_RESET, RT_KILLABLE, RT_TIMER_CTRL_SET_TIME,
-        RT_UNINTERRUPTIBLE,
-    },
     sync::ipc_common::*,
-    thread::RtThread,
+    thread::{RtThread, SuspendFlag},
+    timer::TimerControlAction,
 };
 use blue_infra::list::doubly_linked_list::ListHead;
 #[allow(unused_imports)]
@@ -94,7 +88,7 @@ impl KMailbox {
 
     pub fn send(&self, set: usize) -> Result<(), Error> {
         let result = unsafe { (*self.raw.get()).send(set) };
-        if result == RT_EOK as rt_err_t {
+        if result == code::EOK.to_errno() {
             Ok(())
         } else {
             Err(Error::from_errno(result))
@@ -104,7 +98,7 @@ impl KMailbox {
     pub fn receive(&self, timeout: i32) -> Result<usize, Error> {
         let mut retmsg = 0 as usize;
         let result = unsafe { (*self.raw.get()).receive(&mut retmsg, timeout) };
-        if result == RT_EOK as rt_err_t {
+        if result == code::EOK.to_errno() {
             Ok(retmsg)
         } else {
             Err(Error::from_errno(result))
@@ -132,7 +126,7 @@ impl RtMailbox {
     pub fn new(name: [i8; NAME_MAX], size: usize, flag: u8) -> impl PinInit<Self> {
         assert!((flag == IPC_WAIT_MODE_FIFO as u8) || (flag == IPC_WAIT_MODE_PRIO as u8));
 
-        rt_debug_not_in_interrupt!();
+        crate::debug_not_in_interrupt!();
 
         pin_init!(Self {
             parent<-KObjectBase::new(ObjectClassType::ObjectClassMailBox as u8, name),
@@ -181,7 +175,7 @@ impl RtMailbox {
         assert_eq!(self.type_name(), ObjectClassType::ObjectClassMailBox as u8);
         assert!(!self.is_static_kobject());
 
-        rt_debug_not_in_interrupt!();
+        crate::debug_not_in_interrupt!();
 
         self.inner_queue.dequeue_waiter.inner_locked_wake_all();
         self.inner_queue.enqueue_waiter.inner_locked_wake_all();
@@ -193,29 +187,22 @@ impl RtMailbox {
         let mut timeout = timeout;
         #[allow(unused_variables)]
         let scheduler = timeout != 0;
-        rt_debug_scheduler_available!(scheduler);
+        crate::debug_scheduler_available!(scheduler);
 
         let mut tick_delta = 0;
         let thread_ptr = crate::current_thread_ptr!();
         if thread_ptr.is_null() {
-            return -(RT_ERROR as i32);
+            return code::ERROR.to_errno();
         }
 
         // SAFETY: thread_ptr is null checked
         let thread = unsafe { &mut *thread_ptr };
 
-        unsafe {
-            rt_object_hook_call!(
-                rt_object_put_hook,
-                &mut self.parent as *mut KObjectBase as *mut rt_object
-            );
-        }
-
         self.inner_queue.lock();
 
         if self.inner_queue.is_full() && timeout == 0 {
             self.inner_queue.unlock();
-            return -(RT_EFULL as i32);
+            return code::EFULL.to_errno();
         }
 
         while self.inner_queue.is_full() {
@@ -224,21 +211,21 @@ impl RtMailbox {
             if timeout == 0 {
                 self.inner_queue.unlock();
 
-                return -(RT_EFULL as i32);
+                return code::EFULL.to_errno();
             }
 
             let ret = self.inner_queue.enqueue_waiter.wait(thread, suspend_flag);
 
-            if ret != RT_EOK as i32 {
+            if ret != code::EOK.to_errno() {
                 self.inner_queue.unlock();
                 return ret;
             }
 
             if timeout > 0 {
-                tick_delta = rt_tick_get();
+                tick_delta = get_tick();
 
                 thread.thread_timer.timer_control(
-                    RT_TIMER_CTRL_SET_TIME as u32,
+                    TimerControlAction::SetTime,
                     (&mut timeout) as *mut i32 as *mut c_void,
                 );
                 thread.thread_timer.start();
@@ -255,7 +242,7 @@ impl RtMailbox {
             self.inner_queue.lock();
 
             if timeout > 0 {
-                tick_delta = rt_tick_get() - tick_delta;
+                tick_delta = get_tick() - tick_delta;
                 timeout -= tick_delta as i32;
                 if timeout < 0 {
                     timeout = 0;
@@ -269,7 +256,7 @@ impl RtMailbox {
             == 0
         {
             self.inner_queue.unlock();
-            return -(RT_EFULL as i32);
+            return code::EFULL.to_errno();
         }
 
         if !self.inner_queue.dequeue_waiter.is_empty() {
@@ -279,24 +266,24 @@ impl RtMailbox {
 
             Cpu::get_current_scheduler().do_task_schedule();
 
-            return RT_EOK as i32;
+            return code::EOK.to_errno();
         }
 
         self.inner_queue.unlock();
 
-        return RT_EOK as i32;
+        return code::EOK.to_errno();
     }
 
     pub fn send_wait(&mut self, value: usize, timeout: i32) -> i32 {
-        self.send_wait_internal(value, timeout, RT_UNINTERRUPTIBLE as u32)
+        self.send_wait_internal(value, timeout, SuspendFlag::Uninterruptible as u32)
     }
 
     pub fn send_wait_interruptible(&mut self, value: usize, timeout: i32) -> i32 {
-        self.send_wait_internal(value, timeout, RT_INTERRUPTIBLE as u32)
+        self.send_wait_internal(value, timeout, SuspendFlag::Interruptible as u32)
     }
 
     pub fn send_wait_killable(&mut self, value: usize, timeout: i32) -> i32 {
-        self.send_wait_internal(value, timeout, RT_KILLABLE as u32)
+        self.send_wait_internal(value, timeout, SuspendFlag::Killable as u32)
     }
 
     pub fn send(&mut self, value: usize) -> i32 {
@@ -314,19 +301,11 @@ impl RtMailbox {
     pub fn urgent(&mut self, value: usize) -> i32 {
         assert_eq!(self.type_name(), ObjectClassType::ObjectClassMailBox as u8);
 
-        // SAFETY： hook and memory operation should be ensured safe
-        unsafe {
-            rt_object_hook_call!(
-                rt_object_put_hook,
-                &mut self.parent as *mut KObjectBase as *mut rt_object
-            );
-        }
-
         self.inner_queue.lock();
 
         if self.inner_queue.is_full() {
             self.inner_queue.unlock();
-            return -(RT_EFULL as i32);
+            return code::EFULL.to_errno();
         }
 
         self.inner_queue
@@ -339,12 +318,12 @@ impl RtMailbox {
 
             Cpu::get_current_scheduler().do_task_schedule();
 
-            return RT_EOK as i32;
+            return code::EOK.to_errno();
         }
 
         self.inner_queue.unlock();
 
-        RT_EOK as i32
+        code::EOK.to_errno()
     }
 
     fn receive_internal(&mut self, value: &mut usize, timeout: i32, suspend_flag: u32) -> i32 {
@@ -353,24 +332,17 @@ impl RtMailbox {
         let mut timeout = timeout;
         #[allow(unused_variables)]
         let scheduler = timeout != 0;
-        rt_debug_scheduler_available!(scheduler);
+        crate::debug_scheduler_available!(scheduler);
 
         let mut tick_delta = 0;
 
         let thread_ptr = unsafe { crate::current_thread!().unwrap().as_mut() };
-        // SAFETY： hook and memory operation should be ensured safe
-        unsafe {
-            rt_object_hook_call!(
-                rt_object_trytake_hook,
-                &mut self.parent as *mut KObjectBase as *mut rt_object
-            );
-        }
 
         self.inner_queue.lock();
 
         if self.inner_queue.is_empty() && timeout == 0 {
             self.inner_queue.unlock();
-            return -(RT_ETIMEOUT as i32);
+            return code::ETIMEOUT.to_errno();
         }
 
         let thread = &mut *thread_ptr;
@@ -381,23 +353,23 @@ impl RtMailbox {
                 self.inner_queue.unlock();
                 thread.error = code::ETIMEOUT;
 
-                return -(RT_ETIMEOUT as i32);
+                return code::ETIMEOUT.to_errno();
             }
 
             let ret = self
                 .inner_queue
                 .dequeue_waiter
                 .wait(thread, suspend_flag as u32);
-            if ret != RT_EOK as i32 {
+            if ret != code::EOK.to_errno() {
                 self.inner_queue.unlock();
                 return ret;
             }
 
             if timeout > 0 {
-                tick_delta = rt_tick_get();
+                tick_delta = Cpu::get_by_id(0).tick_load();
 
                 thread.thread_timer.timer_control(
-                    RT_TIMER_CTRL_SET_TIME as u32,
+                    TimerControlAction::SetTime,
                     (&mut timeout) as *mut i32 as *mut c_void,
                 );
                 thread.thread_timer.start();
@@ -414,7 +386,7 @@ impl RtMailbox {
             self.inner_queue.lock();
 
             if timeout > 0 {
-                tick_delta = rt_tick_get() - tick_delta;
+                tick_delta = Cpu::get_by_id(0).tick_load() - tick_delta;
                 timeout -= tick_delta as i32;
                 if timeout < 0 {
                     timeout = 0;
@@ -439,46 +411,32 @@ impl RtMailbox {
 
             self.inner_queue.unlock();
 
-            unsafe {
-                rt_object_hook_call!(
-                    rt_object_take_hook,
-                    &mut self.parent as *mut KObjectBase as *mut rt_object
-                );
-            }
-
             Cpu::get_current_scheduler().do_task_schedule();
 
-            return RT_EOK as i32;
+            return code::EOK.to_errno();
         }
 
         self.inner_queue.unlock();
 
-        unsafe {
-            rt_object_hook_call!(
-                rt_object_take_hook,
-                &mut self.parent as *mut KObjectBase as *mut rt_object
-            );
-        }
-
-        RT_EOK as i32
+        code::EOK.to_errno()
     }
 
     pub fn receive(&mut self, value: &mut usize, timeout: i32) -> i32 {
-        self.receive_internal(value, timeout, RT_UNINTERRUPTIBLE)
+        self.receive_internal(value, timeout, SuspendFlag::Uninterruptible as u32)
     }
 
     pub fn receive_interruptible(&mut self, value: &mut usize, timeout: i32) -> i32 {
-        self.receive_internal(value, timeout, RT_INTERRUPTIBLE)
+        self.receive_internal(value, timeout, SuspendFlag::Interruptible as u32)
     }
 
     pub fn receive_killable(&mut self, value: &mut usize, timeout: i32) -> i32 {
-        self.receive_internal(value, timeout, RT_KILLABLE)
+        self.receive_internal(value, timeout, SuspendFlag::Killable as u32)
     }
 
     pub fn control(&mut self, cmd: i32, _arg: *mut core::ffi::c_void) -> i32 {
         assert_eq!(self.type_name(), ObjectClassType::ObjectClassMailBox as u8);
 
-        if cmd == RT_IPC_CMD_RESET as i32 {
+        if cmd == IPC_CMD_RESET as i32 {
             self.inner_queue.lock();
 
             self.inner_queue.dequeue_waiter.inner_locked_wake_all();
@@ -492,204 +450,16 @@ impl RtMailbox {
 
             Cpu::get_current_scheduler().do_task_schedule();
 
-            return RT_EOK as i32;
+            return code::EOK.to_errno();
         }
 
-        RT_EOK as i32
+        code::EOK.to_errno()
     }
 }
 
-#[cfg(feature = "RT_USING_MAILBOX")]
+/// bindgen for RtMailbox
+#[allow(improper_ctypes_definitions)]
 #[no_mangle]
-pub unsafe extern "C" fn rt_mb_init(
-    mb: *mut RtMailbox,
-    name: *const core::ffi::c_char,
-    msgpool: *mut core::ffi::c_void,
-    size: rt_size_t,
-    flag: rt_uint8_t,
-) -> rt_err_t {
-    assert!(!mb.is_null());
-
-    (*mb).init(name, msgpool as *mut u8, size as usize, flag);
-
-    RT_EOK as rt_err_t
-}
-
-#[cfg(feature = "RT_USING_MAILBOX")]
-#[no_mangle]
-pub unsafe extern "C" fn rt_mb_detach(mb: *mut RtMailbox) -> rt_err_t {
-    assert!(!mb.is_null());
-
-    (*mb).detach();
-
-    return RT_EOK as rt_err_t;
-}
-
-#[cfg(all(feature = "RT_USING_MAILBOX", feature = "RT_USING_HEAP"))]
-#[no_mangle]
-pub unsafe extern "C" fn rt_mb_create(
-    name: *const core::ffi::c_char,
-    size: rt_size_t,
-    flag: rt_uint8_t,
-) -> *mut RtMailbox {
-    RtMailbox::new_raw(name, size as usize, flag)
-}
-
-#[cfg(all(feature = "RT_USING_MAILBOX", feature = "RT_USING_HEAP"))]
-#[no_mangle]
-pub unsafe extern "C" fn rt_mb_delete(mb: *mut RtMailbox) -> rt_err_t {
-    assert!(!mb.is_null());
-
-    (*mb).delete_raw();
-
-    RT_EOK as rt_err_t
-}
-
-#[cfg(feature = "RT_USING_MAILBOX")]
-#[no_mangle]
-pub unsafe extern "C" fn rt_mb_send_wait(
-    mb: *mut RtMailbox,
-    value: rt_ubase_t,
-    timeout: rt_int32_t,
-) -> rt_err_t {
-    assert!(!mb.is_null());
-    (*mb).send_wait(value as usize, timeout) as rt_err_t
-}
-
-#[cfg(feature = "RT_USING_MAILBOX")]
-#[no_mangle]
-pub unsafe extern "C" fn rt_mb_send_wait_interruptible(
-    mb: *mut RtMailbox,
-    value: rt_ubase_t,
-    timeout: rt_int32_t,
-) -> rt_err_t {
-    assert!(!mb.is_null());
-    (*mb).send_wait_interruptible(value as usize, timeout) as rt_err_t
-}
-
-#[cfg(feature = "RT_USING_MAILBOX")]
-#[no_mangle]
-pub unsafe extern "C" fn rt_mb_send_wait_killable(
-    mb: *mut RtMailbox,
-    value: rt_ubase_t,
-    timeout: rt_int32_t,
-) -> rt_err_t {
-    assert!(!mb.is_null());
-    (*mb).send_wait_killable(value as usize, timeout) as rt_err_t
-}
-
-#[cfg(feature = "RT_USING_MAILBOX")]
-#[no_mangle]
-pub unsafe extern "C" fn rt_mb_send(mb: *mut RtMailbox, value: ffi::c_ulong) -> rt_err_t {
-    assert!(!mb.is_null());
-    (*mb).send(value as usize) as rt_err_t
-}
-
-#[cfg(feature = "RT_USING_MAILBOX")]
-#[no_mangle]
-pub unsafe extern "C" fn rt_mb_send_interruptible(
-    mb: *mut RtMailbox,
-    value: ffi::c_ulong,
-) -> rt_err_t {
-    assert!(!mb.is_null());
-    (*mb).send_interruptible(value as usize) as rt_err_t
-}
-
-#[cfg(feature = "RT_USING_MAILBOX")]
-#[no_mangle]
-pub unsafe extern "C" fn rt_mb_send_killable(mb: *mut RtMailbox, value: ffi::c_ulong) -> rt_err_t {
-    assert!(!mb.is_null());
-    (*mb).send_killable(value as usize) as rt_err_t
-}
-
-#[cfg(feature = "RT_USING_MAILBOX")]
-#[no_mangle]
-pub unsafe extern "C" fn rt_mb_urgent(mb: *mut RtMailbox, value: ffi::c_ulong) -> rt_err_t {
-    assert!(!mb.is_null());
-    (*mb).urgent(value as usize) as rt_err_t
-}
-
-#[cfg(feature = "RT_USING_MAILBOX")]
-#[no_mangle]
-pub unsafe extern "C" fn rt_mb_recv(
-    mb: *mut RtMailbox,
-    value: *mut ffi::c_ulong,
-    timeout: rt_int32_t,
-) -> rt_err_t {
-    assert!(!mb.is_null());
-    let mut receive_val = 0usize;
-    let ret_val = (*mb).receive(&mut receive_val, timeout) as rt_err_t;
-    *value = receive_val as ffi::c_ulong;
-    ret_val
-}
-
-#[cfg(feature = "RT_USING_MAILBOX")]
-#[no_mangle]
-pub unsafe extern "C" fn rt_mb_recv_interruptible(
-    mb: *mut RtMailbox,
-    value: *mut ffi::c_ulong,
-    timeout: rt_int32_t,
-) -> rt_err_t {
-    assert!(!mb.is_null());
-    let mut receive_val = 0usize;
-    let ret_val = (*mb).receive_interruptible(&mut receive_val, timeout) as rt_err_t;
-    *value = receive_val as ffi::c_ulong;
-    ret_val
-}
-
-#[cfg(feature = "RT_USING_MAILBOX")]
-#[no_mangle]
-pub unsafe extern "C" fn rt_mb_recv_killable(
-    mb: *mut RtMailbox,
-    value: *mut ffi::c_ulong,
-    timeout: rt_int32_t,
-) -> rt_err_t {
-    assert!(!mb.is_null());
-    let mut receive_val = 0usize;
-    let ret_val = (*mb).receive_killable(&mut receive_val, timeout) as rt_err_t;
-    *value = receive_val as ffi::c_ulong;
-    ret_val
-}
-
-#[cfg(feature = "RT_USING_MAILBOX")]
-#[no_mangle]
-pub unsafe extern "C" fn rt_mb_control(
-    mb: *mut RtMailbox,
-    cmd: core::ffi::c_int,
-    _arg: *mut core::ffi::c_void,
-) -> rt_err_t {
-    assert!(!mb.is_null());
-    (*mb).control(cmd, _arg) as rt_err_t
-}
-
-#[no_mangle]
-#[allow(unused_unsafe)]
-pub extern "C" fn rt_mailbox_info() {
-    let callback_forword = || {
-        println!("mailbox  entry size suspend thread");
-        println!("-------- ----  ---- --------------");
-    };
-    let callback = |node: &ListHead| unsafe {
-        let mailbox =
-            &*(crate::list_head_entry!(node.as_ptr(), KObjectBase, list) as *const RtMailbox);
-        let _ = crate::format_name!(mailbox.parent.name.as_ptr(), 8);
-        print!(" {:04} ", mailbox.inner_queue.count());
-        print!(" {:04} ", mailbox.inner_queue.item_max_count);
-        if mailbox.inner_queue.dequeue_waiter.is_empty() {
-            println!("{}", mailbox.inner_queue.dequeue_waiter.count());
-        } else {
-            print!("{}:", mailbox.inner_queue.dequeue_waiter.count());
-            let head = &mailbox.inner_queue.dequeue_waiter.working_queue;
-            list_head_for_each!(node, head, {
-                let thread = crate::thread_list_node_entry!(node.as_ptr()) as *mut RtThread;
-                let _ = crate::format_name!((*thread).parent.name.as_ptr(), 8);
-            });
-            print!("\n");
-        }
-    };
-    let _ = KObjectBase::get_info(
-        callback_forword,
-        callback,
-        ObjectClassType::ObjectClassMailBox as u8,
-    );
+pub extern "C" fn bindgen_mb(_mb: RtMailbox) {
+    0;
 }

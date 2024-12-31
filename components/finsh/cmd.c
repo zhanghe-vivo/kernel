@@ -62,14 +62,14 @@ MSH_CMD_EXPORT(version, show RT-Thread version information);
 
 long list_thread(void)
 {
-    rt_thread_info();
+    //TODO: rewrite rust thread info
     return 0;
 }
 
 #ifdef RT_USING_SEMAPHORE
 long list_sem(void)
 {
-    rt_sem_info();
+    //TODO: rewrite rust semaphore info
     return 0;
 }
 #endif /* RT_USING_SEMAPHORE */
@@ -77,7 +77,7 @@ long list_sem(void)
 #ifdef RT_USING_EVENT
 long list_event(void)
 {
-    rt_event_info();
+    //TODO: rewrite rust event info
     return 0;
 }
 #endif /* RT_USING_EVENT */
@@ -85,7 +85,7 @@ long list_event(void)
 #ifdef RT_USING_MUTEX
 long list_mutex(void)
 {
-    rt_mutex_info();
+    //TODO: rewrite rust mutex info
     return 0;
 }
 #endif /* RT_USING_MUTEX */
@@ -93,7 +93,7 @@ long list_mutex(void)
 #ifdef RT_USING_MAILBOX
 long list_mailbox(void)
 {
-    rt_mailbox_info();
+    //TODO: rewrite rust mailbox info
     return 0;
 }
 #endif /* RT_USING_MAILBOX */
@@ -101,7 +101,7 @@ long list_mailbox(void)
 #ifdef RT_USING_MESSAGEQUEUE
 long list_msgqueue(void)
 {
-    rt_msgqueue_info();
+    //TODO: rewrite rust msgqueue info
     return 0;
 }
 #endif /* RT_USING_MESSAGEQUEUE */
@@ -126,7 +126,7 @@ long list_mempool(void)
 
 long list_timer(void)
 {
-    rt_timer_info();
+    //TODO: rewrite rust timer info
     return 0;
 }
 

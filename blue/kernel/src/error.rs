@@ -1,28 +1,29 @@
-use crate::{irq, str::CStr, thread};
-use rt_bindings;
+use crate::{cpu::Cpu, str::CStr};
 
 use alloc::alloc::{AllocError, LayoutError};
 
-use core::{num::TryFromIntError, str::Utf8Error};
+use core::{num::TryFromIntError, ptr, str::Utf8Error};
 
 pub mod code {
     use crate::str::CStr;
 
-    pub const EOK: super::Error = super::Error(-(rt_bindings::RT_EOK as i32));
-    pub const ERROR: super::Error = super::Error(-(rt_bindings::RT_ERROR as i32));
-    pub const ETIMEOUT: super::Error = super::Error(-(rt_bindings::RT_ETIMEOUT as i32));
-    pub const EFULL: super::Error = super::Error(-(rt_bindings::RT_EFULL as i32));
-    pub const EEMPTY: super::Error = super::Error(-(rt_bindings::RT_EEMPTY as i32));
-    pub const ENOMEM: super::Error = super::Error(-(rt_bindings::RT_ENOMEM as i32));
-    pub const ENOSYS: super::Error = super::Error(-(rt_bindings::RT_ENOSYS as i32));
-    pub const EBUSY: super::Error = super::Error(-(rt_bindings::RT_EBUSY as i32));
-    pub const EIO: super::Error = super::Error(-(rt_bindings::RT_EIO as i32));
-    pub const EINTR: super::Error = super::Error(-(rt_bindings::RT_EINTR as i32));
-    pub const EINVAL: super::Error = super::Error(-(rt_bindings::RT_EINVAL as i32));
-    pub const ENOENT: super::Error = super::Error(-(rt_bindings::RT_ENOENT as i32));
-    pub const ENOSPC: super::Error = super::Error(-(rt_bindings::RT_ENOSPC as i32));
-    pub const EPERM: super::Error = super::Error(-(rt_bindings::RT_EPERM as i32));
-    pub const ETRAP: super::Error = super::Error(-(rt_bindings::RT_ETRAP as i32));
+    pub const EOK: super::Error = super::Error(0);
+    pub const TRUE: super::Error = super::Error(1);
+    pub const FLASE: super::Error = super::Error(0);
+    pub const ERROR: super::Error = super::Error(-255);
+    pub const ETIMEOUT: super::Error = super::Error(-116);
+    pub const EFULL: super::Error = super::Error(-28);
+    pub const EEMPTY: super::Error = super::Error(-61);
+    pub const ENOMEM: super::Error = super::Error(-12);
+    pub const ENOSYS: super::Error = super::Error(-88);
+    pub const EBUSY: super::Error = super::Error(-16);
+    pub const EIO: super::Error = super::Error(-5);
+    pub const EINTR: super::Error = super::Error(-4);
+    pub const EINVAL: super::Error = super::Error(-22);
+    pub const ENOENT: super::Error = super::Error(-2);
+    pub const ENOSPC: super::Error = super::Error(-28);
+    pub const EPERM: super::Error = super::Error(-1);
+    pub const ETRAP: super::Error = super::Error(-254);
 
     const EOK_STR: &'static CStr = crate::c_str!("OK      ");
     const ERROR_STR: &'static CStr = crate::c_str!("ERROR   ");
@@ -40,22 +41,22 @@ pub mod code {
     const ETRAP_STR: &'static CStr = crate::c_str!("ETRAP   ");
     const UNKNOW_STR: &'static CStr = crate::c_str!("EUNKNOW ");
 
-    pub fn name(errno: core::ffi::c_int) -> &'static CStr {
-        match errno.abs() as u32 {
-            rt_bindings::RT_EOK => EOK_STR,
-            rt_bindings::RT_ERROR => ERROR_STR,
-            rt_bindings::RT_ETIMEOUT => ETIMEOUT_STR,
-            rt_bindings::RT_EFULL => EFULL_STR,
-            rt_bindings::RT_EEMPTY => EEMPTY_STR,
-            rt_bindings::RT_ENOMEM => ENOMEM_STR,
-            rt_bindings::RT_ENOSYS => ENOSYS_STR,
-            rt_bindings::RT_EBUSY => EBUSY_STR,
-            rt_bindings::RT_EIO => EIO_STR,
-            rt_bindings::RT_EINTR => EINTR_STR,
-            rt_bindings::RT_EINVAL => EINVAL_STR,
-            rt_bindings::RT_ENOENT => ENOENT_STR,
-            rt_bindings::RT_EPERM => EPERM_STR,
-            rt_bindings::RT_ETRAP => ETRAP_STR,
+    pub fn name(errno: super::Error) -> &'static CStr {
+        match errno {
+            EOK => EOK_STR,
+            ERROR => ERROR_STR,
+            ETIMEOUT => ETIMEOUT_STR,
+            EFULL => EFULL_STR,
+            EEMPTY => EEMPTY_STR,
+            ENOMEM => ENOMEM_STR,
+            ENOSYS => ENOSYS_STR,
+            EBUSY => EBUSY_STR,
+            EIO => EIO_STR,
+            EINTR => EINTR_STR,
+            EINVAL => EINVAL_STR,
+            ENOENT => ENOENT_STR,
+            EPERM => EPERM_STR,
+            ETRAP => ETRAP_STR,
             _ => UNKNOW_STR,
         }
     }
@@ -63,20 +64,20 @@ pub mod code {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
-pub struct Error(core::ffi::c_int);
-static mut RT_ERRNO: Error = Error(rt_bindings::RT_EOK as i32);
+pub struct Error(i32);
+static mut ERRNO: Error = Error(0);
 
 impl Error {
-    pub fn from_errno(errno: core::ffi::c_int) -> Error {
+    pub fn from_errno(errno: i32) -> Error {
         Error(errno)
     }
 
-    pub fn to_errno(self) -> core::ffi::c_int {
+    pub fn to_errno(self) -> i32 {
         self.0
     }
 
     pub fn name(&self) -> &'static CStr {
-        code::name(-self.0)
+        code::name(Error(-self.0))
     }
 }
 
@@ -116,53 +117,49 @@ impl From<core::convert::Infallible> for Error {
     }
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn rt_strerror(error: rt_bindings::rt_err_t) -> *const core::ffi::c_char {
+pub fn strerror(error: i32) -> *const core::ffi::c_char {
     Error(error).name().as_char_ptr()
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn rt_get_errno() -> i32 {
-    let nest = irq::rt_interrupt_get_nest();
+pub unsafe fn get_errno() -> i32 {
+    let nest = Cpu::interrupt_nest_load();
     if nest != 0 {
-        return RT_ERRNO.to_errno();
+        return ERRNO.to_errno();
     }
 
-    let tid = thread::rt_thread_self();
+    let tid = Cpu::get_current_thread().map_or(ptr::null_mut(), |thread| thread.as_ptr());
     if tid.is_null() {
-        return RT_ERRNO.to_errno();
+        return ERRNO.to_errno();
     }
 
     (*tid).error.to_errno()
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn rt_set_errno(error: i32) {
-    let nest = irq::rt_interrupt_get_nest();
+pub unsafe fn set_errno(error: i32) {
+    let nest = Cpu::interrupt_nest_load();
     if nest != 0 {
-        RT_ERRNO = Error::from_errno(error);
+        ERRNO = Error::from_errno(error);
         return;
     }
 
-    let tid = thread::rt_thread_self();
+    let tid = Cpu::get_current_thread().map_or(ptr::null_mut(), |thread| thread.as_ptr());
     if tid.is_null() {
-        RT_ERRNO = Error::from_errno(error);
+        ERRNO = Error::from_errno(error);
         return;
     }
 
     (*tid).error = Error::from_errno(error);
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn _rt_errno() -> *mut i32 {
-    let nest = irq::rt_interrupt_get_nest();
+pub unsafe fn _errno() -> *mut i32 {
+    let nest = Cpu::interrupt_nest_load();
     if nest != 0 {
-        return &raw const RT_ERRNO.0 as *const i32 as *mut i32;
+        return &raw const ERRNO.0 as *const i32 as *mut i32;
     }
 
-    let tid = thread::rt_thread_self();
+    let tid = Cpu::get_current_thread().map_or(ptr::null_mut(), |thread| thread.as_ptr());
     if tid.is_null() {
-        return &raw const RT_ERRNO.0 as *const i32 as *mut i32;
+        return &raw const ERRNO.0 as *const i32 as *mut i32;
     }
 
     &mut (*tid).error.0

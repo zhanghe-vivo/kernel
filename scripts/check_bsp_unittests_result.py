@@ -14,16 +14,23 @@ def check_test_result(platform):
 
     if not os.path.exists(log_path):
         raise FileNotFoundError(f"找不到日志文件：{log_path}")
+    print(f"########## {platform} test log ##########")
+    encodings = ['utf-8', 'latin-1']
+    for encoding in encodings:
+        try:
+            with open(log_path, 'r', encoding=encoding) as file:
+                    lines = file.readlines()
+                    for line in lines:
+                        print(line, end='')  # end='' 因为文件中的行已经包含换行符
+                    last_line = lines[-1] if lines else ""
+                    if 'PASSED' not in last_line:
+                        raise Exception(f"平台 {platform} 的单元测试不通过！")
+                    return
+        except UnicodeDecodeError:
+            continue
+        raise Exception("Unable to decode file with any of the specified encodings.")
+    
 
-    with open(log_path, 'r') as file:
-        print(f"########## {platform} test log ##########")
-        lines = file.readlines()
-        for line in lines:
-            print(line, end='')  # end='' 因为文件中的行已经包含换行符
-
-        last_line = lines[-1] if lines else ""
-        if 'PASSED' not in last_line:
-            raise Exception(f"平台 {platform} 的单元测试不通过！")
 
 
 def main():

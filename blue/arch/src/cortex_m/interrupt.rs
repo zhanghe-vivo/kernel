@@ -1,9 +1,9 @@
 //! ARM Cortex-M implementation of [`Interrupt`].
+use crate::cortex_m::Arch;
 use core::{
     arch::asm,
     sync::atomic::{compiler_fence, Ordering},
 };
-use crate::cortex_m::Arch;
 
 impl Arch {
     pub fn disable_interrupts() -> usize {

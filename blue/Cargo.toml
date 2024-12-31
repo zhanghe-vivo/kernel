@@ -3,8 +3,9 @@
 members = [
     "kernel",
     "arch",
-    "os_compat/rt_thread",
+    "adapter",
     "infra",
+    "kconfig",
 ]
 
 [patch.crates-io]

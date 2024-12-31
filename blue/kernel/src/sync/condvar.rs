@@ -1,14 +1,12 @@
 use crate::{
+    clock::WAITING_FOREVER,
     cpu::Cpu,
     error::code,
     impl_kobject,
     object::{KObjectBase, KernelObject, ObjectClassType, NAME_MAX},
-    rt_bindings::{
-        rt_debug_in_thread_context, rt_debug_not_in_interrupt, rt_err_t, rt_uint8_t, RT_EINVAL,
-        RT_EOK, RT_ERROR, RT_ETIMEOUT, RT_TIMER_CTRL_SET_TIME, RT_UNINTERRUPTIBLE,
-        RT_WAITING_FOREVER,
-    },
     sync::{ipc_common::*, lock::mutex::RtMutex, semaphore::RtSemaphore, RawSpin},
+    thread::SuspendFlag,
+    timer::TimerControlAction,
 };
 use blue_infra::list::doubly_linked_list::ListHead;
 use core::{ffi::c_void, ptr::null_mut};
@@ -17,7 +15,7 @@ use pinned_init::*;
 /// Condition variable raw structure
 #[repr(C)]
 #[pin_data]
-pub(crate) struct RtCondVar {
+pub struct RtCondVar {
     /// Inherit from KObjectBase
     #[pin]
     pub(crate) parent: KObjectBase,
@@ -38,7 +36,7 @@ impl RtCondVar {
                 || (waiting_mode == IPC_WAIT_MODE_PRIO as u8)
         );
 
-        rt_debug_not_in_interrupt!();
+        crate::debug_not_in_interrupt!();
 
         pin_init!(Self {
             parent<-KObjectBase::new(ObjectClassType::ObjectClassCondVar as u8, name),
@@ -49,7 +47,7 @@ impl RtCondVar {
 
     #[allow(dead_code)]
     #[inline]
-    pub(crate) fn init(&mut self, name: *const i8, waiting_mode: u8) {
+    pub fn init(&mut self, name: *const i8, waiting_mode: u8) {
         assert!(
             (waiting_mode == IPC_WAIT_MODE_FIFO as u8)
                 || (waiting_mode == IPC_WAIT_MODE_PRIO as u8)
@@ -73,7 +71,7 @@ impl RtCondVar {
     }
 
     #[inline]
-    pub(crate) fn detach(&mut self) {
+    pub fn detach(&mut self) {
         assert_eq!(self.type_name(), ObjectClassType::ObjectClassCondVar as u8);
 
         self.inner_sem.detach();
@@ -82,8 +80,12 @@ impl RtCondVar {
         }
     }
     #[inline]
-    pub(crate) fn wait(&mut self, mutex: &mut RtMutex) -> i32 {
-        self.wait_timeout(mutex, RT_UNINTERRUPTIBLE, RT_WAITING_FOREVER)
+    pub fn wait(&mut self, mutex: &mut RtMutex) -> i32 {
+        self.wait_timeout(
+            mutex,
+            SuspendFlag::Uninterruptible as u32,
+            WAITING_FOREVER as i32,
+        )
     }
 
     #[inline]
@@ -94,11 +96,11 @@ impl RtCondVar {
         timeout: i32,
     ) -> i32 {
         let mut time_out = timeout;
-        let mut result = RT_EOK as i32;
+        let mut result = code::EOK.to_errno();
 
         let thread_ptr = crate::current_thread_ptr!();
         if mutex.owner != thread_ptr {
-            return -(RT_ERROR as i32);
+            return code::ERROR.to_errno();
         }
 
         self.spinlock.lock();
@@ -109,12 +111,12 @@ impl RtCondVar {
         } else {
             if time_out == 0 {
                 self.spinlock.unlock();
-                if mutex.unlock() != RT_EOK as i32 {
-                    return -(RT_ERROR as i32);
+                if mutex.unlock() != code::EOK.to_errno() {
+                    return code::ERROR.to_errno();
                 }
-                return -(RT_ETIMEOUT as i32);
+                return code::ETIMEOUT.to_errno();
             } else {
-                rt_debug_in_thread_context!();
+                crate::debug_in_thread_context!();
 
                 let thread = unsafe { &mut (*thread_ptr) };
 
@@ -126,16 +128,16 @@ impl RtCondVar {
 
                 if time_out > 0 {
                     thread.thread_timer.timer_control(
-                        RT_TIMER_CTRL_SET_TIME,
+                        TimerControlAction::SetTime,
                         (&mut time_out) as *mut i32 as *mut c_void,
                     );
 
                     thread.thread_timer.start();
                 }
 
-                if mutex.unlock() != RT_EOK as i32 {
+                if mutex.unlock() != code::EOK.to_errno() {
                     self.spinlock.unlock();
-                    return -(RT_ERROR as i32);
+                    return code::ERROR.to_errno();
                 }
 
                 self.spinlock.unlock();
@@ -152,75 +154,40 @@ impl RtCondVar {
     }
 
     #[inline]
-    pub(crate) fn notify(&mut self) -> i32 {
+    pub fn notify(&mut self) -> i32 {
         self.spinlock.lock();
         if !self.inner_sem.inner_queue.dequeue_waiter.is_empty() {
             self.spinlock.unlock();
             self.inner_sem.release();
-            return RT_EOK as i32;
+            return code::EOK.to_errno();
         }
 
         self.spinlock.unlock();
-        RT_EOK as i32
+        code::EOK.to_errno()
     }
 
     #[inline]
-    pub(crate) fn notify_all(&mut self) -> i32 {
+    pub fn notify_all(&mut self) -> i32 {
         #[allow(unused_assignments)]
-        let mut result = RT_EOK as i32;
+        let mut result = code::EOK.to_errno();
         loop {
             result = self.inner_sem.try_take();
-            if result == -(RT_ETIMEOUT as i32) {
+            if result == code::ETIMEOUT.to_errno() {
                 self.inner_sem.release();
-            } else if result == RT_EOK as i32 {
+            } else if result == code::EOK.to_errno() {
                 break;
             } else {
-                return RT_EINVAL as i32;
+                return code::EINVAL.to_errno();
             }
         }
 
-        RT_EOK as i32
+        code::EOK.to_errno()
     }
 }
 
-#[cfg(feature = "RT_USING_CONDVAR")]
+/// bindgen for RtCondVar
+#[allow(improper_ctypes_definitions)]
 #[no_mangle]
-pub unsafe extern "C" fn rt_condvar_init(
-    condvar: *mut RtCondVar,
-    name: *const core::ffi::c_char,
-    flag: rt_uint8_t,
-) -> rt_err_t {
-    assert!(!condvar.is_null());
-    (*condvar).init(name, flag);
-    RT_EOK as rt_err_t
-}
-
-#[cfg(feature = "RT_USING_CONDVAR")]
-#[no_mangle]
-pub unsafe extern "C" fn rt_condvar_detach(condvar: *mut RtCondVar) -> rt_err_t {
-    assert!(!condvar.is_null());
-    (*condvar).detach();
-    RT_EOK as rt_err_t
-}
-
-#[cfg(feature = "RT_USING_CONDVAR")]
-#[no_mangle]
-pub unsafe extern "C" fn rt_condvar_wait(condvar: *mut RtCondVar, mutex: *mut RtMutex) -> rt_err_t {
-    assert!(!condvar.is_null());
-    let mutex_ref = unsafe { &mut (*mutex) };
-    (*condvar).wait(mutex_ref) as rt_err_t
-}
-
-#[cfg(feature = "RT_USING_CONDVAR")]
-#[no_mangle]
-pub unsafe extern "C" fn rt_condvar_notify(condvar: *mut RtCondVar) -> rt_err_t {
-    assert!(!condvar.is_null());
-    (*condvar).notify() as rt_err_t
-}
-
-#[cfg(feature = "RT_USING_CONDVAR")]
-#[no_mangle]
-pub unsafe extern "C" fn rt_condvar_notify_all(condvar: *mut RtCondVar) -> rt_err_t {
-    assert!(!condvar.is_null());
-    (*condvar).notify_all() as rt_err_t
+pub extern "C" fn bindgen_condvar(_condvar: RtCondVar) {
+    0;
 }

@@ -1,14 +1,14 @@
-#[cfg(feature = "RT_USING_CONDVAR")]
+#[cfg(feature = "condvar")]
 pub mod condvar;
-#[cfg(feature = "RT_USING_EVENT")]
+#[cfg(feature = "event")]
 pub mod event;
 pub mod ipc_common;
 pub mod lock;
-#[cfg(feature = "RT_USING_MAILBOX")]
+#[cfg(feature = "mailbox")]
 pub mod mailbox;
-#[cfg(feature = "RT_USING_MESSAGEQUEUE")]
+#[cfg(feature = "messagequeue")]
 pub mod message_queue;
-#[cfg(feature = "RT_USING_SEMAPHORE")]
+#[cfg(feature = "semaphore")]
 pub mod semaphore;
 
 pub use lock::{

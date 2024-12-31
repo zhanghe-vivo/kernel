@@ -1,19 +1,14 @@
 use crate::{
     allocator::align_up_size,
-    clock::rt_tick_get,
+    blue_kconfig::ALIGN_SIZE,
+    clock::get_tick,
     cpu::Cpu,
     error::{code, Error},
-    impl_kobject, list_head_for_each,
+    impl_kobject,
     object::*,
-    print, println,
-    rt_bindings::{
-        rt_debug_not_in_interrupt, rt_debug_scheduler_available, rt_err_t, rt_int32_t, rt_object,
-        rt_object_hook_call, rt_size_t, rt_ssize_t, rt_uint16_t, rt_uint32_t, rt_uint8_t,
-        RT_ALIGN_SIZE, RT_EFULL, RT_EINVAL, RT_EOK, RT_ERROR, RT_ETIMEOUT, RT_INTERRUPTIBLE,
-        RT_IPC_CMD_RESET, RT_KILLABLE, RT_TIMER_CTRL_SET_TIME, RT_UNINTERRUPTIBLE,
-    },
     sync::ipc_common::*,
-    thread::RtThread,
+    thread::SuspendFlag,
+    timer::TimerControlAction,
 };
 use blue_infra::list::doubly_linked_list::ListHead;
 #[allow(unused_imports)]
@@ -100,7 +95,7 @@ impl KMessageQueue {
         let size: usize = msg.len();
 
         let result = unsafe { (*self.raw.get()).send(msg_ptr, size) };
-        if result == RT_EOK as rt_err_t {
+        if result == code::EOK.to_errno() {
             Ok(())
         } else {
             Err(Error::from_errno(result))
@@ -111,7 +106,7 @@ impl KMessageQueue {
         let buffer = null_mut();
         let size = 0 as usize;
         let result = unsafe { (*self.raw.get()).receive(buffer, size, timeout) };
-        if result == RT_EOK as i32 {
+        if result == code::EOK.to_errno() {
             if buffer.is_null() || size == 0 {
                 return Ok(Box::new([]));
             }
@@ -134,7 +129,7 @@ pub struct RtMessageQueue {
     pub(crate) parent: KObjectBase,
     /// SysQueue for mailbox
     #[pin]
-    pub(crate) inner_queue: RtSysQueue,
+    pub inner_queue: RtSysQueue,
 }
 
 impl_kobject!(RtMessageQueue);
@@ -152,7 +147,7 @@ impl RtMessageQueue {
                 || (waiting_mode == IPC_WAIT_MODE_PRIO as u8)
         );
 
-        rt_debug_not_in_interrupt!();
+        crate::debug_not_in_interrupt!();
 
         Box::pin_init(pin_init!(Self {
             parent<-KObjectBase::new(ObjectClassType::ObjectClassMessageQueue as u8, name),
@@ -178,7 +173,7 @@ impl RtMessageQueue {
             .init(ObjectClassType::ObjectClassMessageQueue as u8, name);
 
         if buffer.is_null() || item_size == 0 || buffer_size == 0 {
-            return -(RT_EINVAL as i32);
+            return code::EINVAL.to_errno();
         }
 
         #[allow(unused_assignments)]
@@ -186,15 +181,15 @@ impl RtMessageQueue {
         if working_mode == IPC_SYS_QUEUE_FIFO as u8 {
             max_count = buffer_size / item_size
         } else if working_mode == IPC_SYS_QUEUE_PRIO as u8 {
-            let item_align_size = align_up_size(item_size as usize, RT_ALIGN_SIZE as usize);
+            let item_align_size = align_up_size(item_size as usize, ALIGN_SIZE as usize);
             max_count =
                 buffer_size as usize / (item_align_size + mem::size_of::<RtSysQueueItemHeader>());
         } else {
-            return -(RT_EINVAL as i32);
+            return code::EINVAL.to_errno();
         }
 
         if max_count == 0 {
-            return -(RT_EINVAL as i32);
+            return code::EINVAL.to_errno();
         }
 
         self.inner_queue
@@ -252,7 +247,7 @@ impl RtMessageQueue {
         );
         assert!(!self.is_static_kobject());
 
-        rt_debug_not_in_interrupt!();
+        crate::debug_not_in_interrupt!();
 
         self.inner_queue.dequeue_waiter.inner_locked_wake_all();
         self.inner_queue.enqueue_waiter.inner_locked_wake_all();
@@ -265,7 +260,7 @@ impl RtMessageQueue {
         &mut self,
         buffer: *const u8,
         size: usize,
-        prio: i32,
+        _prio: i32,
         timeout: i32,
         suspend_flag: u32,
     ) -> i32 {
@@ -280,34 +275,27 @@ impl RtMessageQueue {
 
         #[allow(unused_variables)]
         let scheduler = timeout != 0;
-        rt_debug_scheduler_available!(scheduler);
+        crate::debug_scheduler_available!(scheduler);
 
         if size > self.inner_queue.item_size {
-            return -(RT_ERROR as i32);
+            return code::ERROR.to_errno();
         }
 
         let mut tick_delta = 0;
         let thread_ptr = crate::current_thread_ptr!();
 
         if thread_ptr.is_null() {
-            return -(RT_ERROR as i32);
+            return code::ERROR.to_errno();
         }
 
         // SAFETY: thread_ptr is null checked
         let thread = unsafe { &mut *thread_ptr };
 
-        unsafe {
-            rt_object_hook_call!(
-                rt_object_put_hook,
-                &mut self.parent as *mut KObjectBase as *mut rt_object
-            );
-        }
-
         self.inner_queue.lock();
 
         if self.inner_queue.is_full() && timeout == 0 {
             self.inner_queue.unlock();
-            return -(RT_EFULL as i32);
+            return code::EFULL.to_errno();
         }
 
         while self.inner_queue.is_full() {
@@ -315,7 +303,7 @@ impl RtMessageQueue {
 
             if timeout == 0 {
                 self.inner_queue.unlock();
-                return -(RT_EFULL as i32);
+                return code::EFULL.to_errno();
             }
 
             let ret = self
@@ -323,15 +311,15 @@ impl RtMessageQueue {
                 .enqueue_waiter
                 .wait(thread, suspend_flag as u32);
 
-            if ret != RT_EOK as i32 {
+            if ret != code::EOK.to_errno() {
                 self.inner_queue.unlock();
                 return ret;
             }
 
             if timeout > 0 {
-                tick_delta = rt_tick_get();
+                tick_delta = get_tick();
                 thread.thread_timer.timer_control(
-                    RT_TIMER_CTRL_SET_TIME as u32,
+                    TimerControlAction::SetTime,
                     (&mut timeout) as *mut i32 as *mut c_void,
                 );
                 thread.thread_timer.start();
@@ -348,7 +336,7 @@ impl RtMessageQueue {
             self.inner_queue.lock();
 
             if timeout > 0 {
-                tick_delta = rt_tick_get() - tick_delta;
+                tick_delta = get_tick() - tick_delta;
                 timeout -= tick_delta as i32;
                 if timeout < 0 {
                     timeout = 0;
@@ -357,7 +345,7 @@ impl RtMessageQueue {
         }
 
         cfg_if::cfg_if! {
-            if #[cfg(feature = "RT_USING_MESSAGEQUEUE_PRIORITY")] {
+            if #[cfg(feature = "messagequeue_priority")] {
                 self.inner_queue.push_prio(buffer, size, prio);
             } else {
                 self.inner_queue.push_fifo(buffer, size);
@@ -370,36 +358,42 @@ impl RtMessageQueue {
 
             Cpu::get_current_scheduler().do_task_schedule();
 
-            return RT_EOK as i32;
+            return code::EOK.to_errno();
         }
 
         self.inner_queue.unlock();
 
-        RT_EOK as i32
+        code::EOK.to_errno()
     }
 
     pub fn send(&mut self, buffer: *const u8, size: usize) -> i32 {
         self.send_wait(buffer, size, 0)
     }
 
-    fn send_interruptible(&mut self, buffer: *const u8, size: usize) -> i32 {
+    pub fn send_interruptible(&mut self, buffer: *const u8, size: usize) -> i32 {
         self.send_wait_interruptible(buffer, size, 0)
     }
 
-    fn send_killable(&mut self, buffer: *const u8, size: usize) -> i32 {
+    pub fn send_killable(&mut self, buffer: *const u8, size: usize) -> i32 {
         self.send_wait_killable(buffer, size, 0)
     }
 
     pub fn send_wait(&mut self, buffer: *const u8, size: usize, timeout: i32) -> i32 {
-        self.send_wait_internal(buffer, size, 0, timeout, RT_UNINTERRUPTIBLE as u32)
+        self.send_wait_internal(
+            buffer,
+            size,
+            0,
+            timeout,
+            SuspendFlag::Uninterruptible as u32,
+        )
     }
 
     pub fn send_wait_interruptible(&mut self, buffer: *const u8, size: usize, timeout: i32) -> i32 {
-        self.send_wait_internal(buffer, size, 0, timeout, RT_INTERRUPTIBLE as u32)
+        self.send_wait_internal(buffer, size, 0, timeout, SuspendFlag::Interruptible as u32)
     }
 
     pub fn send_wait_killable(&mut self, buffer: *const u8, size: usize, timeout: i32) -> i32 {
-        self.send_wait_internal(buffer, size, 0, timeout, RT_KILLABLE as u32)
+        self.send_wait_internal(buffer, size, 0, timeout, SuspendFlag::Killable as u32)
     }
 
     pub fn urgent(&mut self, buffer: *const u8, size: usize) -> i32 {
@@ -411,20 +405,13 @@ impl RtMessageQueue {
         assert!(size != 0);
 
         if size > self.inner_queue.item_size {
-            return -(RT_ERROR as i32);
-        }
-
-        unsafe {
-            rt_object_hook_call!(
-                rt_object_put_hook,
-                &mut self.parent as *mut KObjectBase as *mut rt_object
-            );
+            return code::ERROR.to_errno();
         }
 
         #[allow(unused_assignments)]
         let mut urgent_size = 0;
         cfg_if::cfg_if! {
-            if #[cfg(feature = "RT_USING_MESSAGEQUEUE_PRIORITY")] {
+            if #[cfg(feature = "messagequeue_priority")] {
                 urgent_size = self.inner_queue.urgent_prio(buffer, size);
             } else {
                 urgent_size = self.inner_queue.urgent_fifo(buffer, size);
@@ -432,9 +419,9 @@ impl RtMessageQueue {
         }
 
         if urgent_size > 0 {
-            RT_EOK as i32
+            code::EOK.to_errno()
         } else {
-            -(RT_ERROR as i32)
+            code::ERROR.to_errno()
         }
     }
 
@@ -443,7 +430,7 @@ impl RtMessageQueue {
         &mut self,
         buffer: *mut u8,
         size: usize,
-        prio: *mut i32,
+        _prio: *mut i32,
         timeout: i32,
         suspend_flag: u32,
     ) -> i32 {
@@ -458,29 +445,22 @@ impl RtMessageQueue {
 
         #[allow(unused_variables)]
         let scheduler = timeout != 0;
-        rt_debug_scheduler_available!(scheduler);
+        crate::debug_scheduler_available!(scheduler);
 
         let thread_ptr = crate::current_thread_ptr!();
 
         if thread_ptr.is_null() {
-            return -(RT_ERROR as i32);
+            return code::ERROR.to_errno();
         }
 
         // SAFETY: thread_ptr is null checked
         let thread = unsafe { &mut *thread_ptr };
 
-        unsafe {
-            rt_object_hook_call!(
-                rt_object_trytake_hook,
-                &mut self.parent as *mut KObjectBase as *mut rt_object
-            );
-        }
-
         self.inner_queue.lock();
 
         if self.inner_queue.is_empty() && timeout == 0 {
             self.inner_queue.unlock();
-            return -(RT_ETIMEOUT as i32);
+            return code::ETIMEOUT.to_errno();
         }
 
         while self.inner_queue.is_empty() {
@@ -496,17 +476,17 @@ impl RtMessageQueue {
                 .inner_queue
                 .dequeue_waiter
                 .wait(thread, suspend_flag as u32);
-            if ret != RT_EOK as i32 {
+            if ret != code::EOK.to_errno() {
                 self.inner_queue.unlock();
                 return ret;
             }
 
-            let mut tick_delta: rt_uint32_t = 0;
+            let mut tick_delta: u32 = 0;
             if timeout > 0 {
-                tick_delta = rt_tick_get();
+                tick_delta = get_tick();
 
                 thread.thread_timer.timer_control(
-                    RT_TIMER_CTRL_SET_TIME as u32,
+                    TimerControlAction::SetTime,
                     (&mut timeout) as *mut i32 as *mut c_void,
                 );
                 (*thread).thread_timer.start();
@@ -522,8 +502,8 @@ impl RtMessageQueue {
             self.inner_queue.lock();
 
             if timeout > 0 {
-                tick_delta = rt_tick_get() - tick_delta;
-                timeout -= tick_delta as rt_int32_t;
+                tick_delta = get_tick() - tick_delta;
+                timeout -= tick_delta as i32;
                 if timeout < 0 {
                     timeout = 0;
                 }
@@ -531,7 +511,7 @@ impl RtMessageQueue {
         }
 
         cfg_if::cfg_if! {
-            if #[cfg(feature = "RT_USING_MESSAGEQUEUE_PRIORITY")] {
+            if #[cfg(feature = "messagequeue_priority")] {
                 self.inner_queue.pop_prio(buffer, size, prio);
             } else {
                 let mut buffer_mut = buffer;
@@ -547,13 +527,6 @@ impl RtMessageQueue {
 
         self.inner_queue.unlock();
 
-        unsafe {
-            rt_object_hook_call!(
-                rt_object_take_hook,
-                &mut self.parent as *mut KObjectBase as *mut rt_object
-            );
-        }
-
         if need_schedule {
             Cpu::get_current_scheduler().do_task_schedule();
         }
@@ -562,15 +535,33 @@ impl RtMessageQueue {
     }
 
     pub fn receive(&mut self, buffer: *mut u8, size: usize, timeout: i32) -> i32 {
-        self.receive_internal(buffer, size, null_mut(), timeout, RT_UNINTERRUPTIBLE as u32)
+        self.receive_internal(
+            buffer,
+            size,
+            null_mut(),
+            timeout,
+            SuspendFlag::Uninterruptible as u32,
+        )
     }
 
     pub fn receive_interruptible(&mut self, buffer: *mut u8, size: usize, timeout: i32) -> i32 {
-        self.receive_internal(buffer, size, null_mut(), timeout, RT_INTERRUPTIBLE as u32)
+        self.receive_internal(
+            buffer,
+            size,
+            null_mut(),
+            timeout,
+            SuspendFlag::Interruptible as u32,
+        )
     }
 
     pub fn receive_killable(&mut self, buffer: *mut u8, size: usize, timeout: i32) -> i32 {
-        self.receive_internal(buffer, size, null_mut(), timeout, RT_KILLABLE as u32)
+        self.receive_internal(
+            buffer,
+            size,
+            null_mut(),
+            timeout,
+            SuspendFlag::Killable as u32,
+        )
     }
 
     pub fn control(&mut self, cmd: i32, _arg: *mut u8) -> i32 {
@@ -579,14 +570,14 @@ impl RtMessageQueue {
             ObjectClassType::ObjectClassMessageQueue as u8
         );
 
-        if cmd == RT_IPC_CMD_RESET as i32 {
+        if cmd == IPC_CMD_RESET as i32 {
             self.inner_queue.lock();
 
             self.inner_queue.dequeue_waiter.inner_locked_wake_all();
             self.inner_queue.enqueue_waiter.inner_locked_wake_all();
 
             cfg_if::cfg_if! {
-                if #[cfg(feature = "RT_USING_MESSAGEQUEUE_PRIORITY")] {
+                if #[cfg(feature = "messagequeue_priority")] {
                     while !self.inner_queue.head.is_none() {
                         let hdr = self.inner_queue.head.unwrap().as_ptr() as *mut RtSysQueueItemHeader;
                         let next_head = unsafe { (*hdr).next as *mut u8 };
@@ -620,13 +611,13 @@ impl RtMessageQueue {
 
             Cpu::get_current_scheduler().do_task_schedule();
 
-            return RT_EOK as i32;
+            return code::EOK.to_errno();
         }
 
-        -(RT_ERROR as i32)
+        code::ERROR.to_errno()
     }
 
-    #[cfg(feature = "RT_USING_MESSAGEQUEUE_PRIORITY")]
+    #[cfg(feature = "messagequeue_priority")]
     fn send_wait_prio(
         &mut self,
         buffer: *const u8,
@@ -634,11 +625,11 @@ impl RtMessageQueue {
         prio: i32,
         timeout: i32,
         suspend_flag: u32,
-    ) -> rt_err_t {
+    ) -> i32 {
         self.send_wait_internal(buffer, size, prio, timeout, suspend_flag)
     }
 
-    #[cfg(feature = "RT_USING_MESSAGEQUEUE_PRIORITY")]
+    #[cfg(feature = "messagequeue_priority")]
     fn receive_prio(
         &mut self,
         buffer: *mut u8,
@@ -651,282 +642,9 @@ impl RtMessageQueue {
     }
 }
 
-#[cfg(feature = "RT_USING_MESSAGEQUEUE")]
+/// bindgen for RtMessageQueue
+#[allow(improper_ctypes_definitions)]
 #[no_mangle]
-pub unsafe extern "C" fn rt_mq_init(
-    mq: *mut RtMessageQueue,
-    name: *const core::ffi::c_char,
-    msgpool: *mut core::ffi::c_void,
-    msg_size: rt_size_t,
-    pool_size: rt_size_t,
-    flag: rt_uint8_t,
-) -> rt_err_t {
-    assert!(!mq.is_null());
-    assert!((flag == IPC_WAIT_MODE_FIFO as u8) || (flag == IPC_WAIT_MODE_PRIO as u8));
-    #[allow(unused_mut, unused_assignments)]
-    let mut queue_working_mode = IPC_SYS_QUEUE_FIFO as u8;
-    #[cfg(feature = "RT_USING_MESSAGEQUEUE_PRIORITY")]
-    {
-        queue_working_mode = IPC_SYS_QUEUE_PRIO as u8;
-    }
-    (*mq).init(
-        name,
-        msgpool as *mut u8,
-        msg_size as usize,
-        pool_size as usize,
-        queue_working_mode as u8,
-        flag,
-    )
-}
-
-#[cfg(feature = "RT_USING_MESSAGEQUEUE")]
-#[no_mangle]
-pub unsafe extern "C" fn rt_mq_detach(mq: *mut RtMessageQueue) -> rt_err_t {
-    assert!(!mq.is_null());
-    (*mq).detach();
-    RT_EOK as rt_err_t
-}
-
-#[cfg(all(feature = "RT_USING_MESSAGEQUEUE", feature = "RT_USING_HEAP"))]
-#[no_mangle]
-pub unsafe extern "C" fn rt_mq_create(
-    name: *const core::ffi::c_char,
-    msg_size: rt_size_t,
-    max_msgs: rt_size_t,
-    flag: rt_uint8_t,
-) -> *mut RtMessageQueue {
-    #[allow(unused_mut, unused_assignments)]
-    let mut queue_working_mode = IPC_SYS_QUEUE_FIFO as u8;
-    #[cfg(feature = "RT_USING_MESSAGEQUEUE_PRIORITY")]
-    {
-        queue_working_mode = IPC_SYS_QUEUE_PRIO as u8;
-    }
-    RtMessageQueue::new_raw(
-        name,
-        msg_size as usize,
-        max_msgs as usize,
-        queue_working_mode,
-        flag,
-    )
-}
-
-#[cfg(all(feature = "RT_USING_MESSAGEQUEUE", feature = "RT_USING_HEAP"))]
-#[no_mangle]
-pub unsafe extern "C" fn rt_mq_delete(mq: *mut RtMessageQueue) -> rt_err_t {
-    assert!(mq != null_mut());
-
-    (*mq).delete_raw();
-
-    RT_EOK as rt_err_t
-}
-
-#[cfg(feature = "RT_USING_MESSAGEQUEUE")]
-#[no_mangle]
-pub unsafe extern "C" fn rt_mq_entry(mq: *mut RtMessageQueue) -> rt_uint16_t {
-    assert!(!mq.is_null());
-    (*mq).inner_queue.count() as rt_uint16_t
-}
-
-#[cfg(feature = "RT_USING_MESSAGEQUEUE")]
-#[no_mangle]
-pub unsafe extern "C" fn rt_mq_send(
-    mq: *mut RtMessageQueue,
-    buffer: *const core::ffi::c_void,
-    size: rt_size_t,
-) -> rt_err_t {
-    assert!(!mq.is_null());
-    (*mq).send(buffer as *const u8, size as usize)
-}
-
-#[cfg(feature = "RT_USING_MESSAGEQUEUE")]
-#[no_mangle]
-pub unsafe extern "C" fn rt_mq_send_interruptible(
-    mq: *mut RtMessageQueue,
-    buffer: *const core::ffi::c_void,
-    size: rt_size_t,
-) -> rt_err_t {
-    assert!(!mq.is_null());
-    (*mq).send_interruptible(buffer as *const u8, size as usize)
-}
-
-#[cfg(feature = "RT_USING_MESSAGEQUEUE")]
-#[no_mangle]
-pub unsafe extern "C" fn rt_mq_send_killable(
-    mq: *mut RtMessageQueue,
-    buffer: *const core::ffi::c_void,
-    size: rt_size_t,
-) -> rt_err_t {
-    assert!(!mq.is_null());
-    (*mq).send_killable(buffer as *const u8, size as usize)
-}
-
-#[cfg(feature = "RT_USING_MESSAGEQUEUE")]
-#[no_mangle]
-pub unsafe extern "C" fn rt_mq_send_wait(
-    mq: *mut RtMessageQueue,
-    buffer: *const core::ffi::c_void,
-    size: rt_size_t,
-    timeout: rt_int32_t,
-) -> rt_err_t {
-    assert!(!mq.is_null());
-    (*mq).send_wait(buffer as *const u8, size as usize, timeout)
-}
-
-#[cfg(feature = "RT_USING_MESSAGEQUEUE")]
-#[no_mangle]
-pub unsafe extern "C" fn rt_mq_send_wait_interruptible(
-    mq: *mut RtMessageQueue,
-    buffer: *const core::ffi::c_void,
-    size: rt_size_t,
-    timeout: rt_int32_t,
-) -> rt_err_t {
-    assert!(!mq.is_null());
-    (*mq).send_wait_interruptible(buffer as *const u8, size as usize, timeout)
-}
-
-#[cfg(feature = "RT_USING_MESSAGEQUEUE")]
-#[no_mangle]
-pub unsafe extern "C" fn rt_mq_send_wait_killable(
-    mq: *mut RtMessageQueue,
-    buffer: *const core::ffi::c_void,
-    size: rt_size_t,
-    timeout: rt_int32_t,
-) -> rt_err_t {
-    assert!(!mq.is_null());
-    (*mq).send_wait_killable(buffer as *const u8, size as usize, timeout)
-}
-
-#[cfg(feature = "RT_USING_MESSAGEQUEUE")]
-#[no_mangle]
-pub unsafe extern "C" fn rt_mq_urgent(
-    mq: *mut RtMessageQueue,
-    buffer: *const core::ffi::c_void,
-    size: rt_size_t,
-) -> rt_err_t {
-    assert!(!mq.is_null());
-    (*mq).urgent(buffer as *const u8, size as usize) as rt_err_t
-}
-
-#[cfg(feature = "RT_USING_MESSAGEQUEUE")]
-#[no_mangle]
-pub unsafe extern "C" fn rt_mq_recv(
-    mq: *mut RtMessageQueue,
-    buffer: *mut core::ffi::c_void,
-    size: rt_size_t,
-    timeout: rt_int32_t,
-) -> rt_ssize_t {
-    assert!(!mq.is_null());
-    (*mq).receive(buffer as *mut u8, size as usize, timeout)
-}
-
-#[cfg(feature = "RT_USING_MESSAGEQUEUE")]
-#[no_mangle]
-pub unsafe extern "C" fn rt_mq_recv_interruptible(
-    mq: *mut RtMessageQueue,
-    buffer: *mut core::ffi::c_void,
-    size: rt_size_t,
-    timeout: rt_int32_t,
-) -> rt_ssize_t {
-    assert!(!mq.is_null());
-    (*mq).receive_interruptible(buffer as *mut u8, size as usize, timeout)
-}
-
-#[cfg(feature = "RT_USING_MESSAGEQUEUE")]
-#[no_mangle]
-pub unsafe extern "C" fn rt_mq_recv_killable(
-    mq: *mut RtMessageQueue,
-    buffer: *mut core::ffi::c_void,
-    size: rt_size_t,
-    timeout: rt_int32_t,
-) -> rt_ssize_t {
-    assert!(!mq.is_null());
-    (*mq).receive_killable(buffer as *mut u8, size as usize, timeout)
-}
-
-#[cfg(feature = "RT_USING_MESSAGEQUEUE")]
-#[no_mangle]
-pub unsafe extern "C" fn rt_mq_control(
-    mq: *mut RtMessageQueue,
-    cmd: core::ffi::c_int,
-    _arg: *mut core::ffi::c_void,
-) -> rt_err_t {
-    assert!(!mq.is_null());
-    (*mq).control(cmd, _arg as *mut u8)
-}
-
-#[cfg(all(
-    feature = "RT_USING_MESSAGEQUEUE",
-    feature = "RT_USING_MESSAGEQUEUE_PRIORITY"
-))]
-#[no_mangle]
-pub unsafe extern "C" fn rt_mq_send_wait_prio(
-    mq: *mut RtMessageQueue,
-    buffer: *const core::ffi::c_void,
-    size: rt_size_t,
-    prio: rt_int32_t,
-    timeout: rt_int32_t,
-    suspend_flag: core::ffi::c_int,
-) -> rt_err_t {
-    assert!(!mq.is_null());
-    (*mq).send_wait_prio(
-        buffer as *const u8,
-        size as usize,
-        prio,
-        timeout,
-        suspend_flag as u32,
-    )
-}
-
-#[cfg(all(
-    feature = "RT_USING_MESSAGEQUEUE",
-    feature = "RT_USING_MESSAGEQUEUE_PRIORITY"
-))]
-#[no_mangle]
-pub unsafe extern "C" fn rt_mq_recv_prio(
-    mq: *mut RtMessageQueue,
-    buffer: *mut core::ffi::c_void,
-    size: rt_size_t,
-    prio: *mut rt_int32_t,
-    timeout: rt_int32_t,
-    suspend_flag: core::ffi::c_int,
-) -> rt_ssize_t {
-    assert!(!mq.is_null());
-    (*mq).receive_prio(
-        buffer as *mut u8,
-        size as usize,
-        prio,
-        timeout,
-        suspend_flag as u32,
-    )
-}
-
-#[no_mangle]
-#[allow(unused_unsafe)]
-pub extern "C" fn rt_msgqueue_info() {
-    let callback_forword = || {
-        println!("msgqueue entry suspend thread");
-        println!("-------- ----  --------------");
-    };
-    let callback = |node: &ListHead| unsafe {
-        let msgqueue =
-            &*(crate::list_head_entry!(node.as_ptr(), KObjectBase, list) as *const RtMessageQueue);
-        let _ = crate::format_name!(msgqueue.parent.name.as_ptr(), 8);
-        print!(" {:04} ", msgqueue.inner_queue.count());
-        if msgqueue.inner_queue.dequeue_waiter.is_empty() {
-            println!(" {}", msgqueue.inner_queue.dequeue_waiter.count());
-        } else {
-            print!(" {}:", msgqueue.inner_queue.dequeue_waiter.count());
-            let head = &msgqueue.inner_queue.dequeue_waiter.working_queue;
-            list_head_for_each!(node, head, {
-                let thread = crate::thread_list_node_entry!(node.as_ptr()) as *mut RtThread;
-                let _ = crate::format_name!((*thread).parent.name.as_ptr(), 8);
-            });
-            print!("\n");
-        }
-    };
-    let _ = KObjectBase::get_info(
-        callback_forword,
-        callback,
-        ObjectClassType::ObjectClassMessageQueue as u8,
-    );
+pub extern "C" fn bindgen_mq(_mq: RtMessageQueue) {
+    0;
 }

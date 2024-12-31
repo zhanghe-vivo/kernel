@@ -112,6 +112,7 @@ impl<
         const SLLEN: usize,
     > Tlsf<'pool, FLBitmap, SLBitmap, FLLEN, SLLEN>
 {
+    /// Creates a new instance of `Tlsf`.
     pub fn new() -> impl Init<Self> {
         init!(Self {
             fl_bitmap: FLBitmap::ZERO,

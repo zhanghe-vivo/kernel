@@ -1,0 +1,82 @@
+mainmenu "Blue Kernel"
+
+config ALIGN_SIZE
+    default 8
+    int "Alignment size for CPU architecture data access"
+
+config TICK_PER_SECOND
+    default 100
+    int "Tick frequency, Hz"
+
+config MAIN_THREAD_PRIORITY
+    default 10
+    int "Set main thread priority"
+
+config MAIN_THREAD_STACK_SIZE
+    default 4096
+    int "Set main thread stack size"
+
+config SMP
+    default n
+    bool "Enable Symmetric multiprocessing"
+
+config CPUS_NR
+    default 4
+    depends on SMP
+    int "Number of CPUs"
+
+config THREAD_PRIORITY_MAX
+    default 256
+    int "The async output thread stack priority"
+
+config TLSF
+    default y
+    bool "Enable TLSF"
+
+config OVERFLOW_CHECK
+    default y
+    bool "Using stack overflow checking"
+
+config IDLE_HOOK
+    default y
+    bool "Enable system hook"
+
+config HEAP
+    default y
+    bool "Using heap"
+
+config HEAP_ISR
+    default y
+    bool "Using heap in ISR"
+
+config DEBUGGING_INIT
+    default y
+    bool "Enable debugging of components initialization"
+
+config EVENT
+    default y
+    bool "Enable event flag"
+
+config MESSAGEQUEUE
+    default y
+    bool "Enable message queue"
+
+config MAILBOX
+    default y
+    bool "Enable mailbox"
+
+config MUTEX
+    default y
+    bool "Enable mutex"
+
+config SEMAPHORE
+    default y
+    bool "Enable semaphore"
+
+config RWLOCK
+    default y
+    bool "Enable rwlock"
+
+config CONDVAR
+    default y
+    bool "Enable condvar"

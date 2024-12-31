@@ -17,9 +17,9 @@ use pinned_init::{pin_data, pin_init, pin_init_from_closure, PinInit};
 
 pub mod heaplock;
 
-#[cfg(feature = "RT_USING_MUTEX")]
+#[cfg(feature = "mutex")]
 pub mod mutex;
-#[cfg(feature = "RT_USING_RWLOCK")]
+#[cfg(feature = "rwlock")]
 pub mod rwlock;
 pub mod spinlock;
 

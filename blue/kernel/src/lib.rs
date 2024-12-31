@@ -7,24 +7,26 @@
 #![feature(alloc_layout_extra)]
 #![feature(c_size_t)]
 
-extern crate alloc;
+pub extern crate alloc;
 extern crate self as kernel;
-pub use blue_arch::arch::Arch;
+pub use blue_arch;
+#[allow(unused_imports)]
+use blue_arch::arch as _;
+pub use blue_kconfig;
 // TODO: add os compat cfg
-pub use rt_bindings;
 
-mod allocator;
+pub mod allocator;
 pub mod clock;
 pub mod components;
 pub mod cpu;
 pub mod error;
 mod ext_types;
-mod idle;
+pub mod idle;
 pub mod irq;
 pub mod klibc;
 mod macros;
 pub mod object;
-mod print;
+pub mod print;
 pub mod process;
 pub mod scheduler;
 mod stack;
@@ -34,7 +36,6 @@ pub mod sync;
 pub mod thread;
 pub mod timer;
 mod zombie;
-
 use core::sync::atomic::{self, Ordering};
 
 #[panic_handler]
@@ -51,4 +52,91 @@ fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
     {
         Arch::sys_reset()
     }
+}
+
+/// Macro to check current context.
+#[cfg(feature = "debugging_context")]
+#[macro_export]
+macro_rules! debug_not_in_interrupt {
+    () => {
+        use crate::cpu;
+        use blue_arch::IInterrupt;
+
+        let level = blue_arch::arch::Arch::disable_interrupts();
+        if cpu::Cpu::interrupt_nest_load() != 0 {
+            crate::kprintf!(
+                b"Function[%s] shall not be used in ISR\n",
+                crate::function!() as *const _ as *const i8,
+            );
+            assert!(false);
+        }
+        blue_arch::arch::Arch::enable_interrupts(level);
+    };
+}
+
+///  "In thread context" means:
+///    1) the scheduler has been started
+///    2) not in interrupt context.
+#[cfg(feature = "debugging_context")]
+#[macro_export]
+macro_rules! debug_in_thread_context {
+    () => {
+        let level = blue_arch::arch::Arch::disable_interrupts();
+        if cpu::Cpu::get_current_thread().is_none() {
+            assert!(false);
+        }
+        kernel::debug_not_in_interrupt!();
+        blue_arch::arch::Arch::enable_interrupts(level);
+    };
+}
+
+/// "scheduler available" means:
+/// 1) the scheduler has been started.
+/// 2) not in interrupt context.
+/// 3) scheduler is not locked.
+/// 4) interrupt is not disabled.
+#[cfg(feature = "debugging_context")]
+#[macro_export]
+macro_rules! debug_scheduler_available {
+    ($need_check:expr) => {{
+        if $need_check {
+            use crate::irq;
+
+            let interrupt_disabled = irq::hw_interrupt_is_disabled();
+            let level = blue_arch::arch::Arch::disable_interrupts();
+            if cpu::Cpu::get_current_scheduler().get_sched_lock_level() != 0 {
+                crate::kprintf!(
+                    b"Function[%s]: scheduler is not available\n",
+                    crate::function!() as *const _ as *const i8,
+                );
+                assert!(false);
+            }
+            if interrupt_disabled {
+                crate::kprintf!(
+                    b"Function[%s]: interrupt is disabled\n",
+                    crate::function!() as *const _ as *const i8,
+                );
+
+                assert!(false);
+            }
+            kernel::debug_in_thread_context!();
+            blue_arch::arch::Arch::enable_interrupts(level);
+        }
+    }};
+}
+
+#[cfg(not(feature = "debugging_context"))]
+#[macro_export]
+macro_rules! debug_not_in_interrupt {
+    () => {};
+}
+#[cfg(not(feature = "debugging_context"))]
+#[macro_export]
+macro_rules! debug_in_thread_context {
+    () => {};
+}
+#[cfg(not(feature = "debugging_context"))]
+#[macro_export]
+macro_rules! debug_scheduler_available {
+    ($need_check:expr) => {};
 }

@@ -1,15 +1,19 @@
-use crate::{rt_bindings, sync::lock::mutex::*, thread};
+use crate::{
+    cpu::Cpu,
+    error::code,
+    sync::{ipc_common::IPC_FLAG_PRIO, lock::mutex::*},
+};
 
-#[cfg(feature = "RT_USING_HEAP_ISR")]
+#[cfg(feature = "heap_isr")]
 use crate::sync::lock::spinlock::SpinLockBackend;
-#[cfg(feature = "RT_USING_HEAP_ISR")]
+#[cfg(feature = "heap_isr")]
 pub type HeapLock<T> = super::Lock<T, SpinLockBackend>;
-#[cfg(feature = "RT_USING_HEAP_ISR")]
+#[cfg(feature = "heap_isr")]
 pub use crate::new_spinlock as new_heaplock;
 
-#[cfg(all(not(feature = "RT_USING_HEAP_ISR"), feature = "RT_USING_MUTEX"))]
+#[cfg(not(feature = "heap_isr"))]
 pub type HeapLock<T> = super::Lock<T, HeapLockBackend>;
-#[cfg(all(not(feature = "RT_USING_HEAP_ISR"), feature = "RT_USING_MUTEX"))]
+#[cfg(not(feature = "heap_isr"))]
 #[macro_export]
 macro_rules! new_heaplock {
     ($inner:expr $(, $name:literal)? $(,)?) => {
@@ -17,7 +21,7 @@ macro_rules! new_heaplock {
             $inner, $crate::optional_name!($($name)?))
     };
 }
-#[cfg(all(not(feature = "RT_USING_HEAP_ISR"), feature = "RT_USING_MUTEX"))]
+#[cfg(not(feature = "heap_isr"))]
 pub use new_heaplock;
 
 /// A kernel `struct mutex` lock backend.
@@ -31,17 +35,17 @@ unsafe impl super::Backend for HeapLockBackend {
     unsafe fn init(ptr: *mut Self::State, name: *const core::ffi::c_char) {
         // SAFETY: The safety requirements ensure that `ptr` is valid for writes, and `name` and
         // `key` are valid for read indefinitely.
-        unsafe { (*ptr).init(name, rt_bindings::RT_IPC_FLAG_PRIO as u8) };
+        unsafe { (*ptr).init(name, IPC_FLAG_PRIO as u8) };
     }
 
     unsafe fn lock(ptr: *mut Self::State) -> Self::GuardState {
         // SAFETY: The safety requirements of this function ensure that `ptr` points to valid
         // memory, and that it has been initialised before.
         unsafe {
-            if !thread::rt_thread_self().is_null() {
+            if Cpu::get_current_thread().is_some() {
                 (*ptr).lock()
             } else {
-                rt_bindings::RT_EOK as i32
+                code::EOK.to_errno()
             }
         };
     }
@@ -50,7 +54,7 @@ unsafe impl super::Backend for HeapLockBackend {
         // SAFETY: The safety requirements of this function ensure that `ptr` is valid and that the
         // caller is the owner of the mutex.
         unsafe {
-            if !thread::rt_thread_self().is_null() {
+            if Cpu::get_current_thread().is_some() {
                 (*ptr).unlock();
             }
         }

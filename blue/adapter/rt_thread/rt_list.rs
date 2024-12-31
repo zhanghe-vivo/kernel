@@ -1,5 +1,25 @@
 use core::ptr;
 
+#[doc = " Double List structure"]
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct rt_list_node {
+    #[doc = "< point to next node."]
+    pub next: *mut rt_list_node,
+    #[doc = "< point to prev node."]
+    pub prev: *mut rt_list_node,
+}
+
+#[doc = " Double List structure"]
+pub type rt_list_t = rt_list_node;
+#[doc = " Single List structure"]
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct rt_slist_node {
+    #[doc = "< point to next node."]
+    pub next: *mut rt_slist_node,
+}
+
 impl rt_list_node {
     /// Initializes a list object
     pub const fn new() -> Self {

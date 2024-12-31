@@ -1,77 +1,53 @@
-use core::{
-    ffi::{c_char, c_int, c_size_t, c_void},
-    intrinsics::compare_bytes,
-    ptr,
-};
+use core::{intrinsics::compare_bytes, ptr};
 
 use crate::str::CStringIter;
 
-/// rt_weak void *rt_memset(void *s, int c, rt_ubase_t count)
-#[cfg(not(feature = "RT_KSERVICE_USING_STDLIB_MEMORY"))]
+/// weak *mut u8 memset(*mut u8 s, u8 c, usize count)
 #[linkage = "weak"]
-#[no_mangle]
-pub unsafe extern "C" fn rt_memset(s: *mut c_void, c: c_int, count: c_size_t) -> *mut c_void {
+pub unsafe fn memset(s: *mut u8, c: u8, count: usize) -> *mut u8 {
     // write_bytes is similar to C’s memset, but sets count * size_of::<T>() bytes to val
-    ptr::write_bytes(s as *mut u8, c as u8, count);
+    ptr::write_bytes(s, c, count);
     s
 }
 
-/// rt_weak void *rt_memcpy(void *dst, const void *src, rt_ubase_t count)
-#[cfg(not(feature = "RT_KSERVICE_USING_STDLIB_MEMORY"))]
+/// weak *mut u8 memcpy(*mut u8 dst, *const u8 src, usize count)
 #[linkage = "weak"]
-#[no_mangle]
-pub unsafe extern "C" fn rt_memcpy(
-    dst: *mut c_void,
-    src: *const c_void,
-    count: c_size_t,
-) -> *mut c_void {
+pub unsafe fn memcpy(dst: *mut u8, src: *const u8, count: usize) -> *mut u8 {
     // copy_nonoverlapping is semantically equivalent to C’s memcpy,
     // but with the argument order swapped.
-    ptr::copy_nonoverlapping(src as *const u8, dst as *mut u8, count);
+    ptr::copy_nonoverlapping(src, dst, count);
     dst
 }
 
-/// void *rt_memmove(void *dest, const void *src, rt_size_t n)
-#[cfg(not(feature = "RT_KSERVICE_USING_STDLIB_MEMORY"))]
-#[no_mangle]
-pub unsafe extern "C" fn rt_memmove(
-    dest: *mut c_void,
-    src: *const c_void,
-    n: c_size_t,
-) -> *mut c_void {
+/// *mut u8 memmove(*mut u8 dest, *const u8 src, usize n)
+pub unsafe fn memmove(dest: *mut u8, src: *const u8, n: usize) -> *mut u8 {
     // copy is semantically equivalent to C’s memmove, but with the argument order swapped.
     // Copying takes place as if the bytes were copied from src to a temporary array
     // and then copied from the array to dst.
-    ptr::copy(src as *const u8, dest as *mut u8, n);
+    ptr::copy(src, dest, n);
     dest
 }
 
-/// rt_int32_t rt_memcmp(const void *cs, const void *ct, rt_size_t count)
-#[cfg(not(feature = "RT_KSERVICE_USING_STDLIB_MEMORY"))]
-#[no_mangle]
-pub unsafe extern "C" fn rt_memcmp(cs: *const c_void, ct: *const c_void, n: c_size_t) -> c_int {
+/// i32 memcmp(*const u8 cs, *const u8 ct, usize count)
+pub unsafe fn memcmp(cs: *const u8, ct: *const u8, n: usize) -> i32 {
     // The compiler-builtins provides optimized versions of mem functions.
-    compare_bytes(cs as *const u8, ct as *const u8, n)
+    compare_bytes(cs, ct, n)
 }
 
-#[cfg(not(feature = "RT_KSERVICE_USING_STDLIB_MEMORY"))]
-#[no_mangle]
-pub unsafe extern "C" fn rt_memchr(s: *const c_void, c: c_int, n: c_size_t) -> *const c_void {
-    let s = s as *const c_char;
+pub unsafe fn memchr(s: *const u8, c: i32, n: usize) -> *const u8 {
+    let s = s as *const i32;
     for i in 0..n {
-        if *s.add(i) as c_int == c {
-            return s.add(i) as *const c_void;
+        if *s.add(i) as i32 == c {
+            return s.add(i) as *const u8;
         }
     }
     core::ptr::null()
 }
 
 /// char *rt_strstr(const char *s1, const char *s2)
-#[cfg(not(feature = "RT_KSERVICE_USING_STDLIB"))]
-#[no_mangle]
-pub unsafe extern "C" fn rt_strstr(cs: *const c_char, ct: *const c_char) -> *mut c_char {
+pub unsafe fn strstr(cs: *const i8, ct: *const i8) -> *mut i8 {
     if *ct.offset(0) == 0 {
-        return cs as *mut c_char;
+        return cs as *mut i8;
     }
     for cs_trim in (0..).map(|idx| cs.offset(idx)) {
         if *cs_trim == 0 {
@@ -86,23 +62,21 @@ pub unsafe extern "C" fn rt_strstr(cs: *const c_char, ct: *const c_char) -> *mut
             len += 1;
         }
         if *ct.offset(len) == 0 {
-            return cs_trim as *mut c_char;
+            return cs_trim as *mut i8;
         }
     }
     core::ptr::null_mut()
 }
 
 /// rt_int32_t rt_strcasecmp(const char *a, const char *b)
-#[cfg(not(feature = "RT_KSERVICE_USING_STDLIB"))]
-#[no_mangle]
-pub unsafe extern "C" fn rt_strcasecmp(s1: *const c_char, s2: *const c_char) -> c_int {
+pub unsafe fn strcasecmp(s1: *const u8, s2: *const u8) -> u8 {
     let mut i = 0;
     loop {
         let s1_i = s1.add(i);
         let s2_i = s2.add(i);
 
-        let val = (*s1_i as u8 as char).to_ascii_lowercase() as c_int
-            - (*s2_i as u8 as char).to_ascii_lowercase() as c_int;
+        let val = (*s1_i as u8 as char).to_ascii_lowercase() as u8
+            - (*s2_i as u8 as char).to_ascii_lowercase() as u8;
         if val != 0 || *s1_i == 0 {
             return val;
         }
@@ -111,13 +85,7 @@ pub unsafe extern "C" fn rt_strcasecmp(s1: *const c_char, s2: *const c_char) -> 
 }
 
 /// char *rt_strncpy(char *dst, const char *src, rt_size_t n)
-#[cfg(not(feature = "RT_KSERVICE_USING_STDLIB"))]
-#[no_mangle]
-pub unsafe extern "C" fn rt_strncpy(
-    dst: *mut c_char,
-    src: *const c_char,
-    n: c_size_t,
-) -> *mut c_char {
+pub unsafe fn strncpy(dst: *mut i8, src: *const i8, n: usize) -> *mut i8 {
     let mut i = 0;
     while i < n {
         let c = *src.add(i);
@@ -135,9 +103,7 @@ pub unsafe extern "C" fn rt_strncpy(
 }
 
 /// char *rt_strcpy(char *dst, const char *src)
-#[cfg(not(feature = "RT_KSERVICE_USING_STDLIB"))]
-#[no_mangle]
-pub unsafe extern "C" fn rt_strcpy(dst: *mut c_char, src: *const c_char) -> *mut c_char {
+pub unsafe fn strcpy(dst: *mut i8, src: *const i8) -> *mut i8 {
     let mut i = 0;
     loop {
         let c = *src.offset(i);
@@ -151,14 +117,12 @@ pub unsafe extern "C" fn rt_strcpy(dst: *mut c_char, src: *const c_char) -> *mut
 }
 
 /// rt_int32_t rt_strncmp(const char *cs, const char *ct, rt_size_t count)
-#[cfg(not(feature = "RT_KSERVICE_USING_STDLIB"))]
-#[no_mangle]
-pub unsafe extern "C" fn rt_strncmp(cs: *const c_char, ct: *const c_char, n: c_size_t) -> c_int {
+pub unsafe fn strncmp(cs: *const i8, ct: *const i8, n: usize) -> i8 {
     for i in 0..n as isize {
         let cs_i = cs.offset(i);
         let ct_i = ct.offset(i);
 
-        let val = *cs_i as c_int - *ct_i as c_int;
+        let val = *cs_i as i8 - *ct_i as i8;
         if val != 0 || *cs_i == 0 {
             return val;
         }
@@ -167,14 +131,12 @@ pub unsafe extern "C" fn rt_strncmp(cs: *const c_char, ct: *const c_char, n: c_s
 }
 
 /// rt_int32_t rt_strcmp(const char *cs, const char *ct)
-#[cfg(not(feature = "RT_KSERVICE_USING_STDLIB"))]
-#[no_mangle]
-pub unsafe extern "C" fn rt_strcmp(cs: *const c_char, ct: *const c_char) -> c_int {
+pub unsafe fn strcmp(cs: *const i8, ct: *const i8) -> i8 {
     for i in 0.. {
         let cs_i = cs.offset(i);
         let ct_i = ct.offset(i);
 
-        let val = *cs_i as c_int - *ct_i as c_int;
+        let val = *cs_i as i8 - *ct_i as i8;
         if val != 0 || *cs_i == 0 {
             return val;
         }
@@ -183,9 +145,7 @@ pub unsafe extern "C" fn rt_strcmp(cs: *const c_char, ct: *const c_char) -> c_in
 }
 
 /// rt_size_t rt_strlen(const char *s)
-#[cfg(not(feature = "RT_KSERVICE_USING_STDLIB"))]
-#[no_mangle]
-pub unsafe extern "C" fn rt_strlen(cs: *const c_char) -> c_size_t {
+pub unsafe fn strlen(cs: *const i8) -> usize {
     let mut len = 0;
     let mut s = cs;
     while *s != 0 {
@@ -196,8 +156,7 @@ pub unsafe extern "C" fn rt_strlen(cs: *const c_char) -> c_size_t {
 }
 
 ///rt_size_t rt_strnlen(const char *s, rt_ubase_t maxlen)
-#[no_mangle]
-pub unsafe extern "C" fn rt_strnlen(cs: *const c_char, maxlen: c_size_t) -> c_size_t {
+pub unsafe fn strnlen(cs: *const i8, maxlen: usize) -> usize {
     let mut len = 0;
     let mut s = cs;
     while *s != 0 && len <= maxlen {
@@ -208,16 +167,15 @@ pub unsafe extern "C" fn rt_strnlen(cs: *const c_char, maxlen: c_size_t) -> c_si
 }
 
 /// char *rt_strdup(const char *s)
-#[cfg(feature = "RT_USING_HEAP")]
-#[no_mangle]
-pub unsafe extern "C" fn rt_strdup(cs: *const c_char) -> *mut c_char {
-    let len = rt_strlen(cs) + 1;
-    let tmp = crate::allocator::rt_malloc(len);
+#[cfg(feature = "heap")]
+pub unsafe fn strdup(cs: *const usize) -> *mut usize {
+    let len = strlen(cs as *const i8) + 1;
+    let tmp = crate::allocator::malloc(len);
 
     if !tmp.is_null() {
-        rt_memcpy(tmp, cs as *const c_void, len);
+        memcpy(tmp, cs as *const u8, len);
     }
-    tmp as *mut c_char
+    tmp as *mut usize
 }
 
 #[cfg(test)]
@@ -228,7 +186,7 @@ mod tests {
     fn test_memset() {
         let mut array: [u8; 4] = [0; 4];
         unsafe {
-            rt_memset(array.as_mut_ptr(), b'a', 2);
+            memset(array.as_mut_ptr(), b'a', 2);
         }
         assert_eq!(array, [b'a', b'a', 0, 0]);
     }
@@ -237,19 +195,19 @@ mod tests {
     fn test_strcasecmp() {
         let a = b"abc\0";
         let b = b"AbC\0";
-        let result = unsafe { rt_strncasecmp(a.as_ptr(), b.as_ptr()) };
+        let result = unsafe { strncasecmp(a.as_ptr(), b.as_ptr()) };
         // Match!
         assert_eq!(result, 0);
 
         let a = b"123\0";
         let b = b"x12\0";
-        let result = unsafe { rt_strncasecmp(a.as_ptr(), b.as_ptr()) };
+        let result = unsafe { strncasecmp(a.as_ptr(), b.as_ptr()) };
         // No match, first string first
         assert!(result < 0);
 
         let a = b"bbb\0";
         let b = b"aaa\0";
-        let result = unsafe { rt_strncasecmp(a.as_ptr(), b.as_ptr(), 3) };
+        let result = unsafe { strncasecmp(a.as_ptr(), b.as_ptr(), 3) };
         // No match, second string first
         assert!(result > 0);
     }
@@ -258,34 +216,34 @@ mod tests {
     fn test_strncmp() {
         let a = b"123\0";
         let b = b"1234\0";
-        let result = unsafe { rt_strncmp(a.as_ptr(), b.as_ptr(), 3) };
+        let result = unsafe { strncmp(a.as_ptr(), b.as_ptr(), 3) };
         // Match!
         assert_eq!(result, 0);
 
         let a = b"123\0";
         let b = b"x1234\0";
-        let result = unsafe { rt_strncmp(a.as_ptr(), b.as_ptr(), 3) };
+        let result = unsafe { strncmp(a.as_ptr(), b.as_ptr(), 3) };
         // No match, first string first
         assert!(result < 0);
 
         let a = b"bbbbb\0";
         let b = b"aaaaa\0";
-        let result = unsafe { rt_strncmp(a.as_ptr(), b.as_ptr(), 3) };
+        let result = unsafe { strncmp(a.as_ptr(), b.as_ptr(), 3) };
         // No match, second string first
         assert!(result > 0);
     }
 
     #[test]
     fn test_strlen() {
-        assert_eq!(unsafe { rt_strlen(b"\0" as *const CChar) }, 0);
-        assert_eq!(unsafe { rt_strlen(b"Blue\0" as *const CChar) }, 4);
+        assert_eq!(unsafe { strlen(b"\0" as *const CChar) }, 0);
+        assert_eq!(unsafe { strlen(b"Blue\0" as *const CChar) }, 4);
     }
 
     #[test]
     fn test_strstr_no() {
         let needle = b"abcd\0".as_ptr();
         let haystack = b"efghi\0".as_ptr();
-        let result = unsafe { rt_strstr(haystack, needle) };
+        let result = unsafe { strstr(haystack, needle) };
         assert_eq!(result, core::ptr::null());
     }
 
@@ -293,7 +251,7 @@ mod tests {
     fn test_strstr_start() {
         let needle = b"abc\0".as_ptr();
         let haystack = b"abcdefghi\0".as_ptr();
-        let result = unsafe { rt_strstr(haystack, needle) };
+        let result = unsafe { strstr(haystack, needle) };
         assert_eq!(result, haystack);
     }
 
@@ -301,7 +259,7 @@ mod tests {
     fn test_strstr_middle() {
         let needle = b"def\0".as_ptr();
         let haystack = b"abcdefghi\0".as_ptr();
-        let result = unsafe { rt_strstr(haystack, needle) };
+        let result = unsafe { strstr(haystack, needle) };
         assert_eq!(result, unsafe { haystack.offset(2) });
     }
 
@@ -309,7 +267,7 @@ mod tests {
     fn test_strstr_end() {
         let needle = b"ghi\0".as_ptr();
         let haystack = b"abcdefghi\0".as_ptr();
-        let result = unsafe { rt_strstr(haystack, needle) };
+        let result = unsafe { strstr(haystack, needle) };
         assert_eq!(result, unsafe { haystack.offset(3) });
     }
 
@@ -317,7 +275,7 @@ mod tests {
     fn test_strstr_partial() {
         let needle = b"abcdefghij\0".as_ptr();
         let haystack = b"abcdefghi\0".as_ptr();
-        let result = unsafe { rt_strstr(haystack, needle) };
+        let result = unsafe { strstr(haystack, needle) };
         assert_eq!(result, core::ptr::null());
     }
 

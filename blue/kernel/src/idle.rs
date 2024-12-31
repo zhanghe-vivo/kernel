@@ -11,24 +11,23 @@ use crate::{
     zombie,
 };
 use pinned_init::{pin_data, pin_init, pin_init_array_from_fn, PinInit};
-use rt_bindings;
 
 const IDLE_NAME: &'static CStr = crate::c_str!("Idle");
 
-#[cfg(feature = "RT_USING_IDLE_HOOK")]
-type IdleHookFn = unsafe extern "C" fn();
+#[cfg(feature = "idle_hook")]
+pub type IdleHookFn = unsafe extern "C" fn();
 
-#[cfg(feature = "RT_USING_IDLE_HOOK")]
-static IDLE_HOOK_LIST: IdleHooks = IdleHooks::new();
-#[cfg(feature = "RT_USING_IDLE_HOOK")]
-const IDLE_HOOK_LIST_SIZE: usize = rt_bindings::RT_IDLE_HOOK_LIST_SIZE as usize;
+#[cfg(feature = "idle_hook")]
+pub static IDLE_HOOK_LIST: IdleHooks = IdleHooks::new();
+#[cfg(feature = "idle_hook")]
+const IDLE_HOOK_LIST_SIZE: usize = 4;
 
-#[cfg(feature = "RT_USING_IDLE_HOOK")]
-struct IdleHooks {
+#[cfg(feature = "idle_hook")]
+pub struct IdleHooks {
     hooks: [AtomicPtr<IdleHookFn>; IDLE_HOOK_LIST_SIZE],
 }
 
-#[cfg(feature = "RT_USING_IDLE_HOOK")]
+#[cfg(feature = "idle_hook")]
 impl IdleHooks {
     const ARRAY_REPEAT_VALUE: AtomicPtr<IdleHookFn> = AtomicPtr::new(ptr::null_mut());
     pub const fn new() -> Self {
@@ -37,7 +36,7 @@ impl IdleHooks {
         }
     }
 
-    pub(crate) fn sethook(&self, hook: *mut IdleHookFn) -> bool {
+    pub fn sethook(&self, hook: *mut IdleHookFn) -> bool {
         for i in 0..IDLE_HOOK_LIST_SIZE {
             let idle_hook = self.hooks[i].load(Ordering::Relaxed);
             if idle_hook.is_null() {
@@ -48,7 +47,7 @@ impl IdleHooks {
         false
     }
 
-    pub(crate) fn delhook(&self, hook: *mut IdleHookFn) -> bool {
+    pub fn delhook(&self, hook: *mut IdleHookFn) -> bool {
         for i in 0..IDLE_HOOK_LIST_SIZE {
             let idle_hook = self.hooks[i].load(Ordering::Relaxed);
             if idle_hook == hook {
@@ -72,7 +71,7 @@ impl IdleHooks {
     }
 }
 
-const IDLE_STACK_SIZE: usize = rt_bindings::IDLE_THREAD_STACK_SIZE as usize;
+const IDLE_STACK_SIZE: usize = 2048;
 #[pin_data]
 pub struct IdleTheads {
     #[pin]
@@ -104,7 +103,7 @@ impl IdleTheads {
                 .unwrap_unchecked()
                 .init_once();
 
-            #[cfg(feature = "RT_USING_SMP")]
+            #[cfg(feature = "smp")]
             (&raw const zombie::ZOMBIE_MANAGER
                 as *const UnsafeStaticInit<zombie::ZombieManager, _>)
                 .cast_mut()
@@ -120,22 +119,22 @@ impl IdleTheads {
         }
     }
 
-    #[cfg(feature = "RT_USING_SMP")]
+    #[cfg(feature = "smp")]
     #[inline]
     pub(crate) fn new() -> impl PinInit<Self> {
         pin_init!(Self {
             threads <- pin_init_array_from_fn(|i| ThreadWithStack::new_with_bind(IDLE_NAME, Self::idle_thread_entry as ThreadEntryFn,
-                ptr::null_mut(), (rt_bindings::RT_THREAD_PRIORITY_MAX - 1) as u8, 32, i as u8)),
+                ptr::null_mut(), (blue_kconfig::THREAD_PRIORITY_MAX - 1) as u8, 32, i as u8)),
         })
     }
 
     // FIXME
-    #[cfg(not(feature = "RT_USING_SMP"))]
+    #[cfg(not(feature = "smp"))]
     #[inline]
     pub(crate) fn new() -> impl PinInit<Self> {
         pin_init!(Self {
             threads <- pin_init_array_from_fn(|_i| ThreadWithStack::new(IDLE_NAME, Self::idle_thread_entry as ThreadEntryFn,
-                 ptr::null_mut(), (rt_bindings::RT_THREAD_PRIORITY_MAX - 1) as u8, 32)),
+                 ptr::null_mut(), (blue_kconfig::THREAD_PRIORITY_MAX - 1) as u8, 32)),
         })
     }
 
@@ -147,17 +146,18 @@ impl IdleTheads {
     }
 
     extern "C" fn idle_thread_entry(_parameter: *mut ffi::c_void) {
-        #[cfg(feature = "RT_USING_SMP")]
+        #[cfg(feature = "smp")]
         unsafe {
             if Arch::smp::core_id() != 0u8 {
                 loop {
-                    rt_bindings::rt_hw_secondary_cpu_idle_exec();
+                    // TODO: call for libcpu
+                    // rt_bindings::rt_hw_secondary_cpu_idle_exec();
                 }
             }
         }
 
         loop {
-            #[cfg(not(feature = "RT_USING_SMP"))]
+            #[cfg(not(feature = "smp"))]
             unsafe {
                 (&raw const zombie::ZOMBIE_MANAGER
                     as *const UnsafeStaticInit<zombie::ZombieManager, _>)
@@ -166,7 +166,7 @@ impl IdleTheads {
                     .reclaim()
             };
 
-            #[cfg(feature = "RT_USING_IDLE_HOOK")]
+            #[cfg(feature = "idle_hook")]
             IDLE_HOOK_LIST.hook_execute();
 
             // TODO: add power manager
@@ -174,26 +174,9 @@ impl IdleTheads {
     }
 }
 
-#[cfg(feature = "RT_USING_IDLE_HOOK")]
+/// bindgen for idle hook
+#[allow(improper_ctypes_definitions)]
 #[no_mangle]
-pub unsafe extern "C" fn rt_thread_idle_sethook(hook: Option<IdleHookFn>) -> rt_bindings::rt_err_t {
-    if let Some(hook_fn) = hook {
-        let res = IDLE_HOOK_LIST.sethook(hook_fn as *mut IdleHookFn);
-        if res {
-            return rt_bindings::RT_EOK as rt_bindings::rt_err_t;
-        }
-    }
-    -(rt_bindings::RT_EFULL as rt_bindings::rt_err_t)
-}
-
-#[cfg(feature = "RT_USING_IDLE_HOOK")]
-#[no_mangle]
-pub unsafe extern "C" fn rt_thread_idle_delhook(hook: Option<IdleHookFn>) -> rt_bindings::rt_err_t {
-    if let Some(hook_fn) = hook {
-        let res = IDLE_HOOK_LIST.delhook(hook_fn as *mut IdleHookFn);
-        if res {
-            return rt_bindings::RT_EOK as rt_bindings::rt_err_t;
-        }
-    }
-    -(rt_bindings::RT_EFULL as rt_bindings::rt_err_t)
+pub extern "C" fn bindgen_idle_hook(_hook: IdleHookFn) {
+    0;
 }

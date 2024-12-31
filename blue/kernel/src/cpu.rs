@@ -1,7 +1,10 @@
 #![allow(dead_code)]
-#[cfg(feature = "RT_USING_SMP")]
+#[cfg(feature = "smp")]
 use crate::scheduler::PriorityTableManager;
-use crate::{process, scheduler::Scheduler, static_init::UnsafeStaticInit, sync::RawSpin, thread};
+use crate::{
+    blue_kconfig::CPUS_NR, process, scheduler::Scheduler, static_init::UnsafeStaticInit,
+    sync::RawSpin, thread,
+};
 use blue_arch::arch::Arch;
 
 use core::{
@@ -9,9 +12,8 @@ use core::{
     sync::atomic::{AtomicU32, Ordering},
 };
 use pinned_init::{pin_data, pin_init, pin_init_array_from_fn, PinInit};
-use rt_bindings;
 
-pub const CPUS_NUMBER: usize = rt_bindings::RT_CPUS_NR as usize;
+pub const CPUS_NUMBER: usize = CPUS_NR as usize;
 pub const CPU_DETACHED: u8 = CPUS_NUMBER as u8;
 pub(crate) static mut CPUS: UnsafeStaticInit<Cpus, CpusInit> = UnsafeStaticInit::new(CpusInit);
 
@@ -23,7 +25,7 @@ unsafe impl PinInit<Cpus> for CpusInit {
     }
 }
 
-#[cfg(feature = "RT_USING_SMP")]
+#[cfg(feature = "smp")]
 #[pin_data]
 pub struct Cpus {
     cpu_lock: RawSpin,
@@ -35,7 +37,7 @@ pub struct Cpus {
     global_priority_manager: PriorityTableManager,
 }
 
-#[cfg(not(feature = "RT_USING_SMP"))]
+#[cfg(not(feature = "smp"))]
 #[pin_data]
 pub struct Cpus {
     cpu_lock: RawSpin,
@@ -54,12 +56,12 @@ pub struct Cpu {
 
     tick: AtomicU32,
     interrupt_nest: AtomicU32,
-    #[cfg(feature = "RT_USING_SMP")]
+    #[cfg(feature = "smp")]
     cpu_lock_nest: AtomicU32,
 }
 
 impl Cpus {
-    #[cfg(not(feature = "RT_USING_SMP"))]
+    #[cfg(not(feature = "smp"))]
     #[inline]
     pub(crate) fn new() -> impl PinInit<Self> {
         pin_init!(Self {
@@ -68,7 +70,7 @@ impl Cpus {
         })
     }
 
-    #[cfg(feature = "RT_USING_SMP")]
+    #[cfg(feature = "smp")]
     #[inline]
     pub(crate) fn new() -> impl PinInit<Self> {
         pin_init!(Self {
@@ -79,49 +81,49 @@ impl Cpus {
         })
     }
 
-    #[cfg(feature = "RT_USING_SMP")]
+    #[cfg(feature = "smp")]
     #[inline]
     pub(crate) fn get_priority_group_from_global() -> u32 {
         let cpus = unsafe { &*(&raw const CPUS as *const UnsafeStaticInit<Cpus, CpusInit>) };
         cpus.global_priority_manager.get_priority_group()
     }
 
-    #[cfg(feature = "RT_USING_SMP")]
+    #[cfg(feature = "smp")]
     #[inline]
     pub(crate) fn get_highest_priority_from_global() -> u32 {
         let cpus = unsafe { &*(&raw const CPUS as *const UnsafeStaticInit<Cpus, CpusInit>) };
         cpus.global_priority_manager.get_highest_ready_prio()
     }
 
-    #[cfg(feature = "RT_USING_SMP")]
+    #[cfg(feature = "smp")]
     #[inline]
     pub(crate) fn get_thread_from_global(prio: u32) -> Option<NonNull<thread::RtThread>> {
         let cpus = unsafe { &*(&raw const CPUS as *const UnsafeStaticInit<Cpus, CpusInit>) };
         cpus.global_priority_manager.get_thread_by_prio(prio)
     }
 
-    #[cfg(feature = "RT_USING_SMP")]
+    #[cfg(feature = "smp")]
     #[inline]
     pub(crate) fn insert_thread_to_global(thread: &mut thread::RtThread) {
         let cpus = unsafe { &*(&raw const CPUS as *const UnsafeStaticInit<Cpus, CpusInit>) };
         cpus.global_priority_manager.insert_thread(thread);
     }
 
-    #[cfg(feature = "RT_USING_SMP")]
+    #[cfg(feature = "smp")]
     #[inline]
     pub(crate) fn remove_thread_from_global(thread: &mut thread::RtThread) {
         let cpus = unsafe { &*(&raw const CPUS as *const UnsafeStaticInit<Cpus, CpusInit>) };
         cpus.global_priority_manager.remove_thread(thread);
     }
 
-    #[cfg(feature = "RT_USING_SMP")]
+    #[cfg(feature = "smp")]
     #[inline]
     pub(crate) fn lock_sched_fast() {
         let cpus = unsafe { &*(&raw const CPUS as *const UnsafeStaticInit<Cpus, CpusInit>) };
         cpus.sched_lock.lock_fast();
     }
 
-    #[cfg(feature = "RT_USING_SMP")]
+    #[cfg(feature = "smp")]
     #[inline]
     pub(crate) fn unlock_sched_fast() {
         let cpus = unsafe { &*(&raw const CPUS as *const UnsafeStaticInit<Cpus, CpusInit>) };
@@ -137,12 +139,12 @@ impl Cpus {
     #[inline]
     pub(crate) fn lock_cpus() {
         let cpus = unsafe { &*(&raw const CPUS as *const UnsafeStaticInit<Cpus, CpusInit>) };
-        #[cfg(feature = "RT_USING_SMP")]
+        #[cfg(feature = "smp")]
         if Cpu::cpu_lock_nest_inc() == 0 {
             cpus.cpu_lock.lock();
         }
 
-        #[cfg(not(feature = "RT_USING_SMP"))]
+        #[cfg(not(feature = "smp"))]
         {
             cpus.cpu_lock.lock();
         }
@@ -151,12 +153,12 @@ impl Cpus {
     #[inline]
     pub(crate) fn unlock_cpus() {
         let cpus = unsafe { &*(&raw const CPUS as *const UnsafeStaticInit<Cpus, CpusInit>) };
-        #[cfg(feature = "RT_USING_SMP")]
+        #[cfg(feature = "smp")]
         if Cpu::cpu_lock_nest_dec() == 1 {
             cpus.cpu_lock.unlock();
         }
 
-        #[cfg(not(feature = "RT_USING_SMP"))]
+        #[cfg(not(feature = "smp"))]
         {
             cpus.cpu_lock.unlock();
         }
@@ -164,7 +166,7 @@ impl Cpus {
 }
 
 impl Cpu {
-    #[cfg(not(feature = "RT_USING_SMP"))]
+    #[cfg(not(feature = "smp"))]
     #[inline]
     pub(crate) fn new(cpu: u8) -> impl PinInit<Self> {
         pin_init!(Self {
@@ -175,7 +177,7 @@ impl Cpu {
         })
     }
 
-    #[cfg(feature = "RT_USING_SMP")]
+    #[cfg(feature = "smp")]
     #[inline]
     pub(crate) fn new(cpu: u8) -> impl PinInit<Self> {
         pin_init!(Self {
@@ -273,7 +275,7 @@ impl Cpu {
         Self::get_current().interrupt_nest.load(Ordering::Relaxed)
     }
 
-    #[cfg(feature = "RT_USING_SMP")]
+    #[cfg(feature = "smp")]
     #[inline]
     pub fn cpu_lock_nest_inc() -> u32 {
         Self::get_current()
@@ -281,7 +283,7 @@ impl Cpu {
             .fetch_add(1, Ordering::Release)
     }
 
-    #[cfg(feature = "RT_USING_SMP")]
+    #[cfg(feature = "smp")]
     #[inline]
     pub fn cpu_lock_nest_dec() -> u32 {
         Self::get_current()
@@ -289,46 +291,11 @@ impl Cpu {
             .fetch_sub(1, Ordering::Release)
     }
 
-    #[cfg(feature = "RT_USING_SMP")]
+    #[cfg(feature = "smp")]
     #[inline]
     pub fn cpu_lock_nest_load() -> u32 {
         Self::get_current().cpu_lock_nest.load(Ordering::Relaxed)
     }
-}
-
-// TODO inline to "C"
-#[no_mangle]
-pub unsafe extern "C" fn rt_interrupt_nest_load() -> u32 {
-    Cpu::interrupt_nest_load()
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn rt_interrupt_nest_inc() -> u32 {
-    Cpu::interrupt_nest_inc()
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn rt_interrupt_nest_dec() -> u32 {
-    Cpu::interrupt_nest_dec()
-}
-
-/// This function will lock all cpus's scheduler and disable local irq.
-/// Return current cpu interrupt status.
-#[cfg(feature = "RT_USING_SMP")]
-#[no_mangle]
-pub unsafe extern "C" fn rt_cpus_lock() -> rt_bindings::rt_base_t {
-    let level = Arch::disable_interrupts();
-    Cpus::lock_cpus();
-    level
-}
-
-/// This function will restore all cpus's scheduler and restore local irq.
-/// level is interrupt status returned by rt_cpus_lock().
-#[cfg(feature = "RT_USING_SMP")]
-#[no_mangle]
-pub unsafe extern "C" fn rt_cpus_unlock(level: rt_bindings::rt_base_t) {
-    Cpus::unlock_cpus();
-    Arch::enable_interrupts(level);
 }
 
 // need to call before rt_enter_critical/ cpus_lock called

@@ -1,19 +1,15 @@
 use crate::{
     alloc::boxed::Box,
+    blue_kconfig::THREAD_PRIORITY_MAX,
+    clock::WAITING_FOREVER,
     cpu::Cpu,
     current_thread_ptr,
-    error::code,
-    impl_kobject, list_head_for_each,
+    error::{code, set_errno},
+    impl_kobject,
     object::*,
-    print, println,
-    rt_bindings::{
-        rt_debug_in_thread_context, rt_debug_not_in_interrupt, rt_debug_scheduler_available,
-        rt_err_t, rt_int32_t, rt_object, rt_object_hook_call, rt_set_errno, RT_EFULL, RT_EINVAL,
-        RT_EOK, RT_ERROR, RT_ETIMEOUT, RT_INTERRUPTIBLE, RT_KILLABLE, RT_THREAD_PRIORITY_MAX,
-        RT_TIMER_CTRL_SET_TIME, RT_UNINTERRUPTIBLE, RT_WAITING_FOREVER, RT_WAITING_NO,
-    },
     sync::ipc_common::*,
-    thread::RtThread,
+    thread::{RtThread, SuspendFlag},
+    timer::TimerControlAction,
 };
 use blue_infra::list::doubly_linked_list::ListHead;
 
@@ -40,6 +36,9 @@ pub struct KMutex<T> {
 
 unsafe impl<T: Send> Send for KMutex<T> {}
 unsafe impl<T: Send> Sync for KMutex<T> {}
+
+pub const MUTEX_HOLD_MAX: u32 = 255;
+pub const WAITING_NO: u32 = 0;
 
 #[pinned_drop]
 impl<T> PinnedDrop for KMutex<T> {
@@ -135,7 +134,7 @@ impl_kobject!(RtMutex);
 impl RtMutex {
     #[inline]
     pub fn new(name: [i8; NAME_MAX], _waiting_mode: u8) -> impl PinInit<Self> {
-        rt_debug_not_in_interrupt!();
+        crate::debug_not_in_interrupt!();
 
         let init = move |slot: *mut Self| unsafe {
             let cur_ref = &mut *slot;
@@ -230,7 +229,7 @@ impl RtMutex {
         assert_eq!(self.type_name(), ObjectClassType::ObjectClassMutex as u8);
         assert!(!self.is_static_kobject());
 
-        rt_debug_not_in_interrupt!();
+        crate::debug_not_in_interrupt!();
 
         self.inner_queue.lock();
         self.inner_queue.enqueue_waiter.inner_locked_wake_all();
@@ -243,23 +242,16 @@ impl RtMutex {
         self.parent.delete();
     }
 
-    fn lock_internal(&mut self, timeout: i32, pending_mode: u32) -> i32 {
+    pub fn lock_internal(&mut self, timeout: i32, pending_mode: u32) -> i32 {
         // Shadow timeout for mutability
         let mut timeout = timeout;
-        rt_debug_scheduler_available!(true);
+        crate::debug_scheduler_available!(true);
         assert_eq!(self.type_name(), ObjectClassType::ObjectClassMutex as u8);
 
         let thread_ptr = current_thread_ptr!();
         assert!(!thread_ptr.is_null());
         let thread = unsafe { &mut *thread_ptr };
         self.inner_queue.lock();
-
-        unsafe {
-            rt_object_hook_call!(
-                rt_object_trytake_hook,
-                &mut self.parent as *mut KObjectBase as *mut rt_object
-            );
-        }
 
         thread.error = code::EOK;
 
@@ -269,7 +261,7 @@ impl RtMutex {
                 self.inner_queue.force_push_stub();
             } else {
                 self.inner_queue.unlock();
-                return -(RT_EFULL as i32);
+                return code::EFULL.to_errno();
             }
         } else {
             // Whether the mutex has owner thread.
@@ -301,12 +293,12 @@ impl RtMutex {
 
                     self.inner_queue.unlock();
 
-                    return -(RT_ETIMEOUT as i32);
+                    return code::ETIMEOUT.to_errno();
                 } else {
                     let mut priority = thread.priority.get_current();
                     // Suspend current thread
                     let mut ret = self.inner_queue.enqueue_waiter.wait(thread, pending_mode);
-                    if ret != RT_EOK as i32 {
+                    if ret != code::EOK.to_errno() {
                         self.inner_queue.unlock();
                         return ret;
                     }
@@ -320,13 +312,14 @@ impl RtMutex {
                         let mutex_owner = unsafe { &mut *self.owner };
 
                         if self.priority < mutex_owner.priority.get_current() {
-                            mutex_owner.update_priority(priority, RT_UNINTERRUPTIBLE);
+                            mutex_owner
+                                .update_priority(priority, SuspendFlag::Uninterruptible as u32);
                         }
                     }
 
                     if timeout > 0 {
                         thread.thread_timer.timer_control(
-                            RT_TIMER_CTRL_SET_TIME,
+                            TimerControlAction::SetTime,
                             (&mut timeout) as *mut i32 as *mut ffi::c_void,
                         );
 
@@ -368,7 +361,8 @@ impl RtMutex {
                             priority = mutex_owner.get_mutex_priority();
 
                             if priority != mutex_owner.priority.get_current() {
-                                mutex_owner.update_priority(priority, RT_UNINTERRUPTIBLE);
+                                mutex_owner
+                                    .update_priority(priority, SuspendFlag::Uninterruptible as u32);
                             }
                         }
 
@@ -386,53 +380,39 @@ impl RtMutex {
 
         self.inner_queue.unlock();
 
-        unsafe {
-            rt_object_hook_call!(
-                rt_object_take_hook,
-                &self.parent as *const KObjectBase as *const rt_object
-            );
-        }
-
-        RT_EOK as i32
+        code::EOK.to_errno()
     }
 
     pub fn lock(&mut self) -> i32 {
-        self.lock_internal(RT_WAITING_FOREVER as i32, RT_UNINTERRUPTIBLE as u32)
+        self.lock_internal(WAITING_FOREVER as i32, SuspendFlag::Uninterruptible as u32)
     }
 
     pub fn lock_wait(&mut self, time: i32) -> i32 {
-        self.lock_internal(time, RT_UNINTERRUPTIBLE as u32)
+        self.lock_internal(time, SuspendFlag::Uninterruptible as u32)
     }
 
     pub fn try_lock(&mut self) -> i32 {
-        self.lock_wait(RT_WAITING_NO as i32)
+        self.lock_wait(WAITING_NO as i32)
     }
 
     pub fn unlock(&mut self) -> i32 {
         assert_eq!(self.type_name(), ObjectClassType::ObjectClassMutex as u8);
 
         //Only thread could release mutex because we need test the ownership
-        rt_debug_in_thread_context!();
+        crate::debug_in_thread_context!();
 
         let thread_ptr = current_thread_ptr!();
         if thread_ptr.is_null() {
-            return -(RT_ERROR as i32);
+            return code::ERROR.to_errno();
         }
         let thread = unsafe { &mut *thread_ptr };
 
         self.inner_queue.lock();
 
-        unsafe {
-            rt_object_hook_call!(
-                rt_object_put_hook,
-                &mut self.parent as *mut KObjectBase as *mut rt_object
-            );
-        }
-
         if thread_ptr != self.owner {
             thread.error = code::ERROR;
             self.inner_queue.unlock();
-            return -(RT_ERROR as i32);
+            return code::ERROR.to_errno();
         }
 
         self.inner_queue.pop_stub();
@@ -458,10 +438,10 @@ impl RtMutex {
                 if let Some(node) = self.inner_queue.enqueue_waiter.head() {
                     next_thread_ptr = unsafe { crate::thread_list_node_entry!(node.as_ptr()) };
                     if next_thread_ptr.is_null() {
-                        return -(RT_ERROR as i32);
+                        return code::ERROR.to_errno();
                     }
                 } else {
-                    return -(RT_ERROR as i32);
+                    return code::ERROR.to_errno();
                 }
 
                 let next_thread = unsafe { &mut *next_thread_ptr };
@@ -485,10 +465,10 @@ impl RtMutex {
                     if let Some(node) = self.inner_queue.enqueue_waiter.head() {
                         th = unsafe { crate::thread_list_node_entry!(node.as_ptr()) };
                         if th.is_null() {
-                            return -(RT_ERROR as i32);
+                            return code::ERROR.to_errno();
                         }
                     } else {
-                        return -(RT_ERROR as i32);
+                        return code::ERROR.to_errno();
                     }
 
                     unsafe {
@@ -511,7 +491,7 @@ impl RtMutex {
             Cpu::get_current_scheduler().do_task_schedule();
         }
 
-        RT_EOK as i32
+        code::EOK.to_errno()
     }
 
     #[inline]
@@ -535,8 +515,6 @@ impl RtMutex {
         // SAFETY: thread is null checked
         let thread = unsafe { &mut *thread_ptr };
 
-        #[allow(unused_assignments)]
-        let mut priority: u8 = 0;
         let mut need_update = false;
 
         thread.remove_tlist();
@@ -562,9 +540,9 @@ impl RtMutex {
         }
 
         if need_update {
-            priority = mutex_owner.get_mutex_priority();
+            let priority = mutex_owner.get_mutex_priority();
             if priority != mutex_owner.priority.get_current() {
-                mutex_owner.update_priority(priority, RT_UNINTERRUPTIBLE as u32);
+                mutex_owner.update_priority(priority, SuspendFlag::Uninterruptible as u32);
             }
         }
     }
@@ -572,7 +550,7 @@ impl RtMutex {
     pub(crate) fn set_prio_ceiling(&mut self, priority: u8) -> u8 {
         let mut prev_priority: u8 = 0xFF;
 
-        if priority < RT_THREAD_PRIORITY_MAX as u8 {
+        if priority < THREAD_PRIORITY_MAX as u8 {
             //Critical section here if multiple updates to one mutex happen concurrently
             self.inner_queue.lock();
             prev_priority = self.ceiling_priority;
@@ -584,14 +562,15 @@ impl RtMutex {
                     let priority = (*owner_thread).get_mutex_priority();
 
                     if priority != (*owner_thread).priority.get_current() {
-                        (*owner_thread).update_priority(priority, RT_UNINTERRUPTIBLE as u32);
+                        (*owner_thread)
+                            .update_priority(priority, SuspendFlag::Uninterruptible as u32);
                     }
                 }
             }
             self.inner_queue.unlock();
         } else {
             unsafe {
-                rt_set_errno(-(RT_EINVAL as rt_err_t));
+                set_errno(code::EINVAL.to_errno());
             }
         }
 
@@ -601,118 +580,4 @@ impl RtMutex {
     pub(crate) fn get_prio_ceiling(&self) -> u8 {
         self.ceiling_priority
     }
-}
-
-#[cfg(feature = "RT_USING_MUTEX")]
-#[no_mangle]
-pub unsafe extern "C" fn rt_mutex_init(
-    mutex: *mut RtMutex,
-    name: *const ffi::c_char,
-    _flag: ffi::c_uchar,
-) -> rt_err_t {
-    assert!(!mutex.is_null());
-
-    (*mutex).init(name, _flag);
-
-    RT_EOK as rt_err_t
-}
-
-#[cfg(feature = "RT_USING_MUTEX")]
-#[no_mangle]
-pub unsafe extern "C" fn rt_mutex_detach(mutex: *mut RtMutex) -> rt_err_t {
-    assert!(!mutex.is_null());
-
-    (*mutex).detach();
-
-    RT_EOK as rt_err_t
-}
-
-#[cfg(all(feature = "RT_USING_MUTEX", feature = "RT_USING_HEAP"))]
-#[no_mangle]
-pub unsafe extern "C" fn rt_mutex_create(
-    name: *const ffi::c_char,
-    _flag: ffi::c_uchar,
-) -> *mut RtMutex {
-    RtMutex::new_raw(name, _flag)
-}
-
-#[cfg(all(feature = "RT_USING_MUTEX", feature = "RT_USING_HEAP"))]
-#[no_mangle]
-pub unsafe extern "C" fn rt_mutex_delete(mutex: *mut RtMutex) -> rt_err_t {
-    assert!(!mutex.is_null());
-    (*mutex).delete_raw();
-    RT_EOK as rt_err_t
-}
-
-#[cfg(feature = "RT_USING_MUTEX")]
-#[no_mangle]
-pub unsafe extern "C" fn rt_mutex_take(mutex: *mut RtMutex, time: rt_int32_t) -> rt_err_t {
-    assert!(!mutex.is_null());
-    (*mutex).lock_wait(time)
-}
-
-#[cfg(feature = "RT_USING_MUTEX")]
-#[no_mangle]
-pub unsafe extern "C" fn rt_mutex_take_interruptible(
-    mutex: *mut RtMutex,
-    time: rt_int32_t,
-) -> rt_err_t {
-    assert!(!mutex.is_null());
-    (*mutex).lock_internal(time, RT_INTERRUPTIBLE)
-}
-
-#[cfg(feature = "RT_USING_MUTEX")]
-#[no_mangle]
-pub unsafe extern "C" fn rt_mutex_take_killable(mutex: *mut RtMutex, time: rt_int32_t) -> rt_err_t {
-    assert!(!mutex.is_null());
-    (*mutex).lock_internal(time, RT_KILLABLE)
-}
-
-#[cfg(feature = "RT_USING_MUTEX")]
-#[no_mangle]
-pub unsafe extern "C" fn rt_mutex_trytake(mutex: *mut RtMutex) -> rt_err_t {
-    assert!(!mutex.is_null());
-    (*mutex).try_lock()
-}
-
-#[cfg(feature = "RT_USING_MUTEX")]
-#[no_mangle]
-pub unsafe extern "C" fn rt_mutex_release(mutex: *mut RtMutex) -> rt_err_t {
-    assert!(!mutex.is_null());
-    (*mutex).unlock()
-}
-#[no_mangle]
-#[allow(unused_unsafe)]
-pub extern "C" fn rt_mutex_info() {
-    let callback_forword = || {
-        println!("mutex      owner  hold priority suspend thread");
-        println!("-------- -------- ---- -------- --------------");
-    };
-    let callback = |node: &ListHead| unsafe {
-        let mutex = &*(crate::list_head_entry!(node.as_ptr(), KObjectBase, list) as *const RtMutex);
-        let _ = crate::format_name!(mutex.parent.name.as_ptr(), 8);
-        if mutex.owner.is_null() {
-            print!(" (NULL)   ");
-        } else {
-            let _ = crate::format_name!((*mutex.owner).parent.name.as_ptr(), 8);
-        }
-        print!("{:04}", mutex.inner_queue.count());
-        print!("{:>8}  ", mutex.priority);
-        if mutex.inner_queue.enqueue_waiter.is_empty() {
-            println!("0000");
-        } else {
-            print!("{}:", mutex.inner_queue.enqueue_waiter.count());
-            let head = &mutex.inner_queue.enqueue_waiter.working_queue;
-            list_head_for_each!(node, head, {
-                let thread = crate::thread_list_node_entry!(node.as_ptr()) as *mut RtThread;
-                let _ = crate::format_name!((*thread).parent.name.as_ptr(), 8);
-            });
-            print!("\n");
-        }
-    };
-    let _ = KObjectBase::get_info(
-        callback_forword,
-        callback,
-        ObjectClassType::ObjectClassMutex as u8,
-    );
 }

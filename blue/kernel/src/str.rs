@@ -193,7 +193,7 @@ impl CStr {
     pub unsafe fn from_char_ptr<'a>(ptr: *const core::ffi::c_char) -> &'a Self {
         // SAFETY: The safety precondition guarantees `ptr` is a valid pointer
         // to a `NUL`-terminated C string.
-        let len = unsafe { klibc::rt_strlen(ptr) } + 1;
+        let len = unsafe { klibc::strlen(ptr) } + 1;
         // SAFETY: Lifetime guaranteed by the safety precondition.
         let bytes = unsafe { core::slice::from_raw_parts(ptr as _, len as _) };
         // SAFETY: As `len` is returned by `strlen`, `bytes` does not contain interior `NUL`.
@@ -715,7 +715,7 @@ impl CString {
         // SAFETY: The buffer is valid for read because `f.bytes_written()` is bounded by `size`
         // (which the minimum buffer size) and is non-zero (we wrote at least the `NUL` terminator)
         // so `f.bytes_written() - 1` doesn't underflow.
-        let ptr = unsafe { klibc::rt_memchr(buf.as_ptr().cast(), 0, (f.bytes_written() - 1) as _) };
+        let ptr = unsafe { klibc::memchr(buf.as_ptr().cast(), 0, (f.bytes_written() - 1) as _) };
         if !ptr.is_null() {
             return Err(code::EINVAL);
         }

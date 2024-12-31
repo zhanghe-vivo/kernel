@@ -1,26 +1,43 @@
 #![allow(dead_code)]
 use crate::cpu::Cpu;
-#[cfg(feature = "RT_DEBUGING_SPINLOCK")]
+#[cfg(feature = "debugging_spinlock")]
 use crate::{irq::IrqLock, println, thread::RtThread};
-#[cfg(feature = "RT_USING_SMP")]
 use blue_arch::arch::Arch;
-#[cfg(feature = "RT_DEBUGING_SPINLOCK")]
-use core::ptr::NonNull;
+#[cfg(feature = "smp")]
+use blue_arch::asm;
+#[cfg(feature = "smp")]
+use core::sync::atomic::{AtomicUsize, Ordering};
+#[cfg(feature = "debugging_spinlock")]
+use core::{cell::Cell, ptr::NonNull};
 use core::{
-    cell::{Cell, UnsafeCell},
+    cell::{UnsafeCell, Cell},
     fmt,
     ops::{Deref, DerefMut},
 };
-use rt_bindings;
+
+#[cfg(feature = "smp")]
+#[repr(C)]
+pub struct Tickets {
+    owner: AtomicUsize,
+    next: AtomicUsize,
+}
+
+#[cfg(feature = "smp")]
+impl Tickets {
+    pub const fn new() -> Self {
+        Self {
+            owner: AtomicUsize::new(0),
+            next: AtomicUsize::new(0),
+        }
+    }
+}
 
 pub struct RawSpin {
-    #[cfg(not(feature = "RT_USING_SMP"))]
-    lock: Cell<rt_bindings::rt_spinlock_t>,
+    lock: Cell<usize>,
+    #[cfg(feature = "smp")]
+    tickets: Tickets,
 
-    #[cfg(feature = "RT_USING_SMP")]
-    lock: Cell<rt_bindings::rt_hw_spinlock_t>,
-
-    #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
+    #[cfg(feature = "debugging_spinlock")]
     pub(crate) owner: Cell<Option<NonNull<RtThread>>>,
 }
 
@@ -30,14 +47,12 @@ unsafe impl Send for RawSpin {}
 impl RawSpin {
     pub const fn new() -> Self {
         Self {
-            #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
-            owner: Cell::new(None),
-
-            #[cfg(feature = "RT_USING_SMP")]
-            lock: Cell::new(rt_bindings::rt_hw_spinlock_t { slock: 0 }),
-
-            #[cfg(not(feature = "RT_USING_SMP"))]
             lock: Cell::new(0),
+            #[cfg(feature = "smp")]
+            tickets: Tickets::new(),
+
+            #[cfg(feature = "debugging_spinlock")]
+            owner: Cell::new(None),
         }
     }
 
@@ -48,7 +63,7 @@ impl RawSpin {
 
     #[inline]
     pub fn lock_fast(&self) {
-        #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
+        #[cfg(feature = "debugging_spinlock")]
         if let Some(thread) = crate::current_thread!() {
             let irq_lock = IrqLock::new();
             let _guard = irq_lock.lock();
@@ -63,15 +78,11 @@ impl RawSpin {
             }
             thread.set_wait(self);
         }
-        unsafe {
-            #[cfg(feature = "RT_USING_SMP")]
-            rt_bindings::rt_hw_spin_lock((&self.lock) as *const _ as *mut _);
-
-            #[cfg(not(feature = "RT_USING_SMP"))]
-            self.lock.set(rt_bindings::rt_hw_interrupt_disable());
+        #[cfg(feature = "smp")]
+        {
+            self.arch_lock();
         }
-
-        #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
+        #[cfg(feature = "debugging_spinlock")]
         if let Some(thread) = crate::current_thread!() {
             self.owner.set(Some(thread));
             unsafe { thread.as_mut().clear_wait() };
@@ -80,16 +91,13 @@ impl RawSpin {
 
     #[inline]
     pub fn unlock_fast(&self) {
-        #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
+        #[cfg(feature = "debugging_spinlock")]
         {
             self.owner.set(None);
         }
-        unsafe {
-            #[cfg(feature = "RT_USING_SMP")]
-            rt_bindings::rt_hw_spin_unlock((&self.lock) as *const _ as *mut _);
-
-            #[cfg(not(feature = "RT_USING_SMP"))]
-            rt_bindings::rt_hw_interrupt_enable(self.lock.get());
+        #[cfg(feature = "smp")]
+        {
+            self.arch_unlock();
         }
     }
 
@@ -103,8 +111,8 @@ impl RawSpin {
         Cpu::get_current_scheduler().preempt_enable();
     }
 
-    pub fn lock_irqsave(&self) -> rt_bindings::rt_base_t {
-        #[cfg(feature = "RT_USING_SMP")]
+    pub fn lock_irqsave(&self) -> usize {
+        #[cfg(feature = "smp")]
         {
             Cpu::get_current_scheduler().preempt_disable();
             let level = Arch::disable_interrupts();
@@ -112,24 +120,40 @@ impl RawSpin {
             level
         }
 
-        #[cfg(not(feature = "RT_USING_SMP"))]
-        unsafe {
-            rt_bindings::rt_hw_interrupt_disable()
+        #[cfg(not(feature = "smp"))]
+        {
+            Cpu::get_current_scheduler().preempt_disable();
+            Arch::disable_interrupts()
         }
     }
 
-    pub fn unlock_irqrestore(&self, level: rt_bindings::rt_base_t) {
-        #[cfg(feature = "RT_USING_SMP")]
+    pub fn unlock_irqrestore(&self, level: usize) {
+        #[cfg(feature = "smp")]
         {
             self.unlock_fast();
             Arch::enable_interrupts(level);
             Cpu::get_current_scheduler().preempt_enable();
         }
 
-        #[cfg(not(feature = "RT_USING_SMP"))]
-        unsafe {
-            rt_bindings::rt_hw_interrupt_enable(level)
+        #[cfg(not(feature = "smp"))]
+        {
+            Arch::enable_interrupts(level);
+            Cpu::get_current_scheduler().preempt_enable();
         };
+    }
+
+    #[cfg(feature = "smp")]
+    pub fn arch_lock(&self) {
+        let lockval = self.tickets.next.fetch_add(1, Ordering::SeqCst);
+        while lockval != self.tickets.owner.load(Ordering::SeqCst) {
+            asm::wait_for_event();
+        }
+    }
+
+    #[cfg(feature = "smp")]
+    pub fn arch_unlock(&self) {
+        self.tickets.owner.fetch_add(1, Ordering::SeqCst);
+        asm::signal_event();
     }
 }
 
@@ -326,84 +350,6 @@ impl<'a, T: ?Sized> Drop for SpinMutexGuard<'a, T> {
     }
 }
 
-/// Initialize a static spinlock object.
-///
-/// # Arguments
-///
-/// * `lock` - a pointer to the spinlock to initialize.
-///
-#[no_mangle]
-pub unsafe extern "C" fn rt_spin_lock_init(_spin: *mut rt_bindings::rt_spinlock) {
-    #[cfg(feature = "RT_USING_SMP")]
-    unsafe {
-        rt_bindings::rt_hw_spin_lock_init(&mut (*_spin).lock)
-    };
-}
-
-/// This function will lock the spinlock, will lock the thread scheduler.
-///
-/// If the spinlock is locked, the current CPU will keep polling the spinlock state
-/// until the spinlock is unlocked.
-///
-/// # Arguments
-///
-/// * `lock` - a pointer to the spinlock.
-///
-#[no_mangle]
-pub unsafe extern "C" fn rt_spin_lock(spin: *mut rt_bindings::rt_spinlock) {
-    let raw = spin as *mut RawSpin;
-    (*raw).lock();
-}
-
-/// This function will unlock the spinlock, will unlock the thread scheduler.
-///
-/// # Arguments
-///
-/// * `lock` - a pointer to the spinlock.
-///
-#[no_mangle]
-pub unsafe extern "C" fn rt_spin_unlock(spin: *mut rt_bindings::rt_spinlock) {
-    let raw = spin as *mut RawSpin;
-    (*raw).unlock();
-}
-
-/// This function will disable the local interrupt and then lock the spinlock, will lock the thread scheduler.
-///
-/// If the spinlock is locked, the current CPU will keep polling the spinlock state
-/// until the spinlock is unlocked.
-///
-/// # Arguments
-///
-/// * `lock` - a pointer to the spinlock.
-///
-/// # Returns
-///
-/// Returns current CPU interrupt status.
-///
-#[no_mangle]
-pub unsafe extern "C" fn rt_spin_lock_irqsave(
-    spin: *mut rt_bindings::rt_spinlock,
-) -> rt_bindings::rt_base_t {
-    let raw = spin as *mut RawSpin;
-    (*raw).lock_irqsave()
-}
-
-/// This function will unlock the spinlock and then restore current CPU interrupt status, will unlock the thread scheduler.
-///
-/// # Arguments
-///
-/// * `lock` - a pointer to the spinlock.
-/// * `level` - interrupt status returned by rt_spin_lock_irqsave().
-///
-#[no_mangle]
-pub unsafe extern "C" fn rt_spin_unlock_irqrestore(
-    spin: *mut rt_bindings::rt_spinlock,
-    level: rt_bindings::rt_base_t,
-) {
-    let raw = spin as *mut RawSpin;
-    (*raw).unlock_irqrestore(level);
-}
-
 #[macro_export]
 macro_rules! new_spinlock {
     ($inner:expr $(, $name:literal)? $(,)?) => {
@@ -420,18 +366,22 @@ pub struct SpinLockBackend;
 // SAFETY: The underlying kernel `spinlock_t` object ensures mutual exclusion. `relock` uses the
 // default implementation that always calls the same locking method.
 unsafe impl super::Backend for SpinLockBackend {
-    type State = rt_bindings::rt_spinlock;
+    type State = RawSpin;
     type GuardState = ();
 
     unsafe fn init(ptr: *mut Self::State, _name: *const core::ffi::c_char) {
-        unsafe { rt_spin_lock_init(ptr) }
+        unsafe { (*ptr).lock = Cell::new(0);   }
     }
 
     unsafe fn lock(ptr: *mut Self::State) -> Self::GuardState {
-        unsafe { rt_spin_lock(ptr) }
+        unsafe {
+            (*ptr).lock.set((*ptr).lock_irqsave());
+        }
     }
 
     unsafe fn unlock(ptr: *mut Self::State, _guard_state: &Self::GuardState) {
-        unsafe { rt_spin_unlock(ptr) }
+        unsafe {
+            (*ptr).unlock_irqrestore((*ptr).lock.get());
+        }
     }
 }

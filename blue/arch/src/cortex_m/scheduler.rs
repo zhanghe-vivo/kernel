@@ -15,6 +15,10 @@
 // 4. start_switch
 //     ```fn start_switch();```
 
+use crate::{
+    arch::stack_frame::{StackFrame, StackFrameExtension, StackSettings},
+    cortex_m::Arch,
+};
 use core::{
     arch::{asm, naked_asm},
     mem,
@@ -25,8 +29,6 @@ use cortex_m::{
     register::control::{Fpca, Npriv, Spsel},
     Peripherals,
 };
-use crate::cortex_m::Arch;
-use crate::arch::stack_frame::{StackFrame, StackFrameExtension, StackSettings};
 
 extern "C" {
     static __StackTop: u32;

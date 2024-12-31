@@ -1,10 +1,9 @@
 use crate::{
+    error::code,
     impl_kobject,
     object::{KObjectBase, KernelObject, ObjectClassType, NAME_MAX},
-    rt_bindings::{
-        rt_debug_not_in_interrupt, rt_err_t, rt_uint8_t, RT_EBUSY, RT_EOK, RT_UNINTERRUPTIBLE,
-    },
     sync::{condvar::RtCondVar, ipc_common::*, lock::mutex::RtMutex},
+    thread::SuspendFlag,
 };
 use blue_infra::list::doubly_linked_list::ListHead;
 use pinned_init::{pin_data, pin_init, PinInit};
@@ -43,7 +42,7 @@ impl RtRwLock {
                 || (waiting_mode == IPC_WAIT_MODE_PRIO as u8)
         );
 
-        rt_debug_not_in_interrupt!();
+        crate::debug_not_in_interrupt!();
 
         pin_init!(Self {
             parent<-KObjectBase::new(ObjectClassType::ObjectClassRwLock as u8, name),
@@ -66,7 +65,7 @@ impl RtRwLock {
         self.writer_waiting = 0;
     }
     #[inline]
-    pub(crate) fn init(&mut self, name: *const i8, waiting_mode: u8) {
+    pub fn init(&mut self, name: *const i8, waiting_mode: u8) {
         assert!(
             (waiting_mode == IPC_WAIT_MODE_FIFO as u8)
                 || (waiting_mode == IPC_WAIT_MODE_PRIO as u8)
@@ -88,44 +87,44 @@ impl RtRwLock {
     }
 
     #[inline]
-    pub(crate) fn detach(&mut self) -> i32 {
+    pub fn detach(&mut self) -> i32 {
         assert_eq!(self.type_name(), ObjectClassType::ObjectClassRwLock as u8);
 
         let mut result = self.mutex.lock();
-        if result != RT_EOK as i32 {
+        if result != code::EOK.to_errno() {
             return result;
         }
 
         if self.rw_count != 0 || self.reader_waiting != 0 || self.writer_waiting != 0 {
-            return -(RT_EBUSY as i32);
+            return code::EBUSY.to_errno();
         } else {
             result = self.read_cond.inner_sem.try_take();
-            if result == RT_EOK as i32 {
+            if result == code::EOK.to_errno() {
                 result = self.write_cond.inner_sem.try_take();
-                if result == RT_EOK as i32 {
+                if result == code::EOK.to_errno() {
                     self.read_cond.inner_sem.release();
                     self.write_cond.inner_sem.release();
                     self.read_cond.detach();
                     self.write_cond.detach();
                 } else {
                     self.read_cond.detach();
-                    result = -(RT_EBUSY as i32);
+                    result = code::EBUSY.to_errno();
                 }
             } else {
-                result = -(RT_EBUSY as i32);
+                result = code::EBUSY.to_errno();
             }
         }
 
         self.mutex.unlock();
-        if result == RT_EOK as i32 {
+        if result == code::EOK.to_errno() {
             self.mutex.detach();
         }
 
         return result;
     }
-    pub(crate) fn lock_read(&mut self) -> i32 {
+    pub fn lock_read(&mut self) -> i32 {
         let mut result = self.mutex.lock();
-        if result != RT_EOK as i32 {
+        if result != code::EOK.to_errno() {
             return result;
         }
 
@@ -133,12 +132,12 @@ impl RtRwLock {
             self.reader_waiting += 1;
             result = self.read_cond.wait(&mut self.mutex);
             self.reader_waiting -= 1;
-            if result != RT_EOK as i32 {
+            if result != code::EOK.to_errno() {
                 break;
             }
         }
 
-        if result == RT_EOK as i32 {
+        if result == code::EOK.to_errno() {
             self.rw_count += 1;
         }
 
@@ -147,15 +146,15 @@ impl RtRwLock {
         result
     }
 
-    pub(crate) fn try_lock_read(&mut self) -> i32 {
+    pub fn try_lock_read(&mut self) -> i32 {
         let mut result = self.mutex.lock();
 
-        if result != RT_EOK as i32 {
+        if result != code::EOK.to_errno() {
             return result;
         }
 
         if self.rw_count < 0 || self.writer_waiting > 0 {
-            result = -(RT_EBUSY as i32);
+            result = code::EBUSY.to_errno();
         } else {
             self.rw_count += 1;
         }
@@ -168,22 +167,24 @@ impl RtRwLock {
     pub(crate) fn lock_read_wait(&mut self, timeout: i32) -> i32 {
         let mut result = self.mutex.lock();
 
-        if result != RT_EOK as i32 {
+        if result != code::EOK.to_errno() {
             return result;
         }
 
         while self.rw_count < 0 || self.writer_waiting > 0 {
             self.reader_waiting += 1;
-            result = self
-                .read_cond
-                .wait_timeout(&mut self.mutex, RT_UNINTERRUPTIBLE, timeout);
+            result = self.read_cond.wait_timeout(
+                &mut self.mutex,
+                SuspendFlag::Uninterruptible as u32,
+                timeout,
+            );
             self.reader_waiting -= 1;
-            if result != RT_EOK as i32 {
+            if result != code::EOK.to_errno() {
                 break;
             }
         }
 
-        if result == RT_EOK as i32 {
+        if result == code::EOK.to_errno() {
             self.rw_count += 1;
         }
 
@@ -195,23 +196,25 @@ impl RtRwLock {
     pub(crate) fn lock_write_wait(&mut self, timeout: i32) -> i32 {
         let mut result = self.mutex.lock();
 
-        if result != RT_EOK as i32 {
+        if result != code::EOK.to_errno() {
             return result;
         }
 
         while self.rw_count != 0 {
             self.writer_waiting += 1;
-            result = self
-                .write_cond
-                .wait_timeout(&mut self.mutex, RT_UNINTERRUPTIBLE, timeout);
+            result = self.write_cond.wait_timeout(
+                &mut self.mutex,
+                SuspendFlag::Uninterruptible as u32,
+                timeout,
+            );
             self.writer_waiting -= 1;
 
-            if result != RT_EOK as i32 {
+            if result != code::EOK.to_errno() {
                 break;
             }
         }
 
-        if result == RT_EOK as i32 {
+        if result == code::EOK.to_errno() {
             self.rw_count = -1;
         }
 
@@ -220,10 +223,10 @@ impl RtRwLock {
         result
     }
 
-    pub(crate) fn lock_write(&mut self) -> i32 {
+    pub fn lock_write(&mut self) -> i32 {
         let mut result = self.mutex.lock();
 
-        if result != RT_EOK as i32 {
+        if result != code::EOK.to_errno() {
             return result;
         }
 
@@ -232,12 +235,12 @@ impl RtRwLock {
             result = self.write_cond.wait(&mut self.mutex);
             self.writer_waiting -= 1;
 
-            if result != RT_EOK as i32 {
+            if result != code::EOK.to_errno() {
                 break;
             }
         }
 
-        if result == RT_EOK as i32 {
+        if result == code::EOK.to_errno() {
             self.rw_count = -1;
         }
 
@@ -246,15 +249,15 @@ impl RtRwLock {
         result
     }
 
-    pub(crate) fn try_lock_write(&mut self) -> i32 {
+    pub fn try_lock_write(&mut self) -> i32 {
         let mut result = self.mutex.lock();
 
-        if result != RT_EOK as i32 {
+        if result != code::EOK.to_errno() {
             return result;
         }
 
         if self.rw_count != 0 {
-            result = -(RT_EBUSY as i32);
+            result = code::EBUSY.to_errno();
         } else {
             self.rw_count = -1;
         }
@@ -264,10 +267,10 @@ impl RtRwLock {
         return result;
     }
 
-    pub(crate) fn unlock(&mut self) -> i32 {
+    pub fn unlock(&mut self) -> i32 {
         let mut result = self.mutex.lock();
 
-        if result != RT_EOK as i32 {
+        if result != code::EOK.to_errno() {
             return result;
         }
 
@@ -291,57 +294,9 @@ impl RtRwLock {
     }
 }
 
-#[cfg(feature = "RT_USING_RWLOCK")]
+/// bindgen for RtRwLock
+#[allow(improper_ctypes_definitions)]
 #[no_mangle]
-pub unsafe extern "C" fn rt_rwlock_init(
-    rwlock: *mut RtRwLock,
-    name: *const core::ffi::c_char,
-    flag: rt_uint8_t,
-) -> rt_err_t {
-    assert!(!rwlock.is_null());
-    (*rwlock).init(name, flag);
-    RT_EOK as rt_err_t
-}
-
-#[cfg(feature = "RT_USING_RWLOCK")]
-#[no_mangle]
-pub unsafe extern "C" fn rt_rwlock_detach(rwlock: *mut RtRwLock) -> rt_err_t {
-    assert!(!rwlock.is_null());
-    (*rwlock).detach();
-    RT_EOK as rt_err_t
-}
-
-#[cfg(feature = "RT_USING_RWLOCK")]
-#[no_mangle]
-pub unsafe extern "C" fn rt_rwlock_lock_read(rwlock: *mut RtRwLock) -> rt_err_t {
-    assert!(!rwlock.is_null());
-    (*rwlock).lock_read() as rt_err_t
-}
-
-#[cfg(feature = "RT_USING_RWLOCK")]
-#[no_mangle]
-pub unsafe extern "C" fn rt_rwlock_lock_write(rwlock: *mut RtRwLock) -> rt_err_t {
-    assert!(!rwlock.is_null());
-    (*rwlock).lock_write() as rt_err_t
-}
-
-#[cfg(feature = "RT_USING_RWLOCK")]
-#[no_mangle]
-pub unsafe extern "C" fn rt_rwlock_try_lock_read(rwlock: *mut RtRwLock) -> rt_err_t {
-    assert!(!rwlock.is_null());
-    (*rwlock).try_lock_read() as rt_err_t
-}
-
-#[cfg(feature = "RT_USING_RWLOCK")]
-#[no_mangle]
-pub unsafe extern "C" fn rt_rwlock_try_lock_write(rwlock: *mut RtRwLock) -> rt_err_t {
-    assert!(!rwlock.is_null());
-    (*rwlock).try_lock_write() as rt_err_t
-}
-
-#[cfg(feature = "RT_USING_RWLOCK")]
-#[no_mangle]
-pub unsafe extern "C" fn rt_rwlock_unlock(rwlock: *mut RtRwLock) -> rt_err_t {
-    assert!(!rwlock.is_null());
-    (*rwlock).unlock() as rt_err_t
+pub extern "C" fn bindgen_rwlock(_rwlock: RtRwLock) {
+    0;
 }

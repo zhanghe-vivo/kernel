@@ -11,17 +11,19 @@ pub struct WriteTo<'a> {
 #[macro_export]
 macro_rules! kprintf {
     ($fmt:expr) => (unsafe {
-        rt_bindings::rt_kprintf($fmt.as_ptr().cast())
+        use crate::print;
+        print::rt_kprintf($fmt.as_ptr().cast())
     });
     ($fmt:expr, $($arg:tt)*) => (unsafe {
-        rt_bindings::rt_kprintf($fmt.as_ptr().cast(), $($arg)*)
+        use crate::print;
+        print::rt_kprintf($fmt.as_ptr().cast(), $($arg)*)
     });
 }
 
 #[macro_export]
 macro_rules! println {
-    ($fmt:expr) => (crate::print!(concat!($fmt, "\n")));
-    ($fmt:expr, $($arg:tt)*) => (crate::print!(concat!($fmt, "\n"), $($arg)*));
+    ($fmt:expr) => (crate::kernel::print!(concat!($fmt, "\n")));
+    ($fmt:expr, $($arg:tt)*) => (crate::kernel::print!(concat!($fmt, "\n"), $($arg)*));
 }
 
 #[macro_export]
@@ -40,7 +42,7 @@ impl fmt::Write for Console {
         for chunk in s.as_bytes().chunks(CONSOLE_BUF_SIZE - 1) {
             buf[..chunk.len()].copy_from_slice(chunk);
             unsafe {
-                rt_bindings::rt_kputs(buf.as_ptr().cast());
+                rt_kputs(buf.as_ptr().cast());
             }
         }
         Ok(())
@@ -108,4 +110,10 @@ pub fn format_to_str<'a>(buf: &'a mut [u8], arg: fmt::Arguments) -> Result<&'a s
     let mut w = WriteTo::new(buf);
     fmt::write(&mut w, arg)?;
     w.as_str().ok_or(fmt::Error)
+}
+
+//TODO: remove this
+extern "C" {
+    pub fn rt_kprintf(fmt: *const core::ffi::c_char, ...) -> core::ffi::c_int;
+    pub fn rt_kputs(str_: *const core::ffi::c_char);
 }

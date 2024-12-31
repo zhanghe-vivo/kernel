@@ -5,7 +5,10 @@ use core::{
     ptr::{null_mut, NonNull},
 };
 
-use crate::allocator::{align_down_size, align_up, align_up_size, block_hdr::*, RT_ALIGN_SIZE};
+use crate::{
+    allocator::{align_down_size, align_up, align_up_size, block_hdr::*},
+    blue_kconfig::ALIGN_SIZE,
+};
 
 /// A sorted list of holes. It uses the the holes itself to store its nodes.
 pub struct HoleList {
@@ -416,7 +419,7 @@ impl HoleList {
 
     /// Returns the minimal allocation size. Smaller allocations or deallocations are not allowed.
     pub fn min_size() -> usize {
-        RT_ALIGN_SIZE as usize
+        ALIGN_SIZE as usize
     }
 
     /// Returns information about the first hole for test purposes.

@@ -1,13 +1,12 @@
 //! Extensions to the [`alloc`] crate.
 
 #![warn(missing_docs)]
-use crate::static_init::UnsafeStaticInit;
+use crate::{blue_kconfig::ALIGN_SIZE, static_init::UnsafeStaticInit};
 use core::{
     alloc::{GlobalAlloc, Layout},
-    ffi, ptr,
+    ptr,
 };
 use pinned_init::PinInit;
-use rt_bindings;
 
 #[cfg(feature = "slab")]
 pub mod buddy;
@@ -24,6 +23,7 @@ pub mod buddy;
 #[cfg(feature = "buddy")]
 pub use buddy::Heap;
 #[cfg(feature = "tlsf")]
+/// using tlsf
 pub mod tlsf;
 #[cfg(feature = "tlsf")]
 pub use tlsf::Heap;
@@ -47,22 +47,21 @@ static HEAP: UnsafeStaticInit<Heap, HeapInit> = UnsafeStaticInit::new(HeapInit);
 
 #[global_allocator]
 static ALLOCATOR: KernelAllocator = KernelAllocator;
-#[cfg(feature = "RT_USING_HOOK")]
-static mut RT_MALLOC_HOOK: Option<extern "C" fn(*mut ffi::c_void, usize)> = None;
-#[cfg(feature = "RT_USING_HOOK")]
-static mut RT_FREE_HOOK: Option<extern "C" fn(*mut ffi::c_void)> = None;
 
 /// impl for GlobalAlloc and allocator_api
 unsafe impl GlobalAlloc for KernelAllocator {
+    /// try to allocate memory with the given layout
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         HEAP.alloc(layout)
             .map_or(ptr::null_mut(), |allocation| allocation.as_ptr())
     }
 
+    /// deallocate the memory pointed by ptr with the given layout
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         HEAP.dealloc(ptr, layout);
     }
 
+    /// reallocate memory with the given size and layout
     unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
         HEAP.realloc(ptr, layout, new_size)
             .map_or(ptr::null_mut(), |allocation| allocation.as_ptr())
@@ -139,99 +138,123 @@ pub const fn is_aligned(addr: usize, align: usize) -> bool {
     align_offset(addr, align) == 0
 }
 
-#[cfg(feature = "RT_USING_HOOK")]
-#[no_mangle]
-pub extern "C" fn rt_malloc_sethook(hook: extern "C" fn(*mut ffi::c_void, usize)) {
-    unsafe { RT_MALLOC_HOOK = Some(hook) };
-}
-
-#[cfg(feature = "RT_USING_HOOK")]
-#[no_mangle]
-pub extern "C" fn rt_free_sethook(hook: extern "C" fn(*mut ffi::c_void)) {
-    unsafe { RT_FREE_HOOK = Some(hook) };
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn rt_system_heap_init(
-    begin_addr: *mut ffi::c_void,
-    end_addr: *mut ffi::c_void,
-) {
+/// Initialize the system heap with given begin address and end address.
+///
+/// # Arguments
+///
+/// * `begin_addr` - The beginning address of the heap.
+/// * `end_addr` - The ending address of the heap.
+pub fn system_heap_init(begin_addr: *mut u8, end_addr: *mut u8) {
     // Initialize the allocator BEFORE you use it
     assert!(end_addr > begin_addr);
     let heap_size = end_addr as usize - begin_addr as usize;
-    HEAP.init_once();
-    HEAP.init(begin_addr as usize, heap_size);
+    unsafe {
+        HEAP.init_once();
+        HEAP.init(begin_addr as usize, heap_size);
+    }
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn rt_malloc(size: usize) -> *mut ffi::c_void {
+/// Allocate memory on heap and returns a pointer to it.
+/// If size equals zero, then null mutable raw pointer will be returned.
+pub fn malloc(size: usize) -> *mut u8 {
     if core::intrinsics::unlikely(size == 0) {
-        return ptr::null_mut() as *mut ffi::c_void;
+        return ptr::null_mut();
     }
-
-    let layout = Layout::from_size_align(size, rt_bindings::RT_ALIGN_SIZE as usize).unwrap();
+    let layout = Layout::from_size_align(size, ALIGN_SIZE).unwrap();
     let ptr = HEAP
         .alloc(layout)
         .map_or(ptr::null_mut(), |allocation| allocation.as_ptr());
-    ptr as *mut ffi::c_void
+    ptr
 }
-#[no_mangle]
-pub unsafe extern "C" fn rt_free(ptr: *mut ffi::c_void) {
+
+/// Free previously allocated memory pointed by ptr.
+///
+/// # Arguments
+///
+/// * `ptr` - A pointer pointing to the memory location to be freed.
+pub fn free(ptr: *mut u8) {
     if core::intrinsics::unlikely(ptr.is_null()) {
         return;
     }
-
-    let layout = Layout::from_size_align(0, rt_bindings::RT_ALIGN_SIZE as usize).unwrap();
-    HEAP.dealloc(ptr as *mut u8, layout);
+    let layout = Layout::from_size_align(0, ALIGN_SIZE).unwrap();
+    unsafe { HEAP.dealloc(ptr, layout) };
 }
-#[no_mangle]
-pub unsafe extern "C" fn rt_realloc(ptr: *mut ffi::c_void, newsize: usize) -> *mut ffi::c_void {
+
+/// Reallocate memory pointed by ptr to have a new size.
+///
+/// # Arguments
+///
+/// * `ptr` - A pointer pointing to the memory location to be reallocated.
+/// * `newsize` - The new size for the reallocated memory.
+pub fn realloc(ptr: *mut u8, newsize: usize) -> *mut u8 {
     if newsize == 0 {
-        rt_free(ptr);
-        return ptr::null_mut() as *mut ffi::c_void;
+        free(ptr);
+        return ptr::null_mut();
     }
-
     if ptr.is_null() {
-        return rt_malloc(newsize);
+        return malloc(newsize);
     }
+    let layout = Layout::from_size_align(0, ALIGN_SIZE).unwrap();
+    let ptr = unsafe {
+        HEAP.realloc(ptr, layout, newsize)
+            .map_or(ptr::null_mut(), |allocation| allocation.as_ptr())
+    };
+    ptr
+}
 
-    let layout = Layout::from_size_align(0, rt_bindings::RT_ALIGN_SIZE as usize).unwrap();
-    let ptr = HEAP
-        .realloc(ptr as *mut u8, layout, newsize)
-        .map_or(ptr::null_mut(), |allocation| allocation.as_ptr());
-    ptr as *mut ffi::c_void
-}
-#[no_mangle]
-pub unsafe extern "C" fn rt_calloc(count: usize, size: usize) -> *mut ffi::c_void {
+/// Allocates memory for an array of elements and initializes all bytes in this block to zero.
+///
+/// # Arguments
+///
+/// * `count` - Number of elements to allocate space for.
+/// * `size` - Size of each element.
+pub fn calloc(count: usize, size: usize) -> *mut u8 {
     let required_size = count * size;
-    let layout =
-        Layout::from_size_align(required_size, rt_bindings::RT_ALIGN_SIZE as usize).unwrap();
+    let layout = Layout::from_size_align(required_size, ALIGN_SIZE).unwrap();
     if let Some(alloc_ptr) = HEAP.alloc(layout) {
-        ptr::write_bytes(alloc_ptr.as_ptr(), 0, required_size);
-        alloc_ptr.as_ptr() as *mut ffi::c_void
+        unsafe { ptr::write_bytes(alloc_ptr.as_ptr(), 0, required_size) };
+        alloc_ptr.as_ptr()
     } else {
-        ptr::null_mut() as *mut ffi::c_void
+        ptr::null_mut()
     }
 }
-#[no_mangle]
-pub unsafe extern "C" fn rt_malloc_align(size: usize, align: usize) -> *mut ffi::c_void {
+
+/// Allocates aligned memory of at least the specified size.
+///
+/// # Arguments
+///
+/// * `size` - Minimum size of the memory region to allocate.
+/// * `align` - Alignment requirement for the returned memory.
+pub fn malloc_align(size: usize, align: usize) -> *mut u8 {
     if core::intrinsics::unlikely(size == 0) {
-        return ptr::null_mut() as *mut ffi::c_void;
+        return ptr::null_mut();
     }
 
     let layout = Layout::from_size_align(size, align).unwrap();
     let ptr = HEAP
         .alloc(layout)
         .map_or(ptr::null_mut(), |allocation| allocation.as_ptr());
-    ptr as *mut ffi::c_void
+    ptr
 }
-#[no_mangle]
-pub unsafe extern "C" fn rt_free_align(ptr: *mut ffi::c_void) {
-    let layout = Layout::from_size_align(0, rt_bindings::RT_ALIGN_SIZE as usize).unwrap();
-    HEAP.dealloc(ptr as *mut u8, layout);
+
+/// Deallocates memory that was allocated using `malloc_align`.
+///
+/// # Arguments
+///
+/// * `ptr` - Pointer to the memory region to deallocate.
+pub fn free_align(ptr: *mut u8) {
+    let layout = Layout::from_size_align(0, ALIGN_SIZE).unwrap();
+    unsafe { HEAP.dealloc(ptr, layout) };
 }
-#[no_mangle]
-pub extern "C" fn rt_memory_info(total: *mut usize, used: *mut usize, max_used: *mut usize) {
+
+/// Retrieves various statistics about the current state of the heap's memory usage.
+///
+/// # Arguments
+///
+/// * `total` - Output parameter containing the total available memory on the heap.
+/// * `used` - Output parameter containing the currently used memory on the heap.
+/// * `max_used` - Output parameter containing the largest amount of memory ever used during execution.
+pub fn memory_info(total: *mut usize, used: *mut usize, max_used: *mut usize) {
     let (total_size, used_size, maximum) = HEAP.memory_info();
     unsafe {
         *total = total_size;

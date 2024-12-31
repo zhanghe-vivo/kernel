@@ -1,10 +1,10 @@
 //! ARM Cortex-M hardware support.
 
 mod exception;
-mod register;
-mod stack_frame;
-mod smp;
 mod interrupt;
+mod register;
 mod scheduler;
+mod smp;
+mod stack_frame;
 
 pub struct Arch;

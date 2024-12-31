@@ -14,60 +14,58 @@ import json
 
 ROOT = os.path.abspath(os.path.dirname(__file__))
 
-
-def ParseRTConfig(config, toml):
-    target = config.target
-    ret = subprocess.run([
-        os.path.join(ROOT, 'scripts/parse_rtconfig_h'),
-        os.path.join(ROOT, f'bsp/{target}/rtconfig.h'),
-    ],
-                         capture_output=True)
-    return ret.stdout.rstrip().decode('utf-8')
-
-
 def Build(config, toml):
     target = config.target
     toml_path = os.path.join(ROOT, 'blue/Cargo.toml')
     out_path = os.path.join(ROOT, 'blue/target')
     bsp_path = os.path.join(ROOT, f'bsp/{target}')
+    config_path = os.path.join(ROOT, 'blue/kconfig/config')
     gcc_path = os.getenv('RTT_EXEC_PATH', os.path.join(ROOT, '/bin'))
     gcc_include_path = os.path.join(gcc_path, 'include')
     include_path = f'{bsp_path};{ROOT}/include;{ROOT}/components/finsh;{gcc_include_path}'
-    compat_os = 'rt_thread'
+    os_adapter = 'rt_thread'
     toolchain = toml['target'][config.target]['toolchain']
     if config.reconfigure:
         rc = subprocess.call(['scons', '--menuconfig'], cwd=bsp_path)
         if rc != 0:
             logging.error(cmd)
             return rc
-    features = ParseRTConfig(config, toml)
+        rc = subprocess.call(['kconfig-mconf', 'Kconfig'], cwd=config_path)
+        if rc != 0:
+            logging.error(cmd)
+            return rc
+        with open(config_path+"/.config", 'r') as f_in:
+            lines = f_in.readlines()
+        with open(config_path+"/.config", 'w') as f_out:
+            for line in lines:
+                if line.startswith("CONFIG_"):
+                    f_out.write(line[len("CONFIG_"):])
+                else:
+                    f_out.write(line)
     if config.clean:
         rc = subprocess.call(['scons', '--clean'], cwd=bsp_path)
         if rc != 0:
             logging.error(cmd)
             return rc
         action = 'clean'
-        cmd = f'COMPAT_OS="{compat_os}" INCLUDE_PATH="{include_path}" cargo {action} --manifest-path {toml_path} --target {toolchain} -Z unstable-options'
+        cmd = f'OS_ADAPTER="{os_adapter}" INCLUDE_PATH="{include_path}" cargo {action} --manifest-path {toml_path} --target {toolchain} -Z unstable-options'
         rc = subprocess.call(cmd, shell=True, cwd=os.path.join(ROOT, 'blue'))
         if rc != 0:
             logging.error(cmd)
             return rc
     if config.fix:
         action = 'fix'
-        cmd = f'COMPAT_OS="{compat_os}" INCLUDE_PATH="{include_path}" cargo {action} --allow-dirty --allow-staged --bins --lib --manifest-path {toml_path} --target {toolchain} -Z unstable-options --features ' + shlex.quote(
-            features)
+        cmd = f'OS_ADAPTER="{os_adapter}" INCLUDE_PATH="{include_path}" cargo {action} --allow-dirty --allow-staged --bins --lib --manifest-path {toml_path} --target {toolchain} -Z unstable-options'
         rc = subprocess.call(cmd, shell=True, cwd=os.path.join(ROOT, 'blue'))
         if rc != 0:
             logging.error(cmd)
             return rc
-    if 'USE_RUST' in features:
-        action = 'build'
-        cmd = f'COMPAT_OS="{compat_os}" INCLUDE_PATH="{include_path}" cargo {action} --manifest-path {toml_path} --target {toolchain} --artifact-dir {out_path} -Z unstable-options --features ' + shlex.quote(
-            features)
-        rc = subprocess.call(cmd, shell=True, cwd=os.path.join(ROOT, 'blue'))
-        if rc != 0:
-            logging.error(cmd)
-            return rc
+    action = 'build'
+    cmd = f'OS_ADAPTER="{os_adapter}" INCLUDE_PATH="{include_path}" cargo {action} --manifest-path {toml_path} --target {toolchain} --artifact-dir {out_path} -Z unstable-options'
+    rc = subprocess.call(cmd, shell=True, cwd=os.path.join(ROOT, 'blue'))
+    if rc != 0:
+        logging.error(cmd)
+        return rc
     return subprocess.call(['scons'], cwd=bsp_path)
 
 
@@ -79,12 +77,10 @@ def Clippy(config, toml):
     gcc_path = os.getenv('RTT_EXEC_PATH', os.path.join(ROOT, '/bin'))
     gcc_include_path = os.path.join(gcc_path, 'include')
     include_path = f'{bsp_path};{ROOT}/include;{ROOT}/components/finsh;{gcc_include_path}'
-    compat_os = 'rt_thread'
-    features = ParseRTConfig(config, toml)
+    os_adapter = 'rt_thread'
     toolchain = toml['target'][config.target]['toolchain']
     cmd = f'cargo clippy --manifest-path {toml_path}'
-    cmd = f'COMPAT_OS="{compat_os}" INCLUDE_PATH="{include_path}" cargo clippy --manifest-path {toml_path} --target {toolchain} --features ' + shlex.quote(
-        features) + ' -- -D clippy::undocumented_unsafe_blocks'
+    cmd = f'OS_ADAPTER="{os_adapter}" INCLUDE_PATH="{include_path}" cargo clippy --manifest-path {toml_path} --target {toolchain}' + ' -- -D clippy::undocumented_unsafe_blocks'
     return subprocess.call(cmd, shell=True, cwd=os.path.join(ROOT, 'blue'))
 
 

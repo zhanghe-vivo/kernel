@@ -55,17 +55,20 @@ impl Heap {
         (*heap).insert_free_block_ptr(block.into());
     }
 
+    /// try to allocate memory with the given layout
     pub fn alloc(&self, layout: Layout) -> Option<NonNull<u8>> {
         let mut heap = self.heap.lock();
         let ptr = (*heap).allocate(&layout);
         ptr
     }
 
+    /// deallocate the memory pointed by ptr with the given layout
     pub unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         let mut heap = self.heap.lock();
         (*heap).deallocate(NonNull::new_unchecked(ptr), layout.align());
     }
 
+    /// reallocate memory with the given size and layout
     pub unsafe fn realloc(
         &self,
         ptr: *mut u8,
@@ -78,6 +81,13 @@ impl Heap {
         new_ptr
     }
 
+    /// Retrieves various statistics about the current state of the heap's memory usage.
+    ///
+    /// # Arguments
+    ///
+    /// * `total` - Output parameter containing the total available memory on the heap.
+    /// * `used` - Output parameter containing the currently used memory on the heap.
+    /// * `max_used` - Output parameter containing the largest amount of memory ever used during execution.
     pub fn memory_info(&self) -> (usize, usize, usize) {
         let heap = self.heap.lock();
         let x = ((*heap).total(), (*heap).allocated(), (*heap).maximum());

@@ -1,25 +1,24 @@
 #![allow(dead_code)]
-#[cfg(feature = "RT_USING_SMP")]
+#[cfg(feature = "smp")]
 use crate::cpu::CPU_DETACHED;
 use crate::{
     alloc::boxed::Box,
+    blue_kconfig::ALIGN_SIZE,
     clock,
     cpu::{Cpu, CPUS_NUMBER},
     error::{code, Error},
-    //    list_head_entry, list_head_for_each, object,
-    object::{self, KObjectBase, KernelObject, ObjectClassType},
-    print,
+    object::{KObjectBase, KernelObject, ObjectClassType},
     println,
     stack::Stack,
     static_init::UnsafeStaticInit,
     str::CStr,
     sync::{lock::mutex::*, RawSpin, SpinLock},
-    timer::Timer,
+    timer::{Timer, TimerState},
     zombie,
 };
 use alloc::alloc;
-use blue_infra::list::doubly_linked_list::ListHead;
 use blue_arch::arch::Arch;
+use blue_infra::list::doubly_linked_list::ListHead;
 use core::{
     alloc::{AllocError, Layout},
     cell::{Cell, UnsafeCell},
@@ -34,7 +33,6 @@ use pinned_init::{
     init, pin_data, pin_init, pin_init_array_from_fn, pin_init_from_closure, pinned_drop, zeroed,
     InPlaceInit, Init, PinInit,
 };
-use rt_bindings;
 
 // compatible with C
 pub type ThreadEntryFn = extern "C" fn(*mut ffi::c_void);
@@ -267,7 +265,7 @@ struct TimeSlice {
 }
 
 // pin_data conflict with cfg
-#[cfg(feature = "RT_USING_MUTEX")]
+#[cfg(feature = "mutex")]
 #[repr(C)]
 #[pin_data]
 pub(crate) struct MutexInfo {
@@ -276,11 +274,11 @@ pub(crate) struct MutexInfo {
     pub(crate) pending_to: Option<NonNull<RtMutex>>,
 }
 
-#[cfg(not(feature = "RT_USING_MUTEX"))]
+#[cfg(not(feature = "mutex"))]
 #[repr(C)]
 pub(crate) struct MutexInfo {}
 
-#[cfg(feature = "RT_USING_MUTEX")]
+#[cfg(feature = "mutex")]
 impl MutexInfo {
     fn new() -> impl PinInit<Self> {
         pin_init!(Self {
@@ -293,29 +291,29 @@ impl MutexInfo {
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct EventInfo {
-    #[cfg(feature = "RT_USING_EVENT")]
+    #[cfg(feature = "event")]
     pub(crate) set: u32,
-    #[cfg(feature = "RT_USING_EVENT")]
+    #[cfg(feature = "event")]
     pub(crate) info: u8,
 }
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 struct CpuAffinity {
-    #[cfg(feature = "RT_USING_SMP")]
+    #[cfg(feature = "smp")]
     pub bind_cpu: u8,
-    #[cfg(feature = "RT_USING_SMP")]
+    #[cfg(feature = "smp")]
     pub oncpu: u8,
 }
 
 #[repr(C)]
 #[derive(Debug)]
 struct LockInfo {
-    #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
+    #[cfg(feature = "debugging_spinlock")]
     pub wait_lock: Option<NonNull<RawSpin>>,
-    #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
+    #[cfg(feature = "debugging_spinlock")]
     pub hold_locks: [Option<NonNull<RawSpin>>; 8],
-    #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
+    #[cfg(feature = "debugging_spinlock")]
     pub hold_count: usize,
 }
 
@@ -323,14 +321,14 @@ struct LockInfo {
 #[pin_data(PinnedDrop)]
 pub struct RtThread {
     #[pin]
-    pub(crate) parent: KObjectBase,
+    pub parent: KObjectBase,
 
     // thread linked list, link to priority_table
     #[pin]
     pub(crate) tlist: ListHead,
 
     /// thread status
-    pub(crate) stat: ThreadState,
+    pub stat: ThreadState,
 
     /// priority manager
     pub(crate) priority: ThreadPriority,
@@ -338,7 +336,7 @@ pub struct RtThread {
     /// stack point and cleanup func
     pub(crate) stack: Stack,
     // can't add Option because of cbindgen
-    cleanup: ThreadCleanupFn,
+    pub cleanup: ThreadCleanupFn,
     tid: usize,
 
     /// built-in thread timer, used for wait timeout
@@ -352,18 +350,17 @@ pub struct RtThread {
     /// time slice
     #[cfg(feature = "schedule_with_time_slice")]
     time_slice: TimeSlice,
-
-    #[cfg(feature = "RT_USING_MUTEX")]
+    #[cfg(feature = "mutex")]
     pub(crate) mutex_info: MutexInfo,
 
-    #[cfg(feature = "RT_USING_EVENT")]
+    #[cfg(feature = "event")]
     pub(crate) event_info: EventInfo,
 
     /// cpu affinity
-    #[cfg(feature = "RT_USING_SMP")]
+    #[cfg(feature = "smp")]
     cpu_affinity: CpuAffinity,
 
-    #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
+    #[cfg(feature = "debugging_spinlock")]
     lock_info: LockInfo,
 
     #[pin]
@@ -419,7 +416,7 @@ impl<const STACK_SIZE: usize> ThreadWithStack<STACK_SIZE> {
         })
     }
 
-    #[cfg(feature = "RT_USING_SMP")]
+    #[cfg(feature = "smp")]
     #[inline]
     pub fn new_with_bind(
         name: &'static CStr,
@@ -504,7 +501,7 @@ impl RtThread {
         )
     }
 
-    #[cfg(feature = "RT_USING_SMP")]
+    #[cfg(feature = "smp")]
     #[inline]
     pub(crate) fn new_with_bind(
         name: &'static CStr,
@@ -572,8 +569,7 @@ impl RtThread {
                 Self::handle_timeout,
                 cur_ref as *mut _ as *mut ffi::c_void,
                 0,
-                (rt_bindings::RT_TIMER_FLAG_ONE_SHOT | rt_bindings::RT_TIMER_FLAG_THREAD_TIMER)
-                    as u8,
+                (TimerState::ONE_SHOT.to_u32() | TimerState::THREAD_TIMER.to_u32()) as u8,
             );
             unsafe {
                 let _ = init.__pinned_init(&mut cur_ref.thread_timer as *mut Timer);
@@ -600,7 +596,7 @@ impl RtThread {
                 };
             }
 
-            #[cfg(feature = "RT_USING_SMP")]
+            #[cfg(feature = "smp")]
             {
                 cur_ref.cpu_affinity = CpuAffinity {
                     bind_cpu: _cpu,
@@ -608,17 +604,17 @@ impl RtThread {
                 };
             }
 
-            #[cfg(feature = "RT_USING_MUTEX")]
+            #[cfg(feature = "mutex")]
             unsafe {
                 let _ = MutexInfo::new().__pinned_init(&mut cur_ref.mutex_info as *mut MutexInfo);
             }
 
-            #[cfg(feature = "RT_USING_EVENT")]
+            #[cfg(feature = "event")]
             {
                 cur_ref.event_info = EventInfo { set: 0, info: 0 };
             }
 
-            #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
+            #[cfg(feature = "debugging_spinlock")]
             {
                 cur_ref.lock_info = LockInfo {
                     wait_lock: None,
@@ -631,7 +627,7 @@ impl RtThread {
         unsafe { pin_init_from_closure(init) }
     }
 
-    #[cfg(feature = "RT_USING_HEAP")]
+    #[cfg(feature = "heap")]
     pub fn try_new_in_heap(
         name: &'static CStr,
         entry: ThreadEntryFn,
@@ -643,9 +639,7 @@ impl RtThread {
         assert!(tick != 0);
         assert!(stack_size != 0);
         // need to alloc and drop stack manual
-        let layout = unsafe {
-            Layout::from_size_align_unchecked(stack_size, rt_bindings::RT_ALIGN_SIZE as usize)
-        };
+        let layout = unsafe { Layout::from_size_align_unchecked(stack_size, ALIGN_SIZE as usize) };
         let ptr = unsafe { alloc::alloc(layout) };
 
         match NonNull::new(ptr) {
@@ -690,26 +684,26 @@ impl RtThread {
         self.stat.add_yield();
     }
 
-    #[cfg(feature = "RT_USING_SMP")]
+    #[cfg(feature = "smp")]
     #[inline]
     pub fn is_cpu_detached(&self) -> bool {
         self.oncpu == CPU_DETACHED as u8
     }
 
-    #[cfg(feature = "RT_USING_SMP")]
+    #[cfg(feature = "smp")]
     #[inline]
     pub fn is_bind_cpu(&self) -> bool {
         self.bind_cpu != CPUS_NUMBER as u8
     }
 
-    #[cfg(feature = "RT_USING_SMP")]
+    #[cfg(feature = "smp")]
     #[inline]
     pub fn set_bind_cpu(&mut self, cpu_id: u8) {
         debug_assert!(cpu_id < CPUS_NUMBER as u8);
         self.bind_cpu = cpu_id;
     }
 
-    #[cfg(feature = "RT_USING_SMP")]
+    #[cfg(feature = "smp")]
     #[inline]
     pub fn get_bind_cpu(&self) -> u8 {
         self.bind_cpu
@@ -772,7 +766,7 @@ impl RtThread {
         debug_assert!(para != ptr::null_mut());
 
         let thread = unsafe { &mut *(para as *mut RtThread) };
-        debug_assert!(thread.parent.type_name() == ObjectClassType::ObjectClassThread as u8);
+        debug_assert!(thread.type_name() == ObjectClassType::ObjectClassThread as u8);
 
         let scheduler = Cpu::get_current_scheduler();
         let level = scheduler.sched_lock();
@@ -805,7 +799,6 @@ impl RtThread {
         false
     }
 
-    #[cfg(feature = "RT_USING_MUTEX")]
     #[inline]
     fn detach_from_mutex(&mut self) {
         let level = self.spinlock.lock_irqsave();
@@ -900,7 +893,7 @@ impl RtThread {
         let scheduler = Cpu::get_current_scheduler();
         let level = scheduler.sched_lock();
 
-        #[cfg(feature = "debug_scheduler")]
+        #[cfg(feature = "debugging_scheduler")]
         println!("thread start: {:?}", self.get_name());
 
         self.priority.update(self.priority.get_current());
@@ -918,7 +911,7 @@ impl RtThread {
         let scheduler = Cpu::get_current_scheduler();
         let level = scheduler.sched_lock();
 
-        #[cfg(feature = "debug_scheduler")]
+        #[cfg(feature = "debugging_scheduler")]
         println!("thread close: {:?}", self.get_name());
 
         if !self.stat.is_close() {
@@ -945,12 +938,12 @@ impl RtThread {
                 .lock()[self.tid as usize]
                 .set(None);
         }
-        #[cfg(feature = "debug_scheduler")]
+        #[cfg(feature = "debugging_scheduler")]
         println!("thread detach: {:?}", self.get_name());
 
         self.close();
 
-        #[cfg(feature = "RT_USING_MUTEX")]
+        #[cfg(feature = "mutex")]
         self.detach_from_mutex();
 
         unsafe {
@@ -976,7 +969,7 @@ impl RtThread {
     }
 
     pub fn msleep(ms: u32) -> Result<(), Error> {
-        let tick = clock::rt_tick_from_millisecond(ms as i32);
+        let tick = clock::tick_from_millisecond(ms as i32);
         Self::sleep(tick)
     }
 
@@ -996,7 +989,7 @@ impl RtThread {
         /* reset thread error */
         thread.error = code::EOK;
 
-        #[cfg(feature = "debug_scheduler")]
+        #[cfg(feature = "debugging_scheduler")]
         println!("thread sleep: {:?}", thread.get_name());
 
         if thread.suspend(SuspendFlag::Interruptible) {
@@ -1015,13 +1008,13 @@ impl RtThread {
         Ok(())
     }
 
-    pub(crate) fn suspend(&mut self, suspend_flag: SuspendFlag) -> bool {
+    pub fn suspend(&mut self, suspend_flag: SuspendFlag) -> bool {
         assert!(self.is_current_runnung_thread());
         let scheduler = Cpu::get_current_scheduler();
 
         let level = scheduler.sched_lock();
 
-        #[cfg(feature = "debug_scheduler")]
+        #[cfg(feature = "debugging_scheduler")]
         println!("thread suspend: {:?}", self.get_name());
 
         if (!self.stat.is_ready()) && (!self.stat.is_running()) {
@@ -1032,7 +1025,7 @@ impl RtThread {
 
         // change thread stat
         scheduler.remove_thread_locked(self);
-        #[cfg(feature = "RT_USING_SMP")]
+        #[cfg(feature = "smp")]
         {
             self.oncpu = CPU_DETACHED as u8;
         }
@@ -1050,7 +1043,7 @@ impl RtThread {
 
         let level = scheduler.sched_lock();
 
-        #[cfg(feature = "debug_scheduler")]
+        #[cfg(feature = "debugging_scheduler")]
         println!("thread resume: {:?}", self.get_name());
 
         let need_schedule = scheduler.insert_ready_locked(self);
@@ -1078,7 +1071,7 @@ impl RtThread {
         scheduler.sched_unlock(level);
     }
 
-    #[cfg(feature = "RT_USING_SMP")]
+    #[cfg(feature = "smp")]
     pub fn bind_to_cpu(&mut self, cpu: u8) {
         let cpu: u8 = if cpu >= CPUS_NUMBER as u8 {
             CPUS_NUMBER as u8
@@ -1101,7 +1094,8 @@ impl RtThread {
             if cpu != CPUS_NUMBER as u8 {
                 if cpu != cur_cpu {
                     unsafe {
-                        rt_bindings::rt_hw_ipi_send(rt_bindings::RT_SCHEDULE_IPI as i32, 1 << cpu)
+                        //TODO: call from libcpu
+                        // rt_bindings::rt_hw_ipi_send(rt_bindings::RT_SCHEDULE_IPI as i32, 1 << cpu)
                     };
                     // self cpu need reschedule
                     scheduler.sched_unlock_with_sched(level);
@@ -1109,17 +1103,18 @@ impl RtThread {
             } else {
                 // no running on self cpu, but dest cpu can be itself
                 unsafe {
-                    rt_bindings::rt_hw_ipi_send(
-                        rt_bindings::RT_SCHEDULE_IPI as i32,
-                        1 << self.oncpu,
-                    )
+                    //TODO: call from libcpu
+                    // rt_bindings::rt_hw_ipi_send(
+                    //     rt_bindings::RT_SCHEDULE_IPI as i32,
+                    //     1 << self.oncpu,
+                    // )
                 };
                 scheduler.sched_unlock(level);
             }
         }
     }
 
-    #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
+    #[cfg(feature = "debugging_spinlock")]
     pub(crate) fn check_deadlock(&self, spin: &RawSpin) -> bool {
         let mut owner: Cell<Option<NonNull<RtThread>>> = spin.owner.clone();
         while let Some(non_null) = owner.get() {
@@ -1137,12 +1132,12 @@ impl RtThread {
         false
     }
 
-    #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
+    #[cfg(feature = "debugging_spinlock")]
     pub(crate) fn set_wait(&mut self, spin: &RawSpin) {
         self.wait_lock = Some(NonNull::new(spin as *const _ as *mut _));
     }
 
-    #[cfg(feature = "RT_DEBUGING_SPINLOCK")]
+    #[cfg(feature = "debugging_spinlock")]
     pub(crate) fn clear_wait(&mut self) {
         self.lock_info.wait_lock = None;
     }
@@ -1153,7 +1148,7 @@ impl PinnedDrop for RtThread {
     fn drop(self: Pin<&mut Self>) {
         let this_th = unsafe { Pin::get_unchecked_mut(self) };
 
-        #[cfg(feature = "debug_scheduler")]
+        #[cfg(feature = "debugging_scheduler")]
         println!("drop thread: {:?}", this_th.get_name());
 
         this_th.detach();
@@ -1162,335 +1157,9 @@ impl PinnedDrop for RtThread {
 
 crate::impl_kobject!(RtThread);
 
+/// bindgen for RtThread
+#[allow(improper_ctypes_definitions)]
 #[no_mangle]
-pub extern "C" fn rt_thread_init(
-    thread: *mut RtThread,
-    name: *const ffi::c_char,
-    entry: ThreadEntryFn,
-    parameter: *mut ffi::c_void,
-    stack_start: *mut ffi::c_void,
-    stack_size: rt_bindings::rt_uint32_t,
-    priority: rt_bindings::rt_uint8_t,
-    tick: rt_bindings::rt_uint32_t,
-) -> rt_bindings::rt_err_t {
-    // parameter check
-    assert!(!thread.is_null());
-    assert!(!stack_start.is_null());
-    assert!(tick != 0);
-
-    let name_cstr = unsafe { CStr::from_char_ptr(name) };
-    let init = RtThread::static_new(
-        name_cstr,
-        entry,
-        parameter as *mut usize,
-        stack_start as *mut u8,
-        stack_size as usize,
-        priority,
-        tick,
-    );
-    // no Error
-    unsafe {
-        let _ = init.__pinned_init(thread);
-    }
-    return rt_bindings::RT_EOK as rt_bindings::rt_err_t;
-}
-
-#[no_mangle]
-pub extern "C" fn rt_thread_self() -> *mut RtThread {
-    match Cpu::get_current_thread() {
-        Some(thread) => thread.as_ptr(),
-        None => ptr::null_mut(),
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn rt_thread_startup(thread: *mut RtThread) -> rt_bindings::rt_err_t {
-    // parameter check
-    assert!(!thread.is_null());
-    assert!(
-        object::rt_object_get_type(thread as rt_bindings::rt_object_t)
-            == ObjectClassType::ObjectClassThread as u8
-    );
-
-    let th_mut = unsafe { &mut *thread };
-    assert!(th_mut.stat.is_init());
-    th_mut.start();
-
-    return rt_bindings::RT_EOK as rt_bindings::rt_err_t;
-}
-
-#[no_mangle]
-pub extern "C" fn rt_thread_close(thread: *mut RtThread) -> rt_bindings::rt_err_t {
-    // parameter check
-    assert!(!thread.is_null());
-    assert!(
-        object::rt_object_get_type(thread as rt_bindings::rt_object_t)
-            == ObjectClassType::ObjectClassThread as u8
-    );
-
-    let th_mut = unsafe { &mut *thread };
-    th_mut.close();
-
-    return rt_bindings::RT_EOK as rt_bindings::rt_err_t;
-}
-
-#[no_mangle]
-pub extern "C" fn rt_thread_detach(thread: *mut RtThread) -> rt_bindings::rt_err_t {
-    // parameter check
-    assert!(!thread.is_null());
-    assert!(
-        object::rt_object_get_type(thread as *mut rt_bindings::rt_object)
-            == ObjectClassType::ObjectClassThread as u8
-    );
-
-    unsafe { (*thread).detach() };
-    return rt_bindings::RT_EOK as rt_bindings::rt_err_t;
-}
-
-// #[cfg(feature = "RT_USING_HEAP")]
-#[no_mangle]
-pub extern "C" fn rt_thread_create(
-    name: *const ffi::c_char,
-    entry: ThreadEntryFn,
-    parameter: *mut ffi::c_void,
-    stack_size: rt_bindings::rt_uint32_t,
-    priority: rt_bindings::rt_uint8_t,
-    tick: rt_bindings::rt_uint32_t,
-) -> *mut RtThread {
-    let name_cstr = unsafe { CStr::from_char_ptr(name) };
-
-    let thread = RtThread::try_new_in_heap(
-        name_cstr,
-        entry,
-        parameter as *mut usize,
-        stack_size as usize,
-        priority,
-        tick,
-    );
-    match thread {
-        Ok(th) => {
-            // need to free by zombie.
-            unsafe { Box::leak(Pin::into_inner_unchecked(th)) }
-        }
-        Err(_) => return ptr::null_mut(),
-    }
-}
-
-#[cfg(feature = "RT_USING_HEAP")]
-#[no_mangle]
-pub extern "C" fn rt_thread_delete(thread: *mut RtThread) -> rt_bindings::rt_err_t {
-    assert!(!thread.is_null());
-    assert!(
-        object::rt_object_get_type(thread as rt_bindings::rt_object_t)
-            == ObjectClassType::ObjectClassThread as u8
-    );
-    assert!(
-        object::rt_object_is_systemobject(thread as rt_bindings::rt_object_t)
-            == rt_bindings::RT_FALSE as i32
-    );
-
-    unsafe { (*thread).detach() };
-    return rt_bindings::RT_EOK as rt_bindings::rt_err_t;
-}
-
-#[no_mangle]
-pub extern "C" fn rt_thread_yield() -> rt_bindings::rt_err_t {
-    RtThread::yield_now();
-    return rt_bindings::RT_EOK as rt_bindings::rt_err_t;
-}
-
-#[no_mangle]
-pub extern "C" fn rt_thread_delay(tick: rt_bindings::rt_tick_t) -> rt_bindings::rt_err_t {
-    match RtThread::sleep(tick) {
-        Ok(_) => return rt_bindings::RT_EOK as rt_bindings::rt_err_t,
-        Err(e) => e.to_errno(),
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn rt_thread_mdelay(ms: i32) -> rt_bindings::rt_err_t {
-    let tick = clock::rt_tick_from_millisecond(ms);
-    match RtThread::sleep(tick) {
-        Ok(_) => return rt_bindings::RT_EOK as rt_bindings::rt_err_t,
-        Err(e) => e.to_errno(),
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn rt_thread_control(
-    thread: *mut RtThread,
-    cmd: u32,
-    arg: *mut ffi::c_void,
-) -> rt_bindings::rt_err_t {
-    assert!(!thread.is_null());
-    assert!(
-        object::rt_object_get_type(thread as rt_bindings::rt_object_t)
-            == ObjectClassType::ObjectClassThread as u8
-    );
-    let th = unsafe { &mut *thread };
-    match cmd {
-        rt_bindings::RT_THREAD_CTRL_CHANGE_PRIORITY => {
-            let priority_ptr = NonNull::new(arg as *mut u8);
-            if let Some(ptr) = priority_ptr {
-                let priority = unsafe { *ptr.as_ref() };
-                th.change_priority(priority);
-            } else {
-                return -(rt_bindings::RT_EINVAL as i32);
-            }
-        }
-        rt_bindings::RT_THREAD_CTRL_STARTUP => {
-            th.start();
-        }
-        rt_bindings::RT_THREAD_CTRL_CLOSE => {
-            // detach will trigger schedule
-            th.detach();
-        }
-        #[cfg(feature = "RT_USING_SMP")]
-        rt_bindings::RT_THREAD_CTRL_BIND_CPU => {
-            let cpu_ptr = NonNull::new(arg as *mut u8);
-            if let Some(ptr) = cpu_ptr {
-                let cpu = unsafe { *ptr.as_ref() };
-                th.bind_to_cpu(cpu);
-            } else {
-                return -(rt_bindings::RT_EINVAL as i32);
-            }
-        }
-
-        _ => {
-            return -(rt_bindings::RT_EINVAL as i32);
-        }
-    }
-
-    code::EOK.to_errno()
-}
-
-#[no_mangle]
-pub extern "C" fn rt_thread_find(name: *mut ffi::c_char) -> *mut RtThread {
-    return object::rt_object_find(name, ObjectClassType::ObjectClassThread as u8) as *mut RtThread;
-}
-
-#[no_mangle]
-pub extern "C" fn rt_thread_get_name(
-    thread: *mut RtThread,
-    name: *mut ffi::c_char,
-    name_size: u8,
-) -> rt_bindings::rt_err_t {
-    return if thread.is_null() {
-        -(rt_bindings::RT_EINVAL as i32)
-    } else {
-        object::rt_object_get_name(thread as *mut rt_bindings::rt_object, name, name_size)
-    };
-}
-
-#[no_mangle]
-pub extern "C" fn rt_thread_suspend_with_flag(
-    thread: *mut RtThread,
-    suspend_flag: u32,
-) -> rt_bindings::rt_err_t {
-    assert!(!thread.is_null());
-    assert!(
-        object::rt_object_get_type(thread as rt_bindings::rt_object_t)
-            == ObjectClassType::ObjectClassThread as u8
-    );
-
-    let th = unsafe { &mut *thread };
-    if th.suspend(SuspendFlag::from_u8(suspend_flag as u8)) {
-        return rt_bindings::RT_EOK as rt_bindings::rt_err_t;
-    }
-    -(rt_bindings::RT_ERROR as rt_bindings::rt_err_t)
-}
-
-#[no_mangle]
-pub extern "C" fn rt_thread_suspend(thread: *mut RtThread) -> rt_bindings::rt_err_t {
-    rt_thread_suspend_with_flag(thread, rt_bindings::RT_UNINTERRUPTIBLE)
-}
-
-#[no_mangle]
-pub extern "C" fn rt_thread_resume(thread: *mut RtThread) -> rt_bindings::rt_err_t {
-    assert!(!thread.is_null());
-    assert!(
-        object::rt_object_get_type(thread as rt_bindings::rt_object_t)
-            == ObjectClassType::ObjectClassThread as u8
-    );
-
-    let th = unsafe { &mut *thread };
-    if th.resume() {
-        rt_bindings::RT_EOK as rt_bindings::rt_err_t
-    } else {
-        -(rt_bindings::RT_ERROR as rt_bindings::rt_err_t)
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn rt_thread_cleanup(thread: *mut RtThread, cleanup: ThreadCleanupFn) {
-    assert!(!thread.is_null());
-    assert!(cleanup as *const () != core::ptr::null());
-
-    unsafe { (*thread).cleanup = cleanup };
-}
-
-#[no_mangle]
-pub extern "C" fn rt_thread_info() {
-    let callback_forword = || {
-        #[cfg(feature = "RT_USING_SMP")]
-        crate::kprintf!(
-            "thread   cpu bind pri  status      sp     stack size left tick  error\n\0"
-        );
-        #[cfg(not(feature = "RT_USING_SMP"))]
-        crate::kprintf!("thread   pri  status      sp     stack size left tick  error\n\0");
-        #[cfg(feature = "RT_USING_SMP")]
-        crate::kprintf!("-------- --- ---- ---  ------- ---------- ----------  ---------- ---\n\0");
-        #[cfg(not(feature = "RT_USING_SMP"))]
-        crate::kprintf!("-------- ---  ------- ---------- ----------  ---------- ---\n\0");
-    };
-    let callback = |node: &ListHead| unsafe {
-        let thread =
-            &*(crate::list_head_entry!(node.as_ptr(), KObjectBase, list) as *const RtThread);
-        let _ = crate::format_name!(thread.parent.name.as_ptr(), 8);
-        let current_priority = thread.priority.get_current();
-        #[cfg(feature = "RT_USING_SMP")]
-        {
-            let oncpu = thread.oncpu;
-            if oncpu != CPU_DETACHED as u8 {
-                print!(
-                    " {:<3} {:^4}  {:<3} ",
-                    oncpu, thread.bind_cpu, current_priority
-                );
-            } else {
-                print!(" N/A {:^4}  {:<3} ", thread.bind_cpu, current_priority);
-            }
-        }
-        #[cfg(not(feature = "RT_USING_SMP"))]
-        {
-            print!(" {:<3}  ", current_priority);
-        }
-        let state = thread.stat;
-        if state.is_ready() {
-            print!("ready  ")
-        } else if state.is_suspended() {
-            print!("suspend")
-        } else if state.is_init() {
-            print!("init   ")
-        } else if state.is_close() {
-            print!("close  ")
-        } else if state.is_running() {
-            print!("running")
-        }
-        println!(
-            " 0x{:08x} 0x{:08x}  0x{:08x} {}",
-            thread
-                .stack
-                .bottom_ptr()
-                .sub(thread.stack.sp() as usize)
-                .add(thread.stack.size()) as usize,
-            thread.stack.size(),
-            thread.time_slice.remaining,
-            thread.error.to_errno()
-        );
-    };
-    let _ = RtThread::get_info(
-        callback_forword,
-        callback,
-        ObjectClassType::ObjectClassThread as u8,
-    );
+pub extern "C" fn bindgen_thread(_thread: RtThread) {
+    0;
 }

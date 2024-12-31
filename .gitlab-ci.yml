@@ -31,8 +31,8 @@ run-infra-tests:
 build-mps2-an385:
   stage: mps2-an385-build
   script:
-    - echo "...开始NP构建..."  
-    - ./build.sh qemu-mps2-an385
+    - echo "...start NP build..."  
+    - python3 x b --target qemu-mps2-an385
   tags:
     - ubuntu
   rules:
@@ -49,7 +49,7 @@ test-mps2-an385:
   dependencies:
     - build-mps2-an385
   script:
-    - echo "...测试NP代码..."  
+    - echo "...test NP build result..."  
     - cd bsp/qemu-mps2-an385
     - timeout 90s ./qemu-test.sh || true
     - cd ../../
@@ -62,8 +62,8 @@ test-mps2-an385:
 build-mps3-an547:
   stage: mps3-an547-build
   script:
-    - echo "...开始NP构建..."  
-    - ./build.sh qemu-mps3-an547
+    - echo "...start NP build..."  
+    - python3 x b --target qemu-mps3-an547
   tags:
     - ubuntu
   rules:
@@ -80,7 +80,7 @@ test-mps3-an547:
   dependencies:
     - build-mps3-an547
   script:
-    - echo "...测试NP代码..."  
+    - echo "...test NP build result..."  
     - cd bsp/qemu-mps3-an547
     - timeout 90s ./qemu-test.sh || true
     - cd ../../

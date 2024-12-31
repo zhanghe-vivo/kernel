@@ -44,19 +44,22 @@ enum rt_object_class_type
     RT_Object_Class_Unknown,        /**< The object is unknown. */
 };
 #ifdef RT_USING_SMP
-#include <cpuport.h> /* for spinlock from arch */
+struct tickets {
+    rt_size_t owner;
+    rt_size_t next;
+};
+
 struct rt_spinlock
 {
-    rt_hw_spinlock_t lock;
+    rt_size_t lock;
+    tickets ticket;
 #ifdef RT_DEBUGING_SPINLOCK
     void *owner;
 #endif
 };
 #else
-typedef rt_base_t rt_spinlock_t;
-struct rt_spinlock
-{
-    rt_spinlock_t lock;
+struct rt_spinlock{
+    rt_size_t lock;
 };
 #endif
 #define RawSpin rt_spinlock

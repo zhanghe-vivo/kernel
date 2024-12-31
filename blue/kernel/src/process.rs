@@ -1,13 +1,12 @@
 use crate::{
-    klibc::rt_strncmp,
+    cpu::Cpu,
+    klibc::strncmp,
     object::{KObjectBase, ObjectClassType, NAME_MAX, OBJECT_CLASS_STATIC},
-    scheduler::{rt_enter_critical, rt_exit_critical},
     static_init::UnsafeStaticInit,
     sync::RawSpin,
 };
 use blue_infra::list::doubly_linked_list::ListHead;
 
-use ::rt_bindings;
 use core::{
     ffi,
     pin::Pin,
@@ -38,39 +37,38 @@ pub(crate) struct Kprocess {
     children: ListHead,
     #[pin]
     threas: ListHead,
-    #[cfg(feature = "RT_USING_SEMAPHORE")]
+    #[cfg(feature = "semaphore")]
     #[pin]
     semaphore: ListHead,
-    #[cfg(feature = "RT_USING_MUTEX")]
+    #[cfg(feature = "mutex")]
     #[pin]
     mutex: ListHead,
-    #[cfg(feature = "RT_USING_RWLOCK")]
+    #[cfg(feature = "rwlock")]
     #[pin]
     rwlock: ListHead,
-    #[cfg(feature = "RT_USING_EVENT")]
+    #[cfg(feature = "event")]
     #[pin]
     event: ListHead,
-    #[cfg(feature = "RT_USING_CONDVAR")]
+    #[cfg(feature = "condvar")]
     #[pin]
     condvar: ListHead,
-    #[cfg(feature = "RT_USING_MAILBOX")]
+    #[cfg(feature = "mailbox")]
     #[pin]
     mailbox: ListHead,
-    #[cfg(feature = "RT_USING_MESSAGEQUEUE")]
+    #[cfg(feature = "messagequeue")]
     #[pin]
     msgqueue: ListHead,
-    #[cfg(feature = "RT_USING_MEMHEAP")]
+    #[cfg(feature = "memheap")]
     #[pin]
     memheap: ListHead,
-    #[cfg(feature = "RT_USING_MEMPOOL")]
+    #[cfg(feature = "mempool")]
     #[pin]
     mempool: ListHead,
-    #[cfg(feature = "RT_USING_DEVICE")]
     #[pin]
     device: ListHead,
     #[pin]
     timer: ListHead,
-    #[cfg(feature = "RT_USING_HEAP")]
+    #[cfg(feature = "heap")]
     #[pin]
     memory: ListHead,
     pid: u64,
@@ -89,28 +87,27 @@ impl Kprocess {
             let _ = ListHead::new().__pinned_init(&mut cur_ref.sibling as *mut ListHead);
             let _ = ListHead::new().__pinned_init(&mut cur_ref.children as *mut ListHead);
             let _ = ListHead::new().__pinned_init(&mut cur_ref.threas as *mut ListHead);
-            #[cfg(feature = "RT_USING_SEMAPHORE")]
+            #[cfg(feature = "semaphore")]
             let _ = ListHead::new().__pinned_init(&mut cur_ref.semaphore as *mut ListHead);
-            #[cfg(feature = "RT_USING_MUTEX")]
+            #[cfg(feature = "mutex")]
             let _ = ListHead::new().__pinned_init(&mut cur_ref.mutex as *mut ListHead);
-            #[cfg(feature = "RT_USING_RWLOCK")]
+            #[cfg(feature = "rwlock")]
             let _ = ListHead::new().__pinned_init(&mut cur_ref.rwlock as *mut ListHead);
-            #[cfg(feature = "RT_USING_EVENT")]
+            #[cfg(feature = "event")]
             let _ = ListHead::new().__pinned_init(&mut cur_ref.event as *mut ListHead);
-            #[cfg(feature = "RT_USING_CONDVAR")]
+            #[cfg(feature = "condvar")]
             let _ = ListHead::new().__pinned_init(&mut cur_ref.condvar as *mut ListHead);
-            #[cfg(feature = "RT_USING_MAILBOX")]
+            #[cfg(feature = "mailbox")]
             let _ = ListHead::new().__pinned_init(&mut cur_ref.mailbox as *mut ListHead);
-            #[cfg(feature = "RT_USING_MESSAGEQUEUE")]
+            #[cfg(feature = "messagequeue")]
             let _ = ListHead::new().__pinned_init(&mut cur_ref.msgqueue as *mut ListHead);
-            #[cfg(feature = "RT_USING_MEMHEAP")]
+            #[cfg(feature = "memheap")]
             let _ = ListHead::new().__pinned_init(&mut cur_ref.memheap as *mut ListHead);
-            #[cfg(feature = "RT_USING_MEMPOOL")]
+            #[cfg(feature = "mempool")]
             let _ = ListHead::new().__pinned_init(&mut cur_ref.mempool as *mut ListHead);
-            #[cfg(feature = "RT_USING_DEVICE")]
             let _ = ListHead::new().__pinned_init(&mut cur_ref.device as *mut ListHead);
             let _ = ListHead::new().__pinned_init(&mut cur_ref.timer as *mut ListHead);
-            #[cfg(feature = "RT_USING_HEAP")]
+            #[cfg(feature = "heap")]
             let _ = ListHead::new().__pinned_init(&mut cur_ref.memory as *mut ListHead);
             cur_ref.pid = 0;
             cur_ref.lock = RawSpin::new();
@@ -124,28 +121,27 @@ impl Kprocess {
         let _ = process.lock.acquire();
         match object_tpye & (!OBJECT_CLASS_STATIC) {
             x if x == ObjectClassType::ObjectClassThread as u8 => &process.threas,
-            #[cfg(feature = "RT_USING_SEMAPHORE")]
+            #[cfg(feature = "semaphore")]
             x if x == ObjectClassType::ObjectClassSemaphore as u8 => &process.semaphore,
-            #[cfg(feature = "RT_USING_MUTEX")]
+            #[cfg(feature = "mutex")]
             x if x == ObjectClassType::ObjectClassMutex as u8 => &process.mutex,
-            #[cfg(feature = "RT_USING_RWLOCK")]
+            #[cfg(feature = "rwlock")]
             x if x == ObjectClassType::ObjectClassRwLock as u8 => &process.rwlock,
-            #[cfg(feature = "RT_USING_EVENT")]
+            #[cfg(feature = "event")]
             x if x == ObjectClassType::ObjectClassEvent as u8 => &process.event,
-            #[cfg(feature = "RT_USING_CONDVAR")]
+            #[cfg(feature = "condvar")]
             x if x == ObjectClassType::ObjectClassCondVar as u8 => &process.condvar,
-            #[cfg(feature = "RT_USING_MAILBOX")]
+            #[cfg(feature = "mailbox")]
             x if x == ObjectClassType::ObjectClassMailBox as u8 => &process.mailbox,
-            #[cfg(feature = "RT_USING_MESSAGEQUEUE")]
+            #[cfg(feature = "messagequeue")]
             x if x == ObjectClassType::ObjectClassMessageQueue as u8 => &process.msgqueue,
-            #[cfg(feature = "RT_USING_MEMHEAP")]
+            #[cfg(feature = "memheap")]
             x if x == ObjectClassType::ObjectClassMemHeap as u8 => &process.memheap,
-            #[cfg(feature = "RT_USING_MEMPOOL")]
+            #[cfg(feature = "mempool")]
             x if x == ObjectClassType::ObjectClassMemPool as u8 => &process.mempool,
-            #[cfg(feature = "RT_USING_DEVICE")]
             x if x == ObjectClassType::ObjectClassDevice as u8 => &process.device,
             x if x == ObjectClassType::ObjectClassTimer as u8 => &process.timer,
-            #[cfg(feature = "RT_USING_HEAP")]
+            #[cfg(feature = "heap")]
             x if x == ObjectClassType::ObjectClassMemory as u8 => &process.memory,
             _ => unreachable!("not a kernel object type!"),
         }
@@ -167,7 +163,7 @@ impl Kprocess {
         }
     }
 
-    #[cfg(feature = "RT_USING_DEBUG")]
+    #[cfg(feature = "debugging_object")]
     fn addr_detect(&mut self, object_tpye: u8, ptr: &mut KObjectBase) {
         let list = self.get_object_list(object_tpye);
         let _ = self.lock.acquire();
@@ -183,7 +179,7 @@ pub fn insert(object_tpye: u8, node: &mut ListHead) {
     process.insert(object_tpye, node);
 }
 
-#[cfg(feature = "RT_USING_DEBUG")]
+#[cfg(feature = "debugging_object")]
 pub fn object_addr_detect(object_tpye: u8, ptr: &mut KObjectBase) {
     let process = Kprocess::get_process();
     process.addr_detect(object_tpye, ptr);
@@ -197,31 +193,31 @@ pub fn find_object(object_tpye: u8, name: *const i8) -> *const KObjectBase {
     }
 
     /* which is invoke in interrupt status */
-    rt_bindings::rt_debug_not_in_interrupt!();
+    crate::debug_not_in_interrupt!();
 
     let process = Kprocess::get_process();
     let list = process.get_object_list(object_tpye);
     let _ = process.lock.acquire();
     /* enter critical */
-    rt_enter_critical();
+    Cpu::get_current_scheduler().preempt_disable();
     /* try to find object */
     crate::list_head_for_each!(node, list, {
         unsafe {
             let object = crate::list_head_entry!(node.as_ptr(), KObjectBase, list);
-            if rt_strncmp(
+            if strncmp(
                 (*object).name.as_ptr() as *const ffi::c_char,
                 name,
                 NAME_MAX,
             ) == 0
             {
                 /* leave critical */
-                rt_exit_critical();
+                Cpu::get_current_scheduler().preempt_enable();
                 return object;
             }
         }
     });
     /* leave critical */
-    rt_exit_critical();
+    Cpu::get_current_scheduler().preempt_enable();
 
     ptr::null_mut()
 }
@@ -265,8 +261,8 @@ where
     Ok(())
 }
 
-pub fn rt_foreach(
-    callback: extern "C" fn(rt_bindings::rt_object_t, usize, *mut core::ffi::c_void),
+pub fn bindings_foreach(
+    callback: extern "C" fn(*mut KObjectBase, usize, *mut core::ffi::c_void),
     object_type: u8,
     args: *mut ffi::c_void,
 ) -> Result<(), i32> {
@@ -277,7 +273,7 @@ pub fn rt_foreach(
     crate::list_head_for_each!(node, list, {
         let obj = unsafe { crate::list_head_entry!(node.as_ptr(), KObjectBase, list) };
         let _ = process.lock.unlock();
-        callback(obj as rt_bindings::rt_object_t, index, args);
+        callback(obj as *mut KObjectBase, index, args);
         let _ = process.lock.lock();
         index = index + 1;
     });

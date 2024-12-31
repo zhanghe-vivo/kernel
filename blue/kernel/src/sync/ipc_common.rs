@@ -1,16 +1,16 @@
 use crate::{
-    allocator::{align_up_size, rt_free, rt_malloc},
+    allocator::{align_up_size, free, malloc},
+    blue_kconfig::ALIGN_SIZE,
     cpu::Cpu,
     error::{code, Error},
     list_head_for_each,
     object::*,
-    rt_bindings::{RT_EFULL, RT_EOK, RT_ERROR},
     sync::RawSpin,
     thread::{RtThread, SuspendFlag},
 };
 use blue_infra::list::doubly_linked_list::ListHead;
 use core::{
-    ffi, mem,
+    mem,
     pin::Pin,
     ptr::{self, null_mut, NonNull},
     slice,
@@ -23,9 +23,11 @@ pub const IPC_MUTEX_NESTED_MAX: u32 = 255;
 pub const IPC_SEMAPHORE_COUNT_MAX: u32 = 65535;
 pub const IPC_RING_BUFFER_ITEM_MAX: u32 = 65535;
 pub const IPC_QUEUE_BUFFER_ITEM_MAX: u32 = 65535;
-pub(crate) const IPC_SYS_QUEUE_FIFO: u32 = 0;
-pub(crate) const IPC_SYS_QUEUE_PRIO: u32 = 1;
-pub(crate) const IPC_SYS_QUEUE_STUB: u32 = 2;
+pub const IPC_SYS_QUEUE_FIFO: u32 = 0;
+pub const IPC_SYS_QUEUE_PRIO: u32 = 1;
+pub const IPC_SYS_QUEUE_STUB: u32 = 2;
+pub const IPC_FLAG_PRIO: u32 = 1;
+pub const IPC_CMD_RESET: u32 = 1;
 
 macro_rules! sys_queue_item_data_addr {
     ($addr:expr) => {
@@ -46,7 +48,7 @@ pub(crate) struct RtSysQueueItemHeader {
 /// System queue for kernel use on IPC
 #[repr(C)]
 #[pin_data(PinnedDrop)]
-pub(crate) struct RtSysQueue {
+pub struct RtSysQueue {
     /// Queue item size
     pub(crate) item_size: usize,
     /// Queue item max count
@@ -103,12 +105,12 @@ impl RtSysQueue {
             self.is_storage_from_external = true;
         }
 
-        rt_bindings::rt_debug_not_in_interrupt!();
+        crate::debug_not_in_interrupt!();
         let mut item_align_size = 0;
         if self.working_mode == 0 {
             self.queue_buf_size = self.item_size * self.item_max_count;
         } else {
-            item_align_size = align_up_size(self.item_size, rt_bindings::RT_ALIGN_SIZE as usize);
+            item_align_size = align_up_size(self.item_size, ALIGN_SIZE as usize);
             self.queue_buf_size =
                 (item_align_size + mem::size_of::<RtSysQueueItemHeader>()) * self.item_max_count;
         }
@@ -116,8 +118,7 @@ impl RtSysQueue {
         let buffer_raw = if self.is_storage_from_external {
             raw_buf_ptr
         } else {
-            // SAFETY: return null pointer when failed
-            unsafe { rt_malloc(self.queue_buf_size) as *mut u8 }
+            malloc(self.queue_buf_size) as *mut u8
         };
 
         if buffer_raw.is_null() {
@@ -166,7 +167,7 @@ impl RtSysQueue {
         if let Some(mut buffer) = self.queue_buf {
             if !self.is_storage_from_external {
                 unsafe {
-                    rt_free(buffer.as_mut() as *mut u8 as *mut ffi::c_void);
+                    free(buffer.as_mut() as *mut u8);
                 }
                 self.queue_buf = None;
             }
@@ -249,7 +250,7 @@ impl RtSysQueue {
     }
 
     #[inline]
-    pub(crate) fn count(&self) -> usize {
+    pub fn count(&self) -> usize {
         self.item_in_queue
     }
 
@@ -430,7 +431,7 @@ impl RtSysQueue {
             // increase message entry
             self.item_in_queue += 1;
         } else {
-            return -(RT_EFULL as i32);
+            return code::EFULL.to_errno();
         }
 
         size as i32
@@ -448,7 +449,7 @@ impl RtSysQueue {
 
         if hdr.is_null() {
             self.spinlock.unlock();
-            return -(RT_EFULL as i32);
+            return code::EFULL.to_errno();
         }
 
         // SAFETY: msg is null checked and buffer is valid
@@ -481,7 +482,7 @@ impl RtSysQueue {
             self.item_in_queue += 1;
         } else {
             self.spinlock.unlock();
-            return -(RT_EFULL as i32);
+            return code::EFULL.to_errno();
         }
 
         if !self.dequeue_waiter.is_empty() {
@@ -491,7 +492,7 @@ impl RtSysQueue {
 
             Cpu::get_current_scheduler().do_task_schedule();
 
-            return RT_EOK as i32;
+            return code::EOK.to_errno();
         }
 
         self.spinlock.unlock();
@@ -618,12 +619,12 @@ impl RtWaitQueue {
     pub(crate) fn wait(&mut self, thread: &mut RtThread, pending_mode: u32) -> i32 {
         if !thread.stat.is_suspended() {
             let ret = if thread.suspend(SuspendFlag::from_u8(pending_mode as u8)) {
-                RT_EOK as i32
+                code::EOK.to_errno()
             } else {
-                -(RT_ERROR as i32)
+                code::ERROR.to_errno()
             };
 
-            if ret != RT_EOK as i32 {
+            if ret != code::EOK.to_errno() {
                 return ret;
             }
         }
@@ -640,7 +641,7 @@ impl RtWaitQueue {
                         unsafe { crate::thread_list_node_entry!(node.as_ptr()) as *mut RtThread };
 
                     if queued_thread_ptr.is_null() {
-                        return -(RT_ERROR as i32);
+                        return code::ERROR.to_errno();
                     }
 
                     let queued_thread = unsafe { &mut *queued_thread_ptr };
@@ -660,7 +661,7 @@ impl RtWaitQueue {
             _ => {}
         }
 
-        RT_EOK as i32
+        code::EOK.to_errno()
     }
 
     #[inline]

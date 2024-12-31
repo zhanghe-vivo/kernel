@@ -1,6 +1,8 @@
+use enum_iterator::all;
 use std::{collections::HashMap, env};
-
 fn main() {
+    feature_to_cargo();
+
     println!("cargo::rustc-check-cfg=cfg(hardware_schedule)");
 
     let target = env::var("TARGET").unwrap();
@@ -13,9 +15,9 @@ fn main() {
         //println!("cargo:rustc-cfg=fast_schedule");
     }
 
-    let compat_os = env::var("COMPAT_OS").unwrap_or_else(|_e| String::from(""));
+    let os_adapter = env::var("OS_ADAPTER").unwrap_or_else(|_e| String::from(""));
 
-    if compat_os == "rt_thread" {
+    if os_adapter == "rt_thread" {
         let rename_list = HashMap::from([
             ("KObjectBase".to_string(), "rt_object".to_string()),
             ("Stack".to_string(), "rt_stack".to_string()),
@@ -38,40 +40,31 @@ fn main() {
         ]);
 
         let defines = HashMap::from([
+            ("feature = smp".to_string(), "RT_USING_SMP".to_string()),
+            ("feature = mutex".to_string(), "RT_USING_MUTEX".to_string()),
             (
-                "feature = RT_USING_SMP".to_string(),
-                "RT_USING_SMP".to_string(),
-            ),
-            (
-                "feature = RT_USING_MUTEX".to_string(),
-                "RT_USING_MUTEX".to_string(),
-            ),
-            (
-                "feature = RT_USING_SEMAPHORE".to_string(),
+                "feature = semaphore".to_string(),
                 "RT_USING_SEMAPHORE".to_string(),
             ),
             (
-                "feature = RT_USING_CONDVAR".to_string(),
+                "feature = condvar".to_string(),
                 "RT_USING_CONDVAR".to_string(),
             ),
             (
-                "feature = RT_USING_RWLOCK".to_string(),
+                "feature = rwlock".to_string(),
                 "RT_USING_RWLOCK".to_string(),
             ),
             (
-                "feature = RT_USING_EVENT".to_string(),
-                "RT_USING_EVENT".to_string(),
-            ),
-            (
-                "feature = RT_USING_MAILBOX".to_string(),
+                "feature = mailbox".to_string(),
                 "RT_USING_MAILBOX".to_string(),
             ),
             (
-                "feature = RT_USING_MESSAGEQUEUE".to_string(),
+                "feature = messagequeue".to_string(),
                 "RT_USING_MESSAGEQUEUE".to_string(),
             ),
+            ("feature = event".to_string(), "RT_USING_EVENT".to_string()),
             (
-                "feature = RT_DEBUGING_SPINLOCK".to_string(),
+                "feature = debugging_spinlock".to_string(),
                 "RT_DEBUGING_SPINLOCK".to_string(),
             ),
         ]);
@@ -106,6 +99,14 @@ fn main() {
             .with_language(cbindgen::Language::C)
             .generate()
             .expect("Unable to generate bindings")
-            .write_to_file("include/rust_wrapper.inc");
+            .write_to_file("../adapter/rt_thread/include/rust_wrapper.inc");
+    }
+}
+
+fn feature_to_cargo() {
+    for feature in all::<blue_kconfig::Feature>() {
+        if feature.is_enabled() {
+            println!("cargo:rustc-cfg=feature=\"{}\"", feature.to_string());
+        }
     }
 }
