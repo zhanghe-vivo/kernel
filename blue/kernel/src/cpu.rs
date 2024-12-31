@@ -237,7 +237,7 @@ impl Cpu {
 
     #[inline]
     pub fn tick_store(&self, tick: u32) {
-        self.tick.store(tick, Ordering::Release)
+        self.tick.store(tick, Ordering::Relaxed)
     }
 
     #[inline]
@@ -248,12 +248,12 @@ impl Cpu {
 
     #[inline]
     pub fn tick_inc(&self) -> u32 {
-        self.tick.fetch_add(1, Ordering::Release)
+        self.tick.fetch_add(1, Ordering::Relaxed)
     }
 
     #[inline]
     pub fn is_in_interrupt() -> bool {
-        Self::get_current().interrupt_nest.load(Ordering::Relaxed) > 0
+        Self::get_current().interrupt_nest.load(Ordering::Acquire) > 0
     }
 
     #[inline]
@@ -272,7 +272,7 @@ impl Cpu {
 
     #[inline]
     pub fn interrupt_nest_load() -> u32 {
-        Self::get_current().interrupt_nest.load(Ordering::Relaxed)
+        Self::get_current().interrupt_nest.load(Ordering::Acquire)
     }
 
     #[cfg(feature = "smp")]
@@ -294,7 +294,7 @@ impl Cpu {
     #[cfg(feature = "smp")]
     #[inline]
     pub fn cpu_lock_nest_load() -> u32 {
-        Self::get_current().cpu_lock_nest.load(Ordering::Relaxed)
+        Self::get_current().cpu_lock_nest.load(Ordering::Acquire)
     }
 }
 

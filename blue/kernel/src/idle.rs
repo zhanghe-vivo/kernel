@@ -38,7 +38,7 @@ impl IdleHooks {
 
     pub fn sethook(&self, hook: *mut IdleHookFn) -> bool {
         for i in 0..IDLE_HOOK_LIST_SIZE {
-            let idle_hook = self.hooks[i].load(Ordering::Relaxed);
+            let idle_hook = self.hooks[i].load(Ordering::Acquire);
             if idle_hook.is_null() {
                 self.hooks[i].store(hook, Ordering::Release);
                 return true;
@@ -49,7 +49,7 @@ impl IdleHooks {
 
     pub fn delhook(&self, hook: *mut IdleHookFn) -> bool {
         for i in 0..IDLE_HOOK_LIST_SIZE {
-            let idle_hook = self.hooks[i].load(Ordering::Relaxed);
+            let idle_hook = self.hooks[i].load(Ordering::Acquire);
             if idle_hook == hook {
                 self.hooks[i].store(ptr::null_mut() as *mut IdleHookFn, Ordering::Release);
                 return true;
@@ -60,7 +60,7 @@ impl IdleHooks {
 
     pub(crate) fn hook_execute(&self) {
         for i in 0..IDLE_HOOK_LIST_SIZE {
-            let idle_hook = self.hooks[i].load(Ordering::Relaxed);
+            let idle_hook = self.hooks[i].load(Ordering::Acquire);
             if !idle_hook.is_null() {
                 unsafe {
                     let idle_hook: IdleHookFn = mem::transmute(idle_hook);

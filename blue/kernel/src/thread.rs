@@ -720,7 +720,7 @@ impl RtThread {
             self,
             Cpu::get_current_scheduler()
                 .current_thread
-                .load(Ordering::Relaxed),
+                .load(Ordering::Acquire),
         )
     }
 

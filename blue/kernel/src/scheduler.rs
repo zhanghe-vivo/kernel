@@ -168,7 +168,7 @@ impl Scheduler {
 
     #[inline]
     pub fn get_current_thread(&self) -> Option<NonNull<RtThread>> {
-        NonNull::new(self.current_thread.load(Ordering::Relaxed))
+        NonNull::new(self.current_thread.load(Ordering::Acquire))
     }
 
     #[inline]
@@ -178,22 +178,23 @@ impl Scheduler {
 
     #[inline]
     pub fn is_scheduled(&self) -> bool {
-        self.current_thread.load(Ordering::Relaxed) != ptr::null_mut()
+        // This method might be used as predicate in the context, so `Acquire` is required.
+        self.current_thread.load(Ordering::Acquire) != ptr::null_mut()
     }
 
     #[inline]
     pub fn preempt_disable(&self) {
         if likely(self.is_scheduled()) {
-            self.scheduler_lock_nest.fetch_add(1, Ordering::Release);
+            self.scheduler_lock_nest.fetch_add(1, Ordering::AcqRel);
         }
     }
 
     #[inline]
     pub fn preempt_enable(&mut self) {
         if likely(self.is_scheduled()) {
-            debug_assert!(self.scheduler_lock_nest.load(Ordering::Relaxed) > 0);
+            debug_assert!(self.scheduler_lock_nest.load(Ordering::Acquire) > 0);
             let level = Arch::disable_interrupts();
-            if self.scheduler_lock_nest.fetch_sub(1, Ordering::Release) == 1 {
+            if self.scheduler_lock_nest.fetch_sub(1, Ordering::AcqRel) == 1 {
                 if self.critical_switch_flag == 1 {
                     self.do_task_schedule();
                 }
@@ -469,7 +470,7 @@ impl Scheduler {
         #[cfg(feature = "smp")]
         self.sched_unlock_mp();
 
-        debug_assert!(self.scheduler_lock_nest.load(Ordering::Relaxed) > 0);
+        debug_assert!(self.scheduler_lock_nest.load(Ordering::Acquire) > 0);
         self.scheduler_lock_nest.fetch_sub(1, Ordering::Release);
         Arch::enable_interrupts(level);
     }
@@ -487,7 +488,7 @@ impl Scheduler {
 
     #[cfg(hardware_schedule)]
     pub fn sched_unlock_with_sched(&mut self, level: usize) {
-        if self.scheduler_lock_nest.fetch_sub(1, Ordering::Release) == 1 {
+        if self.scheduler_lock_nest.fetch_sub(1, Ordering::AcqRel) == 1 {
             self.irq_switch_flag = 1;
             if likely(self.is_scheduled()) {
                 Arch::trigger_switch();
@@ -502,7 +503,7 @@ impl Scheduler {
             if Cpu::is_in_interrupt() {
                 self.irq_switch_flag = 1;
                 self.ctx_switch_unlock();
-            } else if self.scheduler_lock_nest.load(Ordering::Relaxed) > 1 {
+            } else if self.scheduler_lock_nest.load(Ordering::Acquire) > 1 {
                 self.ctx_switch_unlock();
             } else {
                 let cur_thread = self.get_current_thread();
@@ -543,19 +544,19 @@ impl Scheduler {
 
     #[inline]
     pub fn is_sched_locked(&self) -> bool {
-        return self.scheduler_lock_nest.load(Ordering::Relaxed) > 0;
+        return self.scheduler_lock_nest.load(Ordering::Acquire) > 0;
     }
 
     #[inline]
     pub fn get_sched_lock_level(&self) -> u32 {
-        self.scheduler_lock_nest.load(Ordering::Relaxed)
+        self.scheduler_lock_nest.load(Ordering::Acquire)
     }
 
     #[cfg(hardware_schedule)]
     pub fn do_task_schedule(&mut self) {
         let level = Arch::disable_interrupts();
 
-        let lock_nest = self.scheduler_lock_nest.load(Ordering::Relaxed);
+        let lock_nest = self.scheduler_lock_nest.load(Ordering::Acquire);
         if lock_nest > 0 {
             self.critical_switch_flag = 1;
         } else {
@@ -698,7 +699,7 @@ impl Scheduler {
                     scheduler.ctx_switch_unlock();
                 }
             } else {
-                debug_assert!(scheduler.scheduler_lock_nest.load(Ordering::Relaxed) > 0);
+                debug_assert!(scheduler.scheduler_lock_nest.load(Ordering::Acquire) > 0);
                 scheduler
                     .scheduler_lock_nest
                     .fetch_sub(1, Ordering::Release);
