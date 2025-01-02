@@ -60,7 +60,7 @@ pub extern "C" fn rt_timer_delete(timer: *mut Timer) -> i32 {
     assert!(!timer.is_null());
     let timer_ref = unsafe { &mut *timer };
     assert!(timer_ref.type_name() == ObjectClassType::ObjectClassTimer as u8);
-    assert!(timer_ref.is_static_kobject() == false);
+    assert!(!timer_ref.is_static_kobject());
     timer_ref.delete();
     code::EOK.to_errno()
 }

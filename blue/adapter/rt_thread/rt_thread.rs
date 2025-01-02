@@ -125,7 +125,7 @@ pub extern "C" fn rt_thread_delete(thread: *mut RtThread) -> i32 {
     assert!(!thread.is_null());
     let th = unsafe { &mut *thread };
     assert!(th.type_name() == ObjectClassType::ObjectClassThread as u8);
-    assert!(th.is_static_kobject() == false);
+    assert!(!th.is_static_kobject());
     th.detach();
     return code::EOK.to_errno();
 }

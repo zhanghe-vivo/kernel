@@ -104,7 +104,7 @@ impl ZombieManager {
                 }
                 // if it's a system object, detach it
                 let object_is_systemobject = unsafe { (*th).is_static_kobject() };
-                if object_is_systemobject == true {
+                if object_is_systemobject {
                     // detach this object
                     unsafe { (*th).parent.detach() };
                 }
@@ -115,7 +115,7 @@ impl ZombieManager {
 
                 // if need free, delete it
                 #[cfg(feature = "heap")]
-                if object_is_systemobject == false {
+                if !object_is_systemobject {
                     // SAFETY: thread is a dynamic object, delete thread stack and thread object manually.
                     unsafe {
                         // free stack

@@ -264,7 +264,7 @@ struct TimeSlice {
     pub remaining: u32,
 }
 
-// pin_data conflict with cfg
+// NOTE: pin_data conflicts with cfg.
 #[cfg(feature = "mutex")]
 #[repr(C)]
 #[pin_data]
@@ -323,7 +323,7 @@ pub struct RtThread {
     #[pin]
     pub parent: KObjectBase,
 
-    // thread linked list, link to priority_table
+    // thread linked list, link to priority_table.
     #[pin]
     pub(crate) tlist: ListHead,
 
@@ -335,8 +335,10 @@ pub struct RtThread {
 
     /// stack point and cleanup func
     pub(crate) stack: Stack,
-    // can't add Option because of cbindgen
+
+    // Can't add Option because of cbindgen.
     pub cleanup: ThreadCleanupFn,
+
     tid: usize,
 
     /// built-in thread timer, used for wait timeout
@@ -344,12 +346,14 @@ pub struct RtThread {
     pub(crate) thread_timer: Timer,
 
     spinlock: RawSpin,
+
     /// error code
     pub error: Error,
 
     /// time slice
     #[cfg(feature = "schedule_with_time_slice")]
     time_slice: TimeSlice,
+
     #[cfg(feature = "mutex")]
     pub(crate) mutex_info: MutexInfo,
 
@@ -367,7 +371,6 @@ pub struct RtThread {
     pin: PhantomPinned,
 }
 
-// stack align to 8 bytes
 #[repr(C, align(8))]
 struct StackAlignedField<const STACK_SIZE: usize> {
     buf: [u8; STACK_SIZE],
@@ -638,7 +641,7 @@ impl RtThread {
     ) -> Result<Pin<Box<Self>>, AllocError> {
         assert!(tick != 0);
         assert!(stack_size != 0);
-        // need to alloc and drop stack manual
+        // Need to alloc and drop stack manually.
         let layout = unsafe { Layout::from_size_align_unchecked(stack_size, ALIGN_SIZE as usize) };
         let ptr = unsafe { alloc::alloc(layout) };
 
@@ -650,7 +653,6 @@ impl RtThread {
                 match thread {
                     Ok(_) => return thread,
                     Err(_) => {
-                        // drop stack an return err
                         unsafe { alloc::dealloc(ptr, layout) };
                         return Err(AllocError);
                     }
@@ -660,7 +662,7 @@ impl RtThread {
         }
     }
 
-    // used for hw_context_switch
+    // Used for hw_context_switch.
     #[inline]
     pub(crate) fn sp_ptr(&self) -> *const usize {
         self.stack.sp_ptr()
@@ -760,7 +762,7 @@ impl RtThread {
     #[no_mangle]
     extern "C" fn default_cleanup(_thread: *mut RtThread) {}
 
-    // thread timeout handler func.
+    /// Handler for thread timeout.
     #[no_mangle]
     extern "C" fn handle_timeout(para: *mut ffi::c_void) {
         debug_assert!(para != ptr::null_mut());
@@ -773,7 +775,6 @@ impl RtThread {
 
         debug_assert!(thread.stat.is_suspended());
         thread.error = code::ETIMEOUT;
-        /* remove from suspend list */
         unsafe { Pin::new_unchecked(&mut thread.tlist).remove() };
 
         scheduler.insert_thread_locked(thread);
@@ -803,7 +804,7 @@ impl RtThread {
     fn detach_from_mutex(&mut self) {
         let level = self.spinlock.lock_irqsave();
 
-        // as raw mutex release may use sched_lock.
+        // Releasing raw mutex might use sched_lock.
         if let Some(mut pending_mutex) = self.mutex_info.pending_to {
             unsafe {
                 pending_mutex.as_mut().drop_thread(self);
@@ -857,14 +858,14 @@ impl RtThread {
     #[inline]
     pub(crate) fn update_priority(&mut self, priority: u8, suspend_flag: u32) -> Error {
         let mut ret = code::EOK;
-        // Change priority of the thread
+        // Change priority of the thread.
         self.change_priority(priority);
         while self.stat.is_suspended() {
-            //Whether change the priority of the taken mutex
+            // Whether change the priority of the taken mutex.
             if let Some(mut pending_mutex) = self.mutex_info.pending_to {
                 let pending_mutex = unsafe { pending_mutex.as_mut() };
                 let owner_thread = unsafe { &mut *pending_mutex.owner };
-                // Re-insert thread to suspended thread list
+                // Re-insert thread to suspended thread list.
                 self.remove_tlist();
 
                 ret = Error::from_errno(
@@ -875,7 +876,6 @@ impl RtThread {
                 );
 
                 if ret == code::EOK {
-                    // Update priority
                     pending_mutex.update_priority();
                     let mutex_priority = owner_thread.get_mutex_priority();
                     if mutex_priority != owner_thread.priority.get_current() {
@@ -897,7 +897,6 @@ impl RtThread {
         println!("thread start: {:?}", self.get_name());
 
         self.priority.update(self.priority.get_current());
-        // set to suspend.
         self.stat.set_suspended(SuspendFlag::Uninterruptible);
         if scheduler.insert_ready_locked(self) {
             scheduler.sched_unlock_with_sched(level);
@@ -926,7 +925,7 @@ impl RtThread {
     }
 
     pub fn detach(&mut self) {
-        // forbid scheduling on current core before returning since current thread
+        // Forbid scheduling on current core before returning since current thread
         // may be detached from scheduler.
         let scheduler = Cpu::get_current_scheduler();
         scheduler.preempt_disable();
@@ -986,7 +985,7 @@ impl RtThread {
         scheduler.preempt_disable();
 
         let thread = unsafe { crate::current_thread!().unwrap().as_mut() };
-        /* reset thread error */
+        // Reset thread error.
         thread.error = code::EOK;
 
         #[cfg(feature = "debugging_scheduler")]
@@ -995,9 +994,9 @@ impl RtThread {
         if thread.suspend(SuspendFlag::Interruptible) {
             thread.thread_timer.restart(tick);
             thread.error = code::EINTR;
-            // notify a pending rescheduling
+            // Notify for a pending rescheduling.
             scheduler.do_task_schedule();
-            // exit critical and do a rescheduling
+            // Exit critical region and do a rescheduling.
             scheduler.preempt_enable();
 
             if thread.error == code::ETIMEOUT {
@@ -1023,15 +1022,12 @@ impl RtThread {
             return false;
         }
 
-        // change thread stat
         scheduler.remove_thread_locked(self);
         #[cfg(feature = "smp")]
         {
             self.oncpu = CPU_DETACHED as u8;
         }
-        // set thread status as suspended
         self.stat.set_suspended(suspend_flag);
-        // stop thread timer anyway
         self.timer_stop();
         scheduler.sched_unlock(level);
 
@@ -1063,7 +1059,6 @@ impl RtThread {
             scheduler.remove_thread_locked(self);
             self.priority.update(priority);
             self.stat.set_base_state(ThreadState::INIT);
-            // insert thread to schedule queue again
             scheduler.insert_thread_locked(self);
         } else {
             self.priority.update(priority);
@@ -1089,21 +1084,21 @@ impl RtThread {
             scheduler.sched_unlock_with_sched(level);
         } else {
             self.bind_cpu = cpu;
-            // thread is running on a cpu
-            let cur_cpu = scheduler.get_current_id();
+            // Otherwise, the thread is running on a cpu.
+            let current_cpu = scheduler.get_current_id();
             if cpu != CPUS_NUMBER as u8 {
-                if cpu != cur_cpu {
+                if cpu != current_cpu {
                     unsafe {
-                        //TODO: call from libcpu
+                        // TODO: call from libcpu.
                         // rt_bindings::rt_hw_ipi_send(rt_bindings::RT_SCHEDULE_IPI as i32, 1 << cpu)
                     };
                     // self cpu need reschedule
                     scheduler.sched_unlock_with_sched(level);
                 }
             } else {
-                // no running on self cpu, but dest cpu can be itself
+                // Not running on self cpu, but destintation cpu can be itself.
                 unsafe {
-                    //TODO: call from libcpu
+                    // TODO: call from libcpu.
                     // rt_bindings::rt_hw_ipi_send(
                     //     rt_bindings::RT_SCHEDULE_IPI as i32,
                     //     1 << self.oncpu,
