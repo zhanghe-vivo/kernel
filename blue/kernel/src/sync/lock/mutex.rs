@@ -261,7 +261,7 @@ impl RtMutex {
                 self.inner_queue.force_push_stub();
             } else {
                 self.inner_queue.unlock();
-                return code::EFULL.to_errno();
+                return code::ENOSPC.to_errno();
             }
         } else {
             // Whether the mutex has owner thread.
@@ -289,11 +289,11 @@ impl RtMutex {
             } else {
                 // No waiting, return with timeout
                 if timeout == 0 {
-                    thread.error = code::ETIMEOUT;
+                    thread.error = code::ETIMEDOUT;
 
                     self.inner_queue.unlock();
 
-                    return code::ETIMEOUT.to_errno();
+                    return code::ETIMEDOUT.to_errno();
                 } else {
                     let mut priority = thread.priority.get_current();
                     // Suspend current thread

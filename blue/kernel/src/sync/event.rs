@@ -289,9 +289,9 @@ impl RtEvent {
                 self.set &= !set;
             }
         } else if timeout == 0 {
-            thread.error = code::ETIMEOUT;
+            thread.error = code::ETIMEDOUT;
             self.inner_queue.unlock();
-            return code::ETIMEOUT.to_errno();
+            return code::ETIMEDOUT.to_errno();
         } else {
             thread.event_info.set = set;
             thread.event_info.info = option;

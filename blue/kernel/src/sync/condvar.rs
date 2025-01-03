@@ -114,7 +114,7 @@ impl RtCondVar {
                 if mutex.unlock() != code::EOK.to_errno() {
                     return code::ERROR.to_errno();
                 }
-                return code::ETIMEOUT.to_errno();
+                return code::ETIMEDOUT.to_errno();
             } else {
                 crate::debug_in_thread_context!();
 
@@ -172,7 +172,7 @@ impl RtCondVar {
         let mut result = code::EOK.to_errno();
         loop {
             result = self.inner_sem.try_take();
-            if result == code::ETIMEOUT.to_errno() {
+            if result == code::ETIMEDOUT.to_errno() {
                 self.inner_sem.release();
             } else if result == code::EOK.to_errno() {
                 break;

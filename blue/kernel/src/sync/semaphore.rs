@@ -212,8 +212,8 @@ impl RtSemaphore {
             if timeout == 0 {
                 self.inner_queue.unlock();
 
-                /* FIXME: -2 is as expected, while C -code::ETIMEOUT is -116. */
-                return -116; //(code::ETIMEOUT as rt_err_t);
+                /* FIXME: -2 is as expected, while C -code::ETIMEDOUT is -116. */
+                return -116; //(code::ETIMEDOUT as rt_err_t);
             } else {
                 let thread_ptr = crate::current_thread_ptr!();
                 if thread_ptr.is_null() {
@@ -286,7 +286,7 @@ impl RtSemaphore {
                 self.inner_queue.force_push_stub();
             } else {
                 self.inner_queue.unlock();
-                return code::EFULL.to_errno();
+                return code::ENOSPC.to_errno();
             }
         }
 

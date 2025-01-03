@@ -774,7 +774,7 @@ impl RtThread {
         let level = scheduler.sched_lock();
 
         debug_assert!(thread.stat.is_suspended());
-        thread.error = code::ETIMEOUT;
+        thread.error = code::ETIMEDOUT;
         unsafe { Pin::new_unchecked(&mut thread.tlist).remove() };
 
         scheduler.insert_thread_locked(thread);
@@ -999,7 +999,7 @@ impl RtThread {
             // Exit critical region and do a rescheduling.
             scheduler.preempt_enable();
 
-            if thread.error == code::ETIMEOUT {
+            if thread.error == code::ETIMEDOUT {
                 thread.error = code::EOK;
             }
         }

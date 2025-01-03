@@ -9,7 +9,7 @@ pub unsafe extern "C" fn rt_thread_idle_sethook(hook: Option<idle::IdleHookFn>) 
             return code::EOK.to_errno();
         }
     }
-    code::EFULL.to_errno()
+    code::ENOSPC.to_errno()
 }
 
 #[cfg(feature = "idle_hook")]
@@ -21,5 +21,5 @@ pub unsafe extern "C" fn rt_thread_idle_delhook(hook: Option<idle::IdleHookFn>) 
             return code::EOK.to_errno();
         }
     }
-    code::EFULL.to_errno()
+    code::ENOSPC.to_errno()
 }

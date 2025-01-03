@@ -295,7 +295,7 @@ impl RtMessageQueue {
 
         if self.inner_queue.is_full() && timeout == 0 {
             self.inner_queue.unlock();
-            return code::EFULL.to_errno();
+            return code::ENOSPC.to_errno();
         }
 
         while self.inner_queue.is_full() {
@@ -303,7 +303,7 @@ impl RtMessageQueue {
 
             if timeout == 0 {
                 self.inner_queue.unlock();
-                return code::EFULL.to_errno();
+                return code::ENOSPC.to_errno();
             }
 
             let ret = self
@@ -460,7 +460,7 @@ impl RtMessageQueue {
 
         if self.inner_queue.is_empty() && timeout == 0 {
             self.inner_queue.unlock();
-            return code::ETIMEOUT.to_errno();
+            return code::ETIMEDOUT.to_errno();
         }
 
         while self.inner_queue.is_empty() {
@@ -468,7 +468,7 @@ impl RtMessageQueue {
 
             if timeout == 0 {
                 self.inner_queue.unlock();
-                thread.error = code::ETIMEOUT;
+                thread.error = code::ETIMEDOUT;
                 return thread.error.to_errno();
             }
 

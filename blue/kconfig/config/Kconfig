@@ -80,3 +80,7 @@ config RWLOCK
 config CONDVAR
     default y
     bool "Enable condvar"
+
+config COMPAT_NEWLIBC
+    default y
+    bool "Enable newlibc"

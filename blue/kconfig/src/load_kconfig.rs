@@ -44,6 +44,7 @@ pub enum Feature {
     Semaphore,
     Rwlock,
     Condvar,
+    CompatNewlibc,
 }
 
 impl Feature {
@@ -63,6 +64,7 @@ impl Feature {
             Feature::Semaphore => kbool!(SEMAPHORE),
             Feature::Rwlock => kbool!(RWLOCK),
             Feature::Condvar => kbool!(CONDVAR),
+            Feature::CompatNewlibc => kbool!(COMPAT_NEWLIBC),
         }
     }
 
@@ -82,6 +84,7 @@ impl Feature {
             Feature::Semaphore => "semaphore",
             Feature::Rwlock => "rwlock",
             Feature::Condvar => "condvar",
+            Feature::CompatNewlibc => "compat_newlibc",
         }
     }
 }

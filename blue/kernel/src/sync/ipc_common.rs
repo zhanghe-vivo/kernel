@@ -431,7 +431,7 @@ impl RtSysQueue {
             // increase message entry
             self.item_in_queue += 1;
         } else {
-            return code::EFULL.to_errno();
+            return code::ENOSPC.to_errno();
         }
 
         size as i32
@@ -449,7 +449,7 @@ impl RtSysQueue {
 
         if hdr.is_null() {
             self.spinlock.unlock();
-            return code::EFULL.to_errno();
+            return code::ENOSPC.to_errno();
         }
 
         // SAFETY: msg is null checked and buffer is valid
@@ -482,7 +482,7 @@ impl RtSysQueue {
             self.item_in_queue += 1;
         } else {
             self.spinlock.unlock();
-            return code::EFULL.to_errno();
+            return code::ENOSPC.to_errno();
         }
 
         if !self.dequeue_waiter.is_empty() {

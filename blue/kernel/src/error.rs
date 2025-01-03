@@ -1,66 +1,43 @@
 use crate::{cpu::Cpu, str::CStr};
-
 use alloc::alloc::{AllocError, LayoutError};
-
 use core::{num::TryFromIntError, ptr, str::Utf8Error};
 
 pub mod code {
-    use crate::str::CStr;
-
+    use crate::klibc;
     pub const EOK: super::Error = super::Error(0);
     pub const TRUE: super::Error = super::Error(1);
     pub const FLASE: super::Error = super::Error(0);
     pub const ERROR: super::Error = super::Error(-255);
-    pub const ETIMEOUT: super::Error = super::Error(-116);
-    pub const EFULL: super::Error = super::Error(-28);
-    pub const EEMPTY: super::Error = super::Error(-61);
-    pub const ENOMEM: super::Error = super::Error(-12);
-    pub const ENOSYS: super::Error = super::Error(-88);
-    pub const EBUSY: super::Error = super::Error(-16);
-    pub const EIO: super::Error = super::Error(-5);
-    pub const EINTR: super::Error = super::Error(-4);
-    pub const EINVAL: super::Error = super::Error(-22);
-    pub const ENOENT: super::Error = super::Error(-2);
-    pub const ENOSPC: super::Error = super::Error(-28);
-    pub const EPERM: super::Error = super::Error(-1);
-    pub const ETRAP: super::Error = super::Error(-254);
-
-    const EOK_STR: &'static CStr = crate::c_str!("OK      ");
-    const ERROR_STR: &'static CStr = crate::c_str!("ERROR   ");
-    const ETIMEOUT_STR: &'static CStr = crate::c_str!("ETIMOUT ");
-    const EFULL_STR: &'static CStr = crate::c_str!("ERSFULL ");
-    const EEMPTY_STR: &'static CStr = crate::c_str!("ERSEPTY ");
-    const ENOMEM_STR: &'static CStr = crate::c_str!("ENOMEM  ");
-    const ENOSYS_STR: &'static CStr = crate::c_str!("ENOSYS  ");
-    const EBUSY_STR: &'static CStr = crate::c_str!("EBUSY   ");
-    const EIO_STR: &'static CStr = crate::c_str!("EIO     ");
-    const EINTR_STR: &'static CStr = crate::c_str!("EINTRPT ");
-    const EINVAL_STR: &'static CStr = crate::c_str!("EINVAL  ");
-    const ENOENT_STR: &'static CStr = crate::c_str!("ENOENT  ");
-    const EPERM_STR: &'static CStr = crate::c_str!("EPERM   ");
-    const ETRAP_STR: &'static CStr = crate::c_str!("ETRAP   ");
-    const UNKNOW_STR: &'static CStr = crate::c_str!("EUNKNOW ");
-
-    pub fn name(errno: super::Error) -> &'static CStr {
-        match errno {
-            EOK => EOK_STR,
-            ERROR => ERROR_STR,
-            ETIMEOUT => ETIMEOUT_STR,
-            EFULL => EFULL_STR,
-            EEMPTY => EEMPTY_STR,
-            ENOMEM => ENOMEM_STR,
-            ENOSYS => ENOSYS_STR,
-            EBUSY => EBUSY_STR,
-            EIO => EIO_STR,
-            EINTR => EINTR_STR,
-            EINVAL => EINVAL_STR,
-            ENOENT => ENOENT_STR,
-            EPERM => EPERM_STR,
-            ETRAP => ETRAP_STR,
-            _ => UNKNOW_STR,
-        }
-    }
+    pub const ETIMEDOUT: super::Error = super::Error(-klibc::ETIMEDOUT);
+    pub const ENOSPC: super::Error = super::Error(-klibc::ENOSPC);
+    pub const ENODATA: super::Error = super::Error(-klibc::ENODATA);
+    pub const ENOMEM: super::Error = super::Error(-klibc::ENOMEM);
+    pub const ENOSYS: super::Error = super::Error(-klibc::ENOSYS);
+    pub const EBUSY: super::Error = super::Error(-klibc::EBUSY);
+    pub const EIO: super::Error = super::Error(-klibc::EIO);
+    pub const EINTR: super::Error = super::Error(-klibc::EINTR);
+    pub const EINVAL: super::Error = super::Error(-klibc::EINVAL);
+    pub const ENOENT: super::Error = super::Error(-klibc::ENOENT);
+    pub const ENODEV: super::Error = super::Error(-klibc::ENODEV);
+    pub const EPERM: super::Error = super::Error(-klibc::EPERM);
 }
+
+
+const EOK_STR: &'static CStr = crate::c_str!("OK      ");
+const ERROR_STR: &'static CStr = crate::c_str!("ERROR   ");
+const ETIMEDOUT_STR: &'static CStr = crate::c_str!("Timeout ");
+const ENOSPC_STR: &'static CStr = crate::c_str!("No space left on device ");
+const ENODATA_STR: &'static CStr = crate::c_str!("No data available ");
+const ENOMEM_STR: &'static CStr = crate::c_str!("Cannot allocate memory  ");
+const ENOSYS_STR: &'static CStr = crate::c_str!("Function not implemented  ");
+const EBUSY_STR: &'static CStr = crate::c_str!("Device or resource busy   ");
+const EIO_STR: &'static CStr = crate::c_str!("Input/output error     ");
+const EINTR_STR: &'static CStr = crate::c_str!("Interrupted system call ");
+const EINVAL_STR: &'static CStr = crate::c_str!("Invalid argument  ");
+const ENOENT_STR: &'static CStr = crate::c_str!("No such file or directory  ");
+const EPERM_STR: &'static CStr = crate::c_str!("Operation not permitted   ");
+const ENODEV_STR: &'static CStr = crate::c_str!("No Such Device ");
+const UNKNOW_STR: &'static CStr = crate::c_str!("EUNKNOW ");
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
@@ -77,7 +54,23 @@ impl Error {
     }
 
     pub fn name(&self) -> &'static CStr {
-        code::name(Error(-self.0))
+        match self {
+            &code::EOK => EOK_STR,
+            &code::ERROR => ERROR_STR,
+            &code::ETIMEDOUT => ETIMEDOUT_STR,
+            &code::ENOSPC => ENOSPC_STR,
+            &code::ENODATA => ENODATA_STR,
+            &code::ENOMEM => ENOMEM_STR,
+            &code::ENOSYS => ENOSYS_STR,
+            &code::EBUSY => EBUSY_STR,
+            &code::EIO => EIO_STR,
+            &code::EINTR => EINTR_STR,
+            &code::EINVAL => EINVAL_STR,
+            &code::ENOENT => ENOENT_STR,
+            &code::EPERM => EPERM_STR,
+            &code::ENODEV => ENODEV_STR,
+            _ => UNKNOW_STR,
+        }
     }
 }
 

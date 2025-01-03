@@ -202,7 +202,7 @@ impl RtMailbox {
 
         if self.inner_queue.is_full() && timeout == 0 {
             self.inner_queue.unlock();
-            return code::EFULL.to_errno();
+            return code::ENOSPC.to_errno();
         }
 
         while self.inner_queue.is_full() {
@@ -211,7 +211,7 @@ impl RtMailbox {
             if timeout == 0 {
                 self.inner_queue.unlock();
 
-                return code::EFULL.to_errno();
+                return code::ENOSPC.to_errno();
             }
 
             let ret = self.inner_queue.enqueue_waiter.wait(thread, suspend_flag);
@@ -256,7 +256,7 @@ impl RtMailbox {
             == 0
         {
             self.inner_queue.unlock();
-            return code::EFULL.to_errno();
+            return code::ENOSPC.to_errno();
         }
 
         if !self.inner_queue.dequeue_waiter.is_empty() {
@@ -305,7 +305,7 @@ impl RtMailbox {
 
         if self.inner_queue.is_full() {
             self.inner_queue.unlock();
-            return code::EFULL.to_errno();
+            return code::ENOSPC.to_errno();
         }
 
         self.inner_queue
@@ -342,7 +342,7 @@ impl RtMailbox {
 
         if self.inner_queue.is_empty() && timeout == 0 {
             self.inner_queue.unlock();
-            return code::ETIMEOUT.to_errno();
+            return code::ETIMEDOUT.to_errno();
         }
 
         let thread = &mut *thread_ptr;
@@ -351,9 +351,9 @@ impl RtMailbox {
 
             if timeout == 0 {
                 self.inner_queue.unlock();
-                thread.error = code::ETIMEOUT;
+                thread.error = code::ETIMEDOUT;
 
-                return code::ETIMEOUT.to_errno();
+                return code::ETIMEDOUT.to_errno();
             }
 
             let ret = self

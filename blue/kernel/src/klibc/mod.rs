@@ -1,6 +1,11 @@
 use core::{intrinsics::compare_bytes, ptr};
-
 use crate::str::CStringIter;
+
+mod errno;
+mod fnctl;
+
+pub use errno::*;
+pub use fnctl::*;
 
 /// weak *mut u8 memset(*mut u8 s, u8 c, usize count)
 #[linkage = "weak"]
