@@ -50,7 +50,7 @@ fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
     }
     #[cfg(not(debug_assertions))]
     {
-        Arch::sys_reset()
+        blue_arch::arch::Arch::sys_reset()
     }
 }
 

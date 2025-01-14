@@ -14,6 +14,7 @@ import json
 
 ROOT = os.path.abspath(os.path.dirname(__file__))
 
+
 def Build(config, toml):
     target = config.target
     toml_path = os.path.join(ROOT, 'blue/Cargo.toml')
@@ -34,9 +35,9 @@ def Build(config, toml):
         if rc != 0:
             logging.error(cmd)
             return rc
-        with open(config_path+"/.config", 'r') as f_in:
+        with open(config_path + "/.config", 'r') as f_in:
             lines = f_in.readlines()
-        with open(config_path+"/.config", 'w') as f_out:
+        with open(config_path + "/.config", 'w') as f_out:
             for line in lines:
                 if line.startswith("CONFIG_"):
                     f_out.write(line[len("CONFIG_"):])
@@ -62,6 +63,8 @@ def Build(config, toml):
             return rc
     action = 'build'
     cmd = f'OS_ADAPTER="{os_adapter}" INCLUDE_PATH="{include_path}" cargo {action} --manifest-path {toml_path} --target {toolchain} --artifact-dir {out_path} -Z unstable-options'
+    if config.release:
+        cmd += ' --release'
     rc = subprocess.call(cmd, shell=True, cwd=os.path.join(ROOT, 'blue'))
     if rc != 0:
         logging.error(cmd)
@@ -120,6 +123,10 @@ def main():
                        action='store_true',
                        default=False,
                        help=u"构建前清除")
+    build.add_argument('--release',
+                       action='store_true',
+                       default=False,
+                       help=u"Release mode")
     build.set_defaults(func=Build)
     clean = subparsers.add_parser('clean', aliases=['c'], description=u"清除")
     clean.set_defaults(func=Clean)

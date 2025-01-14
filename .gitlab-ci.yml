@@ -6,6 +6,8 @@ stages:
   - infra-tests
   - mps2-an385-build
   - mps2-an385-ut
+  - mps2-an385-build-release
+  - mps2-an385-ut-release
   - mps3-an547-build
   - mps3-an547-ut
   # - a9-build-up
@@ -31,7 +33,7 @@ run-infra-tests:
 build-mps2-an385:
   stage: mps2-an385-build
   script:
-    - echo "...start NP build..."  
+    - echo "...start NP build..."
     - python3 x b --target qemu-mps2-an385
   tags:
     - ubuntu
@@ -49,7 +51,7 @@ test-mps2-an385:
   dependencies:
     - build-mps2-an385
   script:
-    - echo "...test NP build result..."  
+    - echo "...test NP build result..."
     - cd bsp/qemu-mps2-an385
     - timeout 90s ./qemu-test.sh || true
     - cd ../../
@@ -59,10 +61,42 @@ test-mps2-an385:
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
 
+build-mps2-an385-release:
+  stage: mps2-an385-build-release
+  script:
+    - echo "...start NP build..."
+    - python3 x b --target qemu-mps2-an385 --release --clean
+  tags:
+    - ubuntu
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  artifacts:
+        name: "rtthread.bin"
+        untracked: false
+        expire_in: 5 mins
+        paths:
+            - /data01/runner/gitlab-runner/builds/y1GSVydi/0/11154271/rt-thread/bsp/qemu-mps2-an385/rtthread.bin
+
+test-mps2-an385-release:
+  stage: mps2-an385-ut-release
+  dependencies:
+    - build-mps2-an385
+  script:
+    - echo "...test NP build result..."
+    - cd bsp/qemu-mps2-an385
+    - timeout 90s ./qemu-test.sh || true
+    - cd ../../
+    - python3 scripts/check_bsp_unittests_result.py qemu-mps2-an385
+  tags:
+    - ubuntu
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+
 build-mps3-an547:
   stage: mps3-an547-build
   script:
-    - echo "...start NP build..."  
+    - echo "...start NP build..."
     - python3 x b --target qemu-mps3-an547
   tags:
     - ubuntu
@@ -80,7 +114,7 @@ test-mps3-an547:
   dependencies:
     - build-mps3-an547
   script:
-    - echo "...test NP build result..."  
+    - echo "...test NP build result..."
     - cd bsp/qemu-mps3-an547
     - timeout 90s ./qemu-test.sh || true
     - cd ../../
@@ -93,7 +127,7 @@ test-mps3-an547:
 # a9-up-build:
 #   stage: a9-build-up
 #   script:
-#     - echo "...开始NP构建..."  
+#     - echo "...开始NP构建..."
 #     - cp bsp/qemu-vexpress-a9/.config_up bsp/qemu-vexpress-a9/rtconfig.h
 #     - ls -l bsp/qemu-vexpress-a9/rtconfig.h
 #     - ./build.sh qemu-vexpress-a9
@@ -113,7 +147,7 @@ test-mps3-an547:
 #   dependencies:
 #     - a9-up-build
 #   script:
-#     - echo "...测试NP代码..."  
+#     - echo "...测试NP代码..."
 #     - cd bsp/qemu-vexpress-a9
 #     - timeout 90s ./qemu-test.sh || true
 #     - cd ../../
@@ -122,11 +156,11 @@ test-mps3-an547:
 #     - ubuntu
 #   rules:
 #     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    
+
 # a9-mp-build:
 #   stage: a9-build-mp
 #   script:
-#     - echo "...开始MP构建..."  
+#     - echo "...开始MP构建..."
 #     - cp bsp/qemu-vexpress-a9/.config_mp bsp/qemu-vexpress-a9/rtconfig.h
 #     - ./build.sh qemu-vexpress-a9
 #   tags:
@@ -138,14 +172,14 @@ test-mps3-an547:
 #         untracked: false
 #         expire_in: 5 mins
 #         paths:
-#             - /data01/runner/gitlab-runner/builds/y1GSVydi/0/11154271/rt-thread/bsp/qemu-vexpress-a9/rtthread.bin    
+#             - /data01/runner/gitlab-runner/builds/y1GSVydi/0/11154271/rt-thread/bsp/qemu-vexpress-a9/rtthread.bin
 
 # a9-mp-unit-test:
 #   stage: a9-ut-mp
 #   dependencies:
 #     - a9-mp-build
 #   script:
-#     - echo "...测试MP代码..."  
+#     - echo "...测试MP代码..."
 #     - cd bsp/qemu-vexpress-a9
 #     - timeout 90s ./qemu-test.sh || true
 #     - cd ../../
@@ -154,4 +188,3 @@ test-mps3-an547:
 #     - ubuntu
 #   rules:
 #     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-
