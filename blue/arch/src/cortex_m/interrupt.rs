@@ -11,6 +11,18 @@ impl Arch {
         // SAFETY: Safe register read operation
         unsafe { asm!("mrs {}, PRIMASK", out(reg) r, options(nomem, nostack, preserves_flags)) };
         cortex_m::interrupt::disable();
+        // Impl of cortex_m::interrupt::disable() is
+        // ```
+        // #[inline]
+        // pub fn disable() {
+        //     call_asm!(__cpsid());
+        // }
+        // ```
+        // No fence provided.
+        // Ensure no preceeding memory accesses are reordered to after interrupts are disabled.
+        // This has been fixed in master branch, in https://github.com/rust-embedded/cortex-m/commit/894f2aabdbd65f85eecf25debc2326f0387863c7.
+        // But we are sticking to 0.7.7.
+        compiler_fence(Ordering::SeqCst);
         r as usize
     }
 
