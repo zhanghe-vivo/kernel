@@ -7,7 +7,7 @@ use crate::blue_kernel::{
     object::{KernelObject, ObjectClassType},
     process,
     str::CStr,
-    thread::{RtThread, SuspendFlag, ThreadCleanupFn, ThreadEntryFn},
+    thread::{Thread, SuspendFlag, ThreadCleanupFn, ThreadEntryFn},
 };
 use core::{
     ffi,
@@ -18,7 +18,7 @@ use pinned_init::PinInit;
 
 #[no_mangle]
 pub extern "C" fn rt_thread_init(
-    thread: *mut RtThread,
+    thread: *mut Thread,
     name: *const ffi::c_char,
     entry: ThreadEntryFn,
     parameter: *mut ffi::c_void,
@@ -33,7 +33,7 @@ pub extern "C" fn rt_thread_init(
     assert!(tick != 0);
 
     let name_cstr = unsafe { CStr::from_char_ptr(name) };
-    let init = RtThread::static_new(
+    let init = Thread::static_new(
         name_cstr,
         entry,
         parameter as *mut usize,
@@ -50,7 +50,7 @@ pub extern "C" fn rt_thread_init(
 }
 
 #[no_mangle]
-pub extern "C" fn rt_thread_self() -> *mut RtThread {
+pub extern "C" fn rt_thread_self() -> *mut Thread {
     match Cpu::get_current_thread() {
         Some(thread) => thread.as_ptr(),
         None => ptr::null_mut(),
@@ -58,7 +58,7 @@ pub extern "C" fn rt_thread_self() -> *mut RtThread {
 }
 
 #[no_mangle]
-pub extern "C" fn rt_thread_startup(thread: *mut RtThread) -> i32 {
+pub extern "C" fn rt_thread_startup(thread: *mut Thread) -> i32 {
     // parameter check
     assert!(!thread.is_null());
     let th_mut = unsafe { &mut *thread };
@@ -70,7 +70,7 @@ pub extern "C" fn rt_thread_startup(thread: *mut RtThread) -> i32 {
 }
 
 #[no_mangle]
-pub extern "C" fn rt_thread_close(thread: *mut RtThread) -> i32 {
+pub extern "C" fn rt_thread_close(thread: *mut Thread) -> i32 {
     // parameter check
     assert!(!thread.is_null());
     let th_mut = unsafe { &mut *thread };
@@ -81,7 +81,7 @@ pub extern "C" fn rt_thread_close(thread: *mut RtThread) -> i32 {
 }
 
 #[no_mangle]
-pub extern "C" fn rt_thread_detach(thread: *mut RtThread) -> i32 {
+pub extern "C" fn rt_thread_detach(thread: *mut Thread) -> i32 {
     // parameter check
     assert!(!thread.is_null());
     let th = unsafe { &mut *thread };
@@ -99,10 +99,10 @@ pub extern "C" fn rt_thread_create(
     stack_size: u32,
     priority: u8,
     tick: u32,
-) -> *mut RtThread {
+) -> *mut Thread {
     let name_cstr = unsafe { CStr::from_char_ptr(name) };
 
-    let thread = RtThread::try_new_in_heap(
+    let thread = Thread::try_new_in_heap(
         name_cstr,
         entry,
         parameter as *mut usize,
@@ -121,7 +121,7 @@ pub extern "C" fn rt_thread_create(
 
 #[cfg(feature = "heap")]
 #[no_mangle]
-pub extern "C" fn rt_thread_delete(thread: *mut RtThread) -> i32 {
+pub extern "C" fn rt_thread_delete(thread: *mut Thread) -> i32 {
     assert!(!thread.is_null());
     let th = unsafe { &mut *thread };
     assert!(th.type_name() == ObjectClassType::ObjectClassThread as u8);
@@ -132,13 +132,13 @@ pub extern "C" fn rt_thread_delete(thread: *mut RtThread) -> i32 {
 
 #[no_mangle]
 pub extern "C" fn rt_thread_yield() -> i32 {
-    RtThread::yield_now();
+    Thread::yield_now();
     return code::EOK.to_errno();
 }
 
 #[no_mangle]
 pub extern "C" fn rt_thread_delay(tick: u32) -> i32 {
-    match RtThread::sleep(tick) {
+    match Thread::sleep(tick) {
         Ok(_) => return code::EOK.to_errno(),
         Err(e) => e.to_errno(),
     }
@@ -147,7 +147,7 @@ pub extern "C" fn rt_thread_delay(tick: u32) -> i32 {
 #[no_mangle]
 pub extern "C" fn rt_thread_mdelay(ms: i32) -> i32 {
     let tick = clock::tick_from_millisecond(ms);
-    match RtThread::sleep(tick) {
+    match Thread::sleep(tick) {
         Ok(_) => return code::EOK.to_errno(),
         Err(e) => e.to_errno(),
     }
@@ -163,7 +163,7 @@ pub enum ThreadControlAction {
 }
 
 #[no_mangle]
-pub extern "C" fn rt_thread_control(thread: *mut RtThread, cmd: u32, arg: *mut ffi::c_void) -> i32 {
+pub extern "C" fn rt_thread_control(thread: *mut Thread, cmd: u32, arg: *mut ffi::c_void) -> i32 {
     assert!(!thread.is_null());
     let th = unsafe { &mut *thread };
     assert!(th.type_name() == ObjectClassType::ObjectClassThread as u8);
@@ -204,13 +204,13 @@ pub extern "C" fn rt_thread_control(thread: *mut RtThread, cmd: u32, arg: *mut f
 }
 
 #[no_mangle]
-pub extern "C" fn rt_thread_find(name: *mut ffi::c_char) -> *mut RtThread {
-    return process::find_object(ObjectClassType::ObjectClassThread as u8, name) as *mut RtThread;
+pub extern "C" fn rt_thread_find(name: *mut ffi::c_char) -> *mut Thread {
+    return process::find_object(ObjectClassType::ObjectClassThread as u8, name) as *mut Thread;
 }
 
 #[no_mangle]
 pub extern "C" fn rt_thread_get_name(
-    thread: *mut RtThread,
+    thread: *mut Thread,
     name: *mut ffi::c_char,
     name_size: u8,
 ) -> i32 {
@@ -224,7 +224,7 @@ pub extern "C" fn rt_thread_get_name(
 }
 
 #[no_mangle]
-pub extern "C" fn rt_thread_suspend_with_flag(thread: *mut RtThread, suspend_flag: u32) -> i32 {
+pub extern "C" fn rt_thread_suspend_with_flag(thread: *mut Thread, suspend_flag: u32) -> i32 {
     assert!(!thread.is_null());
     let th = unsafe { &mut *thread };
     assert!(th.type_name() == ObjectClassType::ObjectClassThread as u8);
@@ -235,12 +235,12 @@ pub extern "C" fn rt_thread_suspend_with_flag(thread: *mut RtThread, suspend_fla
 }
 
 #[no_mangle]
-pub extern "C" fn rt_thread_suspend(thread: *mut RtThread) -> i32 {
+pub extern "C" fn rt_thread_suspend(thread: *mut Thread) -> i32 {
     rt_thread_suspend_with_flag(thread, SuspendFlag::Uninterruptible as u32)
 }
 
 #[no_mangle]
-pub extern "C" fn rt_thread_resume(thread: *mut RtThread) -> i32 {
+pub extern "C" fn rt_thread_resume(thread: *mut Thread) -> i32 {
     assert!(!thread.is_null());
     let th = unsafe { &mut *thread };
     assert!(th.type_name() == ObjectClassType::ObjectClassThread as u8);
@@ -252,7 +252,7 @@ pub extern "C" fn rt_thread_resume(thread: *mut RtThread) -> i32 {
 }
 
 #[no_mangle]
-pub extern "C" fn rt_thread_cleanup(thread: *mut RtThread, cleanup: ThreadCleanupFn) {
+pub extern "C" fn rt_thread_cleanup(thread: *mut Thread, cleanup: ThreadCleanupFn) {
     assert!(!thread.is_null());
     assert!(cleanup as *const () != core::ptr::null());
 

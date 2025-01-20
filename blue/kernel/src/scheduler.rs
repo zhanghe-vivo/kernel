@@ -1,7 +1,7 @@
 use crate::{
     blue_kconfig::THREAD_PRIORITY_MAX,
     cpu::Cpu,
-    thread::{RtThread, ThreadState},
+    thread::{Thread, ThreadState},
 };
 use blue_arch::arch::Arch;
 use blue_infra::list::doubly_linked_list::ListHead;
@@ -26,7 +26,7 @@ use pinned_init::{pin_data, pin_init, pin_init_array_from_fn, PinInit};
 #[cfg(feature = "smp")]
 const CPU_MASK: usize = (1 << CPUS_NR) - 1;
 
-#[cfg(feature = "rt_thread_priority_max_256")]
+#[cfg(feature = "thread_priority_max")]
 #[pin_data]
 pub struct PriorityTableManager {
     #[pin]
@@ -35,7 +35,7 @@ pub struct PriorityTableManager {
     ready_table: [u8; 32],
 }
 
-#[cfg(not(feature = "rt_thread_priority_max_256"))]
+#[cfg(not(feature = "thread_priority_max"))]
 #[pin_data]
 pub struct PriorityTableManager {
     #[pin]
@@ -46,7 +46,7 @@ pub struct PriorityTableManager {
 // #[repr(C)]
 #[pin_data]
 pub struct Scheduler {
-    pub(crate) current_thread: AtomicPtr<RtThread>,
+    pub(crate) current_thread: AtomicPtr<Thread>,
     // Scheduler lock as local irq, not need spin_lock
     ///priority list headers
     #[pin]
@@ -61,7 +61,7 @@ pub struct Scheduler {
 }
 
 impl PriorityTableManager {
-    #[cfg(feature = "rt_thread_priority_max_256")]
+    #[cfg(feature = "thread_priority_max")]
     pub fn new() -> impl PinInit<Self> {
         pin_init!(Self {
             priority_table <- pin_init_array_from_fn(|_| ListHead::new()),
@@ -70,7 +70,7 @@ impl PriorityTableManager {
         })
     }
 
-    #[cfg(not(feature = "rt_thread_priority_max_256"))]
+    #[cfg(not(feature = "thread_priority_max"))]
     pub fn new() -> impl PinInit<Self> {
         pin_init!(Self {
             priority_table <- pin_init_array_from_fn(|_| ListHead::new()),
@@ -86,7 +86,7 @@ impl PriorityTableManager {
     #[inline]
     pub fn get_highest_ready_prio(&self) -> u32 {
         let num = self.priority_group.trailing_zeros();
-        #[cfg(feature = "rt_thread_priority_max_256")]
+        #[cfg(feature = "thread_priority_max")]
         if num != u32::MAX {
             return (num << 3) + self.ready_table[num as usize].trailing_zeros();
         }
@@ -94,19 +94,19 @@ impl PriorityTableManager {
         num
     }
 
-    pub fn get_thread_by_prio(&self, prio: u32) -> Option<NonNull<RtThread>> {
+    pub fn get_thread_by_prio(&self, prio: u32) -> Option<NonNull<Thread>> {
         if let Some(node) = self.priority_table[prio as usize].next() {
             unsafe {
-                let thread: *mut RtThread = crate::thread_list_node_entry!(node.as_ptr());
+                let thread: *mut Thread = crate::thread_list_node_entry!(node.as_ptr());
                 return Some(NonNull::new_unchecked(thread));
             }
         }
         None
     }
 
-    pub fn insert_thread(&mut self, thread: &mut RtThread) {
+    pub fn insert_thread(&mut self, thread: &mut Thread) {
         debug_assert!(thread.tlist.is_empty());
-        #[cfg(feature = "rt_thread_priority_max_256")]
+        #[cfg(feature = "thread_priority_max")]
         {
             self.ready_table[thread.priority.get_number() as usize] |=
                 thread.priority.get_high_mask() as u8;
@@ -127,11 +127,11 @@ impl PriorityTableManager {
         }
     }
 
-    pub fn remove_thread(&mut self, thread: &mut RtThread) {
+    pub fn remove_thread(&mut self, thread: &mut Thread) {
         unsafe { Pin::new_unchecked(&mut thread.tlist).remove() };
 
         if self.priority_table[thread.priority.get_current() as usize].is_empty() {
-            #[cfg(feature = "rt_thread_priority_max_256")]
+            #[cfg(feature = "thread_priority_max")]
             {
                 self.ready_table[thread.priority.get_number() as usize] &=
                     !thread.priority.get_high_mask();
@@ -139,7 +139,7 @@ impl PriorityTableManager {
                     self.priority_group &= !(thread.priority.get_number_mask());
                 }
             }
-            #[cfg(not(feature = "rt_thread_priority_max_256"))]
+            #[cfg(not(feature = "thread_priority_max"))]
             {
                 self.priority_group &= !(thread.priority.get_number_mask());
             }
@@ -167,12 +167,12 @@ impl Scheduler {
     }
 
     #[inline]
-    pub fn get_current_thread(&self) -> Option<NonNull<RtThread>> {
+    pub fn get_current_thread(&self) -> Option<NonNull<Thread>> {
         NonNull::new(self.current_thread.load(Ordering::Acquire))
     }
 
     #[inline]
-    pub fn set_current_thread(&self, th: NonNull<RtThread>) {
+    pub fn set_current_thread(&self, th: NonNull<Thread>) {
         self.current_thread.store(th.as_ptr(), Ordering::Release);
     }
 
@@ -219,7 +219,7 @@ impl Scheduler {
         Cpus::unlock_sched_fast();
     }
 
-    fn get_highest_priority_thread_locked(&self) -> Option<(NonNull<RtThread>, u32)> {
+    fn get_highest_priority_thread_locked(&self) -> Option<(NonNull<Thread>, u32)> {
         debug_assert!(self.is_sched_locked());
 
         let highest = self.priority_manager.get_highest_ready_prio();
@@ -251,7 +251,7 @@ impl Scheduler {
         None
     }
 
-    pub fn insert_thread_locked(&mut self, thread: &mut RtThread) {
+    pub fn insert_thread_locked(&mut self, thread: &mut Thread) {
         debug_assert!(self.is_sched_locked());
 
         if thread.stat.is_ready() {
@@ -307,7 +307,7 @@ impl Scheduler {
         }
     }
 
-    pub fn remove_thread_locked(&mut self, thread: &mut RtThread) {
+    pub fn remove_thread_locked(&mut self, thread: &mut Thread) {
         debug_assert!(self.is_sched_locked());
 
         #[cfg(not(feature = "smp"))]
@@ -326,7 +326,7 @@ impl Scheduler {
         }
     }
 
-    pub fn change_priority_locked(&mut self, thread: &mut RtThread, priority: u8) {
+    pub fn change_priority_locked(&mut self, thread: &mut Thread, priority: u8) {
         debug_assert!(self.is_scheduled());
         debug_assert!(self.is_sched_locked());
         assert!(priority < THREAD_PRIORITY_MAX as u8);
@@ -353,8 +353,8 @@ impl Scheduler {
 
     fn prepare_context_switch_locked(
         &mut self,
-        cur_th: Option<NonNull<RtThread>>,
-    ) -> Option<NonNull<RtThread>> {
+        cur_th: Option<NonNull<Thread>>,
+    ) -> Option<NonNull<Thread>> {
         /* quickly check if any other ready threads queuing */
         if self.has_ready_thread() {
             let to_thread = self.get_highest_priority_thread_locked();
@@ -712,7 +712,7 @@ impl Scheduler {
         stack_ptr
     }
 
-    pub(crate) fn insert_ready_locked(&mut self, thread: &mut RtThread) -> bool {
+    pub(crate) fn insert_ready_locked(&mut self, thread: &mut Thread) -> bool {
         debug_assert!(self.is_sched_locked());
 
         if thread.stat.is_suspended() {

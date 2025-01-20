@@ -1,6 +1,6 @@
 use crate::{
     new_spinlock, object::KernelObject, static_init::UnsafeStaticInit, sync::SpinLock,
-    thread::RtThread,
+    thread::Thread,
 };
 use alloc::alloc::{dealloc, Layout};
 use blue_infra::list::doubly_linked_list::ListHead;
@@ -10,12 +10,12 @@ use pinned_init::{pin_data, pin_init, PinInit};
 #[cfg(feature = "smp")]
 use crate::{
     blue_kconfig, c_str, clock, scheduler,
-    str::CStr,
+    str::CStr,sync::ipc_common,error::code,
     thread::{ThreadEntryFn, ThreadWithStack},
 };
 
 #[cfg(feature = "smp")]
-const ZOMBIE_THREAD_STACK_SIZE: usize = rt_bindings::IDLE_THREAD_STACK_SIZE as usize;
+const ZOMBIE_THREAD_STACK_SIZE: usize = blue_kconfig::IDLE_THREAD_STACK_SIZE as usize;
 #[cfg(feature = "smp")]
 const ZOMBIE_NAME: &'static crate::ctr::CStr = crate::c_str!("zombie");
 
@@ -48,7 +48,7 @@ pub(crate) struct ZombieManager {
     #[pin]
     thread: ThreadWithStack<ZOMBIE_THREAD_STACK_SIZE>,
     #[pin]
-    sem: RtSemaphore,
+    sem: Semaphore,
 }
 
 impl ZombieManager {
@@ -67,7 +67,7 @@ impl ZombieManager {
                 core::ptr::null_mut(), (blue_kconfig::THREAD_PRIORITY_MAX - 2) as u8, 32),
             sem <- unsafe {
                 pin_init_from_closure::<_, ::core::convert::Infallible>(|slot| {
-                    (*slot).init(ZOMBIE_NAME.as_char_ptr(), 0, rt_bindings::IPC_FLAG_FIFO as u8);
+                    (*slot).init(ZOMBIE_NAME.as_char_ptr(), 0, ipc_common::IPC_WAIT_MODE_FIFO as u8);
                     Ok(())
                 })
             },
@@ -81,7 +81,7 @@ impl ZombieManager {
         loop {
             unsafe {
                 let ret = (&mut ZOMBIE_MANAGER.sem as *mut _).take(clock::WAITING_FOREVER);
-                assert!(ret == rt_bindings::code::EOK as i32);
+                assert!(ret == code::EOK.to_errno());
                 ZOMBIE_MANAGER.reclaim();
             }
         }
@@ -134,7 +134,7 @@ impl ZombieManager {
         }
     }
 
-    pub(crate) fn zombie_enqueue(&mut self, thread: &mut RtThread) {
+    pub(crate) fn zombie_enqueue(&mut self, thread: &mut Thread) {
         let list = self.zombies_list.lock();
         unsafe { Pin::new_unchecked(&mut thread.tlist).insert_next(&*list) };
         drop(list);
@@ -144,7 +144,7 @@ impl ZombieManager {
         }
     }
 
-    pub(crate) fn zombie_dequeue(&self) -> Option<NonNull<RtThread>> {
+    pub(crate) fn zombie_dequeue(&self) -> Option<NonNull<Thread>> {
         let list = self.zombies_list.lock();
         if let Some(mut thread_list) = (*list).next() {
             unsafe {

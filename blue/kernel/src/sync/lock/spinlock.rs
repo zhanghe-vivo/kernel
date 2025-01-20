@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 use crate::cpu::Cpu;
 #[cfg(feature = "debugging_spinlock")]
-use crate::{irq::IrqLock, println, thread::RtThread};
+use crate::{irq::IrqLock, println, thread::Thread};
 use blue_arch::arch::Arch;
 #[cfg(feature = "smp")]
 use blue_arch::asm;
@@ -38,7 +38,7 @@ pub struct RawSpin {
     tickets: Tickets,
 
     #[cfg(feature = "debugging_spinlock")]
-    pub(crate) owner: Cell<Option<NonNull<RtThread>>>,
+    pub(crate) owner: Cell<Option<NonNull<Thread>>>,
 }
 
 unsafe impl Sync for RawSpin {}

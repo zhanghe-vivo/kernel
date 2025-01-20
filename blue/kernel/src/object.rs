@@ -3,14 +3,14 @@ use crate::{
     klibc::{memset, strncpy},
     process::{foreach, insert, remove, Kprocess},
     sync::{
-        condvar::RtCondVar,
-        event::RtEvent,
-        lock::{mutex::RtMutex, rwlock::RtRwLock},
-        mailbox::RtMailbox,
-        message_queue::RtMessageQueue,
-        semaphore::RtSemaphore,
+        condvar::CondVar,
+        event::Event,
+        lock::{mutex::Mutex, rwlock::RwLock},
+        mailbox::Mailbox,
+        message_queue::MessageQueue,
+        semaphore::Semaphore,
     },
-    thread::RtThread,
+    thread::Thread,
     timer::Timer,
 };
 use blue_infra::list::doubly_linked_list::ListHead;
@@ -214,28 +214,28 @@ impl ObjectClassType {
             //< The object is a process.
             x if x == Self::ObjectClassProcess as u8 => mem::size_of::<Kprocess>(),
             //< The object is a thread.
-            x if x == Self::ObjectClassThread as u8 => mem::size_of::<RtThread>(),
+            x if x == Self::ObjectClassThread as u8 => mem::size_of::<Thread>(),
             //< The object is a semaphore.
             #[cfg(feature = "semaphore")]
-            x if x == Self::ObjectClassSemaphore as u8 => mem::size_of::<RtSemaphore>(),
+            x if x == Self::ObjectClassSemaphore as u8 => mem::size_of::<Semaphore>(),
             //< The object is a mutex.
             #[cfg(feature = "mutex")]
-            x if x == Self::ObjectClassMutex as u8 => mem::size_of::<RtMutex>(),
+            x if x == Self::ObjectClassMutex as u8 => mem::size_of::<Mutex>(),
             //< The object is a condition variable.
             #[cfg(feature = "condvar")]
-            x if x == Self::ObjectClassCondVar as u8 => mem::size_of::<RtCondVar>(),
+            x if x == Self::ObjectClassCondVar as u8 => mem::size_of::<CondVar>(),
             //< The object is a RwLock.
             #[cfg(feature = "rwlock")]
-            x if x == Self::ObjectClassRwLock as u8 => mem::size_of::<RtRwLock>(),
+            x if x == Self::ObjectClassRwLock as u8 => mem::size_of::<RwLock>(),
             //< The object is an event.
             #[cfg(feature = "event")]
-            x if x == Self::ObjectClassEvent as u8 => mem::size_of::<RtEvent>(),
+            x if x == Self::ObjectClassEvent as u8 => mem::size_of::<Event>(),
             //< The object is a mailbox.
             #[cfg(feature = "mailbox")]
-            x if x == Self::ObjectClassMailBox as u8 => mem::size_of::<RtMailbox>(),
+            x if x == Self::ObjectClassMailBox as u8 => mem::size_of::<Mailbox>(),
             //< The object is a message queue.
             #[cfg(feature = "messagequeue")]
-            x if x == Self::ObjectClassMessageQueue as u8 => mem::size_of::<RtMessageQueue>(),
+            x if x == Self::ObjectClassMessageQueue as u8 => mem::size_of::<MessageQueue>(),
             //< The object is a memory heap.
             #[cfg(feature = "memheap")]
             x if x == Self::ObjectClassMemHeap as u8 => mem::size_of::<Memheap>(),

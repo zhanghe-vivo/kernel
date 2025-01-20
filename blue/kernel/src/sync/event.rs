@@ -4,7 +4,7 @@ use crate::{
     impl_kobject,
     object::*,
     sync::ipc_common::*,
-    thread::{RtThread, SuspendFlag},
+    thread::{Thread, SuspendFlag},
     timer::TimerControlAction,
 };
 use blue_infra::list::doubly_linked_list::ListHead;
@@ -18,7 +18,7 @@ use pinned_init::{pin_data, pin_init, pin_init_from_closure, pinned_drop, InPlac
 #[pin_data(PinnedDrop)]
 pub struct KEvent {
     #[pin]
-    raw: UnsafeCell<RtEvent>,
+    raw: UnsafeCell<Event>,
     #[pin]
     pin: PhantomPinned,
 }
@@ -37,9 +37,9 @@ impl PinnedDrop for KEvent {
 
 impl KEvent {
     pub fn new() -> Pin<Box<Self>> {
-        fn init_raw() -> impl PinInit<UnsafeCell<RtEvent>> {
-            let init = |slot: *mut UnsafeCell<RtEvent>| {
-                let slot: *mut RtEvent = slot.cast();
+        fn init_raw() -> impl PinInit<UnsafeCell<Event>> {
+            let init = |slot: *mut UnsafeCell<Event>| {
+                let slot: *mut Event = slot.cast();
                 unsafe {
                     let cur_ref = &mut *slot;
 
@@ -90,7 +90,7 @@ const EVENT_CLEAR: u32 = 4;
 /// Event flag raw structure
 #[repr(C)]
 #[pin_data]
-pub struct RtEvent {
+pub struct Event {
     /// Inherit from KObjectBase
     #[pin]
     pub(crate) parent: KObjectBase,
@@ -99,12 +99,12 @@ pub struct RtEvent {
     #[pin]
     /// SysQueue for Event flag
     #[pin]
-    pub(crate) inner_queue: RtSysQueue,
+    pub(crate) inner_queue: SysQueue,
 }
 
-impl_kobject!(RtEvent);
+impl_kobject!(Event);
 
-impl RtEvent {
+impl Event {
     #[inline]
     pub fn new(name: [i8; NAME_MAX], flag: u8) -> impl PinInit<Self> {
         assert!((flag == IPC_WAIT_MODE_FIFO as u8) || (flag == IPC_WAIT_MODE_PRIO as u8));
@@ -114,7 +114,7 @@ impl RtEvent {
         pin_init!(Self {
             parent<-KObjectBase::new(ObjectClassType::ObjectClassEvent as u8, name),
             set: 0,
-            inner_queue<-RtSysQueue::new(mem::size_of::<u32>(), 1, IPC_SYS_QUEUE_STUB, flag as u32)
+            inner_queue<-SysQueue::new(mem::size_of::<u32>(), 1, IPC_SYS_QUEUE_STUB, flag as u32)
         })
     }
 
@@ -149,7 +149,7 @@ impl RtEvent {
 
     #[inline]
     pub fn new_raw(name: *const i8, flag: u8) -> *mut Self {
-        let event = Box::pin_init(RtEvent::new(char_ptr_to_array(name), flag));
+        let event = Box::pin_init(Event::new(char_ptr_to_array(name), flag));
         match event {
             Ok(evt) => unsafe { Box::leak(Pin::into_inner_unchecked(evt)) },
             Err(_) => return null_mut(),
@@ -184,7 +184,7 @@ impl RtEvent {
         if !self.inner_queue.dequeue_waiter.is_empty() {
             crate::list_head_for_each!(node, &self.inner_queue.dequeue_waiter.working_queue, {
                 let thread_ptr =
-                    unsafe { crate::thread_list_node_entry!(node.as_ptr()) as *mut RtThread };
+                    unsafe { crate::thread_list_node_entry!(node.as_ptr()) as *mut Thread };
 
                 if !thread_ptr.is_null() {
                     let thread = unsafe { &mut *thread_ptr };
@@ -393,9 +393,9 @@ impl RtEvent {
     }
 }
 
-/// bindgen for RtEvent
+/// bindgen for Event
 #[allow(improper_ctypes_definitions)]
 #[no_mangle]
-pub extern "C" fn bindgen_event(_event: RtEvent) {
+pub extern "C" fn bindgen_event(_event: Event) {
     0;
 }

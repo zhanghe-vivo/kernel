@@ -36,7 +36,7 @@ use pinned_init::{
 
 // compatible with C
 pub type ThreadEntryFn = extern "C" fn(*mut ffi::c_void);
-pub type ThreadCleanupFn = extern "C" fn(*mut RtThread);
+pub type ThreadCleanupFn = extern "C" fn(*mut Thread);
 
 /// Returns the currently running thread.
 #[macro_export]
@@ -64,7 +64,7 @@ pub use current_thread_ptr;
 #[macro_export]
 macro_rules! thread_list_node_entry {
     ($node:expr) => {
-        crate::container_of!($node, crate::thread::RtThread, tlist)
+        crate::container_of!($node, crate::thread::Thread, tlist)
     };
 }
 pub use thread_list_node_entry;
@@ -83,7 +83,7 @@ unsafe impl PinInit<Tid> for TidInit {
 #[pin_data]
 pub(crate) struct Tid {
     #[pin]
-    id: SpinLock<[Cell<Option<NonNull<RtThread>>>; MAX_THREAD_SIZE]>,
+    id: SpinLock<[Cell<Option<NonNull<Thread>>>; MAX_THREAD_SIZE]>,
 }
 
 impl Tid {
@@ -183,16 +183,16 @@ impl ThreadState {
 pub struct ThreadPriority {
     current: u8,
     initial: u8,
-    #[cfg(feature = "rt_thread_priority_max_256")]
+    #[cfg(feature = "thread_priority_max")]
     number: u8,
-    #[cfg(feature = "rt_thread_priority_max_256")]
+    #[cfg(feature = "thread_priority_max")]
     high_mask: u8,
     number_mask: u32,
 }
 
 impl ThreadPriority {
     pub fn new(priority: u8) -> Self {
-        #[cfg(feature = "rt_thread_priority_max_256")]
+        #[cfg(feature = "thread_priority_max")]
         {
             let number = priority >> 3;
             let high_mask = 1 << (priority & 0x07);
@@ -205,7 +205,7 @@ impl ThreadPriority {
                 number_mask,
             }
         }
-        #[cfg(not(feature = "rt_thread_priority_max_256"))]
+        #[cfg(not(feature = "thread_priority_max"))]
         {
             Self {
                 current: priority,
@@ -217,13 +217,13 @@ impl ThreadPriority {
 
     pub fn update(&mut self, new_priority: u8) {
         self.current = new_priority;
-        #[cfg(feature = "rt_thread_priority_max_256")]
+        #[cfg(feature = "thread_priority_max")]
         {
             self.number = new_priority >> 3;
             self.high_mask = 1 << (new_priority & 0x07);
             self.number_mask = 1 << self.number;
         }
-        #[cfg(not(feature = "rt_thread_priority_max_256"))]
+        #[cfg(not(feature = "thread_priority_max"))]
         {
             self.number_mask = 1 << new_priority;
         }
@@ -237,13 +237,13 @@ impl ThreadPriority {
         self.initial
     }
 
-    #[cfg(feature = "rt_thread_priority_max_256")]
+    #[cfg(feature = "thread_priority_max")]
     #[inline]
     pub fn get_number(&self) -> u8 {
         self.number
     }
 
-    #[cfg(feature = "rt_thread_priority_max_256")]
+    #[cfg(feature = "thread_priority_max")]
     #[inline]
     pub fn get_high_mask(&self) -> u8 {
         self.high_mask
@@ -271,7 +271,7 @@ struct TimeSlice {
 pub(crate) struct MutexInfo {
     #[pin]
     pub(crate) taken_list: ListHead,
-    pub(crate) pending_to: Option<NonNull<RtMutex>>,
+    pub(crate) pending_to: Option<NonNull<Mutex>>,
 }
 
 #[cfg(not(feature = "mutex"))]
@@ -319,7 +319,7 @@ struct LockInfo {
 
 #[repr(C)]
 #[pin_data(PinnedDrop)]
-pub struct RtThread {
+pub struct Thread {
     #[pin]
     pub parent: KObjectBase,
 
@@ -379,7 +379,7 @@ struct StackAlignedField<const STACK_SIZE: usize> {
 #[pin_data]
 pub struct ThreadWithStack<const STACK_SIZE: usize> {
     #[pin]
-    pub(crate) inner: UnsafeCell<RtThread>,
+    pub(crate) inner: UnsafeCell<Thread>,
     #[pin]
     stack: StackAlignedField<STACK_SIZE>,
 }
@@ -410,10 +410,10 @@ impl<const STACK_SIZE: usize> ThreadWithStack<STACK_SIZE> {
     ) -> impl PinInit<Self> {
         pin_init!(&this in Self {
             stack <- StackAlignedField::<STACK_SIZE>::new(),
-            inner <- unsafe { pin_init_from_closure(move |slot: *mut UnsafeCell<RtThread>| {
+            inner <- unsafe { pin_init_from_closure(move |slot: *mut UnsafeCell<Thread>| {
                     let stack_addr = this.as_ref().stack.get_buf_ptr();
-                    let init = RtThread::static_new(name, entry, parameter, stack_addr, STACK_SIZE, priority, tick);
-                    init.__pinned_init(slot.cast::<RtThread>())
+                    let init = Thread::static_new(name, entry, parameter, stack_addr, STACK_SIZE, priority, tick);
+                    init.__pinned_init(slot.cast::<Thread>())
                 }
             )},
         })
@@ -431,10 +431,10 @@ impl<const STACK_SIZE: usize> ThreadWithStack<STACK_SIZE> {
     ) -> impl PinInit<Self> {
         pin_init!(&this in Self {
             stack <- StackAlignedField::<STACK_SIZE>::new(),
-            inner <- unsafe { pin_init_from_closure(move |slot: *mut UnsafeCell<RtThread>| {
+            inner <- unsafe { pin_init_from_closure(move |slot: *mut UnsafeCell<Thread>| {
                     let stack_addr = this.as_ref().stack.get_buf_ptr();
-                    let init = RtThread::new_with_bind(name, entry, parameter, stack_addr, STACK_SIZE, priority, tick, cpu);
-                    init.__pinned_init(slot.cast::<RtThread>())
+                    let init = Thread::new_with_bind(name, entry, parameter, stack_addr, STACK_SIZE, priority, tick, cpu);
+                    init.__pinned_init(slot.cast::<Thread>())
                 }
             )},
         })
@@ -442,7 +442,7 @@ impl<const STACK_SIZE: usize> ThreadWithStack<STACK_SIZE> {
 }
 
 impl<const STACK_SIZE: usize> core::ops::Deref for ThreadWithStack<STACK_SIZE> {
-    type Target = RtThread;
+    type Target = Thread;
 
     fn deref(&self) -> &Self::Target {
         // SAFETY: The caller owns the lock, so it is safe to deref the protected data.
@@ -457,7 +457,7 @@ impl<const STACK_SIZE: usize> core::ops::DerefMut for ThreadWithStack<STACK_SIZE
     }
 }
 
-impl RtThread {
+impl Thread {
     #[inline]
     pub fn static_new(
         name: &'static CStr,
@@ -647,7 +647,7 @@ impl RtThread {
 
         match NonNull::new(ptr) {
             Some(_p) => {
-                let thread = Box::pin_init(RtThread::dyn_new(
+                let thread = Box::pin_init(Thread::dyn_new(
                     name, entry, parameter, ptr, stack_size, priority, tick,
                 ));
                 match thread {
@@ -760,14 +760,14 @@ impl RtThread {
     }
 
     #[no_mangle]
-    extern "C" fn default_cleanup(_thread: *mut RtThread) {}
+    extern "C" fn default_cleanup(_thread: *mut Thread) {}
 
     /// Handler for thread timeout.
     #[no_mangle]
     extern "C" fn handle_timeout(para: *mut ffi::c_void) {
         debug_assert!(para != ptr::null_mut());
 
-        let thread = unsafe { &mut *(para as *mut RtThread) };
+        let thread = unsafe { &mut *(para as *mut Thread) };
         debug_assert!(thread.type_name() == ObjectClassType::ObjectClassThread as u8);
 
         let scheduler = Cpu::get_current_scheduler();
@@ -822,7 +822,7 @@ impl RtThread {
             unsafe {
                 let mutex = crate::list_head_entry!(
                     inspect as *const ListHead as *mut ListHead,
-                    RtMutex,
+                    Mutex,
                     taken_list
                 );
                 if !mutex.is_null() {
@@ -839,7 +839,7 @@ impl RtThread {
         let mut priority = self.priority.get_initial();
 
         crate::list_head_for_each!(node, &self.mutex_info.taken_list, {
-            let mutex = unsafe { &*crate::list_head_entry!(node.as_ptr(), RtMutex, taken_list) };
+            let mutex = unsafe { &*crate::list_head_entry!(node.as_ptr(), Mutex, taken_list) };
             let mut mutex_prio = mutex.priority;
             mutex_prio = if mutex_prio < mutex.ceiling_priority {
                 mutex_prio
@@ -1111,7 +1111,7 @@ impl RtThread {
 
     #[cfg(feature = "debugging_spinlock")]
     pub(crate) fn check_deadlock(&self, spin: &RawSpin) -> bool {
-        let mut owner: Cell<Option<NonNull<RtThread>>> = spin.owner.clone();
+        let mut owner: Cell<Option<NonNull<Thread>>> = spin.owner.clone();
         while let Some(non_null) = owner.get() {
             let th = unsafe { non_null.as_ref() };
             if ptr::eq(self, th) {
@@ -1139,7 +1139,7 @@ impl RtThread {
 }
 
 #[pinned_drop]
-impl PinnedDrop for RtThread {
+impl PinnedDrop for Thread {
     fn drop(self: Pin<&mut Self>) {
         let this_th = unsafe { Pin::get_unchecked_mut(self) };
 
@@ -1150,11 +1150,11 @@ impl PinnedDrop for RtThread {
     }
 }
 
-crate::impl_kobject!(RtThread);
+crate::impl_kobject!(Thread);
 
-/// bindgen for RtThread
+/// bindgen for Thread
 #[allow(improper_ctypes_definitions)]
 #[no_mangle]
-pub extern "C" fn bindgen_thread(_thread: RtThread) {
+pub extern "C" fn bindgen_thread(_thread: Thread) {
     0;
 }

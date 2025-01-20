@@ -4,7 +4,7 @@ use crate::{
     error::code,
     impl_kobject,
     object::{KObjectBase, KernelObject, ObjectClassType, NAME_MAX},
-    sync::{ipc_common::*, lock::mutex::RtMutex, semaphore::RtSemaphore, RawSpin},
+    sync::{ipc_common::*, lock::mutex::Mutex, semaphore::Semaphore, RawSpin},
     thread::SuspendFlag,
     timer::TimerControlAction,
 };
@@ -15,7 +15,7 @@ use pinned_init::*;
 /// Condition variable raw structure
 #[repr(C)]
 #[pin_data]
-pub struct RtCondVar {
+pub struct CondVar {
     /// Inherit from KObjectBase
     #[pin]
     pub(crate) parent: KObjectBase,
@@ -23,12 +23,12 @@ pub struct RtCondVar {
     pub(crate) spinlock: RawSpin,
     /// Inner semaphore condvar uses
     #[pin]
-    pub(crate) inner_sem: RtSemaphore,
+    pub(crate) inner_sem: Semaphore,
 }
 
-impl_kobject!(RtCondVar);
+impl_kobject!(CondVar);
 
-impl RtCondVar {
+impl CondVar {
     #[inline]
     pub(crate) fn new(name: [i8; NAME_MAX], waiting_mode: u8) -> impl PinInit<Self> {
         assert!(
@@ -41,7 +41,7 @@ impl RtCondVar {
         pin_init!(Self {
             parent<-KObjectBase::new(ObjectClassType::ObjectClassCondVar as u8, name),
             spinlock: RawSpin::new(),
-            inner_sem<-RtSemaphore::new(name, 0, waiting_mode as u8)
+            inner_sem<-Semaphore::new(name, 0, waiting_mode as u8)
         })
     }
 
@@ -80,7 +80,7 @@ impl RtCondVar {
         }
     }
     #[inline]
-    pub fn wait(&mut self, mutex: &mut RtMutex) -> i32 {
+    pub fn wait(&mut self, mutex: &mut Mutex) -> i32 {
         self.wait_timeout(
             mutex,
             SuspendFlag::Uninterruptible as u32,
@@ -91,7 +91,7 @@ impl RtCondVar {
     #[inline]
     pub(crate) fn wait_timeout(
         &mut self,
-        mutex: &mut RtMutex,
+        mutex: &mut Mutex,
         pending_mode: u32,
         timeout: i32,
     ) -> i32 {
@@ -185,9 +185,9 @@ impl RtCondVar {
     }
 }
 
-/// bindgen for RtCondVar
+/// bindgen for CondVar
 #[allow(improper_ctypes_definitions)]
 #[no_mangle]
-pub extern "C" fn bindgen_condvar(_condvar: RtCondVar) {
+pub extern "C" fn bindgen_condvar(_condvar: CondVar) {
     0;
 }

@@ -3,7 +3,7 @@ use core::ffi;
 
 #[no_mangle]
 pub unsafe extern "C" fn rt_event_init(
-    event: *mut event::RtEvent,
+    event: *mut event::Event,
     name: *const core::ffi::c_char,
     flag: u8,
 ) -> i32 {
@@ -13,7 +13,7 @@ pub unsafe extern "C" fn rt_event_init(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn rt_event_detach(event: *mut event::RtEvent) -> i32 {
+pub unsafe extern "C" fn rt_event_detach(event: *mut event::Event) -> i32 {
     assert!(!event.is_null());
     (*event).detach();
     code::EOK.to_errno()
@@ -23,26 +23,26 @@ pub unsafe extern "C" fn rt_event_detach(event: *mut event::RtEvent) -> i32 {
 pub unsafe extern "C" fn rt_event_create(
     name: *const core::ffi::c_char,
     flag: u8,
-) -> *mut event::RtEvent {
-    event::RtEvent::new_raw(name, flag)
+) -> *mut event::Event {
+    event::Event::new_raw(name, flag)
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn rt_event_delete(event: *mut event::RtEvent) -> i32 {
+pub unsafe extern "C" fn rt_event_delete(event: *mut event::Event) -> i32 {
     assert!(!event.is_null());
     (*event).delete_raw();
     code::EOK.to_errno()
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn rt_event_send(event: *mut event::RtEvent, set: u32) -> i32 {
+pub unsafe extern "C" fn rt_event_send(event: *mut event::Event, set: u32) -> i32 {
     assert!(!event.is_null());
     (*event).send(set)
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn rt_event_recv(
-    event: *mut event::RtEvent,
+    event: *mut event::Event,
     set: u32,
     option: u8,
     timeout: i32,
@@ -54,7 +54,7 @@ pub unsafe extern "C" fn rt_event_recv(
 
 #[no_mangle]
 pub unsafe extern "C" fn rt_event_recv_interruptible(
-    event: *mut event::RtEvent,
+    event: *mut event::Event,
     set: u32,
     option: u8,
     timeout: i32,
@@ -66,7 +66,7 @@ pub unsafe extern "C" fn rt_event_recv_interruptible(
 
 #[no_mangle]
 pub unsafe extern "C" fn rt_event_recv_killable(
-    event: *mut event::RtEvent,
+    event: *mut event::Event,
     set: u32,
     option: u8,
     timeout: i32,
@@ -78,7 +78,7 @@ pub unsafe extern "C" fn rt_event_recv_killable(
 
 #[no_mangle]
 pub unsafe extern "C" fn rt_event_control(
-    event: *mut event::RtEvent,
+    event: *mut event::Event,
     cmd: i32,
     _arg: *const ffi::c_void,
 ) -> i32 {

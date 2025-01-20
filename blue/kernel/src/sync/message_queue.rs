@@ -32,7 +32,7 @@ use pinned_init::{pin_data, pin_init, pin_init_from_closure, pinned_drop, InPlac
 #[pin_data(PinnedDrop)]
 pub struct KMessageQueue {
     #[pin]
-    raw: UnsafeCell<RtMessageQueue>,
+    raw: UnsafeCell<MessageQueue>,
     #[pin]
     pin: PhantomPinned,
 }
@@ -51,9 +51,9 @@ impl PinnedDrop for KMessageQueue {
 
 impl KMessageQueue {
     pub fn new(msg_size: usize, max_msgs: usize) -> Pin<Box<Self>> {
-        fn init_raw(msg_size: usize, max_msgs: usize) -> impl PinInit<UnsafeCell<RtMessageQueue>> {
-            let init = move |slot: *mut UnsafeCell<RtMessageQueue>| {
-                let slot: *mut RtMessageQueue = slot.cast();
+        fn init_raw(msg_size: usize, max_msgs: usize) -> impl PinInit<UnsafeCell<MessageQueue>> {
+            let init = move |slot: *mut UnsafeCell<MessageQueue>| {
+                let slot: *mut MessageQueue = slot.cast();
                 unsafe {
                     let cur_ref = &mut *slot;
 
@@ -123,18 +123,18 @@ impl KMessageQueue {
 /// MessageQueue raw structure
 #[repr(C)]
 #[pin_data]
-pub struct RtMessageQueue {
+pub struct MessageQueue {
     /// Inherit from KObjectBase
     #[pin]
     pub(crate) parent: KObjectBase,
     /// SysQueue for mailbox
     #[pin]
-    pub inner_queue: RtSysQueue,
+    pub inner_queue: SysQueue,
 }
 
-impl_kobject!(RtMessageQueue);
+impl_kobject!(MessageQueue);
 
-impl RtMessageQueue {
+impl MessageQueue {
     pub fn new(
         name: [i8; NAME_MAX],
         msg_size: u16,
@@ -151,7 +151,7 @@ impl RtMessageQueue {
 
         Box::pin_init(pin_init!(Self {
             parent<-KObjectBase::new(ObjectClassType::ObjectClassMessageQueue as u8, name),
-            inner_queue<-RtSysQueue::new(msg_size as usize, max_msgs as usize, working_mode as u32,
+            inner_queue<-SysQueue::new(msg_size as usize, max_msgs as usize, working_mode as u32,
                 waiting_mode as u32),
         }))
     }
@@ -183,7 +183,7 @@ impl RtMessageQueue {
         } else if working_mode == IPC_SYS_QUEUE_PRIO as u8 {
             let item_align_size = align_up_size(item_size as usize, ALIGN_SIZE as usize);
             max_count =
-                buffer_size as usize / (item_align_size + mem::size_of::<RtSysQueueItemHeader>());
+                buffer_size as usize / (item_align_size + mem::size_of::<SysQueueItemHeader>());
         } else {
             return code::EINVAL.to_errno();
         }
@@ -225,8 +225,8 @@ impl RtMessageQueue {
         max_msgs: usize,
         working_mode: u8,
         waiting_mode: u8,
-    ) -> *mut RtMessageQueue {
-        let message_queue = RtMessageQueue::new(
+    ) -> *mut MessageQueue {
+        let message_queue = MessageQueue::new(
             char_ptr_to_array(name),
             msg_size as u16,
             max_msgs as u16,
@@ -579,7 +579,7 @@ impl RtMessageQueue {
             cfg_if::cfg_if! {
                 if #[cfg(feature = "messagequeue_priority")] {
                     while !self.inner_queue.head.is_none() {
-                        let hdr = self.inner_queue.head.unwrap().as_ptr() as *mut RtSysQueueItemHeader;
+                        let hdr = self.inner_queue.head.unwrap().as_ptr() as *mut SysQueueItemHeader;
                         let next_head = unsafe { (*hdr).next as *mut u8 };
                         if next_head.is_null() {
                             self.inner_queue.head = None;
@@ -596,7 +596,7 @@ impl RtMessageQueue {
 
                         if !self.inner_queue.free.is_none() {
                             unsafe { (*hdr).next =
-                            self.inner_queue.free.unwrap().as_ptr() as *mut RtSysQueueItemHeader };
+                            self.inner_queue.free.unwrap().as_ptr() as *mut SysQueueItemHeader };
                         }
                         self.inner_queue.free = unsafe { Some(NonNull::new_unchecked(hdr as *mut u8)) };
                     }
@@ -642,9 +642,9 @@ impl RtMessageQueue {
     }
 }
 
-/// bindgen for RtMessageQueue
+/// bindgen for MessageQueue
 #[allow(improper_ctypes_definitions)]
 #[no_mangle]
-pub extern "C" fn bindgen_mq(_mq: RtMessageQueue) {
+pub extern "C" fn bindgen_mq(_mq: MessageQueue) {
     0;
 }

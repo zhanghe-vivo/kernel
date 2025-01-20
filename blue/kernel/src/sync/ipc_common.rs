@@ -6,7 +6,7 @@ use crate::{
     list_head_for_each,
     object::*,
     sync::RawSpin,
-    thread::{RtThread, SuspendFlag},
+    thread::{Thread, SuspendFlag},
 };
 use blue_infra::list::doubly_linked_list::ListHead;
 use core::{
@@ -31,16 +31,16 @@ pub const IPC_CMD_RESET: u32 = 1;
 
 macro_rules! sys_queue_item_data_addr {
     ($addr:expr) => {
-        ($addr as *mut RtSysQueueItemHeader).offset(1) as *mut _
+        ($addr as *mut SysQueueItemHeader).offset(1) as *mut _
     };
 }
 
 /// Sys Queue item header
 #[repr(C)]
 #[pin_data]
-pub(crate) struct RtSysQueueItemHeader {
+pub(crate) struct SysQueueItemHeader {
     #[pin]
-    pub(crate) next: *mut RtSysQueueItemHeader,
+    pub(crate) next: *mut SysQueueItemHeader,
     pub(crate) len: usize,
     pub(crate) prio: i32,
 }
@@ -48,7 +48,7 @@ pub(crate) struct RtSysQueueItemHeader {
 /// System queue for kernel use on IPC
 #[repr(C)]
 #[pin_data(PinnedDrop)]
-pub struct RtSysQueue {
+pub struct SysQueue {
     /// Queue item size
     pub(crate) item_size: usize,
     /// Queue item max count
@@ -75,23 +75,23 @@ pub struct RtSysQueue {
     pub(crate) working_mode: u32,
     /// Queue for waiting to enqueue items in the working sysqueue
     #[pin]
-    pub(crate) enqueue_waiter: RtWaitQueue,
+    pub(crate) enqueue_waiter: WaitQueue,
     /// Queue for waiting to dequeue items in the working sysqueue
     #[pin]
-    pub(crate) dequeue_waiter: RtWaitQueue,
+    pub(crate) dequeue_waiter: WaitQueue,
     /// Spin lock for sysqueue
     pub(crate) spinlock: RawSpin,
 }
 
 #[pinned_drop]
-impl PinnedDrop for RtSysQueue {
+impl PinnedDrop for SysQueue {
     fn drop(self: Pin<&mut Self>) {
         let queue_raw = unsafe { Pin::get_unchecked_mut(self) };
         queue_raw.free_storage_internal();
     }
 }
 
-impl RtSysQueue {
+impl SysQueue {
     fn init_storage_internal(&mut self, raw_buf_ptr: *mut u8) -> usize {
         if self.item_size == 0 || self.item_max_count == 0 || self.working_mode == 2 {
             return 0;
@@ -112,7 +112,7 @@ impl RtSysQueue {
         } else {
             item_align_size = align_up_size(self.item_size, ALIGN_SIZE as usize);
             self.queue_buf_size =
-                (item_align_size + mem::size_of::<RtSysQueueItemHeader>()) * self.item_max_count;
+                (item_align_size + mem::size_of::<SysQueueItemHeader>()) * self.item_max_count;
         }
 
         let buffer_raw = if self.is_storage_from_external {
@@ -138,13 +138,13 @@ impl RtSysQueue {
                 // SAFETY: buffer_raw is null checked and allocated to the proper size
                 let head_raw = unsafe {
                     buffer_raw.offset(
-                        (idx * (item_align_size + mem::size_of::<RtSysQueueItemHeader>())) as isize,
-                    ) as *mut RtSysQueueItemHeader
+                        (idx * (item_align_size + mem::size_of::<SysQueueItemHeader>())) as isize,
+                    ) as *mut SysQueueItemHeader
                 };
 
                 if !head_raw.is_null() {
                     // SAFETY: header_raw is null checked and within the range
-                    unsafe { (*head_raw).next = free_raw as *mut RtSysQueueItemHeader };
+                    unsafe { (*head_raw).next = free_raw as *mut SysQueueItemHeader };
                 }
 
                 free_raw = head_raw;
@@ -182,7 +182,7 @@ impl RtSysQueue {
         waiting_mode: u32,
     ) -> impl PinInit<Self> {
         let init = move |slot: *mut Self| {
-            let sysq = unsafe { &mut *(slot as *mut RtSysQueue) };
+            let sysq = unsafe { &mut *(slot as *mut SysQueue) };
             sysq.item_size = item_size;
             sysq.item_max_count = item_max_count;
             sysq.item_in_queue = 0;
@@ -193,10 +193,10 @@ impl RtSysQueue {
             sysq.init_storage_internal(null_mut());
 
             unsafe {
-                let _ = RtWaitQueue::new(waiting_mode)
-                    .__pinned_init(&mut sysq.enqueue_waiter as *mut RtWaitQueue);
-                let _ = RtWaitQueue::new(waiting_mode)
-                    .__pinned_init(&mut sysq.dequeue_waiter as *mut RtWaitQueue);
+                let _ = WaitQueue::new(waiting_mode)
+                    .__pinned_init(&mut sysq.enqueue_waiter as *mut WaitQueue);
+                let _ = WaitQueue::new(waiting_mode)
+                    .__pinned_init(&mut sysq.dequeue_waiter as *mut WaitQueue);
             }
 
             sysq.spinlock = RawSpin::new();
@@ -224,10 +224,10 @@ impl RtSysQueue {
         let buf_size = self.init_storage_internal(buffer);
 
         unsafe {
-            let _ = RtWaitQueue::new(waiting_mode)
-                .__pinned_init(&mut self.enqueue_waiter as *mut RtWaitQueue);
-            let _ = RtWaitQueue::new(waiting_mode)
-                .__pinned_init(&mut self.dequeue_waiter as *mut RtWaitQueue);
+            let _ = WaitQueue::new(waiting_mode)
+                .__pinned_init(&mut self.enqueue_waiter as *mut WaitQueue);
+            let _ = WaitQueue::new(waiting_mode)
+                .__pinned_init(&mut self.dequeue_waiter as *mut WaitQueue);
         }
 
         self.spinlock = RawSpin::new();
@@ -376,7 +376,7 @@ impl RtSysQueue {
             return 0;
         }
 
-        let hdr = self.free.unwrap().as_ptr() as *mut RtSysQueueItemHeader;
+        let hdr = self.free.unwrap().as_ptr() as *mut SysQueueItemHeader;
         let hdr_ref = unsafe { &mut *hdr };
 
         let next_free = hdr_ref.next as *mut u8;
@@ -399,8 +399,8 @@ impl RtSysQueue {
             self.head = unsafe { Some(NonNull::new_unchecked(hdr as *mut u8)) };
         }
 
-        let mut node = self.head.unwrap().as_ptr() as *mut RtSysQueueItemHeader;
-        let mut prev_node: *mut RtSysQueueItemHeader = null_mut();
+        let mut node = self.head.unwrap().as_ptr() as *mut SysQueueItemHeader;
+        let mut prev_node: *mut SysQueueItemHeader = null_mut();
 
         while !node.is_null() {
             if unsafe { (*node).prio < (*hdr).prio } {
@@ -444,7 +444,7 @@ impl RtSysQueue {
 
         let mut hdr = null_mut();
         if self.free.is_some() {
-            hdr = self.free.unwrap().as_ptr() as *mut RtSysQueueItemHeader;
+            hdr = self.free.unwrap().as_ptr() as *mut SysQueueItemHeader;
         }
 
         if hdr.is_null() {
@@ -470,7 +470,7 @@ impl RtSysQueue {
 
         self.spinlock.lock();
 
-        unsafe { (*hdr).next = self.head.unwrap().as_ptr() as *mut RtSysQueueItemHeader };
+        unsafe { (*hdr).next = self.head.unwrap().as_ptr() as *mut SysQueueItemHeader };
 
         self.head = unsafe { Some(NonNull::new_unchecked(hdr as *mut u8)) };
 
@@ -507,7 +507,7 @@ impl RtSysQueue {
             return 0;
         }
 
-        let hdr = self.head.unwrap().as_ptr() as *mut RtSysQueueItemHeader;
+        let hdr = self.head.unwrap().as_ptr() as *mut SysQueueItemHeader;
 
         // SAFETY: msg is null checked
         let next_head = unsafe { (*hdr).next as *mut u8 };
@@ -542,7 +542,7 @@ impl RtSysQueue {
 
         // SAFETY: msg is null checked
         if !self.free.is_none() {
-            unsafe { (*hdr).next = self.free.unwrap().as_ptr() as *mut RtSysQueueItemHeader };
+            unsafe { (*hdr).next = self.free.unwrap().as_ptr() as *mut SysQueueItemHeader };
         }
 
         self.free = unsafe { Some(NonNull::new_unchecked(hdr as *mut u8)) };
@@ -563,7 +563,7 @@ impl RtSysQueue {
 /// WaitQueue for pending threads
 #[repr(C)]
 #[pin_data]
-pub(crate) struct RtWaitQueue {
+pub(crate) struct WaitQueue {
     /// WaitQueue impl by ListHead
     #[pin]
     pub(crate) working_queue: ListHead,
@@ -571,7 +571,7 @@ pub(crate) struct RtWaitQueue {
     waiting_mode: u32,
 }
 
-impl RtWaitQueue {
+impl WaitQueue {
     #[inline]
     pub(crate) fn new(waiting_mode: u32) -> impl PinInit<Self> {
         pin_init!(Self {
@@ -616,7 +616,7 @@ impl RtWaitQueue {
         self.working_queue.size()
     }
 
-    pub(crate) fn wait(&mut self, thread: &mut RtThread, pending_mode: u32) -> i32 {
+    pub(crate) fn wait(&mut self, thread: &mut Thread, pending_mode: u32) -> i32 {
         if !thread.stat.is_suspended() {
             let ret = if thread.suspend(SuspendFlag::from_u8(pending_mode as u8)) {
                 code::EOK.to_errno()
@@ -638,7 +638,7 @@ impl RtWaitQueue {
             IPC_WAIT_MODE_PRIO => {
                 list_head_for_each!(node, &self.working_queue, {
                     let queued_thread_ptr =
-                        unsafe { crate::thread_list_node_entry!(node.as_ptr()) as *mut RtThread };
+                        unsafe { crate::thread_list_node_entry!(node.as_ptr()) as *mut Thread };
 
                     if queued_thread_ptr.is_null() {
                         return code::ERROR.to_errno();
@@ -668,7 +668,7 @@ impl RtWaitQueue {
 
     pub(crate) fn wake(&mut self) -> bool {
         if let Some(node) = self.working_queue.next() {
-            let thread: *mut RtThread = unsafe { crate::thread_list_node_entry!(node.as_ptr()) };
+            let thread: *mut Thread = unsafe { crate::thread_list_node_entry!(node.as_ptr()) };
             if !thread.is_null() {
                 unsafe {
                     (*thread).error = code::EOK;
@@ -684,7 +684,7 @@ impl RtWaitQueue {
     #[inline]
     pub(crate) fn inner_locked_wake(&mut self) -> bool {
         if let Some(node) = self.working_queue.next() {
-            let thread: *mut RtThread = unsafe { crate::thread_list_node_entry!(node.as_ptr()) };
+            let thread: *mut Thread = unsafe { crate::thread_list_node_entry!(node.as_ptr()) };
             if !thread.is_null() {
                 let spin_lock = RawSpin::new();
                 unsafe {
@@ -706,7 +706,7 @@ impl RtWaitQueue {
         while !self.working_queue.is_empty() {
             if let Some(node) = self.working_queue.next() {
                 unsafe {
-                    let thread: *mut RtThread = crate::thread_list_node_entry!(node.as_ptr());
+                    let thread: *mut Thread = crate::thread_list_node_entry!(node.as_ptr());
                     if !thread.is_null() {
                         (*thread).error = code::ERROR;
                         let resume_stat = (*thread).resume();
@@ -730,7 +730,7 @@ impl RtWaitQueue {
                 let spin_lock = RawSpin::new();
                 spin_lock.lock();
                 unsafe {
-                    let thread: *mut RtThread = crate::thread_list_node_entry!(node.as_ptr());
+                    let thread: *mut Thread = crate::thread_list_node_entry!(node.as_ptr());
                     if !thread.is_null() {
                         (*thread).error = code::ERROR;
                         let resume_stat = (*thread).resume();

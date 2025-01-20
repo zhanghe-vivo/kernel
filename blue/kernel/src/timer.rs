@@ -3,7 +3,7 @@ use crate::{
     object::{KObjectBase, ObjectClassType},
     static_init::UnsafeStaticInit,
     sync::RawSpin,
-    thread::{RtThread, ThreadWithStack},
+    thread::{Thread, ThreadWithStack},
 };
 use blue_infra::list::doubly_linked_list::ListHead;
 use core::{
@@ -471,7 +471,7 @@ impl Timer {
             } else {
                 next_timeout = next_timeout.wrapping_sub(Cpu::get_by_id(0).tick_load());
                 if next_timeout < u32::MAX / 2 {
-                    let _ = RtThread::sleep(next_timeout);
+                    let _ = Thread::sleep(next_timeout);
                     timer_wheel.cursor =
                         (timer_wheel.cursor + next_timeout as usize) & (TIMER_WHEEL_SIZE - 1);
                 }

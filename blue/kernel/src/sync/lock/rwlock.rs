@@ -2,7 +2,7 @@ use crate::{
     error::code,
     impl_kobject,
     object::{KObjectBase, KernelObject, ObjectClassType, NAME_MAX},
-    sync::{condvar::RtCondVar, ipc_common::*, lock::mutex::RtMutex},
+    sync::{condvar::CondVar, ipc_common::*, lock::mutex::Mutex},
     thread::SuspendFlag,
 };
 use blue_infra::list::doubly_linked_list::ListHead;
@@ -11,19 +11,19 @@ use pinned_init::{pin_data, pin_init, PinInit};
 /// RwLock Raw Structure
 #[repr(C)]
 #[pin_data]
-pub struct RtRwLock {
+pub struct RwLock {
     // kernel object
     #[pin]
     parent: KObjectBase,
     /// Mutex that inner used for rwlock
     #[pin]
-    mutex: RtMutex,
+    mutex: Mutex,
     /// Condition var for reader notification
     #[pin]
-    read_cond: RtCondVar,
+    read_cond: CondVar,
     /// Condition var for writer notification
     #[pin]
-    write_cond: RtCondVar,
+    write_cond: CondVar,
     /// Lock flag, which indicates >0 for readers occupied count, -1 for writer occupy
     rw_count: i32,
     /// Readers wait for this condition var
@@ -32,9 +32,9 @@ pub struct RtRwLock {
     writer_waiting: u32,
 }
 
-impl_kobject!(RtRwLock);
+impl_kobject!(RwLock);
 
-impl RtRwLock {
+impl RwLock {
     #[inline]
     pub(crate) fn new(name: [i8; NAME_MAX], waiting_mode: u8) -> impl PinInit<Self> {
         assert!(
@@ -46,9 +46,9 @@ impl RtRwLock {
 
         pin_init!(Self {
             parent<-KObjectBase::new(ObjectClassType::ObjectClassRwLock as u8, name),
-            mutex<-RtMutex::new(name, waiting_mode as u8),
-            read_cond<-RtCondVar::new(name, waiting_mode as u8),
-            write_cond<-RtCondVar::new(name, waiting_mode as u8),
+            mutex<-Mutex::new(name, waiting_mode as u8),
+            read_cond<-CondVar::new(name, waiting_mode as u8),
+            write_cond<-CondVar::new(name, waiting_mode as u8),
             rw_count:0,
             reader_waiting:0,
             writer_waiting:0,
@@ -294,9 +294,9 @@ impl RtRwLock {
     }
 }
 
-/// bindgen for RtRwLock
+/// bindgen for RwLock
 #[allow(improper_ctypes_definitions)]
 #[no_mangle]
-pub extern "C" fn bindgen_rwlock(_rwlock: RtRwLock) {
+pub extern "C" fn bindgen_rwlock(_rwlock: RwLock) {
     0;
 }

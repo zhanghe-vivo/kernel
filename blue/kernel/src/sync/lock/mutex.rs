@@ -8,7 +8,7 @@ use crate::{
     impl_kobject,
     object::*,
     sync::ipc_common::*,
-    thread::{RtThread, SuspendFlag},
+    thread::{Thread, SuspendFlag},
     timer::TimerControlAction,
 };
 use blue_infra::list::doubly_linked_list::ListHead;
@@ -28,7 +28,7 @@ use pinned_init::*;
 #[pin_data(PinnedDrop)]
 pub struct KMutex<T> {
     #[pin]
-    raw: UnsafeCell<RtMutex>,
+    raw: UnsafeCell<Mutex>,
     data_: UnsafeCell<T>,
     #[pin]
     pin: PhantomPinned,
@@ -51,9 +51,9 @@ impl<T> PinnedDrop for KMutex<T> {
 
 impl<T> KMutex<T> {
     pub fn new(data: T) -> Pin<Box<Self>> {
-        fn init_raw() -> impl PinInit<UnsafeCell<RtMutex>> {
-            let init = |slot: *mut UnsafeCell<RtMutex>| {
-                let slot: *mut RtMutex = slot.cast();
+        fn init_raw() -> impl PinInit<UnsafeCell<Mutex>> {
+            let init = |slot: *mut UnsafeCell<Mutex>| {
+                let slot: *mut Mutex = slot.cast();
                 unsafe {
                     let cur_ref = &mut *slot;
 
@@ -111,7 +111,7 @@ impl<'a, T> DerefMut for KMutexGuard<'a, T> {
 
 #[repr(C)]
 #[pin_data]
-pub struct RtMutex {
+pub struct Mutex {
     /// Inherit from KObjectBase
     #[pin]
     pub(crate) parent: KObjectBase,
@@ -120,18 +120,18 @@ pub struct RtMutex {
     /// Maximal priority for pending thread
     pub(crate) priority: u8,
     /// Current owner of mutex
-    pub(crate) owner: *mut RtThread,
+    pub(crate) owner: *mut Thread,
     /// The object list taken by thread
     #[pin]
     pub(crate) taken_list: ListHead,
     /// SysQueue for mutex
     #[pin]
-    pub(crate) inner_queue: RtSysQueue,
+    pub(crate) inner_queue: SysQueue,
 }
 
-impl_kobject!(RtMutex);
+impl_kobject!(Mutex);
 
-impl RtMutex {
+impl Mutex {
     #[inline]
     pub fn new(name: [i8; NAME_MAX], _waiting_mode: u8) -> impl PinInit<Self> {
         crate::debug_not_in_interrupt!();
@@ -146,13 +146,13 @@ impl RtMutex {
             cur_ref.ceiling_priority = 0xFF;
             let _ = ListHead::new().__pinned_init(&mut cur_ref.taken_list as *mut ListHead);
 
-            let _ = RtSysQueue::new(
+            let _ = SysQueue::new(
                 mem::size_of::<u32>(),
                 1,
                 IPC_SYS_QUEUE_STUB,
                 IPC_WAIT_MODE_PRIO as u32,
             )
-            .__pinned_init(&mut cur_ref.inner_queue as *mut RtSysQueue);
+            .__pinned_init(&mut cur_ref.inner_queue as *mut SysQueue);
             Ok(())
         };
         unsafe { pin_init_from_closure(init) }
@@ -184,13 +184,13 @@ impl RtMutex {
         }
 
         let _ = unsafe {
-            RtSysQueue::new(
+            SysQueue::new(
                 mem::size_of::<u32>(),
                 1,
                 IPC_SYS_QUEUE_STUB,
                 IPC_WAIT_MODE_PRIO as u32,
             )
-            .__pinned_init(&mut self.inner_queue as *mut RtSysQueue)
+            .__pinned_init(&mut self.inner_queue as *mut SysQueue)
         };
     }
 
@@ -217,7 +217,7 @@ impl RtMutex {
 
     #[inline]
     pub fn new_raw(name: *const i8, flag: u8) -> *mut Self {
-        let mutex = Box::pin_init(RtMutex::new(char_ptr_to_array(name), flag));
+        let mutex = Box::pin_init(Mutex::new(char_ptr_to_array(name), flag));
         match mutex {
             Ok(mtx) => unsafe { Box::leak(Pin::into_inner_unchecked(mtx)) },
             Err(_) => return null_mut(),
@@ -347,7 +347,7 @@ impl RtMutex {
 
                             if let Some(node) = self.inner_queue.enqueue_waiter.head() {
                                 let th =
-                                    crate::thread_list_node_entry!(node.as_ptr()) as *mut RtThread;
+                                    crate::thread_list_node_entry!(node.as_ptr()) as *mut Thread;
                                 self.priority = (*th).priority.get_current();
                             } else {
                                 self.priority = 0xff;
@@ -498,7 +498,7 @@ impl RtMutex {
     pub(crate) fn update_priority(&mut self) -> u8 {
         if let Some(node) = self.inner_queue.enqueue_waiter.head() {
             unsafe {
-                let thread: *mut RtThread = crate::thread_list_node_entry!(node.as_ptr());
+                let thread: *mut Thread = crate::thread_list_node_entry!(node.as_ptr());
                 self.priority = (*thread).priority.get_current();
             }
         } else {
@@ -508,7 +508,7 @@ impl RtMutex {
         self.priority
     }
 
-    pub(crate) fn drop_thread(&mut self, thread_ptr: *mut RtThread) {
+    pub(crate) fn drop_thread(&mut self, thread_ptr: *mut Thread) {
         if thread_ptr.is_null() {
             return;
         }
@@ -532,7 +532,7 @@ impl RtMutex {
 
         if let Some(node) = self.inner_queue.enqueue_waiter.head() {
             unsafe {
-                let th: *mut RtThread = crate::thread_list_node_entry!(node.as_ptr());
+                let th: *mut Thread = crate::thread_list_node_entry!(node.as_ptr());
                 self.priority = (*th).priority.get_current();
             }
         } else {

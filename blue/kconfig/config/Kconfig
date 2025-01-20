@@ -84,3 +84,8 @@ config CONDVAR
 config COMPAT_NEWLIBC
     default y
     bool "Enable newlibc"
+
+config IDLE_THREAD_STACK_SIZE
+    default 2048
+    depends on SMP
+    int "The stack size of idle thread"

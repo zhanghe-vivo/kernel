@@ -5,7 +5,7 @@ use crate::{
     impl_kobject,
     object::*,
     sync::ipc_common::*,
-    thread::{RtThread, SuspendFlag},
+    thread::{Thread, SuspendFlag},
     timer::TimerControlAction,
 };
 use blue_infra::list::doubly_linked_list::ListHead;
@@ -28,7 +28,7 @@ use pinned_init::{pin_data, pin_init, pin_init_from_closure, pinned_drop, InPlac
 #[pin_data(PinnedDrop)]
 pub struct KMailbox {
     #[pin]
-    raw: UnsafeCell<RtMailbox>,
+    raw: UnsafeCell<Mailbox>,
     #[pin]
     pin: PhantomPinned,
 }
@@ -47,9 +47,9 @@ impl PinnedDrop for KMailbox {
 
 impl KMailbox {
     pub fn new(size: usize) -> Pin<Box<Self>> {
-        fn init_raw(size: usize) -> impl PinInit<UnsafeCell<RtMailbox>> {
-            let init = move |slot: *mut UnsafeCell<RtMailbox>| {
-                let slot: *mut RtMailbox = slot.cast();
+        fn init_raw(size: usize) -> impl PinInit<UnsafeCell<Mailbox>> {
+            let init = move |slot: *mut UnsafeCell<Mailbox>| {
+                let slot: *mut Mailbox = slot.cast();
                 unsafe {
                     let cur_ref = &mut *slot;
 
@@ -109,19 +109,19 @@ impl KMailbox {
 /// Mailbox raw structure
 #[repr(C)]
 #[pin_data]
-pub struct RtMailbox {
+pub struct Mailbox {
     /// Inherit from KObjectBase
     #[pin]
     pub(crate) parent: KObjectBase,
     #[pin]
     /// SysQueue for mailbox
     #[pin]
-    pub(crate) inner_queue: RtSysQueue,
+    pub(crate) inner_queue: SysQueue,
 }
 
-impl_kobject!(RtMailbox);
+impl_kobject!(Mailbox);
 
-impl RtMailbox {
+impl Mailbox {
     #[inline]
     pub fn new(name: [i8; NAME_MAX], size: usize, flag: u8) -> impl PinInit<Self> {
         assert!((flag == IPC_WAIT_MODE_FIFO as u8) || (flag == IPC_WAIT_MODE_PRIO as u8));
@@ -130,7 +130,7 @@ impl RtMailbox {
 
         pin_init!(Self {
             parent<-KObjectBase::new(ObjectClassType::ObjectClassMailBox as u8, name),
-            inner_queue<-RtSysQueue::new(mem::size_of::<usize>(), size, IPC_SYS_QUEUE_FIFO, flag as u32),
+            inner_queue<-SysQueue::new(mem::size_of::<usize>(), size, IPC_SYS_QUEUE_FIFO, flag as u32),
         })
     }
     #[inline]
@@ -163,7 +163,7 @@ impl RtMailbox {
 
     #[inline]
     pub fn new_raw(name: *const i8, size: usize, flag: u8) -> *mut Self {
-        let mailbox = Box::pin_init(RtMailbox::new(char_ptr_to_array(name), size, flag));
+        let mailbox = Box::pin_init(Mailbox::new(char_ptr_to_array(name), size, flag));
         match mailbox {
             Ok(mb) => unsafe { Box::leak(Pin::into_inner_unchecked(mb)) },
             Err(_) => return null_mut(),
@@ -401,7 +401,7 @@ impl RtMailbox {
 
         if !self.inner_queue.enqueue_waiter.is_empty() {
             if let Some(node) = self.inner_queue.enqueue_waiter.head() {
-                let thread: *mut RtThread =
+                let thread: *mut Thread =
                     unsafe { crate::thread_list_node_entry!(node.as_ptr()) };
                 unsafe {
                     (*thread).error = code::EOK;
@@ -457,9 +457,9 @@ impl RtMailbox {
     }
 }
 
-/// bindgen for RtMailbox
+/// bindgen for Mailbox
 #[allow(improper_ctypes_definitions)]
 #[no_mangle]
-pub extern "C" fn bindgen_mb(_mb: RtMailbox) {
+pub extern "C" fn bindgen_mb(_mb: Mailbox) {
     0;
 }

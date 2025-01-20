@@ -1,12 +1,12 @@
 use crate::blue_kernel::{
     error::code,
-    sync::{ipc_common::*, message_queue::RtMessageQueue},
+    sync::{ipc_common::*, message_queue::MessageQueue},
 };
 use core::{ffi, ptr::null_mut};
 
 #[no_mangle]
 pub unsafe extern "C" fn rt_mq_init(
-    mq: *mut RtMessageQueue,
+    mq: *mut MessageQueue,
     name: *const ffi::c_char,
     msgpool: *mut ffi::c_void,
     msg_size: usize,
@@ -32,7 +32,7 @@ pub unsafe extern "C" fn rt_mq_init(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn rt_mq_detach(mq: *mut RtMessageQueue) -> i32 {
+pub unsafe extern "C" fn rt_mq_detach(mq: *mut MessageQueue) -> i32 {
     assert!(!mq.is_null());
     (*mq).detach();
     code::EOK.to_errno()
@@ -45,14 +45,14 @@ pub unsafe extern "C" fn rt_mq_create(
     msg_size: usize,
     max_msgs: usize,
     flag: u8,
-) -> *mut RtMessageQueue {
+) -> *mut MessageQueue {
     #[allow(unused_mut, unused_assignments)]
     let mut queue_working_mode = IPC_SYS_QUEUE_FIFO as u8;
     #[cfg(feature = "messagequeue_priority")]
     {
         queue_working_mode = IPC_SYS_QUEUE_PRIO as u8;
     }
-    RtMessageQueue::new_raw(
+    MessageQueue::new_raw(
         name,
         msg_size as usize,
         max_msgs as usize,
@@ -63,7 +63,7 @@ pub unsafe extern "C" fn rt_mq_create(
 
 #[cfg(feature = "heap")]
 #[no_mangle]
-pub unsafe extern "C" fn rt_mq_delete(mq: *mut RtMessageQueue) -> i32 {
+pub unsafe extern "C" fn rt_mq_delete(mq: *mut MessageQueue) -> i32 {
     assert!(mq != null_mut());
 
     (*mq).delete_raw();
@@ -72,14 +72,14 @@ pub unsafe extern "C" fn rt_mq_delete(mq: *mut RtMessageQueue) -> i32 {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn rt_mq_entry(mq: *mut RtMessageQueue) -> u16 {
+pub unsafe extern "C" fn rt_mq_entry(mq: *mut MessageQueue) -> u16 {
     assert!(!mq.is_null());
     (*mq).inner_queue.count() as u16
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn rt_mq_send(
-    mq: *mut RtMessageQueue,
+    mq: *mut MessageQueue,
     buffer: *const ffi::c_void,
     size: usize,
 ) -> i32 {
@@ -89,7 +89,7 @@ pub unsafe extern "C" fn rt_mq_send(
 
 #[no_mangle]
 pub unsafe extern "C" fn rt_mq_send_interruptible(
-    mq: *mut RtMessageQueue,
+    mq: *mut MessageQueue,
     buffer: *const ffi::c_void,
     size: usize,
 ) -> i32 {
@@ -99,7 +99,7 @@ pub unsafe extern "C" fn rt_mq_send_interruptible(
 
 #[no_mangle]
 pub unsafe extern "C" fn rt_mq_send_killable(
-    mq: *mut RtMessageQueue,
+    mq: *mut MessageQueue,
     buffer: *const ffi::c_void,
     size: usize,
 ) -> i32 {
@@ -109,7 +109,7 @@ pub unsafe extern "C" fn rt_mq_send_killable(
 
 #[no_mangle]
 pub unsafe extern "C" fn rt_mq_send_wait(
-    mq: *mut RtMessageQueue,
+    mq: *mut MessageQueue,
     buffer: *const ffi::c_void,
     size: usize,
     timeout: i32,
@@ -120,7 +120,7 @@ pub unsafe extern "C" fn rt_mq_send_wait(
 
 #[no_mangle]
 pub unsafe extern "C" fn rt_mq_send_wait_interruptible(
-    mq: *mut RtMessageQueue,
+    mq: *mut MessageQueue,
     buffer: *const ffi::c_void,
     size: usize,
     timeout: i32,
@@ -131,7 +131,7 @@ pub unsafe extern "C" fn rt_mq_send_wait_interruptible(
 
 #[no_mangle]
 pub unsafe extern "C" fn rt_mq_send_wait_killable(
-    mq: *mut RtMessageQueue,
+    mq: *mut MessageQueue,
     buffer: *const ffi::c_void,
     size: usize,
     timeout: i32,
@@ -142,7 +142,7 @@ pub unsafe extern "C" fn rt_mq_send_wait_killable(
 
 #[no_mangle]
 pub unsafe extern "C" fn rt_mq_urgent(
-    mq: *mut RtMessageQueue,
+    mq: *mut MessageQueue,
     buffer: *const ffi::c_void,
     size: usize,
 ) -> i32 {
@@ -152,7 +152,7 @@ pub unsafe extern "C" fn rt_mq_urgent(
 
 #[no_mangle]
 pub unsafe extern "C" fn rt_mq_recv(
-    mq: *mut RtMessageQueue,
+    mq: *mut MessageQueue,
     buffer: *mut ffi::c_void,
     size: usize,
     timeout: i32,
@@ -163,7 +163,7 @@ pub unsafe extern "C" fn rt_mq_recv(
 
 #[no_mangle]
 pub unsafe extern "C" fn rt_mq_recv_interruptible(
-    mq: *mut RtMessageQueue,
+    mq: *mut MessageQueue,
     buffer: *mut ffi::c_void,
     size: usize,
     timeout: i32,
@@ -174,7 +174,7 @@ pub unsafe extern "C" fn rt_mq_recv_interruptible(
 
 #[no_mangle]
 pub unsafe extern "C" fn rt_mq_recv_killable(
-    mq: *mut RtMessageQueue,
+    mq: *mut MessageQueue,
     buffer: *mut ffi::c_void,
     size: usize,
     timeout: i32,
@@ -185,7 +185,7 @@ pub unsafe extern "C" fn rt_mq_recv_killable(
 
 #[no_mangle]
 pub unsafe extern "C" fn rt_mq_control(
-    mq: *mut RtMessageQueue,
+    mq: *mut MessageQueue,
     cmd: ffi::c_int,
     _arg: *mut ffi::c_void,
 ) -> i32 {
@@ -196,7 +196,7 @@ pub unsafe extern "C" fn rt_mq_control(
 #[cfg(feature = "messagequeue_priority")]
 #[no_mangle]
 pub unsafe extern "C" fn rt_mq_send_wait_prio(
-    mq: *mut RtMessageQueue,
+    mq: *mut MessageQueue,
     buffer: *const ffi::c_void,
     size: usize,
     prio: i32,
@@ -216,7 +216,7 @@ pub unsafe extern "C" fn rt_mq_send_wait_prio(
 #[cfg(feature = "messagequeue_priority")]
 #[no_mangle]
 pub unsafe extern "C" fn rt_mq_recv_prio(
-    mq: *mut RtMessageQueue,
+    mq: *mut MessageQueue,
     buffer: *mut ffi::c_void,
     size: usize,
     prio: *mut i32,

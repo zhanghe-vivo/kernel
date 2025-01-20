@@ -97,21 +97,21 @@ impl Cpus {
 
     #[cfg(feature = "smp")]
     #[inline]
-    pub(crate) fn get_thread_from_global(prio: u32) -> Option<NonNull<thread::RtThread>> {
+    pub(crate) fn get_thread_from_global(prio: u32) -> Option<NonNull<thread::Thread>> {
         let cpus = unsafe { &*(&raw const CPUS as *const UnsafeStaticInit<Cpus, CpusInit>) };
         cpus.global_priority_manager.get_thread_by_prio(prio)
     }
 
     #[cfg(feature = "smp")]
     #[inline]
-    pub(crate) fn insert_thread_to_global(thread: &mut thread::RtThread) {
+    pub(crate) fn insert_thread_to_global(thread: &mut thread::Thread) {
         let cpus = unsafe { &*(&raw const CPUS as *const UnsafeStaticInit<Cpus, CpusInit>) };
         cpus.global_priority_manager.insert_thread(thread);
     }
 
     #[cfg(feature = "smp")]
     #[inline]
-    pub(crate) fn remove_thread_from_global(thread: &mut thread::RtThread) {
+    pub(crate) fn remove_thread_from_global(thread: &mut thread::Thread) {
         let cpus = unsafe { &*(&raw const CPUS as *const UnsafeStaticInit<Cpus, CpusInit>) };
         cpus.global_priority_manager.remove_thread(thread);
     }
@@ -221,12 +221,12 @@ impl Cpu {
     }
 
     #[inline]
-    pub fn get_current_thread() -> Option<NonNull<thread::RtThread>> {
+    pub fn get_current_thread() -> Option<NonNull<thread::Thread>> {
         Self::get_current_scheduler().get_current_thread()
     }
 
     #[inline]
-    pub fn set_current_thread(th: NonNull<thread::RtThread>) {
+    pub fn set_current_thread(th: NonNull<thread::Thread>) {
         Self::get_current_scheduler().set_current_thread(th);
     }
 
@@ -298,7 +298,7 @@ impl Cpu {
     }
 }
 
-// need to call before rt_enter_critical/ cpus_lock called
+// need to call before disables preemption for the CPU/ cpus_lock called
 #[no_mangle]
 pub extern "C" fn init_cpus() {
     unsafe {
@@ -312,13 +312,3 @@ pub extern "C" fn init_cpus() {
         tid.init_once();
     }
 }
-
-// #[no_mangle]
-// pub extern "C" fn rt_cpus_lock_status_restore(thread: *mut thread::RtThread) {
-//     assert!(!thread.is_null());
-//     let scheduler = Cpu::get_current_scheduler();
-//     unsafe {
-//         scheduler.set_current_thread(NonNull::new_unchecked(thread));
-//     }
-//     scheduler.ctx_switch_unlock();
-// }

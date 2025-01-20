@@ -2,7 +2,7 @@ use crate::{
     alloc::boxed::Box,
     blue_kconfig::{MAIN_THREAD_PRIORITY, MAIN_THREAD_STACK_SIZE},
     c_str, cpu, idle, kprintf,
-    thread::RtThread,
+    thread::Thread,
     timer,
 };
 use blue_arch::arch::Arch;
@@ -13,13 +13,13 @@ type InitFn = extern "C" fn() -> i32;
 
 #[cfg(feature = "debugging_init")]
 #[repr(C)]
-struct RtInitDesc {
+struct InitDesc {
     fn_name: *const core::ffi::c_char,
     fn_ptr: InitFn,
 }
 
 #[cfg(feature = "debugging_init")]
-unsafe impl Sync for RtInitDesc {}
+unsafe impl Sync for InitDesc {}
 
 /// convert to string type
 macro_rules! level_to_string {
@@ -47,7 +47,7 @@ macro_rules! init_export {
             #[link_section = concat!(".rti_fn.", level_to_string!($level))]
             #[used]
             #[allow(non_upper_case_globals)]
-            static [<"rt_init_desc_" $func>]: RtInitDesc = RtInitDesc {
+            static [<"init_desc_" $func>]: InitDesc = InitDesc {
                 fn_name: [<"fuc" $func>].as_ptr() as *const core::ffi::c_char,
                 fn_ptr: $func,
             };
@@ -106,8 +106,8 @@ init_export!(rti_end, level6_end);
 pub extern "C" fn rt_components_board_init() {
     #[cfg(feature = "debugging_init")]
     {
-        let mut desc: *const RtInitDesc = &rt_init_desc_rti_board_start;
-        while desc < &rt_init_desc_rti_board_end {
+        let mut desc: *const InitDesc = &init_desc_rti_board_start;
+        while desc < &init_desc_rti_board_end {
             let desc_ptr = unsafe { &(*desc) };
             let fn_name = desc_ptr.fn_name;
             kprintf!(b"initialize %s", fn_name);
@@ -129,12 +129,11 @@ pub extern "C" fn rt_components_board_init() {
 }
 
 ///kernel components Initialization.
-#[no_mangle]
-pub extern "C" fn rt_components_init() {
+fn components_init() {
     #[cfg(feature = "debugging_init")]
     {
-        let mut desc: *const RtInitDesc = &rt_init_desc_rti_board_end;
-        while desc < &rt_init_desc_rti_end {
+        let mut desc: *const InitDesc = &init_desc_rti_board_end;
+        while desc < &init_desc_rti_end {
             let desc_ptr = unsafe { &(*desc) };
             let fn_name = desc_ptr.fn_name;
             kprintf!(b"initialize %s", fn_name);
@@ -166,13 +165,13 @@ static mut MAIN_THREAD_STACK: [u8; MAIN_THREAD_STACK_SIZE] = [0; MAIN_THREAD_STA
 
 #[cfg(not(feature = "heap"))]
 #[no_mangle]
-static mut MAIN_THREAD: RtThread = RtThread {};
+static mut MAIN_THREAD: Thread = Thread {};
 
-///The system main thread. In this thread will call the rt_components_init()
+///The system main thread. In this thread will call the components_init()
 #[no_mangle]
 pub extern "C" fn main_thread_entry(_parameter: *mut core::ffi::c_void) {
     unsafe {
-        rt_components_init();
+        components_init();
         #[cfg(feature = "smp")]
         {
             rt_hw_secondary_cpu_up();
@@ -182,13 +181,12 @@ pub extern "C" fn main_thread_entry(_parameter: *mut core::ffi::c_void) {
 }
 
 ///This function will create and start the main thread
-#[no_mangle]
-pub extern "C" fn rt_application_init() {
+fn application_init() {
     let tid;
 
     #[cfg(feature = "heap")]
     {
-        let thread = RtThread::try_new_in_heap(
+        let thread = Thread::try_new_in_heap(
             c_str!("main"),
             main_thread_entry,
             ptr::null_mut() as *mut usize,
@@ -208,7 +206,7 @@ pub extern "C" fn rt_application_init() {
     #[cfg(not(feature = "heap"))]
     {
         tid = &MAIN_THREAD;
-        let init = RtThread::static_new(
+        let init = Thread::static_new(
             c_str!("main"),
             core::option::Option::Some(main_thread_entry),
             ptr::null_mut() as *mut usize,
@@ -240,7 +238,7 @@ pub extern "C" fn kernel_startup() -> ! {
             rt_bindings::rt_system_signal_init();
         }
     }
-    rt_application_init();
+    application_init();
     timer::system_timer_thread_init();
     idle::IdleTheads::init_once();
     #[cfg(feature = "smp")]

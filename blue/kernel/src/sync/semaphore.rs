@@ -14,7 +14,7 @@ use pinned_init::{pin_data, pin_init, pin_init_from_closure, pinned_drop, InPlac
 #[pin_data(PinnedDrop)]
 pub struct KSemaphore {
     #[pin]
-    raw: UnsafeCell<RtSemaphore>,
+    raw: UnsafeCell<Semaphore>,
     #[pin]
     pin: PhantomPinned,
 }
@@ -33,9 +33,9 @@ impl PinnedDrop for KSemaphore {
 
 impl KSemaphore {
     pub fn new(value: u32) -> Pin<Box<Self>> {
-        fn init_raw(value: u16) -> impl PinInit<UnsafeCell<RtSemaphore>> {
-            let init = move |slot: *mut UnsafeCell<RtSemaphore>| {
-                let slot: *mut RtSemaphore = slot.cast();
+        fn init_raw(value: u16) -> impl PinInit<UnsafeCell<Semaphore>> {
+            let init = move |slot: *mut UnsafeCell<Semaphore>| {
+                let slot: *mut Semaphore = slot.cast();
                 unsafe {
                     let cur_ref = &mut *slot;
 
@@ -82,18 +82,18 @@ impl<'a> Drop for KSemaphoreGuard<'a> {
 /// Semaphore raw structure
 #[repr(C)]
 #[pin_data]
-pub struct RtSemaphore {
+pub struct Semaphore {
     /// Inherit from KObject
     #[pin]
     pub(crate) parent: KObjectBase,
     /// SysQueue for semaphore
     #[pin]
-    pub(crate) inner_queue: RtSysQueue,
+    pub(crate) inner_queue: SysQueue,
 }
 
-impl_kobject!(RtSemaphore);
+impl_kobject!(Semaphore);
 
-impl RtSemaphore {
+impl Semaphore {
     #[inline]
     pub fn new(name: [i8; NAME_MAX], value: u16, waiting_mode: u8) -> impl PinInit<Self> {
         assert!(
@@ -107,13 +107,13 @@ impl RtSemaphore {
             let cur_ref = &mut *slot;
             let _ = KObjectBase::new(ObjectClassType::ObjectClassSemaphore as u8, name)
                 .__pinned_init(&mut cur_ref.parent as *mut KObjectBase);
-            let _ = RtSysQueue::new(
+            let _ = SysQueue::new(
                 mem::size_of::<u32>(),
                 value as usize,
                 IPC_SYS_QUEUE_STUB,
                 waiting_mode as u32,
             )
-            .__pinned_init(&mut cur_ref.inner_queue as *mut RtSysQueue);
+            .__pinned_init(&mut cur_ref.inner_queue as *mut SysQueue);
             cur_ref.inner_queue.reset_stub(value as usize);
             Ok(())
         };
@@ -168,7 +168,7 @@ impl RtSemaphore {
 
     #[inline]
     pub fn new_raw(name: *const i8, value: u16, flag: u8) -> *mut Self {
-        let semaphore = Box::pin_init(RtSemaphore::new(char_ptr_to_array(name), value, flag));
+        let semaphore = Box::pin_init(Semaphore::new(char_ptr_to_array(name), value, flag));
         match semaphore {
             Ok(sem) => unsafe { Box::leak(Pin::into_inner_unchecked(sem)) },
             Err(_) => return null_mut(),
@@ -319,9 +319,9 @@ impl RtSemaphore {
     }
 }
 
-/// bindgen for RtSemaphore
+/// bindgen for Semaphore
 #[allow(improper_ctypes_definitions)]
 #[no_mangle]
-pub extern "C" fn bindgen_sem(_sem: RtSemaphore) {
+pub extern "C" fn bindgen_sem(_sem: Semaphore) {
     0;
 }

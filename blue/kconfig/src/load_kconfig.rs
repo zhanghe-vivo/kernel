@@ -18,6 +18,8 @@ pub const MAIN_THREAD_STACK_SIZE: u32 = kint!(MAIN_THREAD_STACK_SIZE) as u32;
 
 pub const THREAD_PRIORITY_MAX: u32 = kint!(THREAD_PRIORITY_MAX) as u32;
 
+pub const IDLE_THREAD_STACK_SIZE: u32 = kint!(IDLE_THREAD_STACK_SIZE) as u32;
+
 pub const CPUS_NR: u32 = get_cpus_nr();
 
 const fn get_cpus_nr() -> u32 {
@@ -45,6 +47,7 @@ pub enum Feature {
     Rwlock,
     Condvar,
     CompatNewlibc,
+    ThreadPriorityMax
 }
 
 impl Feature {
@@ -65,6 +68,7 @@ impl Feature {
             Feature::Rwlock => kbool!(RWLOCK),
             Feature::Condvar => kbool!(CONDVAR),
             Feature::CompatNewlibc => kbool!(COMPAT_NEWLIBC),
+            Feature::ThreadPriorityMax => THREAD_PRIORITY_MAX >= 32,
         }
     }
 
@@ -85,6 +89,7 @@ impl Feature {
             Feature::Rwlock => "rwlock",
             Feature::Condvar => "condvar",
             Feature::CompatNewlibc => "compat_newlibc",
+            Feature::ThreadPriorityMax => "thread_priority_max",
         }
     }
 }

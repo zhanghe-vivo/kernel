@@ -29,7 +29,7 @@ pub struct HeapLockBackend;
 
 // SAFETY: The underlying kernel `struct mutex` object ensures mutual exclusion.
 unsafe impl super::Backend for HeapLockBackend {
-    type State = RtMutex;
+    type State = Mutex;
     type GuardState = ();
 
     unsafe fn init(ptr: *mut Self::State, name: *const core::ffi::c_char) {
