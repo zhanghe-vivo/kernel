@@ -25,8 +25,6 @@ use crate::cpu::Cpu;
 use crate::{irq::IrqLock, println, thread::Thread};
 use blue_arch::arch::Arch;
 #[cfg(feature = "smp")]
-use blue_arch::asm;
-#[cfg(feature = "smp")]
 use core::sync::atomic::{AtomicUsize, Ordering};
 #[cfg(feature = "debugging_spinlock")]
 use core::{cell::Cell, ptr::NonNull};
@@ -167,14 +165,14 @@ impl RawSpin {
     pub fn arch_lock(&self) {
         let lockval = self.tickets.next.fetch_add(1, Ordering::SeqCst);
         while lockval != self.tickets.owner.load(Ordering::SeqCst) {
-            asm::wait_for_event();
+            Arch::wait_for_event();
         }
     }
 
     #[cfg(feature = "smp")]
     pub fn arch_unlock(&self) {
         self.tickets.owner.fetch_add(1, Ordering::SeqCst);
-        asm::signal_event();
+        Arch::signal_event();
     }
 }
 

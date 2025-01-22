@@ -5,12 +5,17 @@
 #![no_std]
 #![feature(naked_functions)]
 #![feature(stmt_expr_attributes)]
+#![feature(linkage)]
 #![allow(unused)]
 
 #[cfg(all(cortex_m, target_os = "none"))]
-pub mod cortex_m;
+pub mod arm_cortex_m;
 #[cfg(all(cortex_m, target_os = "none"))]
-pub use crate::cortex_m as arch;
+pub use crate::arm_cortex_m as arch;
+// #[link_section] is only usable from the root crate.
+// See https://github.com/rust-lang/rust/issues/67209.
+#[cfg(all(cortex_m, target_os = "none"))]
+include!("arm_cortex_m/handlers.rs");
 
 // #[cfg(all(armv7a, target_os = "none"))]
 // pub mod cortex_a;

@@ -611,6 +611,7 @@ impl WaitQueue {
         self.working_queue.prev()
     }
 
+    #[allow(dead_code)]
     #[inline]
     pub(crate) fn count(&self) -> usize {
         self.working_queue.size()

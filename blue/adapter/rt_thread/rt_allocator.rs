@@ -41,5 +41,5 @@ pub extern "C" fn rt_system_heap_init(
     begin_addr: *mut core::ffi::c_void,
     end_addr: *mut core::ffi::c_void,
 ) {
-    allocator::system_heap_init(begin_addr as *mut u8, end_addr as *mut u8)
+    allocator::system_heap_init(begin_addr as usize, end_addr as usize)
 }

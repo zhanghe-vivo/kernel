@@ -54,4 +54,4 @@ cmake-build-debug
 
 *.DS_Store
 blue/target
-blue/os_compat/rt_thread/bindings.rs
+blue/bsp/src/bindings.rs

@@ -16,6 +16,7 @@ pub use blue_kconfig;
 // TODO: add os compat cfg
 
 pub mod allocator;
+pub mod startup;
 pub mod clock;
 pub mod components;
 pub mod cpu;
@@ -102,7 +103,7 @@ macro_rules! debug_scheduler_available {
         if $need_check {
             use crate::irq;
 
-            let interrupt_disabled = irq::hw_interrupt_is_disabled();
+            let interrupt_disabled = !blue_arch::arch::Arch::is_interrupts_active();
             let level = blue_arch::arch::Arch::disable_interrupts();
             if cpu::Cpu::get_current_scheduler().get_sched_lock_level() != 0 {
                 crate::kprintf!(

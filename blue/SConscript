@@ -4,7 +4,7 @@ import os
 src = Glob('*.c')
 cwd = GetCurrentDir()
 
-libs = ["adapter"]
+libs = ["blue_bsp", "blue_kernel", "adapter"]
 libpath = [cwd + "/target"]
 group = DefineGroup('Rust', src, depend = ['USE_RUST'], CPPPATH = [], LIBS=libs, LIBPATH=libpath, CPPDEFINES = ['__RTTHREAD__'])
 

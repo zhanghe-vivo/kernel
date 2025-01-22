@@ -74,13 +74,41 @@ MEMORY
  *   __StackTop
  *   __stack
  */
+
 ENTRY(Reset_Handler)
+
+/* # Exception vectors */
+EXTERN(__EXCEPTIONS);
+/* # Default exception handler */
+EXTERN(Default_Handler);
+/* # Interrupt vectors */
+EXTERN(__INTERRUPTS);
 
 SECTIONS
 {
-  .text :
+  /* ## Sections in FLASH */
+  /* ### Vector table */
+  .vector_table ORIGIN(FLASH) :
   {
-    KEEP(*(.vectors))
+    __vector_table = .;
+
+    /* Initial Stack Pointer (SP) value */
+    LONG(__stack);
+
+    /* Exceptions */
+    __exceptions = .; /* start of exceptions */
+    KEEP(*(.vector_table.exceptions)); /* this is the `__EXCEPTIONS` symbol */
+    __eexceptions = .; /* end of exceptions */
+
+    /* Device specific interrupts */
+    KEEP(*(.vector_table.interrupts)); /* this is the `__INTERRUPTS` symbol */
+  } > FLASH
+
+  PROVIDE(_stext = ADDR(.vector_table) + SIZEOF(.vector_table));
+
+  /* ### .text */
+  .text _stext :
+  {
     *(.text*)
 
     /* section information for utest */
@@ -187,10 +215,8 @@ SECTIONS
     . = ALIGN(4);
     __zero_table_start__ = .;
     /* Add each additional bss section here */
-/*
-    LONG (__bss2_start__)
-    LONG ((__bss2_end__ - __bss2_start__) / 4)
-*/
+    LONG (__bss_start__)
+    LONG ((__bss_end__ - __bss_start__) / 4)
     __zero_table_end__ = .;
   } > FLASH
 

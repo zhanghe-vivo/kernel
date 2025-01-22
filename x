@@ -26,6 +26,7 @@ def Build(config, toml):
     include_path = f'{bsp_path};{ROOT}/include;{ROOT}/components/finsh;{gcc_include_path}'
     os_adapter = 'rt_thread'
     toolchain = toml['target'][config.target]['toolchain']
+    rustc_flags = '-Z macro-backtrace'
     if config.reconfigure:
         rc = subprocess.call(['scons', '--menuconfig'], cwd=bsp_path)
         if rc != 0:
@@ -49,20 +50,20 @@ def Build(config, toml):
             logging.error(cmd)
             return rc
         action = 'clean'
-        cmd = f'OS_ADAPTER="{os_adapter}" INCLUDE_PATH="{include_path}" cargo {action} --manifest-path {toml_path} --target {toolchain} -Z unstable-options'
+        cmd = f'BOARD="{target}" OS_ADAPTER="{os_adapter}" INCLUDE_PATH="{include_path}" RUSTFLAGS="{rustc_flags}" cargo {action} --manifest-path {toml_path} --target {toolchain}'
         rc = subprocess.call(cmd, shell=True, cwd=os.path.join(ROOT, 'blue'))
         if rc != 0:
             logging.error(cmd)
             return rc
     if config.fix:
         action = 'fix'
-        cmd = f'OS_ADAPTER="{os_adapter}" INCLUDE_PATH="{include_path}" cargo {action} --allow-dirty --allow-staged --bins --lib --manifest-path {toml_path} --target {toolchain} -Z unstable-options'
+        cmd = f'BOARD="{target}" OS_ADAPTER="{os_adapter}" INCLUDE_PATH="{include_path}" RUSTFLAGS="{rustc_flags}" cargo {action} --allow-dirty --allow-staged --bins --lib --manifest-path {toml_path} --target {toolchain}'
         rc = subprocess.call(cmd, shell=True, cwd=os.path.join(ROOT, 'blue'))
         if rc != 0:
             logging.error(cmd)
             return rc
     action = 'build'
-    cmd = f'OS_ADAPTER="{os_adapter}" INCLUDE_PATH="{include_path}" cargo {action} --manifest-path {toml_path} --target {toolchain} --artifact-dir {out_path} -Z unstable-options'
+    cmd = f'BOARD="{target}" OS_ADAPTER="{os_adapter}" INCLUDE_PATH="{include_path}" cargo {action} --manifest-path {toml_path} --target {toolchain} --artifact-dir {out_path} -Z unstable-options'
     if config.release:
         cmd += ' --release'
     rc = subprocess.call(cmd, shell=True, cwd=os.path.join(ROOT, 'blue'))
@@ -83,7 +84,7 @@ def Clippy(config, toml):
     os_adapter = 'rt_thread'
     toolchain = toml['target'][config.target]['toolchain']
     cmd = f'cargo clippy --manifest-path {toml_path}'
-    cmd = f'OS_ADAPTER="{os_adapter}" INCLUDE_PATH="{include_path}" cargo clippy --manifest-path {toml_path} --target {toolchain}' + ' -- -D clippy::undocumented_unsafe_blocks'
+    cmd = f'BOARD="{target}" OS_ADAPTER="{os_adapter}" INCLUDE_PATH="{include_path}" cargo clippy --manifest-path {toml_path} --target {toolchain}' + ' -- -D clippy::undocumented_unsafe_blocks'
     return subprocess.call(cmd, shell=True, cwd=os.path.join(ROOT, 'blue'))
 
 

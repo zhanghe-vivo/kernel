@@ -144,13 +144,13 @@ pub const fn is_aligned(addr: usize, align: usize) -> bool {
 ///
 /// * `begin_addr` - The beginning address of the heap.
 /// * `end_addr` - The ending address of the heap.
-pub fn system_heap_init(begin_addr: *mut u8, end_addr: *mut u8) {
+pub fn system_heap_init(begin_addr: usize, end_addr: usize) {
     // Initialize the allocator BEFORE you use it
     assert!(end_addr > begin_addr);
-    let heap_size = end_addr as usize - begin_addr as usize;
+    let heap_size = end_addr - begin_addr;
     unsafe {
         HEAP.init_once();
-        HEAP.init(begin_addr as usize, heap_size);
+        HEAP.init(begin_addr, heap_size);
     }
 }
 

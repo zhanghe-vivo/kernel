@@ -22,7 +22,6 @@ pub mod code {
     pub const EPERM: super::Error = super::Error(-klibc::EPERM);
 }
 
-
 const EOK_STR: &'static CStr = crate::c_str!("OK      ");
 const ERROR_STR: &'static CStr = crate::c_str!("ERROR   ");
 const ETIMEDOUT_STR: &'static CStr = crate::c_str!("Timeout ");

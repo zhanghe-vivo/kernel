@@ -17,7 +17,7 @@
 
 use crate::{
     arch::stack_frame::{StackFrame, StackFrameExtension, StackSettings},
-    cortex_m::Arch,
+    arm_cortex_m::Arch,
 };
 use core::{
     arch::{asm, naked_asm},
@@ -33,127 +33,6 @@ use cortex_m::{
 extern "C" {
     static __StackTop: u32;
     static __StackLimit: u32;
-}
-
-/// Pendable service call.
-///
-/// Storing and loading registers in context switch.
-///
-/// Exception is triggered by `cortex_m::peripheral::SCB::PendSV()`.
-#[cfg(all(any(armv7m, armv7em), not(has_fpu)))]
-#[no_mangle]
-#[naked]
-pub unsafe extern "C" fn PendSV_Handler() {
-    // SAFETY: Safe bare metal assembly operations
-    unsafe {
-        naked_asm!(
-            "cpsid   I", // disable interrupt
-            "mrs      r0, psp",
-            "mov      r2, lr",
-            "mrs      r3, control",
-            "stmdb    r0!, {{r2-r11}}",
-            "bl       switch_context_in_irq",
-            "ldmia    r0!, {{r2-r11}}",
-            "msr      control, r3",
-            "isb",
-            "mov      lr, r2",
-            "msr      psp, r0",
-            "orr      lr, lr, #0x04",
-            "cpsie    I",
-            "bx       lr",
-        )
-    }
-}
-
-#[cfg(all(any(armv7m, armv7em), has_fpu))]
-#[no_mangle]
-#[naked]
-pub unsafe extern "C" fn PendSV_Handler() {
-    unsafe {
-        naked_asm!(
-            "cpsid   I", // disable interrupt
-            "mrs      r0, psp",
-            "mov      r2, lr",
-            "mrs      r3, control",
-            "tst      r2, #0x10",
-            "it       eq",
-            "vstmdbeq r0!, {{s16-s31}}", // push FPU registers
-            "stmdb    r0!, {{r2-r11}}",
-            "bl       switch_context_in_irq",
-            "ldmia    r0!, {{r2-r11}}",
-            "msr      control, r3",
-            "mov      lr, r2",
-            "tst      lr, #0x10",
-            "it       eq",
-            "vldmiaeq r0!, {{s16-s31}}", // pop FPU registers
-            "msr      psp, r0",
-            "cpsie    I",
-            "bx       lr",
-        )
-    }
-}
-
-#[cfg(all(armv8m, not(has_fpu)))]
-#[no_mangle]
-#[naked]
-pub unsafe extern "C" fn PendSV_Handler() {
-    unsafe {
-        naked_asm!(
-            "cpsid    I",
-            "mrs      r0, psp",
-            "stmdb    r0!, {{r4-r11}}",
-            "mov      r1, #0",
-            "mrs      r2, psplim",
-            "mov      r3, lr",
-            "mrs      r4, control",
-            "stmdb    r0!, {{r1-r4}}",
-            "bl       switch_context_in_irq",
-            "ldmia    r0!, {{r1-r4}}",
-            "msr      control, r4",
-            "msr      psplim, r2",
-            "mov      lr, r3",
-            "ldmia    r0!, {{r4-r11}}",
-            "msr      psp, r0",
-            "cpsie    I",
-            "bx       lr",
-        )
-    }
-}
-#[cfg(all(armv8m, has_fpu))]
-#[no_mangle]
-#[naked]
-pub unsafe extern "C" fn PendSV_Handler() {
-    unsafe {
-        naked_asm!(
-            "cpsid    I",
-            "mrs      r0, psp",
-            // test and push FPU registers
-            "tst      lr, #0x10",
-            "it       eq",
-            "vstmdbeq r0!, {{s16-s31}}",
-            // push general registers
-            "stmdb    r0!, {{r4-r11}}",
-            "mov      r1, #0", // no tz context supported yet. reserve for future.
-            "mrs      r2, psplim",
-            "mov      r3, lr",
-            "mrs      r4, control",
-            "stmdb    r0!, {{r1-r4}}",
-            "bl       switch_context_in_irq",
-            "ldmia    r0!, {{r1-r4}}",
-            // no tz context supported yet.
-            "msr      control, r4",
-            "msr      psplim, r2",
-            "mov      lr, r3",
-            "ldmia    r0!, {{r4-r11}}",
-            // test and pop FPU registers
-            "tst      lr, #0x10",
-            "it       eq",
-            "vldmiaeq r0!, {{s16-s31}}",
-            "msr      psp, r0",
-            "cpsie    I",
-            "bx       lr",
-        )
-    }
 }
 
 #[inline]
@@ -314,7 +193,6 @@ impl Arch {
         unsafe {
             let mut scb = Peripherals::steal();
             // enable systick counter
-            scb.SYST.set_clock_source(SystClkSource::Core);
             scb.SYST.enable_counter();
             scb.SYST.enable_interrupt();
 

@@ -1,5 +1,5 @@
-use core::{intrinsics::compare_bytes, ptr};
 use crate::str::CStringIter;
+use core::{intrinsics::compare_bytes, ptr};
 
 mod errno;
 mod fnctl;

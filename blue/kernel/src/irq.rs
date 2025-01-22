@@ -5,6 +5,8 @@ use core::{
     ops::{Deref, DerefMut},
 };
 
+use crate::cpu::Cpu;
+
 #[repr(transparent)]
 #[derive(Clone, Debug)]
 pub struct IrqLockRaw(Cell<usize>);
@@ -102,7 +104,14 @@ impl<'a, T> Drop for IrqGuard<'a, T> {
     }
 }
 
-#[linkage = "weak"]
-pub fn hw_interrupt_is_disabled() -> bool {
-    false
+pub struct Irq;
+
+impl Irq {
+    pub fn enter() {
+        Cpu::interrupt_nest_inc();
+    }
+
+    pub fn leave() {
+        Cpu::interrupt_nest_dec();
+    }
 }

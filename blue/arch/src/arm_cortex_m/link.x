@@ -1,67 +1,42 @@
 /******************************************************************************
  * @file     gcc_arm.ld
  * @brief    GNU Linker Script for Cortex-M based device
- * @version  V2.2.0
- * @date     16. December 2020
  ******************************************************************************/
-/*
- * Copyright (c) 2009-2020 Arm Limited. All rights reserved.
- *
- * SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the License); you may
- * not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an AS IS BASIS, WITHOUT
- * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 
 /*
- *-------- <<< Use Configuration Wizard in Context Menu >>> -------------------
+; -------- <<< Use Configuration Wizard in Context Menu >>> -------------------
  */
 
 /*---------------------- Flash Configuration ----------------------------------
-  <h> Flash Configuration
-    <o0> Flash Base Address <0x0-0xFFFFFFFF:8>
-    <o1> Flash Size (in Bytes) <0x0-0xFFFFFFFF:8>
-  </h>
+; <h> Flash Configuration
+;   <o0> Flash Base Address <0x0-0xFFFFFFFF:8>
+;   <o1> Flash Size (in Bytes) <0x0-0xFFFFFFFF:8>
+; </h>
   -----------------------------------------------------------------------------*/
 __ROM_BASE = 0x00000000;
 __ROM_SIZE = 0x00080000;
 
 /*--------------------- Embedded RAM Configuration ----------------------------
-  <h> RAM Configuration
-    <o0> RAM Base Address    <0x0-0xFFFFFFFF:8>
-    <o1> RAM Size (in Bytes) <0x0-0xFFFFFFFF:8>
-  </h>
+; <h> RAM Configuration
+;   <o0> RAM Base Address    <0x0-0xFFFFFFFF:8>
+;   <o1> RAM Size (in Bytes) <0x0-0xFFFFFFFF:8>
+; </h>
  -----------------------------------------------------------------------------*/
 __RAM_BASE = 0x20000000;
 __RAM_SIZE = 0x00040000;
 
 /*--------------------- Stack / Heap Configuration ----------------------------
-  <h> Stack / Heap Configuration
-    <o0> Stack Size (in Bytes) <0x0-0xFFFFFFFF:8>
-    <o1> Heap Size (in Bytes) <0x0-0xFFFFFFFF:8>
-  </h>
+; <h> Stack / Heap Configuration
+;   <o0> Stack Size (in Bytes) <0x0-0xFFFFFFFF:8>
+;   <o1> Heap Size (in Bytes) <0x0-0xFFFFFFFF:8>
+; </h>
   -----------------------------------------------------------------------------*/
 __STACK_SIZE = 0x00001000;
 __HEAP_SIZE  = 0x00020000;
 
 /*
- *-------------------- <<< end of configuration section >>> -------------------
+; -------------------- <<< end of configuration section >>> -------------------
  */
-
-/* ARMv8-M stack sealing:
-   to use ARMv8-M stack sealing set __STACKSEAL_SIZE to 8 otherwise keep 0
- */
-__STACKSEAL_SIZE = 8;
-
 
 MEMORY
 {
@@ -98,16 +73,8 @@ MEMORY
  *   __StackLimit
  *   __StackTop
  *   __stack
- *   __StackSeal      (only if ARMv8-M stack sealing is used)
  */
 ENTRY(Reset_Handler)
-
-/* # Exception vectors */
-EXTERN(__EXCEPTIONS);
-/* # Default exception handler */
-EXTERN(Default_Handler);
-/* # Interrupt vectors */
-EXTERN(__INTERRUPTS);
 
 SECTIONS
 {
@@ -120,10 +87,9 @@ SECTIONS
     /* Initial Stack Pointer (SP) value */
     LONG(__stack);
 
-    /* Exceptions */
-    __exceptions = .; /* start of exceptions */
-    KEEP(*(.vector_table.exceptions)); /* this is the `__EXCEPTIONS` symbol */
-    __eexceptions = .; /* end of exceptions */
+    /* Our custom exceptions table */
+    KEEP(*(.vector_table.exceptions));
+    __eexceptions = .;
 
     /* Device specific interrupts */
     KEEP(*(.vector_table.interrupts)); /* this is the `__INTERRUPTS` symbol */
@@ -131,7 +97,8 @@ SECTIONS
 
   PROVIDE(_stext = ADDR(.vector_table) + SIZEOF(.vector_table));
 
-  .text :
+  /* ### .text */
+  .text _stext :
   {
     *(.text*)
 
@@ -195,7 +162,7 @@ SECTIONS
   /*
    * SG veneers:
    * All SG veneers are placed in the special output section .gnu.sgstubs. Its start address
-   * must be set, either with the command line option �--section-start� or in a linker script,
+   * must be set, either with the command line option ‘--section-start’ or in a linker script,
    * to indicate where to place these veneers in memory.
    */
 /*
@@ -349,7 +316,7 @@ SECTIONS
     __HeapLimit = .;
   } > RAM
 
-  .stack (ORIGIN(RAM) + LENGTH(RAM) - __STACK_SIZE - __STACKSEAL_SIZE) (COPY) :
+  .stack (ORIGIN(RAM) + LENGTH(RAM) - __STACK_SIZE) (COPY) :
   {
     . = ALIGN(8);
     __StackLimit = .;
@@ -358,17 +325,6 @@ SECTIONS
     __StackTop = .;
   } > RAM
   PROVIDE(__stack = __StackTop);
-  
-  /* ARMv8-M stack sealing:
-     to use ARMv8-M stack sealing uncomment '.stackseal' section
-   */
-  .stackseal (ORIGIN(RAM) + LENGTH(RAM) - __STACKSEAL_SIZE) (COPY) :
-  {
-    . = ALIGN(8);
-    __StackSeal = .;
-    . = . + __STACKSEAL_SIZE;
-    . = ALIGN(8);
-  } > RAM
 
   /* Check if data + heap + stack exceeds RAM limit */
   ASSERT(__StackLimit >= __HeapLimit, "region RAM overflowed with stack")

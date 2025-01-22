@@ -22,15 +22,15 @@ macro_rules! kprintf {
 
 #[macro_export]
 macro_rules! println {
-    ($fmt:expr) => (crate::kernel::print!(concat!($fmt, "\n")));
-    ($fmt:expr, $($arg:tt)*) => (crate::kernel::print!(concat!($fmt, "\n"), $($arg)*));
+    ($fmt:expr) => (kernel::print!(concat!($fmt, "\n")));
+    ($fmt:expr, $($arg:tt)*) => (kernel::print!(concat!($fmt, "\n"), $($arg)*));
 }
 
 #[macro_export]
 macro_rules! print {
     ($($arg:tt)*) => ({
         use core::fmt::Write;
-        let mut writer = $crate::print::Console {};
+        let mut writer = kernel::print::Console {};
         writer.write_fmt(format_args!($($arg)*)).unwrap();
     });
 }

@@ -1,12 +1,4 @@
-use crate::{
-    alloc::boxed::Box,
-    blue_kconfig::{MAIN_THREAD_PRIORITY, MAIN_THREAD_STACK_SIZE},
-    c_str, cpu, idle, kprintf,
-    thread::Thread,
-    timer,
-};
-use blue_arch::arch::Arch;
-use core::{pin::Pin, ptr};
+use crate::kprintf;
 use paste::paste;
 
 type InitFn = extern "C" fn() -> i32;
@@ -129,7 +121,7 @@ pub extern "C" fn rt_components_board_init() {
 }
 
 ///kernel components Initialization.
-fn components_init() {
+pub fn components_init() {
     #[cfg(feature = "debugging_init")]
     {
         let mut desc: *const InitDesc = &init_desc_rti_board_end;
@@ -152,100 +144,4 @@ fn components_init() {
             }
         }
     }
-}
-
-extern "C" {
-    pub fn main() -> i32;
-    pub fn rt_hw_board_init();
-}
-
-#[cfg(not(feature = "heap"))]
-#[no_mangle]
-static mut MAIN_THREAD_STACK: [u8; MAIN_THREAD_STACK_SIZE] = [0; MAIN_THREAD_STACK_SIZE];
-
-#[cfg(not(feature = "heap"))]
-#[no_mangle]
-static mut MAIN_THREAD: Thread = Thread {};
-
-///The system main thread. In this thread will call the components_init()
-#[no_mangle]
-pub extern "C" fn main_thread_entry(_parameter: *mut core::ffi::c_void) {
-    unsafe {
-        components_init();
-        #[cfg(feature = "smp")]
-        {
-            rt_hw_secondary_cpu_up();
-        }
-        main();
-    }
-}
-
-///This function will create and start the main thread
-fn application_init() {
-    let tid;
-
-    #[cfg(feature = "heap")]
-    {
-        let thread = Thread::try_new_in_heap(
-            c_str!("main"),
-            main_thread_entry,
-            ptr::null_mut() as *mut usize,
-            MAIN_THREAD_STACK_SIZE as usize,
-            MAIN_THREAD_PRIORITY as u8,
-            20 as u32,
-        );
-
-        tid = match thread {
-            Ok(th) => {
-                // need to free by zombie.
-                unsafe { Box::leak(Pin::into_inner_unchecked(th)) }
-            }
-            Err(_) => ptr::null_mut(),
-        }
-    }
-    #[cfg(not(feature = "heap"))]
-    {
-        tid = &MAIN_THREAD;
-        let init = Thread::static_new(
-            c_str!("main"),
-            core::option::Option::Some(main_thread_entry),
-            ptr::null_mut() as *mut usize,
-            MAIN_THREAD_STACK.as_mut_ptr(),
-            MAIN_THREAD_STACK.len(),
-            MAIN_THREAD_PRIORITY as u8,
-            20 as u32,
-        );
-        unsafe {
-            let _ = init.__pinned_init(tid);
-        }
-    }
-    unsafe { (&mut *tid).start() };
-}
-
-///This function will call all levels of initialization functions to complete the initialization of the system, and finally start the scheduler.
-#[no_mangle]
-pub extern "C" fn kernel_startup() -> ! {
-    Arch::disable_interrupts();
-    cpu::init_cpus();
-    unsafe {
-        rt_hw_board_init();
-        //TODO: add show version
-        // rt_bindings::rt_show_version();
-        timer::system_timer_init();
-        //TODO: add signal
-        #[cfg(feature = "signals")]
-        {
-            rt_bindings::rt_system_signal_init();
-        }
-    }
-    application_init();
-    timer::system_timer_thread_init();
-    idle::IdleTheads::init_once();
-    #[cfg(feature = "smp")]
-    {
-        cpu::Cpus::lock_cpus();
-    }
-    cpu::Cpu::get_current_scheduler().start();
-
-    panic!("!!!system not start!!!");
 }

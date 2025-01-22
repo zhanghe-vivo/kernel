@@ -1,70 +1,10 @@
 use crate::arch::{
-    interrupt,
     register::xpsr,
     stack_frame::{ExceptionFrame, ExceptionFrameFpu, StackSettings},
-    Arch,
+    startup, Arch,
 };
-use core::{arch::naked_asm, fmt};
+use core::fmt;
 use cortex_m::peripheral::SCB;
-
-#[cfg(any(armv7m, armv7em,))]
-#[no_mangle]
-#[naked]
-pub unsafe extern "C" fn HardFault_Handler() {
-    // SAFETY: This is a hardware exception handler, using naked assembly is safe.
-    unsafe {
-        naked_asm!(
-            "mrs      r0, msp",   // get fault context from handler.
-            "tst      lr, #0x04", // if(!EXC_RETURN[2])
-            "beq      1f",
-            "mrs      r0, psp",         // get fault context from thread.
-            "1: mov   r2, lr",          // store lr in r2
-            "mrs      r3, control",     // store control register in r3
-            "stmdb    r0!, {{r2-r11}}", // push LR, control and remaining registers
-            "tst      lr, #0x04",       // if(!EXC_RETURN[2])
-            "beq      2f",
-            "msr      psp, r0", // update stack pointer to PSP.
-            "b        3f",
-            "2: msr   msp, r0", // update stack pointer to MSP.
-            "3: push  {{lr}}",  // save origin lr
-            "bl      HardFault",
-            "pop     {{lr}}",
-            "bx      lr",
-        )
-    }
-}
-
-#[cfg(armv8m)]
-#[no_mangle]
-#[naked]
-pub unsafe extern "C" fn HardFault_Handler() {
-    unsafe {
-        naked_asm!(
-            // 1. 确定使用的栈指针
-            "tst     lr, #0x04", // 检查 SPSEL 位
-            "ite     eq",        // if-then-else 块
-            "mrseq   r0, msp",   // 如果 SPSEL 位为 0，使用 MSP
-            "mrsne   r0, psp",   // 如果 SPSEL 位为 1，使用 PSP
-            // 2. 保存上下文
-            "stmdb   r0!, {{r4-r11}}", // 保存寄存器
-            "mov     r1, #0",          // no tz context supported yet. reserved.
-            "mrs     r2, psplim",      // 获取 PSPLIM
-            "mov     r3, lr",          // EXC_RETURN 值
-            "mrs     r4, control",     // CONTROL 寄存器
-            "stmdb   r0!, {{r1-r4}}",  // 保存寄存器
-            // 3. 更新栈指针
-            "tst     lr, #0x04", // 再次检查栈指针
-            "ite     eq",
-            "msreq   msp, r0",
-            "msrne   psp, r0", // 如果使用 PSP，更新 PSP
-            // 4. 调用 C 处理函数
-            "push    {{lr}}",    // save origin lr
-            "bl      HardFault", // 调用 C 处理函数
-            "pop     {{lr}}",
-            "bx      lr",
-        )
-    }
-}
 
 struct HardFaultRegs {
     cfsr: u32,  // Configurable Fault Status Register
