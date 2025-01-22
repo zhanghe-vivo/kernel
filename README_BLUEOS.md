@@ -6,11 +6,12 @@ BlueOS是vivo自研的实时操作系统。
 ### 安装gcc交叉编译工具链
 官方指南 https://learn.arm.com/install-guides/gcc/cross/
 #### 类Debian发行版
-```
+```shell
 sudo apt update
-sudo apt install gcc-arm-none-eabi -y
-sudo apt install gcc-arm-linux-gnueabihf -y
-sudo apt install gcc-aarch64-linux-gnu -y
+sudo apt install -y libclang-dev \
+                    gcc-arm-none-eabi \
+										gcc-arm-linux-gnueabihf \
+										gcc-aarch64-linux-gnu
 ```
 #### 类Fedora发行版
 ```
