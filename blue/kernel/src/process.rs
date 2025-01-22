@@ -5,7 +5,7 @@ use crate::{
     static_init::UnsafeStaticInit,
     sync::RawSpin,
 };
-use blue_infra::list::doubly_linked_list::ListHead;
+use blue_infra::list::doubly_linked_list::{LinkedListNode, ListHead};
 
 use core::{
     ffi,
@@ -31,12 +31,12 @@ pub(crate) struct Kprocess {
     base: KObjectBase,
     ///not use yet
     #[pin]
-    sibling: ListHead,
+    sibling: LinkedListNode,
     ///not use yet
     #[pin]
-    children: ListHead,
+    children: LinkedListNode,
     #[pin]
-    threas: ListHead,
+    threads: ListHead,
     #[cfg(feature = "semaphore")]
     #[pin]
     semaphore: ListHead,
@@ -84,9 +84,11 @@ impl Kprocess {
                 ObjectClassType::ObjectClassProcess as u8,
                 crate::c_str!("kprocess").as_ptr() as *const i8,
             );
-            let _ = ListHead::new().__pinned_init(&mut cur_ref.sibling as *mut ListHead);
-            let _ = ListHead::new().__pinned_init(&mut cur_ref.children as *mut ListHead);
-            let _ = ListHead::new().__pinned_init(&mut cur_ref.threas as *mut ListHead);
+            let _ =
+                LinkedListNode::new().__pinned_init(&mut cur_ref.sibling as *mut LinkedListNode);
+            let _ =
+                LinkedListNode::new().__pinned_init(&mut cur_ref.children as *mut LinkedListNode);
+            let _ = ListHead::new().__pinned_init(&mut cur_ref.threads as *mut ListHead);
             #[cfg(feature = "semaphore")]
             let _ = ListHead::new().__pinned_init(&mut cur_ref.semaphore as *mut ListHead);
             #[cfg(feature = "mutex")]
@@ -116,11 +118,44 @@ impl Kprocess {
         unsafe { pin_init_from_closure(init) }
     }
 
+    #[inline]
+    fn get_object_list_mut(&self, object_tpye: u8) -> &mut ListHead {
+        let process = Kprocess::get_process();
+        let _ = process.lock.acquire();
+        match object_tpye & (!OBJECT_CLASS_STATIC) {
+            x if x == ObjectClassType::ObjectClassThread as u8 => &mut process.threads,
+            #[cfg(feature = "semaphore")]
+            x if x == ObjectClassType::ObjectClassSemaphore as u8 => &mut process.semaphore,
+            #[cfg(feature = "mutex")]
+            x if x == ObjectClassType::ObjectClassMutex as u8 => &mut process.mutex,
+            #[cfg(feature = "rwlock")]
+            x if x == ObjectClassType::ObjectClassRwLock as u8 => &mut process.rwlock,
+            #[cfg(feature = "event")]
+            x if x == ObjectClassType::ObjectClassEvent as u8 => &mut process.event,
+            #[cfg(feature = "condvar")]
+            x if x == ObjectClassType::ObjectClassCondVar as u8 => &mut process.condvar,
+            #[cfg(feature = "mailbox")]
+            x if x == ObjectClassType::ObjectClassMailBox as u8 => &mut process.mailbox,
+            #[cfg(feature = "messagequeue")]
+            x if x == ObjectClassType::ObjectClassMessageQueue as u8 => &mut process.msgqueue,
+            #[cfg(feature = "memheap")]
+            x if x == ObjectClassType::ObjectClassMemHeap as u8 => &mut process.memheap,
+            #[cfg(feature = "mempool")]
+            x if x == ObjectClassType::ObjectClassMemPool as u8 => &mut process.mempool,
+            x if x == ObjectClassType::ObjectClassDevice as u8 => &mut process.device,
+            x if x == ObjectClassType::ObjectClassTimer as u8 => &mut process.timer,
+            #[cfg(feature = "heap")]
+            x if x == ObjectClassType::ObjectClassMemory as u8 => &mut process.memory,
+            _ => unreachable!("not a kernel object type!"),
+        }
+    }
+
+    #[inline]
     fn get_object_list(&self, object_tpye: u8) -> &ListHead {
         let process = Kprocess::get_process();
         let _ = process.lock.acquire();
         match object_tpye & (!OBJECT_CLASS_STATIC) {
-            x if x == ObjectClassType::ObjectClassThread as u8 => &process.threas,
+            x if x == ObjectClassType::ObjectClassThread as u8 => &process.threads,
             #[cfg(feature = "semaphore")]
             x if x == ObjectClassType::ObjectClassSemaphore as u8 => &process.semaphore,
             #[cfg(feature = "mutex")]
@@ -156,10 +191,11 @@ impl Kprocess {
     }
 
     fn insert(&mut self, object_tpye: u8, node: &mut ListHead) {
-        let list = self.get_object_list(object_tpye);
+        let list = self.get_object_list_mut(object_tpye);
         let _ = self.lock.acquire();
+
         unsafe {
-            Pin::new_unchecked(node).insert_next(list);
+            Pin::new_unchecked(list).push_back(Pin::new_unchecked(node));
         }
     }
 
@@ -167,7 +203,7 @@ impl Kprocess {
     fn addr_detect(&mut self, object_tpye: u8, ptr: &mut KObjectBase) {
         let list = self.get_object_list(object_tpye);
         let _ = self.lock.acquire();
-        crate::list_head_for_each!(node, list, {
+        crate::doubly_linked_list_for_each!(node, list, {
             let obj = unsafe { crate::list_head_entry!(node.as_ptr(), KObjectBase, list) };
             assert!(!ptr::eq(ptr, obj));
         });
@@ -201,7 +237,7 @@ pub fn find_object(object_tpye: u8, name: *const i8) -> *const KObjectBase {
     /* enter critical */
     Cpu::get_current_scheduler().preempt_disable();
     /* try to find object */
-    crate::list_head_for_each!(node, list, {
+    crate::doubly_linked_list_for_each!(node, list, {
         unsafe {
             let object = crate::list_head_entry!(node.as_ptr(), KObjectBase, list);
             if strncmp(
@@ -231,7 +267,7 @@ pub fn get_objects_by_type(object_type: u8, objects: &mut [*mut KObjectBase]) ->
         let process = Kprocess::get_process();
         let list = process.get_object_list(object_type);
         let _ = process.lock.acquire();
-        crate::list_head_for_each!(node, list, {
+        crate::doubly_linked_list_for_each!(node, list, {
             let object = unsafe { crate::list_head_entry!(node.as_ptr(), KObjectBase, list) };
             objects[count] = object as *mut KObjectBase;
             count += 1;
@@ -252,7 +288,7 @@ where
     let process = Kprocess::get_process();
     let list = process.get_object_list(object_type);
     process.lock.lock();
-    crate::list_head_for_each!(node, list, {
+    crate::doubly_linked_list_for_each!(node, list, {
         let _ = process.lock.unlock();
         callback(node);
         let _ = process.lock.lock();
@@ -270,7 +306,7 @@ pub fn bindings_foreach(
     let list = process.get_object_list(object_type);
     let mut index: usize = 0;
     process.lock.lock();
-    crate::list_head_for_each!(node, list, {
+    crate::doubly_linked_list_for_each!(node, list, {
         let obj = unsafe { crate::list_head_entry!(node.as_ptr(), KObjectBase, list) };
         let _ = process.lock.unlock();
         callback(obj as *mut KObjectBase, index, args);
@@ -292,5 +328,5 @@ pub fn size(object_type: u8) -> usize {
 pub fn remove(object: &mut KObjectBase) {
     let process = Kprocess::get_process();
     let _ = process.lock.acquire();
-    unsafe { Pin::new_unchecked(&mut object.list).remove() };
+    unsafe { Pin::new_unchecked(&mut object.list).remove_from_list() };
 }

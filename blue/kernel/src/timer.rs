@@ -5,7 +5,7 @@ use crate::{
     sync::RawSpin,
     thread::{Thread, ThreadWithStack},
 };
-use blue_infra::list::doubly_linked_list::ListHead;
+use blue_infra::list::doubly_linked_list::{LinkedListNode, ListHead};
 use core::{
     ffi::{c_char, c_void},
     pin::Pin,
@@ -160,11 +160,14 @@ impl TimerWheel {
             cursor = self.cursor;
         }
         let current_tick = Cpu::get_by_id(0).tick_load();
-        crate::list_head_for_each!(time_node, &self.row[cursor], {
+        crate::doubly_linked_list_for_each!(time_node, &self.row[cursor], {
             let timer = unsafe {
-                &mut *crate::container_of!(time_node.as_ptr() as *mut ListHead, Timer, node)
+                &mut *crate::container_of!(time_node.as_ptr() as *mut ListHead, Timer, list_node)
             };
             if current_tick.wrapping_sub(timer.timeout_tick) < u32::MAX / 2 {
+                // as timer will be removed from list, so we need to get prev
+                time_node = unsafe { time_node.prev().unwrap_unchecked().as_ref() };
+
                 timer.timer_remove();
                 if !timer.flag.get_state(TimerState::PERIODIC) {
                     timer.flag.unset_state(TimerState::ACTIVATED);
@@ -200,7 +203,7 @@ impl TimerWheel {
         for i in 0..TIMER_WHEEL_SIZE - 1 {
             if let Some(timer_node) = self.row[i].next() {
                 unsafe {
-                    let timer = crate::container_of!(timer_node.as_ptr(), Timer, node);
+                    let timer = crate::container_of!(timer_node.as_ptr(), Timer, list_node);
                     if (*timer).timeout_tick < next_timeout_tick {
                         next_timeout_tick = (*timer).timeout_tick;
                     }
@@ -222,7 +225,7 @@ pub struct Timer {
     pub timeout_tick: u32,
     pub flag: TimerState,
     #[pin]
-    node: ListHead,
+    list_node: LinkedListNode,
 }
 
 crate::impl_kobject!(Timer);
@@ -271,7 +274,9 @@ impl Timer {
             cur_ref.timeout_tick = 0;
             cur_ref.timeout_func = timeout_func;
             cur_ref.parameter = parameter;
-            let _ = unsafe { ListHead::new().__pinned_init(&mut cur_ref.node as *mut ListHead) };
+            let _ = unsafe {
+                LinkedListNode::new().__pinned_init(&mut cur_ref.list_node as *mut LinkedListNode)
+            };
             Ok(())
         };
         unsafe { pin_init_from_closure(init) }
@@ -300,32 +305,36 @@ impl Timer {
         let timeout_tick = Cpu::get_by_id(0).tick_load() + init_tick;
         self.timeout_tick = timeout_tick;
         let cursor = (time_wheel.cursor + init_tick as usize) & (TIMER_WHEEL_SIZE - 1);
-        let mut list = &mut time_wheel.row[cursor];
-        let head = list.as_ptr() as *mut ListHead;
-        loop {
-            match list.next() {
-                None => {
-                    unsafe { Pin::new_unchecked(&mut self.node).insert_next(list) }
-                    break;
-                }
-                Some(mut timer_node) => {
-                    let timer = unsafe { &*crate::container_of!(timer_node.as_ptr(), Timer, node) };
-                    if timeout_tick <= timer.timeout_tick {
-                        unsafe {
-                            Pin::new_unchecked(&mut self.node).insert_prev(timer_node.as_mut())
-                        };
-                        break;
-                    }
-                    if core::ptr::eq(head, timer_node.as_ptr()) {
-                        unsafe {
-                            Pin::new_unchecked(&mut self.node).insert_next(timer_node.as_mut())
-                        };
-                        break;
-                    }
-                    list = unsafe { timer_node.as_mut() };
-                }
+        let mut timer_node = &mut time_wheel.row[cursor];
+        let header_ptr = timer_node as *mut ListHead;
+
+        while let Some(mut next) = timer_node.next() {
+            if ptr::eq(next.as_ptr(), header_ptr) {
+                unsafe {
+                    Pin::new_unchecked(&mut self.list_node)
+                        .insert_after(Pin::new_unchecked(timer_node))
+                };
+                break;
+            }
+
+            timer_node = unsafe { next.as_mut() };
+            let timer = unsafe { &*crate::container_of!(timer_node.as_ptr(), Timer, list_node) };
+            if timeout_tick <= timer.timeout_tick {
+                unsafe {
+                    Pin::new_unchecked(&mut self.list_node)
+                        .insert_before(Pin::new_unchecked(timer_node))
+                };
+                break;
             }
         }
+
+        // timer_node is the header if next() return none
+        if timer_node.next().is_none() {
+            unsafe {
+                Pin::new_unchecked(timer_node).push_back(Pin::new_unchecked(&mut self.list_node))
+            };
+        }
+
         self.flag.set_state(TimerState::ACTIVATED);
         if self.flag.get_state(TimerState::SOFT_TIMER) {
             unsafe {
@@ -353,7 +362,7 @@ impl Timer {
 
     /// This function will remove the timer
     fn timer_remove(&mut self) {
-        unsafe { Pin::new_unchecked(&mut self.node).remove() };
+        unsafe { Pin::new_unchecked(&mut self.list_node).remove_from_list() };
     }
 
     pub fn start(&mut self) {

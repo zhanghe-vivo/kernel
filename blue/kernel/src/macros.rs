@@ -56,7 +56,7 @@ macro_rules! list_head_entry {
 
 /// Iterate over a doubly linked list.
 #[macro_export]
-macro_rules! list_head_for_each {
+macro_rules! doubly_linked_list_for_each {
     ($pos:ident, $head:expr, $code:block) => {
         let mut $pos = $head;
         while let Some(next) = $pos.next() {
@@ -64,6 +64,7 @@ macro_rules! list_head_for_each {
             if core::ptr::eq($pos, $head) {
                 break;
             }
+
             $code
         }
     };

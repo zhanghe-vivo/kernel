@@ -9,8 +9,11 @@ use pinned_init::{pin_data, pin_init, PinInit};
 
 #[cfg(feature = "smp")]
 use crate::{
-    blue_kconfig, c_str, clock, scheduler,
-    str::CStr,sync::ipc_common,error::code,
+    blue_kconfig, c_str, clock,
+    error::code,
+    scheduler,
+    str::CStr,
+    sync::ipc_common,
     thread::{ThreadEntryFn, ThreadWithStack},
 };
 
@@ -135,8 +138,10 @@ impl ZombieManager {
     }
 
     pub(crate) fn zombie_enqueue(&mut self, thread: &mut Thread) {
-        let list = self.zombies_list.lock();
-        unsafe { Pin::new_unchecked(&mut thread.tlist).insert_next(&*list) };
+        let mut list = self.zombies_list.lock();
+        unsafe {
+            Pin::new_unchecked(&mut *list).push_back(Pin::new_unchecked(&mut thread.list_node))
+        };
         drop(list);
         #[cfg(feature = "smp")]
         unsafe {
@@ -145,16 +150,12 @@ impl ZombieManager {
     }
 
     pub(crate) fn zombie_dequeue(&self) -> Option<NonNull<Thread>> {
-        let list = self.zombies_list.lock();
-        if let Some(mut thread_list) = (*list).next() {
-            unsafe {
-                let list = thread_list.as_ptr();
-                let th = NonNull::new_unchecked(crate::thread_list_node_entry!(list));
-                let pin_list = Pin::new_unchecked(thread_list.as_mut());
-                // pin!((*thread_list.as_ptr()));
-                pin_list.remove();
-                return Some(th);
-            }
+        let mut list = self.zombies_list.lock();
+        if let Some(thread_list) = unsafe { Pin::new_unchecked(&mut *list).pop_front() } {
+            let th = unsafe {
+                NonNull::new_unchecked(crate::thread_list_node_entry!(thread_list.as_ptr()))
+            };
+            return Some(th);
         }
         None
     }

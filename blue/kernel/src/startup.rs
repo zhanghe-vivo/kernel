@@ -1,7 +1,7 @@
-use crate::{cpu, c_str, components, idle, timer, thread::Thread};
+use crate::{c_str, components, cpu, idle, thread::Thread, timer};
 use alloc::boxed::Box;
-use core::{pin::Pin, ptr};
 use blue_kconfig::{MAIN_THREAD_PRIORITY, MAIN_THREAD_STACK_SIZE};
+use core::{pin::Pin, ptr};
 
 #[cfg(not(feature = "heap"))]
 #[no_mangle]

@@ -1132,7 +1132,7 @@ pub struct rt_timer {
     pub init_tick: rt_uint32_t,
     pub timeout_tick: rt_uint32_t,
     pub flag: TimerState,
-    pub node: rt_list_t,
+    pub list_node: rt_list_t,
 }
 #[test]
 fn bindgen_test_layout_rt_timer() {
@@ -1209,13 +1209,13 @@ fn bindgen_test_layout_rt_timer() {
         )
     );
     assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).node) as usize - ptr as usize },
+        unsafe { ::core::ptr::addr_of!((*ptr).list_node) as usize - ptr as usize },
         40usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_timer),
             "::",
-            stringify!(node)
+            stringify!(list_node)
         )
     );
 }
@@ -1555,7 +1555,7 @@ pub struct rt_mutex {
     #[doc = " Current owner of mutex"]
     pub owner: *mut rt_thread,
     #[doc = " The object list taken by thread"]
-    pub taken_list: rt_list_t,
+    pub taken_node: rt_list_t,
     #[doc = " SysQueue for mutex"]
     pub inner_queue: SysQueue,
 }
@@ -1614,13 +1614,13 @@ fn bindgen_test_layout_rt_mutex() {
         )
     );
     assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).taken_list) as usize - ptr as usize },
+        unsafe { ::core::ptr::addr_of!((*ptr).taken_node) as usize - ptr as usize },
         28usize,
         concat!(
             "Offset of field: ",
             stringify!(rt_mutex),
             "::",
-            stringify!(taken_list)
+            stringify!(taken_node)
         )
     );
     assert_eq!(

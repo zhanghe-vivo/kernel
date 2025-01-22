@@ -47,7 +47,7 @@ pub enum Feature {
     Rwlock,
     Condvar,
     CompatNewlibc,
-    ThreadPriorityMax
+    ThreadPriorityMax,
 }
 
 impl Feature {

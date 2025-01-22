@@ -16,7 +16,6 @@ pub use blue_kconfig;
 // TODO: add os compat cfg
 
 pub mod allocator;
-pub mod startup;
 pub mod clock;
 pub mod components;
 pub mod cpu;
@@ -31,6 +30,7 @@ pub mod print;
 pub mod process;
 pub mod scheduler;
 mod stack;
+pub mod startup;
 pub mod static_init;
 pub mod str;
 pub mod sync;

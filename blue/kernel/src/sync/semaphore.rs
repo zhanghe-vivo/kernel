@@ -2,7 +2,6 @@ use crate::{
     clock::WAITING_FOREVER, cpu::Cpu, error::code, impl_kobject, object::*, sync::ipc_common::*,
     thread::SuspendFlag, timer::TimerControlAction,
 };
-use blue_infra::list::doubly_linked_list::ListHead;
 use core::{ffi::c_void, marker::PhantomPinned, mem, pin::Pin, ptr::null_mut};
 
 use crate::alloc::boxed::Box;
@@ -160,7 +159,9 @@ impl Semaphore {
 
     #[inline]
     pub fn detach(&mut self) {
-        self.inner_queue.dequeue_waiter.inner_locked_wake_all();
+        self.inner_queue.lock();
+        self.inner_queue.dequeue_waiter.wake_all();
+        self.inner_queue.unlock();
         if self.is_static_kobject() {
             self.parent.detach();
         }
@@ -185,7 +186,9 @@ impl Semaphore {
 
         crate::debug_not_in_interrupt!();
 
-        self.inner_queue.dequeue_waiter.inner_locked_wake_all();
+        self.inner_queue.lock();
+        self.inner_queue.dequeue_waiter.wake_all();
+        self.inner_queue.unlock();
         self.parent.delete();
     }
 
@@ -307,7 +310,7 @@ impl Semaphore {
 
         self.inner_queue.lock();
 
-        self.inner_queue.dequeue_waiter.inner_locked_wake_all();
+        self.inner_queue.dequeue_waiter.wake_all();
 
         self.inner_queue.reset_stub(value as usize);
 

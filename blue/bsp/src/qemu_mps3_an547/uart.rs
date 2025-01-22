@@ -3,9 +3,11 @@ use super::{
     irq::{UARTRX0_IRQn, UARTRX1_IRQn},
     sys_config::{UART0_BASE_S, UART0_CLOCK, UART0_NAME, UART1_BASE_S, UART1_NAME},
 };
-use crate::rt_bindings;
-use crate::arch::{Arch, IrqNumber};
-use crate::kernel::irq::Irq;
+use crate::{
+    arch::{Arch, IrqNumber},
+    kernel::irq::Irq,
+    rt_bindings,
+};
 use core::{ffi::c_char, mem::MaybeUninit};
 use embedded_io::{Read, Write};
 

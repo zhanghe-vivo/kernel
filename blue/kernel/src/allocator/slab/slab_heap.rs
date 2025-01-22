@@ -1,12 +1,12 @@
 use core::{alloc::Layout, ptr::NonNull};
 
 use crate::allocator::{align_down_size, align_up_size, buddy::buddy_system_heap};
-use blue_infra::list::doubly_linked_list::LinkedList;
+use blue_infra::list::doubly_linked_list::SinglyLinkedList;
 
 pub struct Slab {
     block_size: usize,
     len: usize,
-    free_block_list: LinkedList,
+    free_block_list: SinglyLinkedList,
 }
 
 impl Slab {
@@ -15,7 +15,7 @@ impl Slab {
         Slab {
             block_size: 0,
             len: 0,
-            free_block_list: LinkedList::new(),
+            free_block_list: SinglyLinkedList::new(),
         }
     }
 

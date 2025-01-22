@@ -5,7 +5,6 @@ use crate::{
     sync::{condvar::CondVar, ipc_common::*, lock::mutex::Mutex},
     thread::SuspendFlag,
 };
-use blue_infra::list::doubly_linked_list::ListHead;
 use pinned_init::{pin_data, pin_init, PinInit};
 
 /// RwLock Raw Structure

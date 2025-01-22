@@ -74,6 +74,7 @@ struct rt_spinlock{
 #define uintptr_t rt_size_t
 #define intptr_t rt_ssize_t
 #define bool rt_bool_t
+#define LinkedListNode rt_list_t
 
 #define NAME_MAX 8
 struct rt_thread;

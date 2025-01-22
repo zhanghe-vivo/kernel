@@ -2,13 +2,13 @@ use crate::{
     allocator::{align_up_size, free, malloc},
     blue_kconfig::ALIGN_SIZE,
     cpu::Cpu,
+    doubly_linked_list_for_each,
     error::{code, Error},
-    list_head_for_each,
     object::*,
     sync::RawSpin,
-    thread::{Thread, SuspendFlag},
+    thread::{SuspendFlag, Thread},
 };
-use blue_infra::list::doubly_linked_list::ListHead;
+use blue_infra::list::doubly_linked_list::{LinkedListNode, ListHead};
 use core::{
     mem,
     pin::Pin,
@@ -575,7 +575,7 @@ impl WaitQueue {
     #[inline]
     pub(crate) fn new(waiting_mode: u32) -> impl PinInit<Self> {
         pin_init!(Self {
-            working_queue<-ListHead::new(),
+            working_queue <- ListHead::new(),
             waiting_mode: waiting_mode
         })
     }
@@ -601,13 +601,13 @@ impl WaitQueue {
     }
 
     #[inline]
-    pub(crate) fn head(&self) -> Option<NonNull<ListHead>> {
+    pub(crate) fn head(&self) -> Option<NonNull<LinkedListNode>> {
         self.working_queue.next()
     }
 
     #[allow(dead_code)]
     #[inline]
-    pub(crate) fn tail(&self) -> Option<NonNull<ListHead>> {
+    pub(crate) fn tail(&self) -> Option<NonNull<LinkedListNode>> {
         self.working_queue.prev()
     }
 
@@ -633,29 +633,30 @@ impl WaitQueue {
         match self.waiting_mode as u32 {
             IPC_WAIT_MODE_FIFO => {
                 unsafe {
-                    Pin::new_unchecked(&mut self.working_queue).insert_prev(&mut thread.tlist)
+                    Pin::new_unchecked(&mut self.working_queue)
+                        .push_back(Pin::new_unchecked(&mut thread.list_node))
                 };
             }
             IPC_WAIT_MODE_PRIO => {
-                list_head_for_each!(node, &self.working_queue, {
+                doubly_linked_list_for_each!(node, &self.working_queue, {
                     let queued_thread_ptr =
                         unsafe { crate::thread_list_node_entry!(node.as_ptr()) as *mut Thread };
-
-                    if queued_thread_ptr.is_null() {
-                        return code::ERROR.to_errno();
-                    }
 
                     let queued_thread = unsafe { &mut *queued_thread_ptr };
 
                     if thread.priority.get_current() < queued_thread.priority.get_current() {
-                        let insert_to = unsafe { Pin::new_unchecked(&mut queued_thread.tlist) };
-                        insert_to.insert_prev(&mut (thread.tlist));
+                        unsafe {
+                            Pin::new_unchecked(&mut thread.list_node)
+                                .insert_after(Pin::new_unchecked(&mut queued_thread.list_node));
+                        }
+                        break;
                     }
                 });
 
-                if node.as_ptr() == &self.working_queue as *const ListHead {
+                if ptr::eq(node.as_ptr(), &self.working_queue) {
                     unsafe {
-                        Pin::new_unchecked(&mut self.working_queue).insert_prev(&mut thread.tlist)
+                        Pin::new_unchecked(&mut self.working_queue)
+                            .push_back(Pin::new_unchecked(&mut thread.list_node))
                     };
                 }
             }
@@ -666,81 +667,25 @@ impl WaitQueue {
     }
 
     #[inline]
-
     pub(crate) fn wake(&mut self) -> bool {
-        if let Some(node) = self.working_queue.next() {
-            let thread: *mut Thread = unsafe { crate::thread_list_node_entry!(node.as_ptr()) };
-            if !thread.is_null() {
-                unsafe {
-                    (*thread).error = code::EOK;
-                }
-                return unsafe { (*thread).resume() };
-            }
+        if let Some(node) = unsafe { Pin::new_unchecked(&mut self.working_queue).pop_front() } {
+            let thread = unsafe { &mut *crate::thread_list_node_entry!(node.as_ptr()) };
+            thread.error = code::EOK;
+            return thread.resume();
         }
 
         false
     }
 
-    #[allow(dead_code)]
-    #[inline]
-    pub(crate) fn inner_locked_wake(&mut self) -> bool {
-        if let Some(node) = self.working_queue.next() {
-            let thread: *mut Thread = unsafe { crate::thread_list_node_entry!(node.as_ptr()) };
-            if !thread.is_null() {
-                let spin_lock = RawSpin::new();
-                unsafe {
-                    (*thread).error = code::EOK;
-                }
-                let ret = unsafe { (*thread).resume() };
-                spin_lock.unlock();
-                return ret;
-            }
-        }
-
-        false
-    }
-
-    #[allow(dead_code)]
     #[inline]
     pub(crate) fn wake_all(&mut self) -> bool {
         let mut ret = true;
-        while !self.working_queue.is_empty() {
-            if let Some(node) = self.working_queue.next() {
-                unsafe {
-                    let thread: *mut Thread = crate::thread_list_node_entry!(node.as_ptr());
-                    if !thread.is_null() {
-                        (*thread).error = code::ERROR;
-                        let resume_stat = (*thread).resume();
-                        if !resume_stat {
-                            ret = resume_stat;
-                        }
-                    }
-                }
-            }
-        }
-
-        ret
-    }
-
-    #[inline]
-
-    pub(crate) fn inner_locked_wake_all(&mut self) -> bool {
-        let mut ret = true;
-        while !self.working_queue.is_empty() {
-            if let Some(node) = self.working_queue.next() {
-                let spin_lock = RawSpin::new();
-                spin_lock.lock();
-                unsafe {
-                    let thread: *mut Thread = crate::thread_list_node_entry!(node.as_ptr());
-                    if !thread.is_null() {
-                        (*thread).error = code::ERROR;
-                        let resume_stat = (*thread).resume();
-                        if !resume_stat {
-                            ret = resume_stat;
-                        }
-                    }
-                }
-                spin_lock.unlock();
+        while let Some(node) = unsafe { Pin::new_unchecked(&mut self.working_queue).pop_front() } {
+            let thread = unsafe { &mut *crate::thread_list_node_entry!(node.as_ptr()) };
+            thread.error = code::ERROR;
+            let resume_stat = thread.resume();
+            if !resume_stat {
+                ret = resume_stat;
             }
         }
 

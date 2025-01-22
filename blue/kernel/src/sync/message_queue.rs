@@ -10,7 +10,6 @@ use crate::{
     thread::SuspendFlag,
     timer::TimerControlAction,
 };
-use blue_infra::list::doubly_linked_list::ListHead;
 #[allow(unused_imports)]
 use core::{
     alloc::AllocError,
@@ -210,8 +209,10 @@ impl MessageQueue {
             ObjectClassType::ObjectClassMessageQueue as u8
         );
 
-        self.inner_queue.dequeue_waiter.inner_locked_wake_all();
-        self.inner_queue.enqueue_waiter.inner_locked_wake_all();
+        self.inner_queue.lock();
+        self.inner_queue.dequeue_waiter.wake_all();
+        self.inner_queue.enqueue_waiter.wake_all();
+        self.inner_queue.unlock();
 
         if self.is_static_kobject() {
             self.parent.detach();
@@ -249,8 +250,10 @@ impl MessageQueue {
 
         crate::debug_not_in_interrupt!();
 
-        self.inner_queue.dequeue_waiter.inner_locked_wake_all();
-        self.inner_queue.enqueue_waiter.inner_locked_wake_all();
+        self.inner_queue.lock();
+        self.inner_queue.dequeue_waiter.wake_all();
+        self.inner_queue.enqueue_waiter.wake_all();
+        self.inner_queue.unlock();
 
         self.parent.delete();
     }
@@ -573,8 +576,8 @@ impl MessageQueue {
         if cmd == IPC_CMD_RESET as i32 {
             self.inner_queue.lock();
 
-            self.inner_queue.dequeue_waiter.inner_locked_wake_all();
-            self.inner_queue.enqueue_waiter.inner_locked_wake_all();
+            self.inner_queue.dequeue_waiter.wake_all();
+            self.inner_queue.enqueue_waiter.wake_all();
 
             cfg_if::cfg_if! {
                 if #[cfg(feature = "messagequeue_priority")] {

@@ -2,7 +2,7 @@
 #![feature(linkage)]
 
 mod rt_bindings;
-use blue_arch::arch as arch;
+use blue_arch::arch;
 use blue_kernel as kernel;
 
 #[cfg(target_board = "qemu_mps2_an385")]

@@ -1,6 +1,6 @@
 mod cmsdk_uart;
-mod irq;
 mod init;
+mod irq;
 mod sys_config;
 mod systick;
 mod uart;

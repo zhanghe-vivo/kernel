@@ -18,7 +18,7 @@ use crate::{
 };
 use alloc::alloc;
 use blue_arch::arch::Arch;
-use blue_infra::list::doubly_linked_list::ListHead;
+use blue_infra::list::doubly_linked_list::{LinkedListNode, ListHead};
 use core::{
     alloc::{AllocError, Layout},
     cell::{Cell, UnsafeCell},
@@ -64,7 +64,7 @@ pub use current_thread_ptr;
 #[macro_export]
 macro_rules! thread_list_node_entry {
     ($node:expr) => {
-        crate::container_of!($node, crate::thread::Thread, tlist)
+        crate::container_of!($node, crate::thread::Thread, list_node)
     };
 }
 pub use thread_list_node_entry;
@@ -317,15 +317,16 @@ struct LockInfo {
     pub hold_count: usize,
 }
 
+/// cbindgen:field-names=[parent, tlist]
 #[repr(C)]
 #[pin_data(PinnedDrop)]
 pub struct Thread {
     #[pin]
     pub parent: KObjectBase,
 
-    // thread linked list, link to priority_table.
+    // thread linked list, link to priority_table or pending list
     #[pin]
-    pub(crate) tlist: ListHead,
+    pub(crate) list_node: LinkedListNode,
 
     /// thread status
     pub stat: ThreadState,
@@ -549,7 +550,9 @@ impl Thread {
             }
 
             let cur_ref = unsafe { &mut *(slot as *mut Self) };
-            let _ = unsafe { ListHead::new().__pinned_init(&mut cur_ref.tlist as *mut ListHead) };
+            let _ = unsafe {
+                LinkedListNode::new().__pinned_init(&mut cur_ref.list_node as *mut LinkedListNode)
+            };
 
             cur_ref.stat.set_base_state(ThreadState::INIT);
             cur_ref.priority = ThreadPriority::new(priority);
@@ -732,8 +735,8 @@ impl Thread {
     }
 
     #[inline]
-    pub(crate) fn remove_tlist(&mut self) {
-        unsafe { Pin::new_unchecked(&mut self.tlist).remove() };
+    pub(crate) fn remove_thread_list_node(&mut self) {
+        unsafe { Pin::new_unchecked(&mut self.list_node).remove_from_list() };
     }
 
     #[inline]
@@ -775,8 +778,7 @@ impl Thread {
 
         debug_assert!(thread.stat.is_suspended());
         thread.error = code::ETIMEDOUT;
-        unsafe { Pin::new_unchecked(&mut thread.tlist).remove() };
-
+        thread.remove_thread_list_node();
         scheduler.insert_thread_locked(thread);
 
         scheduler.sched_unlock_with_sched(level);
@@ -812,24 +814,16 @@ impl Thread {
             self.mutex_info.pending_to = None;
         }
 
-        let mut inspect = &self.mutex_info.taken_list;
-
-        while let Some(next) = inspect.next() {
-            inspect = unsafe { &*next.as_ptr() };
-            if core::ptr::eq(inspect, &self.mutex_info.taken_list) {
-                break;
-            }
+        crate::doubly_linked_list_for_each!(node, &self.mutex_info.taken_list, {
             unsafe {
-                let mutex = crate::list_head_entry!(
-                    inspect as *const ListHead as *mut ListHead,
-                    Mutex,
-                    taken_list
-                );
+                let mutex = crate::list_head_entry!(node.as_ptr(), Mutex, taken_node) as *mut Mutex;
                 if !mutex.is_null() {
+                    // as mutex will be removed from list, so we need to get prev node
+                    node = node.prev().unwrap_unchecked().as_ref();
                     (*mutex).unlock();
                 }
             }
-        }
+        });
 
         self.spinlock.unlock_irqrestore(level);
     }
@@ -838,8 +832,8 @@ impl Thread {
     pub(crate) fn get_mutex_priority(&self) -> u8 {
         let mut priority = self.priority.get_initial();
 
-        crate::list_head_for_each!(node, &self.mutex_info.taken_list, {
-            let mutex = unsafe { &*crate::list_head_entry!(node.as_ptr(), Mutex, taken_list) };
+        crate::doubly_linked_list_for_each!(node, &self.mutex_info.taken_list, {
+            let mutex = unsafe { &*crate::list_head_entry!(node.as_ptr(), Mutex, taken_node) };
             let mut mutex_prio = mutex.priority;
             mutex_prio = if mutex_prio < mutex.ceiling_priority {
                 mutex_prio
@@ -866,7 +860,7 @@ impl Thread {
                 let pending_mutex = unsafe { pending_mutex.as_mut() };
                 let owner_thread = unsafe { &mut *pending_mutex.owner };
                 // Re-insert thread to suspended thread list.
-                self.remove_tlist();
+                self.remove_thread_list_node();
 
                 ret = Error::from_errno(
                     pending_mutex

@@ -1,7 +1,161 @@
 extern crate alloc;
 
 use alloc::boxed::Box;
-use core::{mem, ops::Drop};
+use core::{fmt, marker::PhantomData, mem, ops::Drop, ptr};
+
+/// An intrusive linked list
+#[derive(Copy, Clone)]
+pub struct SinglyLinkedList {
+    head: *mut usize,
+}
+
+/// SAFETY: SinglyLinkedList only contains a raw pointer field, which is safe to share between threads
+/// because all modification operations require exclusive mutable reference (&mut self),
+/// ensuring that only one thread can modify the list at any time.
+unsafe impl Send for SinglyLinkedList {}
+
+impl Default for SinglyLinkedList {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SinglyLinkedList {
+    /// Create a new SinglyLinkedList
+    pub const fn new() -> SinglyLinkedList {
+        SinglyLinkedList {
+            head: ptr::null_mut(),
+        }
+    }
+
+    /// Return `true` if the list is empty
+    pub fn is_empty(&self) -> bool {
+        self.head.is_null()
+    }
+
+    /// Push `item` to the front of the list
+    /// # SAFETY
+    /// - `item` must be a valid, non-null pointer
+    /// - `item` must point to valid memory that can be written to
+    pub unsafe fn push(&mut self, item: *mut usize) {
+        debug_assert!(!item.is_null(), "item cannot be null");
+
+        *item = self.head as usize;
+        self.head = item;
+    }
+
+    /// Try to remove the first item in the list
+    pub fn pop(&mut self) -> Option<*mut usize> {
+        match self.is_empty() {
+            true => None,
+            false => {
+                let item = self.head;
+                // SAFETY: We have checked that self.head is not null, and item points to
+                // a valid address stored by previous push operations
+                self.head = unsafe { *item as *mut usize };
+                Some(item)
+            }
+        }
+    }
+
+    /// Return an iterator over the items in the list
+    pub fn iter(&self) -> Iter {
+        Iter {
+            curr: self.head,
+            list: PhantomData,
+        }
+    }
+
+    /// Return an mutable iterator over the items in the list
+    pub fn iter_mut(&mut self) -> IterMut {
+        IterMut {
+            prev: &mut self.head as *mut *mut usize as *mut usize,
+            curr: self.head,
+            list: PhantomData,
+        }
+    }
+}
+
+impl fmt::Debug for SinglyLinkedList {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_list().entries(self.iter()).finish()
+    }
+}
+
+/// An iterator over the linked list
+pub struct Iter<'a> {
+    curr: *mut usize,
+    list: PhantomData<&'a SinglyLinkedList>,
+}
+
+impl Iterator for Iter<'_> {
+    type Item = *mut usize;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.curr.is_null() {
+            None
+        } else {
+            let item = self.curr;
+            // SAFETY: We have checked that self.curr is not null
+            let next = unsafe { *item as *mut usize };
+            self.curr = next;
+            Some(item)
+        }
+    }
+}
+
+/// Represent a mutable node in `SinglyLinkedList`
+pub struct ListNode {
+    prev: *mut usize,
+    curr: *mut usize,
+}
+
+impl ListNode {
+    /// Remove the node from the list
+    pub fn pop(self) -> *mut usize {
+        debug_assert!(!self.prev.is_null(), "prev pointer cannot be null");
+        debug_assert!(!self.curr.is_null(), "curr pointer cannot be null");
+
+        // SAFETY: We have checked that self.prev and self.curr are not null
+        // If prev or curr is null, the list is corrupted
+        unsafe {
+            // skip the curr one.
+            *(self.prev) = *(self.curr);
+        }
+        self.curr
+    }
+
+    /// Returns the pointed address
+    pub fn value(&self) -> *mut usize {
+        self.curr
+    }
+}
+
+/// A mutable iterator over the linked list
+pub struct IterMut<'a> {
+    list: PhantomData<&'a mut SinglyLinkedList>,
+    prev: *mut usize,
+    curr: *mut usize,
+}
+
+impl Iterator for IterMut<'_> {
+    type Item = ListNode;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.curr.is_null() {
+            None
+        } else {
+            let res = ListNode {
+                prev: self.prev,
+                curr: self.curr,
+            };
+            self.prev = self.curr;
+            // SAFETY: We have checked that self.curr is not null
+            self.curr = unsafe { *self.curr as *mut usize };
+            Some(res)
+        }
+    }
+}
 
 pub struct Node<T> {
     next: Link<T>,
@@ -121,6 +275,35 @@ mod tests {
 
     use super::*;
     use test::{black_box, Bencher};
+
+    #[bench]
+    fn raw_list_bench_push(b: &mut Bencher) {
+        let n = 1 << 16;
+        let mut l = SinglyLinkedList::new();
+        b.iter(|| unsafe {
+            for _ in 0..n {
+                let v = Box::new(0usize);
+                // Let the memory leak.
+                black_box(l.push(Box::<usize>::into_raw(v)))
+            }
+        });
+    }
+
+    #[bench]
+    fn raw_list_bench_push_and_pop(b: &mut Bencher) {
+        let n = 1 << 16;
+        let mut l = SinglyLinkedList::new();
+        b.iter(|| unsafe {
+            for _ in 0..n {
+                let v = Box::new(0usize);
+                // Let the memory leak.
+                black_box(l.push(Box::<usize>::into_raw(v)))
+            }
+            while !l.is_empty() {
+                l.pop();
+            }
+        });
+    }
 
     #[test]
     fn create_new_list() {

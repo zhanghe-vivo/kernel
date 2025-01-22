@@ -8,7 +8,6 @@ use crate::{
     thread::SuspendFlag,
     timer::TimerControlAction,
 };
-use blue_infra::list::doubly_linked_list::ListHead;
 use core::{ffi::c_void, ptr::null_mut};
 use pinned_init::*;
 

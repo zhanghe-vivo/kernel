@@ -2,7 +2,7 @@
 use core::{alloc::Layout, cmp, fmt, mem, ptr::NonNull};
 
 use crate::allocator::block_hdr::*;
-use blue_infra::list::doubly_linked_list::LinkedList;
+use blue_infra::list::doubly_linked_list::SinglyLinkedList;
 /// A heap that uses buddy system with configurable order.
 ///
 /// # Usage
@@ -24,7 +24,7 @@ use blue_infra::list::doubly_linked_list::LinkedList;
 /// ```
 pub struct Heap<const ORDER: usize> {
     // buddy system with max order of `ORDER`
-    free_list: [LinkedList; ORDER],
+    free_list: [SinglyLinkedList; ORDER],
 
     // statistics
     allocated: usize,
@@ -36,7 +36,7 @@ impl<const ORDER: usize> Heap<ORDER> {
     /// Create an empty heap
     pub const fn new() -> Self {
         Heap {
-            free_list: [LinkedList::new(); ORDER],
+            free_list: [SinglyLinkedList::new(); ORDER],
             maximum: 0,
             allocated: 0,
             total: 0,

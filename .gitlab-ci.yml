@@ -42,7 +42,7 @@ build-mps2-an385:
   artifacts:
         name: "rtthread.bin"
         untracked: false
-        expire_in: 5 mins
+        expire_in: 10 mins
         paths:
             - /data01/runner/gitlab-runner/builds/y1GSVydi/0/11154271/rt-thread/bsp/qemu-mps2-an385/rtthread.bin
 
@@ -73,7 +73,7 @@ build-mps2-an385-release:
   artifacts:
         name: "rtthread.bin"
         untracked: false
-        expire_in: 5 mins
+        expire_in: 10 mins
         paths:
             - /data01/runner/gitlab-runner/builds/y1GSVydi/0/11154271/rt-thread/bsp/qemu-mps2-an385/rtthread.bin
 
@@ -105,7 +105,7 @@ build-mps3-an547:
   artifacts:
         name: "rtthread.bin"
         untracked: false
-        expire_in: 5 mins
+        expire_in: 10 mins
         paths:
             - /data01/runner/gitlab-runner/builds/y1GSVydi/0/11154271/rt-thread/bsp/qemu-mps3-an547/rtthread.bin
 
@@ -138,7 +138,7 @@ test-mps3-an547:
 #   artifacts:
 #         name: "rtthread.bin"
 #         untracked: false
-#         expire_in: 5 mins
+#         expire_in: 10 mins
 #         paths:
 #             - /data01/runner/gitlab-runner/builds/y1GSVydi/0/11154271/rt-thread/bsp/qemu-vexpress-a9/rtthread.bin
 
@@ -170,7 +170,7 @@ test-mps3-an547:
 #   artifacts:
 #         name: "rtthread.bin"
 #         untracked: false
-#         expire_in: 5 mins
+#         expire_in: 10 mins
 #         paths:
 #             - /data01/runner/gitlab-runner/builds/y1GSVydi/0/11154271/rt-thread/bsp/qemu-vexpress-a9/rtthread.bin
 

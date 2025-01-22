@@ -13,7 +13,7 @@ use crate::{
 };
 
 #[cfg(feature = "debugging_scheduler")]
-use crate::{println, str::CStr};
+use crate::println;
 
 use core::{
     intrinsics::likely,
@@ -105,7 +105,7 @@ impl PriorityTableManager {
     }
 
     pub fn insert_thread(&mut self, thread: &mut Thread) {
-        debug_assert!(thread.tlist.is_empty());
+        debug_assert!(thread.list_node.is_empty());
         #[cfg(feature = "thread_priority_max")]
         {
             self.ready_table[thread.priority.get_number() as usize] |=
@@ -116,19 +116,23 @@ impl PriorityTableManager {
         /* there is no time slices left(YIELD), inserting thread before ready list*/
         if thread.stat.is_yield() {
             unsafe {
-                Pin::new_unchecked(&mut thread.tlist)
-                    .insert_prev(&self.priority_table[thread.priority.get_current() as usize])
-            };
+                Pin::new_unchecked(
+                    &mut self.priority_table[thread.priority.get_current() as usize],
+                )
+                .push_back(Pin::new_unchecked(&mut thread.list_node));
+            }
         } else {
             unsafe {
-                Pin::new_unchecked(&mut thread.tlist)
-                    .insert_next(&self.priority_table[thread.priority.get_current() as usize])
-            };
+                Pin::new_unchecked(
+                    &mut self.priority_table[thread.priority.get_current() as usize],
+                )
+                .push_front(Pin::new_unchecked(&mut thread.list_node));
+            }
         }
     }
 
     pub fn remove_thread(&mut self, thread: &mut Thread) {
-        unsafe { Pin::new_unchecked(&mut thread.tlist).remove() };
+        unsafe { Pin::new_unchecked(&mut thread.list_node).remove_from_list() };
 
         if self.priority_table[thread.priority.get_current() as usize].is_empty() {
             #[cfg(feature = "thread_priority_max")]
@@ -714,12 +718,11 @@ impl Scheduler {
 
     pub(crate) fn insert_ready_locked(&mut self, thread: &mut Thread) -> bool {
         debug_assert!(self.is_sched_locked());
+        debug_assert!(thread.list_node.is_empty());
 
         if thread.stat.is_suspended() {
             // stop thread timer anyway
             thread.timer_stop();
-            // remove from suspend list
-            thread.remove_tlist();
             // insert to schedule ready list and remove from susp list
             self.insert_thread_locked(thread);
             return true;

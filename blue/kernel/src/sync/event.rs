@@ -4,10 +4,9 @@ use crate::{
     impl_kobject,
     object::*,
     sync::ipc_common::*,
-    thread::{Thread, SuspendFlag},
+    thread::{SuspendFlag, Thread},
     timer::TimerControlAction,
 };
-use blue_infra::list::doubly_linked_list::ListHead;
 use core::{ffi::c_void, marker::PhantomPinned, ptr::null_mut};
 
 use crate::alloc::boxed::Box;
@@ -140,7 +139,9 @@ impl Event {
     pub fn detach(&mut self) {
         assert_eq!(self.type_name(), ObjectClassType::ObjectClassEvent as u8);
 
-        self.inner_queue.dequeue_waiter.inner_locked_wake_all();
+        self.inner_queue.lock();
+        self.inner_queue.dequeue_waiter.wake_all();
+        self.inner_queue.unlock();
 
         if self.is_static_kobject() {
             self.parent.detach();
@@ -163,7 +164,9 @@ impl Event {
 
         crate::debug_not_in_interrupt!();
 
-        self.inner_queue.dequeue_waiter.inner_locked_wake_all();
+        self.inner_queue.lock();
+        self.inner_queue.dequeue_waiter.wake_all();
+        self.inner_queue.unlock();
         self.parent.delete();
     }
 
@@ -181,43 +184,45 @@ impl Event {
 
         self.set |= set;
 
-        if !self.inner_queue.dequeue_waiter.is_empty() {
-            crate::list_head_for_each!(node, &self.inner_queue.dequeue_waiter.working_queue, {
-                let thread_ptr =
-                    unsafe { crate::thread_list_node_entry!(node.as_ptr()) as *mut Thread };
+        crate::doubly_linked_list_for_each!(
+            node,
+            &self.inner_queue.dequeue_waiter.working_queue,
+            {
+                let thread =
+                    unsafe { &mut *(crate::thread_list_node_entry!(node.as_ptr()) as *mut Thread) };
 
-                if !thread_ptr.is_null() {
-                    let thread = unsafe { &mut *thread_ptr };
-                    let mut status = code::ERROR.to_errno();
-                    if thread.event_info.info as u32 & EVENT_AND > 0u32 {
-                        if thread.event_info.set & self.set == thread.event_info.set {
-                            status = code::EOK.to_errno();
-                        }
-                    } else if thread.event_info.info as u32 & EVENT_OR > 0u32 {
-                        if thread.event_info.set & self.set > 0u32 {
-                            thread.event_info.set = thread.event_info.set & self.set;
-                            status = code::EOK.to_errno();
-                        }
-                    } else {
-                        self.inner_queue.unlock();
-                        return code::EINVAL.to_errno();
+                let mut status = code::ERROR.to_errno();
+                if thread.event_info.info as u32 & EVENT_AND > 0u32 {
+                    if thread.event_info.set & self.set == thread.event_info.set {
+                        status = code::EOK.to_errno();
                     }
-
-                    if status == code::EOK.to_errno() {
-                        if thread.event_info.info as u32 & EVENT_CLEAR > 0u32 {
-                            need_clear_set |= (*thread).event_info.set;
-                        }
-
-                        thread.resume();
-                        thread.error = code::EOK;
-                        need_schedule = true;
+                } else if thread.event_info.info as u32 & EVENT_OR > 0u32 {
+                    if thread.event_info.set & self.set > 0u32 {
+                        thread.event_info.set = thread.event_info.set & self.set;
+                        status = code::EOK.to_errno();
                     }
+                } else {
+                    self.inner_queue.unlock();
+                    return code::EINVAL.to_errno();
                 }
-            });
 
-            if need_clear_set > 0 {
-                self.set &= !need_clear_set;
+                if status == code::EOK.to_errno() {
+                    if thread.event_info.info as u32 & EVENT_CLEAR > 0u32 {
+                        need_clear_set |= (*thread).event_info.set;
+                    }
+
+                    // node will be removed from working_queue by resume, so we need to get prev node
+                    node = unsafe { node.prev().unwrap_unchecked().as_ref() };
+                    thread.remove_thread_list_node();
+                    thread.resume();
+                    thread.error = code::EOK;
+                    need_schedule = true;
+                }
             }
+        );
+
+        if need_clear_set > 0 {
+            self.set &= !need_clear_set;
         }
 
         self.inner_queue.unlock();
@@ -378,7 +383,7 @@ impl Event {
         if cmd == IPC_CMD_RESET as i32 {
             self.inner_queue.lock();
 
-            self.inner_queue.dequeue_waiter.inner_locked_wake_all();
+            self.inner_queue.dequeue_waiter.wake_all();
 
             self.set = 0;
 

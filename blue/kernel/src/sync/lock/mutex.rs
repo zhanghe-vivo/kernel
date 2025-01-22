@@ -8,10 +8,10 @@ use crate::{
     impl_kobject,
     object::*,
     sync::ipc_common::*,
-    thread::{Thread, SuspendFlag},
+    thread::{SuspendFlag, Thread},
     timer::TimerControlAction,
 };
-use blue_infra::list::doubly_linked_list::ListHead;
+use blue_infra::list::doubly_linked_list::LinkedListNode;
 
 use core::{
     cell::UnsafeCell,
@@ -123,7 +123,7 @@ pub struct Mutex {
     pub(crate) owner: *mut Thread,
     /// The object list taken by thread
     #[pin]
-    pub(crate) taken_list: ListHead,
+    pub(crate) taken_node: LinkedListNode,
     /// SysQueue for mutex
     #[pin]
     pub(crate) inner_queue: SysQueue,
@@ -144,7 +144,8 @@ impl Mutex {
             cur_ref.owner = null_mut();
             cur_ref.priority = 0xFF;
             cur_ref.ceiling_priority = 0xFF;
-            let _ = ListHead::new().__pinned_init(&mut cur_ref.taken_list as *mut ListHead);
+            let _ =
+                LinkedListNode::new().__pinned_init(&mut cur_ref.taken_node as *mut LinkedListNode);
 
             let _ = SysQueue::new(
                 mem::size_of::<u32>(),
@@ -180,7 +181,7 @@ impl Mutex {
         self.ceiling_priority = 0xFF;
 
         unsafe {
-            let _ = ListHead::new().__pinned_init(&mut self.taken_list);
+            let _ = LinkedListNode::new().__pinned_init(&mut self.taken_node);
         }
 
         let _ = unsafe {
@@ -200,10 +201,10 @@ impl Mutex {
 
         self.inner_queue.lock();
 
-        self.inner_queue.enqueue_waiter.inner_locked_wake_all();
+        self.inner_queue.enqueue_waiter.wake_all();
 
         unsafe {
-            Pin::new_unchecked(&mut self.taken_list).remove();
+            Pin::new_unchecked(&mut self.taken_node).remove_from_list();
         }
 
         self.inner_queue.unlock();
@@ -232,10 +233,10 @@ impl Mutex {
         crate::debug_not_in_interrupt!();
 
         self.inner_queue.lock();
-        self.inner_queue.enqueue_waiter.inner_locked_wake_all();
+        self.inner_queue.enqueue_waiter.wake_all();
 
         unsafe {
-            Pin::new_unchecked(&mut self.taken_list).remove();
+            Pin::new_unchecked(&mut self.taken_node).remove_from_list();
         }
         self.inner_queue.unlock();
 
@@ -284,7 +285,7 @@ impl Mutex {
                 // Insert mutex to thread's taken object list
                 unsafe {
                     Pin::new_unchecked(&mut thread.mutex_info.taken_list)
-                        .insert_next(&mut self.taken_list);
+                        .push_front(Pin::new_unchecked(&mut self.taken_node));
                 }
             } else {
                 // No waiting, return with timeout
@@ -420,7 +421,7 @@ impl Mutex {
 
         if self.inner_queue.is_empty() {
             unsafe {
-                Pin::new_unchecked(&mut self.taken_list).remove();
+                Pin::new_unchecked(&mut self.taken_node).remove_from_list();
             }
 
             if self.ceiling_priority != 0xFF || thread.priority.get_current() == self.priority {
@@ -446,15 +447,15 @@ impl Mutex {
 
                 let next_thread = unsafe { &mut *next_thread_ptr };
 
-                unsafe { Pin::new_unchecked(&mut next_thread.tlist).remove() };
+                unsafe { Pin::new_unchecked(&mut next_thread.list_node).remove_from_list() };
 
                 self.owner = next_thread_ptr;
                 self.inner_queue.reset_stub(1);
 
                 unsafe {
                     Pin::new_unchecked(&mut next_thread.mutex_info.taken_list)
-                        .insert_next(&self.taken_list)
-                };
+                        .push_front(Pin::new_unchecked(&mut self.taken_node));
+                }
 
                 next_thread.mutex_info.pending_to = None;
                 next_thread.resume();
@@ -517,7 +518,7 @@ impl Mutex {
 
         let mut need_update = false;
 
-        thread.remove_tlist();
+        thread.remove_thread_list_node();
 
         if self.owner.is_null() {
             return;

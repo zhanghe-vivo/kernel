@@ -281,7 +281,7 @@ typedef struct LockInfo {
 
 typedef struct rt_thread {
   struct rt_object parent;
-  rt_list_t tlist;
+  rt_list_t list_node;
   /**
    * thread status
    */

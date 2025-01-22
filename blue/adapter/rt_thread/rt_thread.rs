@@ -7,7 +7,7 @@ use crate::blue_kernel::{
     object::{KernelObject, ObjectClassType},
     process,
     str::CStr,
-    thread::{Thread, SuspendFlag, ThreadCleanupFn, ThreadEntryFn},
+    thread::{SuspendFlag, Thread, ThreadCleanupFn, ThreadEntryFn},
 };
 use core::{
     ffi,

@@ -1,7 +1,9 @@
 use super::{sys_config, systick::Systick, uart};
-use crate::rt_bindings;
-use crate::arch::Arch;
-use crate::kernel::{allocator, components};
+use crate::{
+    arch::Arch,
+    kernel::{allocator, components},
+    rt_bindings,
+};
 use core::ptr::addr_of;
 
 extern "C" {

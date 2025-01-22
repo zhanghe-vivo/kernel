@@ -130,7 +130,6 @@ static void thread2_send_static_event(void *param)
     static_event_send_thread_finish = 1;
 }
 
-
 static void test_static_event_send_recv(void)
 {
     rt_err_t result = RT_EOK;
@@ -312,6 +311,72 @@ static void test_dynamic_event_send_recv(void)
 
     return;
 }
+
+static int recv_count = 0;
+static void thread_recv_event(void *param)
+{
+    rt_uint32_t e;
+    rt_uint32_t level;
+    if (rt_event_recv(dynamic_event, EVENT_FLAG3,
+                      RT_EVENT_FLAG_OR | RT_EVENT_FLAG_CLEAR,
+                      RT_WAITING_FOREVER, &e) != RT_EOK)
+    {
+        return;
+    }
+
+    level = rt_hw_interrupt_disable();
+    recv_count++;
+    rt_hw_interrupt_enable(level);
+}
+
+static void thread_send_event(void *param)
+{
+    rt_event_send(dynamic_event, EVENT_FLAG3);
+}
+
+static void test_event_multi_recv(void)
+{
+    rt_err_t result = RT_EOK;
+    rt_thread_t thread_recv = RT_NULL;
+    rt_thread_t thread_send = RT_NULL;
+
+    dynamic_event = rt_event_create("dynamic_event", RT_IPC_FLAG_PRIO);
+    if (dynamic_event == RT_NULL)
+    {
+        uassert_false(1);
+    }
+
+    for (int i = 0; i < 10; i++) {
+        thread_recv = rt_thread_create("thread_recv",
+                    thread_recv_event,
+                    RT_NULL,
+                    1024,
+                    THREAD_PRIORITY - 1, THREAD_TIMESLICE);
+        rt_thread_startup(thread_recv);
+    }
+
+    thread_send = rt_thread_create("thread_send",
+                   thread_send_event,
+                   RT_NULL,
+                   1024,
+                   THREAD_PRIORITY, THREAD_TIMESLICE);
+    rt_thread_startup(thread_send);
+
+    while (recv_count != 10)
+    {
+        rt_thread_delay(1);
+    }
+
+    if (rt_event_delete(dynamic_event) != RT_EOK)
+    {
+        uassert_false(1);
+    }
+
+    uassert_true(1);
+
+    return;
+}
+
 #endif
 
 static rt_err_t utest_tc_init(void)
@@ -339,6 +404,7 @@ static void testcase(void)
     UTEST_UNIT_RUN(test_event_create);
     UTEST_UNIT_RUN(test_event_delete);
     UTEST_UNIT_RUN(test_dynamic_event_send_recv);
+    UTEST_UNIT_RUN(test_event_multi_recv);
 #endif
 }
 UTEST_TC_EXPORT(testcase, "src.ipc.event_tc", utest_tc_init, utest_tc_cleanup, 60);

@@ -13,8 +13,8 @@ use crate::{
     thread::Thread,
     timer::Timer,
 };
-use blue_infra::list::doubly_linked_list::ListHead;
-use core::{fmt::Debug, mem, ptr};
+use blue_infra::list::doubly_linked_list::{LinkedListNode, ListHead};
+use core::{fmt::Debug, mem, pin::Pin, ptr};
 use pinned_init::{pin_data, pin_init, PinInit};
 
 /// Base kernel Object
@@ -29,7 +29,7 @@ pub struct KObjectBase {
     pub type_: u8,
     /// list node of kernel object
     #[pin]
-    pub list: ListHead,
+    pub list: LinkedListNode,
 }
 
 impl KObjectBase {
@@ -45,6 +45,7 @@ impl KObjectBase {
         self.type_ = type_;
         unsafe {
             strncpy(self.name.as_mut_ptr(), name, (NAME_MAX - 1) as usize);
+            Pin::new_unchecked(&mut self.list).reset();
         }
 
         if type_ & (!OBJECT_CLASS_STATIC) != ObjectClassType::ObjectClassProcess as u8 {
@@ -57,7 +58,7 @@ impl KObjectBase {
         pin_init!(Self {
             name: name,
             type_: type_,
-            list <- ListHead::new(),
+            list <- LinkedListNode::new(),
         })
     }
 
@@ -272,7 +273,7 @@ macro_rules! impl_kobject {
             }
             fn foreach<F>(callback: F, type_: u8) -> Result<(), i32>
             where
-                F: Fn(&ListHead),
+                F: Fn(&blue_infra::list::doubly_linked_list::ListHead),
                 Self: Sized
             {
                 KObjectBase::foreach(callback, type_)
@@ -280,7 +281,7 @@ macro_rules! impl_kobject {
             fn get_info<FF,F>(callback_forword: FF, callback: F, type_: u8) -> Result<(), i32>
             where
                 FF: Fn(),
-                F: Fn(&ListHead),
+                F: Fn(&blue_infra::list::doubly_linked_list::ListHead),
                 Self: Sized
             {
                 KObjectBase::get_info(callback_forword,callback, type_)

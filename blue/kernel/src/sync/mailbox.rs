@@ -5,10 +5,9 @@ use crate::{
     impl_kobject,
     object::*,
     sync::ipc_common::*,
-    thread::{Thread, SuspendFlag},
+    thread::{SuspendFlag, Thread},
     timer::TimerControlAction,
 };
-use blue_infra::list::doubly_linked_list::ListHead;
 #[allow(unused_imports)]
 use core::{
     cell::UnsafeCell,
@@ -153,8 +152,10 @@ impl Mailbox {
     pub fn detach(&mut self) {
         assert_eq!(self.type_name(), ObjectClassType::ObjectClassMailBox as u8);
 
-        self.inner_queue.dequeue_waiter.inner_locked_wake_all();
-        self.inner_queue.enqueue_waiter.inner_locked_wake_all();
+        self.inner_queue.lock();
+        self.inner_queue.dequeue_waiter.wake_all();
+        self.inner_queue.enqueue_waiter.wake_all();
+        self.inner_queue.unlock();
 
         if self.is_static_kobject() {
             self.parent.detach();
@@ -177,8 +178,10 @@ impl Mailbox {
 
         crate::debug_not_in_interrupt!();
 
-        self.inner_queue.dequeue_waiter.inner_locked_wake_all();
-        self.inner_queue.enqueue_waiter.inner_locked_wake_all();
+        self.inner_queue.lock();
+        self.inner_queue.dequeue_waiter.wake_all();
+        self.inner_queue.enqueue_waiter.wake_all();
+        self.inner_queue.unlock();
 
         self.parent.delete();
     }
@@ -401,8 +404,7 @@ impl Mailbox {
 
         if !self.inner_queue.enqueue_waiter.is_empty() {
             if let Some(node) = self.inner_queue.enqueue_waiter.head() {
-                let thread: *mut Thread =
-                    unsafe { crate::thread_list_node_entry!(node.as_ptr()) };
+                let thread: *mut Thread = unsafe { crate::thread_list_node_entry!(node.as_ptr()) };
                 unsafe {
                     (*thread).error = code::EOK;
                     (*thread).resume();
@@ -438,10 +440,8 @@ impl Mailbox {
 
         if cmd == IPC_CMD_RESET as i32 {
             self.inner_queue.lock();
-
-            self.inner_queue.dequeue_waiter.inner_locked_wake_all();
-            self.inner_queue.enqueue_waiter.inner_locked_wake_all();
-
+            self.inner_queue.dequeue_waiter.wake_all();
+            self.inner_queue.enqueue_waiter.wake_all();
             self.inner_queue.item_in_queue = 0;
             self.inner_queue.read_pos = 0;
             self.inner_queue.write_pos = 0;
