@@ -167,6 +167,7 @@ impl Event {
         self.inner_queue.lock();
         self.inner_queue.dequeue_waiter.wake_all();
         self.inner_queue.unlock();
+
         self.parent.delete();
     }
 
@@ -180,53 +181,54 @@ impl Event {
             return code::ERROR.to_errno();
         }
 
-        self.inner_queue.lock();
+        // Critical section for event flag query and set
+        {
+            let _ = self.inner_queue.spinlock.acquire();
 
-        self.set |= set;
+            self.set |= set;
 
-        crate::doubly_linked_list_for_each!(
-            node,
-            &self.inner_queue.dequeue_waiter.working_queue,
-            {
-                let thread =
-                    unsafe { &mut *(crate::thread_list_node_entry!(node.as_ptr()) as *mut Thread) };
+            crate::doubly_linked_list_for_each!(
+                node,
+                &self.inner_queue.dequeue_waiter.working_queue,
+                {
+                    let thread =
+                        unsafe { &mut *(crate::thread_list_node_entry!(node.as_ptr()) as *mut Thread) };
 
-                let mut status = code::ERROR.to_errno();
-                if thread.event_info.info as u32 & EVENT_AND > 0u32 {
-                    if thread.event_info.set & self.set == thread.event_info.set {
-                        status = code::EOK.to_errno();
+                    let mut status = code::ERROR.to_errno();
+                    if thread.event_info.info as u32 & EVENT_AND > 0u32 {
+                        if thread.event_info.set & self.set == thread.event_info.set {
+                            status = code::EOK.to_errno();
+                        }
+                    } else if thread.event_info.info as u32 & EVENT_OR > 0u32 {
+                        if thread.event_info.set & self.set > 0u32 {
+                            thread.event_info.set = thread.event_info.set & self.set;
+                            status = code::EOK.to_errno();
+                        }
+                    } else {
+                        self.inner_queue.unlock();
+                        return code::EINVAL.to_errno();
                     }
-                } else if thread.event_info.info as u32 & EVENT_OR > 0u32 {
-                    if thread.event_info.set & self.set > 0u32 {
-                        thread.event_info.set = thread.event_info.set & self.set;
-                        status = code::EOK.to_errno();
+
+                    if status == code::EOK.to_errno() {
+                        if thread.event_info.info as u32 & EVENT_CLEAR > 0u32 {
+                            need_clear_set |= (*thread).event_info.set;
+                        }
+
+                        // node will be removed from working_queue by resume, so we need to get prev node
+                        node = unsafe { node.prev().unwrap_unchecked().as_ref() };
+                        thread.remove_thread_list_node();
+                        thread.resume();
+                        thread.error = code::EOK;
+                        need_schedule = true;
                     }
-                } else {
-                    self.inner_queue.unlock();
-                    return code::EINVAL.to_errno();
                 }
+            );
 
-                if status == code::EOK.to_errno() {
-                    if thread.event_info.info as u32 & EVENT_CLEAR > 0u32 {
-                        need_clear_set |= (*thread).event_info.set;
-                    }
-
-                    // node will be removed from working_queue by resume, so we need to get prev node
-                    node = unsafe { node.prev().unwrap_unchecked().as_ref() };
-                    thread.remove_thread_list_node();
-                    thread.resume();
-                    thread.error = code::EOK;
-                    need_schedule = true;
-                }
+            if need_clear_set > 0 {
+                self.set &= !need_clear_set;
             }
-        );
-
-        if need_clear_set > 0 {
-            self.set &= !need_clear_set;
         }
-
-        self.inner_queue.unlock();
-
+        
         if need_schedule {
             Cpu::get_current_scheduler().do_task_schedule();
         }
@@ -263,80 +265,79 @@ impl Event {
 
         thread.error = code::EINTR;
 
-        self.inner_queue.lock();
+        // Critical section for event flag query and set
+        {
+            let spin_guard = self.inner_queue.spinlock.acquire();
 
-        if option as u32 & EVENT_AND > 0u32 {
-            if (self.set & set) == set {
-                status = code::EOK.to_errno();
+            if option as u32 & EVENT_AND > 0u32 {
+                if (self.set & set) == set {
+                    status = code::EOK.to_errno();
+                }
+            } else if option as u32 & EVENT_OR > 0u32 {
+                if self.set & set > 0 {
+                    status = code::EOK.to_errno();
+                }
+            } else {
+                assert!(false);
             }
-        } else if option as u32 & EVENT_OR > 0u32 {
-            if self.set & set > 0 {
-                status = code::EOK.to_errno();
-            }
-        } else {
-            assert!(false);
-        }
 
-        if status == code::EOK.to_errno() {
-            thread.error = code::EOK;
+            if status == code::EOK.to_errno() {
+                thread.error = code::EOK;
 
-            if !recved.is_null() {
-                // SAFETY: recved is null checked
-                unsafe {
-                    *recved = self.set & set;
+                if !recved.is_null() {
+                    // SAFETY: recved is null checked
+                    unsafe {
+                        *recved = self.set & set;
+                    }
+                }
+
+                thread.event_info.set = self.set & set;
+                thread.event_info.info = option;
+
+                if option as u32 & EVENT_CLEAR > 0u32 {
+                    self.set &= !set;
+                }
+            } else if timeout == 0 {
+                thread.error = code::ETIMEDOUT;
+                return code::ETIMEDOUT.to_errno();
+            } else {
+                thread.event_info.set = set;
+                thread.event_info.info = option;
+
+                let ret = self
+                    .inner_queue
+                    .dequeue_waiter
+                    .wait(thread, suspend_flag as u32);
+                if ret != code::EOK.to_errno() {
+                    return ret;
+                }
+              
+                if timeout > 0 {
+                    thread.thread_timer.timer_control(
+                        TimerControlAction::SetTime,
+                        (&mut time_out) as *mut i32 as *mut c_void,
+                    );
+                    thread.thread_timer.start();
+                }
+
+                drop(spin_guard);
+
+                Cpu::get_current_scheduler().do_task_schedule();
+
+                if thread.error != code::EOK {
+                    return thread.error.to_errno();
+                }
+
+                let _ = self.inner_queue.spinlock.acquire();
+
+                if recved != null_mut() {
+                    // SAFETY: recved is null checked
+                    unsafe {
+                        *recved = (*thread).event_info.set;
+                    }
                 }
             }
-
-            thread.event_info.set = self.set & set;
-            thread.event_info.info = option;
-
-            if option as u32 & EVENT_CLEAR > 0u32 {
-                self.set &= !set;
-            }
-        } else if timeout == 0 {
-            thread.error = code::ETIMEDOUT;
-            self.inner_queue.unlock();
-            return code::ETIMEDOUT.to_errno();
-        } else {
-            thread.event_info.set = set;
-            thread.event_info.info = option;
-
-            let ret = self
-                .inner_queue
-                .dequeue_waiter
-                .wait(thread, suspend_flag as u32);
-            if ret != code::EOK.to_errno() {
-                self.inner_queue.unlock();
-                return ret;
-            }
-
-            if timeout > 0 {
-                thread.thread_timer.timer_control(
-                    TimerControlAction::SetTime,
-                    (&mut time_out) as *mut i32 as *mut c_void,
-                );
-                thread.thread_timer.start();
-            }
-
-            self.inner_queue.unlock();
-
-            Cpu::get_current_scheduler().do_task_schedule();
-
-            if thread.error != code::EOK {
-                return thread.error.to_errno();
-            }
-
-            self.inner_queue.lock();
-
-            if recved != null_mut() {
-                // SAFETY: recved is null checked
-                unsafe {
-                    *recved = (*thread).event_info.set;
-                }
-            }
         }
-
-        self.inner_queue.unlock();
 
         thread.error.to_errno()
     }
@@ -377,24 +378,18 @@ impl Event {
         self.receive_internal(set, option, timeout, recved, SuspendFlag::Killable as u32)
     }
 
-    pub fn control(&mut self, cmd: i32, _arg: *const c_void) -> i32 {
+    pub fn reset(&mut self) -> i32 {
         assert_eq!(self.type_name(), ObjectClassType::ObjectClassEvent as u8);
 
-        if cmd == IPC_CMD_RESET as i32 {
-            self.inner_queue.lock();
-
+        // Critical section for event reset
+        {
+            let _ = self.inner_queue.spinlock.acquire();
             self.inner_queue.dequeue_waiter.wake_all();
-
             self.set = 0;
-
-            self.inner_queue.unlock();
-
-            Cpu::get_current_scheduler().do_task_schedule();
-
-            return code::EOK.to_errno();
         }
+        Cpu::get_current_scheduler().do_task_schedule();
 
-        code::ERROR.to_errno()
+        code::EOK.to_errno()
     }
 }
 

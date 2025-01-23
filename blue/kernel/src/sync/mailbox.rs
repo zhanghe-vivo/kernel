@@ -435,23 +435,21 @@ impl Mailbox {
         self.receive_internal(value, timeout, SuspendFlag::Killable as u32)
     }
 
-    pub fn control(&mut self, cmd: i32, _arg: *mut core::ffi::c_void) -> i32 {
+    pub fn reset(&mut self) -> i32 {
         assert_eq!(self.type_name(), ObjectClassType::ObjectClassMailBox as u8);
 
-        if cmd == IPC_CMD_RESET as i32 {
-            self.inner_queue.lock();
-            self.inner_queue.dequeue_waiter.wake_all();
-            self.inner_queue.enqueue_waiter.wake_all();
-            self.inner_queue.item_in_queue = 0;
-            self.inner_queue.read_pos = 0;
-            self.inner_queue.write_pos = 0;
+        let spin_guard = self.inner_queue.spinlock.acquire();
 
-            self.inner_queue.unlock();
+        self.inner_queue.dequeue_waiter.wake_all();
+        self.inner_queue.enqueue_waiter.wake_all();
 
-            Cpu::get_current_scheduler().do_task_schedule();
+        self.inner_queue.item_in_queue = 0;
+        self.inner_queue.read_pos = 0;
+        self.inner_queue.write_pos = 0;
 
-            return code::EOK.to_errno();
-        }
+        drop(spin_guard);
+
+        Cpu::get_current_scheduler().do_task_schedule();
 
         code::EOK.to_errno()
     }

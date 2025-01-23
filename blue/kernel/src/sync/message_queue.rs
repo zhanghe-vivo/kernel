@@ -567,57 +567,56 @@ impl MessageQueue {
         )
     }
 
-    pub fn control(&mut self, cmd: i32, _arg: *mut u8) -> i32 {
+    pub fn reset(&mut self) -> i32 {
         assert_eq!(
             self.type_name(),
             ObjectClassType::ObjectClassMessageQueue as u8
         );
 
-        if cmd == IPC_CMD_RESET as i32 {
-            self.inner_queue.lock();
+        let spin_guard = self.inner_queue.spinlock.acquire();
 
-            self.inner_queue.dequeue_waiter.wake_all();
-            self.inner_queue.enqueue_waiter.wake_all();
+        self.inner_queue.dequeue_waiter.wake_all();
+        self.inner_queue.enqueue_waiter.wake_all();
 
-            cfg_if::cfg_if! {
-                if #[cfg(feature = "messagequeue_priority")] {
-                    while !self.inner_queue.head.is_none() {
-                        let hdr = self.inner_queue.head.unwrap().as_ptr() as *mut SysQueueItemHeader;
-                        let next_head = unsafe { (*hdr).next as *mut u8 };
-                        if next_head.is_null() {
-                            self.inner_queue.head = None;
-                        } else {
-                            self.inner_queue.head =
-                            unsafe { Some(NonNull::new_unchecked(next_head)) };
-                        }
 
-                        if !self.inner_queue.tail.is_none() {
-                            if self.inner_queue.tail.unwrap().as_ptr() == hdr as *mut u8 {
-                                self.inner_queue.tail = None;
-                            }
-                        }
+        cfg_if::cfg_if! {
+            if #[cfg(feature = "messagequeue_priority")] {
+                while !self.inner_queue.head.is_none() {
+                    let hdr = self.inner_queue.head.unwrap().as_ptr() as *mut SysQueueItemHeader;
+                    let next_head = unsafe { (*hdr).next as *mut u8 };
+                    if next_head.is_null() {
+                        self.inner_queue.head = None;
+                    } else {
+                        self.inner_queue.head =
+                        unsafe { Some(NonNull::new_unchecked(next_head)) };
 
-                        if !self.inner_queue.free.is_none() {
-                            unsafe { (*hdr).next =
-                            self.inner_queue.free.unwrap().as_ptr() as *mut SysQueueItemHeader };
-                        }
-                        self.inner_queue.free = unsafe { Some(NonNull::new_unchecked(hdr as *mut u8)) };
                     }
-                } else {
-                    self.inner_queue.read_pos = 0;
-                    self.inner_queue.write_pos = 0;
+
+                    if !self.inner_queue.tail.is_none() {
+                        if self.inner_queue.tail.unwrap().as_ptr() == hdr as *mut u8 {
+                            self.inner_queue.tail = None;
+                        }
+                    }
+
+                    if !self.inner_queue.free.is_none() {
+                        unsafe { (*hdr).next =
+                        self.inner_queue.free.unwrap().as_ptr() as *mut RtSysQueueItemHeader };
+                    }
+                    self.inner_queue.free = unsafe { Some(NonNull::new_unchecked(hdr as *mut u8)) };
                 }
+            } else {
+                self.inner_queue.read_pos = 0;
+                self.inner_queue.write_pos = 0;
             }
-
-            self.inner_queue.item_in_queue = 0;
-            self.inner_queue.unlock();
-
-            Cpu::get_current_scheduler().do_task_schedule();
-
-            return code::EOK.to_errno();
         }
 
-        code::ERROR.to_errno()
+        self.inner_queue.item_in_queue = 0;
+
+        drop(spin_guard);
+
+        Cpu::get_current_scheduler().do_task_schedule();
+
+        code::EOK.to_errno()
     }
 
     #[cfg(feature = "messagequeue_priority")]

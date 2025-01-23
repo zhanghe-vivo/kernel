@@ -18,7 +18,7 @@ pub struct CondVar {
     /// Inherit from KObjectBase
     #[pin]
     pub(crate) parent: KObjectBase,
-    /// Spin lock
+    /// Spin lock raw condition var uses
     pub(crate) spinlock: RawSpin,
     /// Inner semaphore condvar uses
     #[pin]
@@ -102,14 +102,14 @@ impl CondVar {
             return code::ERROR.to_errno();
         }
 
-        self.spinlock.lock();
+        let spin_guard = self.spinlock.acquire();
 
         if self.inner_sem.inner_queue.item_in_queue > 0 {
             self.inner_sem.inner_queue.pop_stub();
-            self.spinlock.unlock();
+            drop(spin_guard);
         } else {
             if time_out == 0 {
-                self.spinlock.unlock();
+                drop(spin_guard);
                 if mutex.unlock() != code::EOK.to_errno() {
                     return code::ERROR.to_errno();
                 }
@@ -135,11 +135,10 @@ impl CondVar {
                 }
 
                 if mutex.unlock() != code::EOK.to_errno() {
-                    self.spinlock.unlock();
                     return code::ERROR.to_errno();
                 }
 
-                self.spinlock.unlock();
+                drop(spin_guard);
 
                 Cpu::get_current_scheduler().do_task_schedule();
 
@@ -148,20 +147,21 @@ impl CondVar {
                 }
             }
         }
-        mutex.lock();
+        if mutex.lock() != code::EOK.to_errno() {
+            return code::ERROR.to_errno();
+        }
         return result;
     }
 
     #[inline]
     pub fn notify(&mut self) -> i32 {
-        self.spinlock.lock();
+        let spin_guard = self.spinlock.acquire();
         if !self.inner_sem.inner_queue.dequeue_waiter.is_empty() {
-            self.spinlock.unlock();
+            drop(spin_guard);
             self.inner_sem.release();
             return code::EOK.to_errno();
         }
 
-        self.spinlock.unlock();
         code::EOK.to_errno()
     }
 

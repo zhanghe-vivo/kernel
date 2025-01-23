@@ -1,4 +1,4 @@
-use crate::blue_kernel::{error::code, sync::mailbox::Mailbox};
+use crate::blue_kernel::{error::code, sync::{mailbox::Mailbox, ipc_common::IPC_CMD_RESET}};
 use core::ffi;
 
 #[no_mangle]
@@ -141,5 +141,9 @@ pub unsafe extern "C" fn rt_mb_control(
     _arg: *mut ffi::c_void,
 ) -> i32 {
     assert!(!mb.is_null());
-    (*mb).control(cmd, _arg)
+    if cmd == IPC_CMD_RESET as ffi::c_int {
+        (*mb).reset()
+    } else {
+        code::ERROR.to_errno()
+    }
 }

@@ -37,6 +37,7 @@ pub mod sync;
 pub mod thread;
 pub mod timer;
 mod zombie;
+#[allow(unused_imports)]
 use core::sync::atomic::{self, Ordering};
 
 #[panic_handler]

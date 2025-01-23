@@ -190,7 +190,11 @@ pub unsafe extern "C" fn rt_mq_control(
     _arg: *mut ffi::c_void,
 ) -> i32 {
     assert!(!mq.is_null());
-    (*mq).control(cmd, _arg as *mut u8)
+    if cmd == IPC_CMD_RESET as ffi::c_int {
+        (*mq).reset()
+    } else {
+        code::ERROR.to_errno()
+    }
 }
 
 #[cfg(feature = "messagequeue_priority")]

@@ -1,4 +1,4 @@
-use crate::blue_kernel::{error::code, sync::event};
+use crate::blue_kernel::{error::code, sync::{event, ipc_common::IPC_CMD_RESET}};
 use core::ffi;
 
 #[no_mangle]
@@ -83,5 +83,9 @@ pub unsafe extern "C" fn rt_event_control(
     _arg: *const ffi::c_void,
 ) -> i32 {
     assert!(!event.is_null());
-    (*event).control(cmd, _arg)
+    if cmd == IPC_CMD_RESET as i32 {
+        (*event).reset()
+    } else {
+        code::ERROR.to_errno()
+    }
 }

@@ -189,6 +189,7 @@ impl Semaphore {
         self.inner_queue.lock();
         self.inner_queue.dequeue_waiter.wake_all();
         self.inner_queue.unlock();
+
         self.parent.delete();
     }
 

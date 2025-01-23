@@ -114,7 +114,10 @@ impl RwLock {
             }
         }
 
-        self.mutex.unlock();
+        if self.mutex.unlock() != code::EOK.to_errno() {
+            return code::ERROR.to_errno();
+        }
+
         if result == code::EOK.to_errno() {
             self.mutex.detach();
         }
@@ -140,7 +143,9 @@ impl RwLock {
             self.rw_count += 1;
         }
 
-        self.mutex.unlock();
+        if self.mutex.unlock() != code::EOK.to_errno() {
+            return code::ERROR.to_errno();
+        }
 
         result
     }
@@ -158,7 +163,9 @@ impl RwLock {
             self.rw_count += 1;
         }
 
-        self.mutex.unlock();
+        if self.mutex.unlock() != code::EOK.to_errno() {
+            return code::ERROR.to_errno();
+        }
 
         return result;
     }
@@ -187,7 +194,9 @@ impl RwLock {
             self.rw_count += 1;
         }
 
-        self.mutex.unlock();
+        if self.mutex.unlock() != code::EOK.to_errno() {
+            return code::ERROR.to_errno();
+        }
 
         result
     }
@@ -217,7 +226,9 @@ impl RwLock {
             self.rw_count = -1;
         }
 
-        self.mutex.unlock();
+        if self.mutex.unlock() != code::EOK.to_errno() {
+            return code::ERROR.to_errno();
+        }
 
         result
     }
@@ -243,7 +254,9 @@ impl RwLock {
             self.rw_count = -1;
         }
 
-        self.mutex.unlock();
+        if self.mutex.unlock() != code::EOK.to_errno() {
+            return code::ERROR.to_errno();
+        }
 
         result
     }
@@ -261,7 +274,9 @@ impl RwLock {
             self.rw_count = -1;
         }
 
-        self.mutex.unlock();
+        if self.mutex.unlock() != code::EOK.to_errno() {
+            return code::ERROR.to_errno();
+        }
 
         return result;
     }
@@ -287,7 +302,9 @@ impl RwLock {
             result = self.read_cond.notify_all();
         }
 
-        self.mutex.unlock();
+        if self.mutex.unlock() != code::EOK.to_errno() {
+            return code::ERROR.to_errno();
+        }
 
         result
     }
