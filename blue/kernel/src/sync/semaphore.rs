@@ -1,6 +1,12 @@
 use crate::{
-    clock::WAITING_FOREVER, cpu::Cpu, error::code, impl_kobject, object::*, sync::ipc_common::*,
-    thread::SuspendFlag, timer::TimerControlAction,
+    clock::WAITING_FOREVER,
+    cpu::Cpu,
+    error::{code, Error},
+    impl_kobject,
+    object::*,
+    sync::{ipc_common::*, wait_list::WaitMode},
+    thread::SuspendFlag,
+    timer::TimerControlAction,
 };
 use core::{ffi::c_void, marker::PhantomPinned, mem, pin::Pin, ptr::null_mut};
 
@@ -39,14 +45,10 @@ impl KSemaphore {
                     let cur_ref = &mut *slot;
 
                     if let Ok(s) = CString::try_from_fmt(fmt!("{:p}", slot)) {
-                        cur_ref.init(s.as_ptr() as *const i8, value, IPC_WAIT_MODE_PRIO as u8);
+                        cur_ref.init(s.as_ptr() as *const i8, value, WaitMode::Priority);
                     } else {
                         let default = "default";
-                        cur_ref.init(
-                            default.as_ptr() as *const i8,
-                            value,
-                            IPC_WAIT_MODE_PRIO as u8,
-                        );
+                        cur_ref.init(default.as_ptr() as *const i8, value, WaitMode::Priority);
                     }
                 }
                 Ok(())
@@ -63,7 +65,7 @@ impl KSemaphore {
 
     pub fn acquire(&self) -> KSemaphoreGuard<'_> {
         unsafe {
-            (*self.raw.get()).take();
+            let _ = (*self.raw.get()).take();
         };
         KSemaphoreGuard { sem: self }
     }
@@ -74,7 +76,9 @@ pub struct KSemaphoreGuard<'a> {
 
 impl<'a> Drop for KSemaphoreGuard<'a> {
     fn drop(&mut self) {
-        unsafe { (*self.sem.raw.get()).release() };
+        unsafe {
+            let _ = (*self.sem.raw.get()).release();
+        }
     }
 }
 
@@ -94,14 +98,7 @@ impl_kobject!(Semaphore);
 
 impl Semaphore {
     #[inline]
-    pub fn new(name: [i8; NAME_MAX], value: u16, waiting_mode: u8) -> impl PinInit<Self> {
-        assert!(
-            (waiting_mode == IPC_WAIT_MODE_FIFO as u8)
-                || (waiting_mode == IPC_WAIT_MODE_PRIO as u8)
-        );
-
-        crate::debug_not_in_interrupt!();
-
+    pub fn new(name: [i8; NAME_MAX], value: u16, waiting_mode: WaitMode) -> impl PinInit<Self> {
         let init = move |slot: *mut Self| unsafe {
             let cur_ref = &mut *slot;
             let _ = KObjectBase::new(ObjectClassType::ObjectClassSemaphore as u8, name)
@@ -110,7 +107,7 @@ impl Semaphore {
                 mem::size_of::<u32>(),
                 value as usize,
                 IPC_SYS_QUEUE_STUB,
-                waiting_mode as u32,
+                waiting_mode,
             )
             .__pinned_init(&mut cur_ref.inner_queue as *mut SysQueue);
             cur_ref.inner_queue.reset_stub(value as usize);
@@ -120,39 +117,35 @@ impl Semaphore {
     }
 
     #[inline]
-    pub fn init(&mut self, name: *const i8, value: u16, waiting_mode: u8) {
-        assert!(
-            (waiting_mode == IPC_WAIT_MODE_FIFO as u8)
-                || (waiting_mode == IPC_WAIT_MODE_PRIO as u8)
-        );
+    pub fn init(&mut self, name: *const i8, value: u16, waiting_mode: WaitMode) {
         self.parent
             .init(ObjectClassType::ObjectClassSemaphore as u8, name);
-        self.init_internal(value, waiting_mode);
+
+        self.inner_queue.init(
+            null_mut(),
+            mem::size_of::<u32>(),
+            value as usize,
+            IPC_SYS_QUEUE_STUB,
+            waiting_mode,
+        );
+        self.inner_queue.reset_stub(value as usize);
     }
 
     #[inline]
-    pub fn init_dyn(&mut self, name: *const i8, value: u16, waiting_mode: u8) {
-        assert!(
-            (waiting_mode == IPC_WAIT_MODE_FIFO as u8)
-                || (waiting_mode == IPC_WAIT_MODE_PRIO as u8)
-        );
+    pub fn init_dyn(&mut self, name: *const i8, value: u16, waiting_mode: WaitMode) {
         self.parent
             .init_dyn(ObjectClassType::ObjectClassSemaphore as u8, name);
         self.init_internal(value, waiting_mode);
     }
 
     #[inline]
-    pub fn init_internal(&mut self, value: u16, waiting_mode: u8) {
-        assert!(
-            (waiting_mode == IPC_WAIT_MODE_FIFO as u8)
-                || (waiting_mode == IPC_WAIT_MODE_PRIO as u8)
-        );
+    pub fn init_internal(&mut self, value: u16, waiting_mode: WaitMode) {
         self.inner_queue.init(
             null_mut(),
             mem::size_of::<u32>(),
             value as usize,
             IPC_SYS_QUEUE_STUB,
-            waiting_mode as u32,
+            waiting_mode,
         );
         self.inner_queue.reset_stub(value as usize);
     }
@@ -168,8 +161,8 @@ impl Semaphore {
     }
 
     #[inline]
-    pub fn new_raw(name: *const i8, value: u16, flag: u8) -> *mut Self {
-        let semaphore = Box::pin_init(Semaphore::new(char_ptr_to_array(name), value, flag));
+    pub fn new_raw(name: *const i8, value: u16, wait_mode: WaitMode) -> *mut Self {
+        let semaphore = Box::pin_init(Semaphore::new(char_ptr_to_array(name), value, wait_mode));
         match semaphore {
             Ok(sem) => unsafe { Box::leak(Pin::into_inner_unchecked(sem)) },
             Err(_) => return null_mut(),
@@ -197,7 +190,7 @@ impl Semaphore {
         self.inner_queue.item_in_queue
     }
 
-    pub fn take_internal(&mut self, timeout: i32, pending_mode: u32) -> i32 {
+    pub fn take_internal(&mut self, timeout: i32, pending_mode: SuspendFlag) -> Result<(), Error> {
         let mut time_out = timeout as i32;
         assert_eq!(
             self.type_name(),
@@ -215,26 +208,18 @@ impl Semaphore {
         } else {
             if timeout == 0 {
                 self.inner_queue.unlock();
-
-                /* FIXME: -2 is as expected, while C -code::ETIMEDOUT is -116. */
-                return -116; //(code::ETIMEDOUT as rt_err_t);
+                return Err(code::ETIMEDOUT);
             } else {
                 let thread_ptr = crate::current_thread_ptr!();
                 if thread_ptr.is_null() {
-                    return code::ERROR.to_errno();
+                    return Err(code::ERROR);
                 }
 
                 // SAFETY: thread_ptr is null checked
                 let thread = unsafe { &mut *thread_ptr };
-
                 thread.error = code::EINTR;
 
-                let ret = self.inner_queue.dequeue_waiter.wait(thread, pending_mode);
-                if ret != code::EOK.to_errno() {
-                    self.inner_queue.unlock();
-                    return ret;
-                }
-
+                self.inner_queue.dequeue_waiter.wait(thread, pending_mode)?;
                 if timeout > 0 {
                     thread.thread_timer.timer_control(
                         TimerControlAction::SetTime,
@@ -248,32 +233,36 @@ impl Semaphore {
                 Cpu::get_current_scheduler().do_task_schedule();
 
                 if thread.error != code::EOK {
-                    return thread.error.to_errno();
+                    return Err(thread.error);
                 }
             }
         }
 
-        code::EOK.to_errno()
+        Ok(())
     }
 
-    pub(crate) fn take(&mut self) -> i32 {
-        self.take_internal(WAITING_FOREVER as i32, SuspendFlag::Uninterruptible as u32)
+    pub(crate) fn take(&mut self) -> Result<(), Error> {
+        self.take_internal(WAITING_FOREVER as i32, SuspendFlag::Uninterruptible)
     }
 
-    pub fn take_wait(&mut self, timeout: i32) -> i32 {
-        self.take_internal(timeout, SuspendFlag::Uninterruptible as u32)
+    pub fn take_wait(&mut self, timeout: i32) -> Result<(), Error> {
+        self.take_internal(timeout, SuspendFlag::Uninterruptible)
     }
 
-    pub fn try_take(&mut self) -> i32 {
+    pub fn try_take(&mut self) -> Result<(), Error> {
         self.take_wait(0)
     }
 
     #[allow(dead_code)]
-    pub(crate) fn take_with_pending(&mut self, timeout: i32, pending_mode: u32) -> i32 {
+    pub(crate) fn take_with_pending(
+        &mut self,
+        timeout: i32,
+        pending_mode: SuspendFlag,
+    ) -> Result<(), Error> {
         self.take_internal(timeout, pending_mode)
     }
 
-    pub fn release(&mut self) -> i32 {
+    pub fn release(&mut self) -> Result<(), Error> {
         assert_eq!(
             self.type_name(),
             ObjectClassType::ObjectClassSemaphore as u8
@@ -282,15 +271,14 @@ impl Semaphore {
         let mut need_schedule = false;
         self.inner_queue.lock();
 
-        if !self.inner_queue.dequeue_waiter.is_empty() {
-            self.inner_queue.dequeue_waiter.wake();
+        if self.inner_queue.dequeue_waiter.wake() {
             need_schedule = true;
         } else {
             if self.count() < IPC_SEMAPHORE_COUNT_MAX as usize {
                 self.inner_queue.force_push_stub();
             } else {
                 self.inner_queue.unlock();
-                return code::ENOSPC.to_errno();
+                return Err(code::ENOSPC);
             }
         }
 
@@ -300,10 +288,10 @@ impl Semaphore {
             Cpu::get_current_scheduler().do_task_schedule();
         }
 
-        code::EOK.to_errno()
+        Ok(())
     }
 
-    pub fn reset(&mut self, value: u32) -> i32 {
+    pub fn reset(&mut self, value: u32) -> Result<(), Error> {
         assert_eq!(
             self.type_name(),
             ObjectClassType::ObjectClassSemaphore as u8
@@ -319,7 +307,7 @@ impl Semaphore {
 
         Cpu::get_current_scheduler().do_task_schedule();
 
-        code::EOK.to_errno()
+        Ok(())
     }
 }
 

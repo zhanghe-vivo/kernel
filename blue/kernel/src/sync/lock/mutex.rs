@@ -4,10 +4,10 @@ use crate::{
     clock::WAITING_FOREVER,
     cpu::Cpu,
     current_thread_ptr,
-    error::{code, set_errno},
+    error::{code, set_errno, Error},
     impl_kobject,
     object::*,
-    sync::ipc_common::*,
+    sync::{ipc_common::*, wait_list::WaitMode},
     thread::{SuspendFlag, Thread},
     timer::TimerControlAction,
 };
@@ -58,10 +58,10 @@ impl<T> KMutex<T> {
                     let cur_ref = &mut *slot;
 
                     if let Ok(s) = CString::try_from_fmt(fmt!("{:p}", slot)) {
-                        cur_ref.init(s.as_ptr() as *const i8, 0);
+                        cur_ref.init(s.as_ptr() as *const i8);
                     } else {
                         let default = "default";
-                        cur_ref.init(default.as_ptr() as *const i8, 0);
+                        cur_ref.init(default.as_ptr() as *const i8);
                     }
                 }
                 Ok(())
@@ -79,7 +79,7 @@ impl<T> KMutex<T> {
 
     pub fn lock(&self) -> KMutexGuard<'_, T> {
         unsafe {
-            (*self.raw.get()).lock();
+            let _ = (*self.raw.get()).lock();
         };
         KMutexGuard { mtx: self }
     }
@@ -91,7 +91,9 @@ pub struct KMutexGuard<'a, T> {
 
 impl<'a, T> Drop for KMutexGuard<'a, T> {
     fn drop(&mut self) {
-        unsafe { (*self.mtx.raw.get()).unlock() };
+        unsafe {
+            let _ = (*self.mtx.raw.get()).unlock();
+        }
     }
 }
 
@@ -133,7 +135,7 @@ impl_kobject!(Mutex);
 
 impl Mutex {
     #[inline]
-    pub fn new(name: [i8; NAME_MAX], _waiting_mode: u8) -> impl PinInit<Self> {
+    pub fn new(name: [i8; NAME_MAX]) -> impl PinInit<Self> {
         crate::debug_not_in_interrupt!();
 
         let init = move |slot: *mut Self| unsafe {
@@ -151,7 +153,7 @@ impl Mutex {
                 mem::size_of::<u32>(),
                 1,
                 IPC_SYS_QUEUE_STUB,
-                IPC_WAIT_MODE_PRIO as u32,
+                WaitMode::Priority,
             )
             .__pinned_init(&mut cur_ref.inner_queue as *mut SysQueue);
             Ok(())
@@ -159,8 +161,8 @@ impl Mutex {
         unsafe { pin_init_from_closure(init) }
     }
     #[inline]
-    pub fn init(&mut self, name: *const i8, _waiting_mode: u8) {
-        // Flag can only be IPC_WAIT_MODE_PRIO.
+    pub fn init(&mut self, name: *const i8) {
+        // Flag can only be WaitMode::Priority.
         self.parent
             .init(ObjectClassType::ObjectClassMutex as u8, name);
 
@@ -168,7 +170,7 @@ impl Mutex {
     }
 
     #[inline]
-    pub fn init_dyn(&mut self, name: *const i8, _waiting_mode: u8) {
+    pub fn init_dyn(&mut self, name: *const i8) {
         self.parent
             .init_dyn(ObjectClassType::ObjectClassMutex as u8, name);
         self.init_internal();
@@ -189,7 +191,7 @@ impl Mutex {
                 mem::size_of::<u32>(),
                 1,
                 IPC_SYS_QUEUE_STUB,
-                IPC_WAIT_MODE_PRIO as u32,
+                WaitMode::Priority,
             )
             .__pinned_init(&mut self.inner_queue as *mut SysQueue)
         };
@@ -216,8 +218,8 @@ impl Mutex {
     }
 
     #[inline]
-    pub fn new_raw(name: *const i8, flag: u8) -> *mut Self {
-        let mutex = Box::pin_init(Mutex::new(char_ptr_to_array(name), flag));
+    pub fn new_raw(name: *const i8) -> *mut Self {
+        let mutex = Box::pin_init(Mutex::new(char_ptr_to_array(name)));
         match mutex {
             Ok(mtx) => unsafe { Box::leak(Pin::into_inner_unchecked(mtx)) },
             Err(_) => return null_mut(),
@@ -245,10 +247,10 @@ impl Mutex {
     }
 
     ///
-    /// Mutex lock operation with concurrency control, priority management, 
+    /// Mutex lock operation with concurrency control, priority management,
     /// and kernel resource synchronization.
-    /// 
-    pub fn lock_internal(&mut self, timeout: i32, pending_mode: u32) -> i32 {
+    ///
+    pub fn lock_internal(&mut self, timeout: i32, pending_mode: SuspendFlag) -> Result<(), Error> {
         // Shadowing a mutable timeout for input one
         let mut timeout = timeout;
 
@@ -275,18 +277,18 @@ impl Mutex {
             } else {
                 // If the recursive lock count exceeds the maximum, unlock the inner queue and return an error (`ENOSPC`).
                 self.inner_queue.unlock();
-                return code::ENOSPC.to_errno();
+                return Err(code::ENOSPC);
             }
-        }else {
+        } else {
             // Case where mutex is not owned by current thread
             // Check if mutex is already owned by another thread
             if self.owner.is_null() {
                 // Take ownership of the mutex
                 self.owner = thread_ptr;
                 // Reset priority tracking
-                self.priority = 0xff;  
+                self.priority = 0xff;
                 // Initialize lock count of the same thread
-                self.inner_queue.reset_stub(1);  
+                self.inner_queue.reset_stub(1);
                 let mutex_owner = unsafe { &mut *self.owner };
 
                 // Handle priority ceiling protocol, non-0xFF means priority ceiling has been set
@@ -295,7 +297,7 @@ impl Mutex {
                     // This operation avoids the mutex taken thread at too low level priority which might be taking the
                     // mutex for too long time
                     if self.ceiling_priority < mutex_owner.priority.get_current() {
-                        mutex_owner.update_priority(self.ceiling_priority, pending_mode);
+                        let _ = mutex_owner.update_priority(self.ceiling_priority, pending_mode);
                     }
                 }
 
@@ -311,15 +313,17 @@ impl Mutex {
                 if timeout == 0 {
                     thread.error = code::ETIMEDOUT;
                     self.inner_queue.unlock();
-                    return code::ETIMEDOUT.to_errno();
+                    return Err(code::ETIMEDOUT);
                 } else {
                     let mut priority = thread.priority.get_current();
                     // Add thread to wait queue to be suspended
-                    let mut ret = self.inner_queue.enqueue_waiter.wait(thread, pending_mode);
-                    if ret != code::EOK.to_errno() {
-                        self.inner_queue.unlock();
-                        return ret;
-                    }
+                    self.inner_queue
+                        .enqueue_waiter
+                        .wait(thread, pending_mode)
+                        .map_err(|e| {
+                            self.inner_queue.unlock();
+                            e
+                        })?;
 
                     // Set thread's pending mutex reference
                     thread.mutex_info.pending_to = unsafe { Some(NonNull::new_unchecked(self)) };
@@ -331,8 +335,8 @@ impl Mutex {
 
                         // Priority inheritance
                         if self.priority < mutex_owner.priority.get_current() {
-                            mutex_owner
-                                .update_priority(priority, SuspendFlag::Uninterruptible as u32);
+                            let _ =
+                                mutex_owner.update_priority(priority, SuspendFlag::Uninterruptible);
                         }
                     }
 
@@ -348,7 +352,7 @@ impl Mutex {
 
                     self.inner_queue.unlock();
 
-                    // Do scheduling 
+                    // Do scheduling
                     Cpu::get_current_scheduler().do_task_schedule();
 
                     self.inner_queue.lock();
@@ -361,7 +365,7 @@ impl Mutex {
                         unsafe {
                             // Check if owner priority needs adjustment
                             // The mutex owner might be part of a priority inheritance chain
-                            // Even with equal priorities, the owner's priority might need propagation through others 
+                            // Even with equal priorities, the owner's priority might need propagation through others
                             // Ensures proper scheduling when multiple threads have matching priorities
                             if !self.owner.is_null()
                                 && (*self.owner).priority.get_current()
@@ -391,8 +395,8 @@ impl Mutex {
                             priority = mutex_owner.get_mutex_priority();
 
                             if priority != mutex_owner.priority.get_current() {
-                                mutex_owner
-                                    .update_priority(priority, SuspendFlag::Uninterruptible as u32);
+                                let _ = mutex_owner
+                                    .update_priority(priority, SuspendFlag::Uninterruptible);
                             }
                         }
 
@@ -400,10 +404,10 @@ impl Mutex {
 
                         // Ownership set, pending none
                         thread.mutex_info.pending_to = None;
-
-                        ret = thread.error.to_errno();
-
-                        return if ret > 0 { -ret } else { ret };
+                        if thread.error != code::EOK {
+                            return Err(thread.error);
+                        }
+                        return Ok(());
                     }
                 }
             }
@@ -411,25 +415,25 @@ impl Mutex {
 
         self.inner_queue.unlock();
 
-        code::EOK.to_errno()
+        Ok(())
     }
 
-    pub fn lock(&mut self) -> i32 {
-        self.lock_internal(WAITING_FOREVER as i32, SuspendFlag::Uninterruptible as u32)
+    pub fn lock(&mut self) -> Result<(), Error> {
+        self.lock_internal(WAITING_FOREVER as i32, SuspendFlag::Uninterruptible)
     }
 
-    pub fn lock_wait(&mut self, time: i32) -> i32 {
-        self.lock_internal(time, SuspendFlag::Uninterruptible as u32)
+    pub fn lock_wait(&mut self, time: i32) -> Result<(), Error> {
+        self.lock_internal(time, SuspendFlag::Uninterruptible)
     }
 
-    pub fn try_lock(&mut self) -> i32 {
+    pub fn try_lock(&mut self) -> Result<(), Error> {
         self.lock_wait(WAITING_NO as i32)
     }
 
     ///
     /// Mutex unlock operation, handling ownership transfer, priority adjustments, and waking waiters.
-    /// 
-    pub fn unlock(&mut self) -> i32 {
+    ///
+    pub fn unlock(&mut self) -> Result<(), Error> {
         // Verify this is actually a mutex object
         assert_eq!(self.type_name(), ObjectClassType::ObjectClassMutex as u8);
 
@@ -438,7 +442,7 @@ impl Mutex {
 
         let thread_ptr = current_thread_ptr!();
         if thread_ptr.is_null() {
-            return code::ERROR.to_errno();
+            return Err(code::ERROR);
         }
         let thread = unsafe { &mut *thread_ptr };
         let mut need_schedule = false;
@@ -450,7 +454,7 @@ impl Mutex {
             // Verify current thread actually owns the mutex
             if thread_ptr != self.owner {
                 thread.error = code::ERROR;
-                return code::ERROR.to_errno();
+                return Err(code::ERROR);
             }
 
             // Decrement recursive lock count by popping stub
@@ -463,7 +467,7 @@ impl Mutex {
                     Pin::new_unchecked(&mut self.taken_node).remove_from_list();
                 }
                 // Handle priority adjustments if:
-                // - Using priority ceiling protocol OR 
+                // - Using priority ceiling protocol OR
                 // - Thread's current priority matches mutex priority, priority inheritance chain reverting
                 if self.ceiling_priority != 0xFF || thread.priority.get_current() == self.priority {
                     let priority = thread.get_mutex_priority();
@@ -477,15 +481,15 @@ impl Mutex {
                 // Takes priority from the first waiter if queue isn't empty
                 if !self.inner_queue.enqueue_waiter.is_empty() {
                     #[allow(unused_assignments)]
-                    let mut next_thread_ptr = null_mut();
+                    let mut next_thread_ptr: *mut Thread = null_mut();
 
                     if let Some(node) = self.inner_queue.enqueue_waiter.head() {
                         next_thread_ptr = unsafe { crate::thread_list_node_entry!(node.as_ptr()) };
                         if next_thread_ptr.is_null() {
-                            return code::ERROR.to_errno();
+                            return Err(code::ERROR);
                         }
                     } else {
-                        return code::ERROR.to_errno();
+                        return Err(code::ERROR);
                     }
 
                     let next_thread = unsafe { &mut *next_thread_ptr };
@@ -494,7 +498,7 @@ impl Mutex {
 
                     // Transfer ownership to next thread
                     self.owner = next_thread_ptr;
-                    self.inner_queue.reset_stub(1);  // Reset lock count for new owner
+                    self.inner_queue.reset_stub(1); // Reset lock count for new owner
 
                     // Add mutex to new owner's taken list
                     unsafe {
@@ -509,14 +513,14 @@ impl Mutex {
                     // Update mutex priority based on new waiters (if any)
                     if !self.inner_queue.enqueue_waiter.is_empty() {
                         #[allow(unused_assignments)]
-                        let mut th = null_mut();
+                        let mut th: *mut Thread = null_mut();
                         if let Some(node) = self.inner_queue.enqueue_waiter.head() {
                             th = unsafe { crate::thread_list_node_entry!(node.as_ptr()) };
                             if th.is_null() {
-                                return code::ERROR.to_errno();
+                                return Err(code::ERROR);
                             }
                         } else {
-                            return code::ERROR.to_errno();
+                            return Err(code::ERROR);
                         }
 
                         // Set mutex priority to highest waiting thread's priority
@@ -542,7 +546,7 @@ impl Mutex {
             Cpu::get_current_scheduler().do_task_schedule();
         }
 
-        code::EOK.to_errno()
+        Ok(())
     }
 
     #[inline]
@@ -604,7 +608,7 @@ impl Mutex {
         if need_update {
             let priority = mutex_owner.get_mutex_priority();
             if priority != mutex_owner.priority.get_current() {
-                mutex_owner.update_priority(priority, SuspendFlag::Uninterruptible as u32);
+                let _ = mutex_owner.update_priority(priority, SuspendFlag::Uninterruptible);
             }
         }
     }
@@ -627,9 +631,9 @@ impl Mutex {
                         let priority = (*owner_thread).get_mutex_priority();
 
                         if priority != (*owner_thread).priority.get_current() {
-                            (*owner_thread)
-                                .update_priority(priority, SuspendFlag::Uninterruptible as u32);
-                    }
+                            let _ = (*owner_thread)
+                                .update_priority(priority, SuspendFlag::Uninterruptible);
+                        }
                     }
                 }
             }
@@ -644,5 +648,22 @@ impl Mutex {
 
     pub(crate) fn get_prio_ceiling(&self) -> u8 {
         self.ceiling_priority
+    }
+}
+
+pub struct RawMutexGuard<'a> {
+    mutex: &'a mut Mutex,
+}
+
+impl<'a> Drop for RawMutexGuard<'a> {
+    fn drop(&mut self) {
+        let _ = self.mutex.unlock();
+    }
+}
+
+impl Mutex {
+    pub fn acquire(&mut self) -> Result<RawMutexGuard, Error> {
+        self.lock()?;
+        Ok(RawMutexGuard { mutex: self })
     }
 }

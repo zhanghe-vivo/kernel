@@ -1,8 +1,8 @@
 use crate::{
-    error::code,
+    error::{code, Error},
     impl_kobject,
     object::{KObjectBase, KernelObject, ObjectClassType, NAME_MAX},
-    sync::{condvar::CondVar, ipc_common::*, lock::mutex::Mutex},
+    sync::{condvar::CondVar, lock::mutex::Mutex, wait_list::WaitMode},
     thread::SuspendFlag,
 };
 use pinned_init::{pin_data, pin_init, PinInit};
@@ -35,19 +35,14 @@ impl_kobject!(RwLock);
 
 impl RwLock {
     #[inline]
-    pub(crate) fn new(name: [i8; NAME_MAX], waiting_mode: u8) -> impl PinInit<Self> {
-        assert!(
-            (waiting_mode == IPC_WAIT_MODE_FIFO as u8)
-                || (waiting_mode == IPC_WAIT_MODE_PRIO as u8)
-        );
-
+    pub(crate) fn new(name: [i8; NAME_MAX], waiting_mode: WaitMode) -> impl PinInit<Self> {
         crate::debug_not_in_interrupt!();
 
         pin_init!(Self {
             parent<-KObjectBase::new(ObjectClassType::ObjectClassRwLock as u8, name),
-            mutex<-Mutex::new(name, waiting_mode as u8),
-            read_cond<-CondVar::new(name, waiting_mode as u8),
-            write_cond<-CondVar::new(name, waiting_mode as u8),
+            mutex<-Mutex::new(name),
+            read_cond<-CondVar::new(name, waiting_mode),
+            write_cond<-CondVar::new(name, waiting_mode),
             rw_count:0,
             reader_waiting:0,
             writer_waiting:0,
@@ -55,238 +50,167 @@ impl RwLock {
     }
 
     #[inline]
-    fn init_internal(&mut self, name: *const i8, waiting_mode: u8) {
-        self.mutex.init_dyn(name, waiting_mode as u8);
-        self.read_cond.init_dyn(name, waiting_mode as u8);
-        self.write_cond.init_dyn(name, waiting_mode as u8);
+    fn init_internal(&mut self, name: *const i8, waiting_mode: WaitMode) {
+        self.mutex.init_dyn(name);
+        self.read_cond.init_dyn(name, waiting_mode);
+        self.write_cond.init_dyn(name, waiting_mode);
         self.rw_count = 0;
         self.reader_waiting = 0;
         self.writer_waiting = 0;
     }
     #[inline]
-    pub fn init(&mut self, name: *const i8, waiting_mode: u8) {
-        assert!(
-            (waiting_mode == IPC_WAIT_MODE_FIFO as u8)
-                || (waiting_mode == IPC_WAIT_MODE_PRIO as u8)
-        );
+    pub fn init(&mut self, name: *const i8, waiting_mode: WaitMode) {
         self.parent
             .init(ObjectClassType::ObjectClassRwLock as u8, name);
         self.init_internal(name, waiting_mode);
     }
 
     #[inline]
-    pub(crate) fn init_dyn(&mut self, name: *const i8, waiting_mode: u8) {
-        assert!(
-            (waiting_mode == IPC_WAIT_MODE_FIFO as u8)
-                || (waiting_mode == IPC_WAIT_MODE_PRIO as u8)
-        );
+    pub(crate) fn init_dyn(&mut self, name: *const i8, waiting_mode: WaitMode) {
         self.parent
             .init_dyn(ObjectClassType::ObjectClassRwLock as u8, name);
         self.init_internal(name, waiting_mode);
     }
 
     #[inline]
-    pub fn detach(&mut self) -> i32 {
+    pub fn detach(&mut self) -> Result<(), Error> {
         assert_eq!(self.type_name(), ObjectClassType::ObjectClassRwLock as u8);
 
-        let mut result = self.mutex.lock();
-        if result != code::EOK.to_errno() {
-            return result;
-        }
+        let guard = self.mutex.acquire()?;
 
         if self.rw_count != 0 || self.reader_waiting != 0 || self.writer_waiting != 0 {
-            return code::EBUSY.to_errno();
+            return Err(code::EBUSY);
         } else {
-            result = self.read_cond.try_wait();
-            if result == code::EOK.to_errno() {
-                result = self.write_cond.try_wait();
-                if result == code::EOK.to_errno() {
-                    self.read_cond.notify();
-                    self.write_cond.notify();
-                    self.read_cond.detach();
-                    self.write_cond.detach();
-                } else {
-                    self.read_cond.detach();
-                    result = code::EBUSY.to_errno();
-                }
-            } else {
-                result = code::EBUSY.to_errno();
-            }
+            let _ = self.read_cond.try_wait().map_or((), |_| {
+                let _ = self.read_cond.notify_all();
+                self.read_cond.detach();
+            });
+
+            let _ = self.write_cond.try_wait().map_or((), |_| {
+                let _ = self.write_cond.notify_all();
+                self.write_cond.detach();
+            });
         }
 
-        if self.mutex.unlock() != code::EOK.to_errno() {
-            return code::ERROR.to_errno();
-        }
+        drop(guard);
+        self.mutex.detach();
 
-        if result == code::EOK.to_errno() {
-            self.mutex.detach();
-        }
-
-        return result;
+        Ok(())
     }
-    pub fn lock_read(&mut self) -> i32 {
-        let mut result = self.mutex.lock();
-        if result != code::EOK.to_errno() {
-            return result;
-        }
-
+    pub fn lock_read(&mut self) -> Result<(), Error> {
+        self.mutex.lock()?;
         while self.rw_count < 0 || self.writer_waiting > 0 {
             self.reader_waiting += 1;
-            result = self.read_cond.wait(&mut self.mutex);
-            self.reader_waiting -= 1;
-            if result != code::EOK.to_errno() {
-                break;
+            match self.read_cond.wait(&mut self.mutex) {
+                Ok(()) => {
+                    self.reader_waiting -= 1;
+                }
+                Err(_) => {
+                    self.reader_waiting -= 1;
+                    return self.mutex.unlock();
+                }
             }
         }
 
-        if result == code::EOK.to_errno() {
-            self.rw_count += 1;
-        }
-
-        if self.mutex.unlock() != code::EOK.to_errno() {
-            return code::ERROR.to_errno();
-        }
-
-        result
+        self.rw_count += 1;
+        self.mutex.unlock()?;
+        Ok(())
     }
 
-    pub fn try_lock_read(&mut self) -> i32 {
-        let mut result = self.mutex.lock();
-
-        if result != code::EOK.to_errno() {
-            return result;
-        }
+    pub fn try_lock_read(&mut self) -> Result<(), Error> {
+        let _ = self.mutex.acquire()?;
 
         if self.rw_count < 0 || self.writer_waiting > 0 {
-            result = code::EBUSY.to_errno();
+            return Err(code::EBUSY);
         } else {
             self.rw_count += 1;
         }
-
-        if self.mutex.unlock() != code::EOK.to_errno() {
-            return code::ERROR.to_errno();
-        }
-
-        return result;
+        Ok(())
     }
 
-    pub(crate) fn lock_read_wait(&mut self, timeout: i32) -> i32 {
-        let mut result = self.mutex.lock();
-
-        if result != code::EOK.to_errno() {
-            return result;
-        }
+    pub(crate) fn lock_read_wait(&mut self, timeout: i32) -> Result<(), Error> {
+        self.mutex.lock()?;
 
         while self.rw_count < 0 || self.writer_waiting > 0 {
             self.reader_waiting += 1;
-            result = self.read_cond.wait_timeout(
+            match self.read_cond.wait_timeout(
                 &mut self.mutex,
-                SuspendFlag::Uninterruptible as u32,
+                SuspendFlag::Uninterruptible,
                 timeout,
-            );
-            self.reader_waiting -= 1;
-            if result != code::EOK.to_errno() {
-                break;
+            ) {
+                Ok(()) => {
+                    self.reader_waiting -= 1;
+                }
+                Err(_) => {
+                    self.reader_waiting -= 1;
+                    return self.mutex.unlock();
+                }
             }
         }
-
-        if result == code::EOK.to_errno() {
-            self.rw_count += 1;
-        }
-
-        if self.mutex.unlock() != code::EOK.to_errno() {
-            return code::ERROR.to_errno();
-        }
-
-        result
+        self.rw_count += 1;
+        self.mutex.unlock()?;
+        Ok(())
     }
 
-    pub(crate) fn lock_write_wait(&mut self, timeout: i32) -> i32 {
-        let mut result = self.mutex.lock();
-
-        if result != code::EOK.to_errno() {
-            return result;
-        }
+    pub(crate) fn lock_write_wait(&mut self, timeout: i32) -> Result<(), Error> {
+        self.mutex.lock()?;
 
         while self.rw_count != 0 {
             self.writer_waiting += 1;
-            result = self.write_cond.wait_timeout(
+            match self.write_cond.wait_timeout(
                 &mut self.mutex,
-                SuspendFlag::Uninterruptible as u32,
+                SuspendFlag::Uninterruptible,
                 timeout,
-            );
-            self.writer_waiting -= 1;
-
-            if result != code::EOK.to_errno() {
-                break;
+            ) {
+                Ok(()) => {
+                    self.writer_waiting -= 1;
+                }
+                Err(_) => {
+                    self.writer_waiting -= 1;
+                    return self.mutex.unlock();
+                }
             }
         }
-
-        if result == code::EOK.to_errno() {
-            self.rw_count = -1;
-        }
-
-        if self.mutex.unlock() != code::EOK.to_errno() {
-            return code::ERROR.to_errno();
-        }
-
-        result
+        self.rw_count = -1;
+        self.mutex.unlock()?;
+        Ok(())
     }
 
-    pub fn lock_write(&mut self) -> i32 {
-        let mut result = self.mutex.lock();
-
-        if result != code::EOK.to_errno() {
-            return result;
-        }
+    pub fn lock_write(&mut self) -> Result<(), Error> {
+        self.mutex.lock()?;
 
         while self.rw_count != 0 {
             self.writer_waiting += 1;
-            result = self.write_cond.wait(&mut self.mutex);
-            self.writer_waiting -= 1;
-
-            if result != code::EOK.to_errno() {
-                break;
+            match self.write_cond.wait(&mut self.mutex) {
+                Ok(()) => {
+                    self.writer_waiting -= 1;
+                }
+                Err(_) => {
+                    self.writer_waiting -= 1;
+                    return self.mutex.unlock();
+                }
             }
         }
 
-        if result == code::EOK.to_errno() {
-            self.rw_count = -1;
-        }
-
-        if self.mutex.unlock() != code::EOK.to_errno() {
-            return code::ERROR.to_errno();
-        }
-
-        result
+        self.rw_count = -1;
+        self.mutex.unlock()?;
+        Ok(())
     }
 
-    pub fn try_lock_write(&mut self) -> i32 {
-        let mut result = self.mutex.lock();
-
-        if result != code::EOK.to_errno() {
-            return result;
-        }
+    pub fn try_lock_write(&mut self) -> Result<(), Error> {
+        let _ = self.mutex.acquire()?;
 
         if self.rw_count != 0 {
-            result = code::EBUSY.to_errno();
+            return Err(code::EBUSY);
         } else {
             self.rw_count = -1;
         }
 
-        if self.mutex.unlock() != code::EOK.to_errno() {
-            return code::ERROR.to_errno();
-        }
-
-        return result;
+        Ok(())
     }
 
-    pub fn unlock(&mut self) -> i32 {
-        let mut result = self.mutex.lock();
-
-        if result != code::EOK.to_errno() {
-            return result;
-        }
+    pub fn unlock(&mut self) -> Result<(), Error> {
+        let _ = self.mutex.acquire()?;
 
         if self.rw_count > 0 {
             self.rw_count -= 1;
@@ -296,17 +220,13 @@ impl RwLock {
 
         if self.writer_waiting > 0 {
             if self.rw_count == 0 {
-                result = self.write_cond.notify();
+                self.write_cond.notify()?;
             }
         } else if self.reader_waiting > 0 {
-            result = self.read_cond.notify_all();
+            self.read_cond.notify_all()?;
         }
 
-        if self.mutex.unlock() != code::EOK.to_errno() {
-            return code::ERROR.to_errno();
-        }
-
-        result
+        Ok(())
     }
 }
 

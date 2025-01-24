@@ -1,6 +1,6 @@
 use crate::blue_kernel::{
     error::code,
-    sync::{ipc_common::*, message_queue::MessageQueue},
+    sync::{ipc_common::*, message_queue::MessageQueue, wait_list::WaitMode},
 };
 use core::{ffi, ptr::null_mut};
 
@@ -14,21 +14,26 @@ pub unsafe extern "C" fn rt_mq_init(
     flag: u8,
 ) -> i32 {
     assert!(!mq.is_null());
-    assert!((flag == IPC_WAIT_MODE_FIFO as u8) || (flag == IPC_WAIT_MODE_PRIO as u8));
+    let Ok(wait_mode) = WaitMode::try_from(flag as u32) else {
+        return code::EINVAL.to_errno();
+    };
+
     #[allow(unused_mut, unused_assignments)]
     let mut queue_working_mode = IPC_SYS_QUEUE_FIFO as u8;
     #[cfg(feature = "messagequeue_priority")]
     {
         queue_working_mode = IPC_SYS_QUEUE_PRIO as u8;
     }
-    (*mq).init(
-        name,
-        msgpool as *mut u8,
-        msg_size as usize,
-        pool_size as usize,
-        queue_working_mode as u8,
-        flag,
-    )
+    (*mq)
+        .init(
+            name,
+            msgpool as *mut u8,
+            msg_size as usize,
+            pool_size as usize,
+            queue_working_mode as u8,
+            wait_mode,
+        )
+        .to_errno()
 }
 
 #[no_mangle]
@@ -46,6 +51,11 @@ pub unsafe extern "C" fn rt_mq_create(
     max_msgs: usize,
     flag: u8,
 ) -> *mut MessageQueue {
+    let wait_mode = match WaitMode::try_from(flag as u32) {
+        Ok(mode) => mode,
+        Err(_) => return null_mut(),
+    };
+
     #[allow(unused_mut, unused_assignments)]
     let mut queue_working_mode = IPC_SYS_QUEUE_FIFO as u8;
     #[cfg(feature = "messagequeue_priority")]
@@ -57,7 +67,7 @@ pub unsafe extern "C" fn rt_mq_create(
         msg_size as usize,
         max_msgs as usize,
         queue_working_mode,
-        flag,
+        wait_mode,
     )
 }
 
@@ -84,7 +94,10 @@ pub unsafe extern "C" fn rt_mq_send(
     size: usize,
 ) -> i32 {
     assert!(!mq.is_null());
-    (*mq).send(buffer as *const u8, size as usize)
+    match (*mq).send(buffer as *const u8, size) {
+        Ok(_) => code::EOK.to_errno(),
+        Err(e) => e.to_errno(),
+    }
 }
 
 #[no_mangle]
@@ -94,7 +107,10 @@ pub unsafe extern "C" fn rt_mq_send_interruptible(
     size: usize,
 ) -> i32 {
     assert!(!mq.is_null());
-    (*mq).send_interruptible(buffer as *const u8, size as usize)
+    match (*mq).send_interruptible(buffer as *const u8, size) {
+        Ok(_) => code::EOK.to_errno(),
+        Err(e) => e.to_errno(),
+    }
 }
 
 #[no_mangle]
@@ -104,7 +120,10 @@ pub unsafe extern "C" fn rt_mq_send_killable(
     size: usize,
 ) -> i32 {
     assert!(!mq.is_null());
-    (*mq).send_killable(buffer as *const u8, size as usize)
+    match (*mq).send_killable(buffer as *const u8, size) {
+        Ok(_) => code::EOK.to_errno(),
+        Err(e) => e.to_errno(),
+    }
 }
 
 #[no_mangle]
@@ -115,7 +134,10 @@ pub unsafe extern "C" fn rt_mq_send_wait(
     timeout: i32,
 ) -> i32 {
     assert!(!mq.is_null());
-    (*mq).send_wait(buffer as *const u8, size as usize, timeout)
+    match (*mq).send_wait(buffer as *const u8, size, timeout) {
+        Ok(_) => code::EOK.to_errno(),
+        Err(e) => e.to_errno(),
+    }
 }
 
 #[no_mangle]
@@ -126,7 +148,10 @@ pub unsafe extern "C" fn rt_mq_send_wait_interruptible(
     timeout: i32,
 ) -> i32 {
     assert!(!mq.is_null());
-    (*mq).send_wait_interruptible(buffer as *const u8, size as usize, timeout)
+    match (*mq).send_wait_interruptible(buffer as *const u8, size, timeout) {
+        Ok(_) => code::EOK.to_errno(),
+        Err(e) => e.to_errno(),
+    }
 }
 
 #[no_mangle]
@@ -137,7 +162,10 @@ pub unsafe extern "C" fn rt_mq_send_wait_killable(
     timeout: i32,
 ) -> i32 {
     assert!(!mq.is_null());
-    (*mq).send_wait_killable(buffer as *const u8, size as usize, timeout)
+    match (*mq).send_wait_killable(buffer as *const u8, size, timeout) {
+        Ok(_) => code::EOK.to_errno(),
+        Err(e) => e.to_errno(),
+    }
 }
 
 #[no_mangle]
@@ -156,9 +184,12 @@ pub unsafe extern "C" fn rt_mq_recv(
     buffer: *mut ffi::c_void,
     size: usize,
     timeout: i32,
-) -> usize {
+) -> isize {
     assert!(!mq.is_null());
-    (*mq).receive(buffer as *mut u8, size as usize, timeout) as usize
+    match (*mq).receive(buffer as *mut u8, size, timeout) {
+        Ok(received_size) => received_size as isize,
+        Err(e) => e.to_errno() as isize,
+    }
 }
 
 #[no_mangle]
@@ -167,9 +198,12 @@ pub unsafe extern "C" fn rt_mq_recv_interruptible(
     buffer: *mut ffi::c_void,
     size: usize,
     timeout: i32,
-) -> usize {
+) -> isize {
     assert!(!mq.is_null());
-    (*mq).receive_interruptible(buffer as *mut u8, size as usize, timeout) as usize
+    match (*mq).receive_interruptible(buffer as *mut u8, size, timeout) {
+        Ok(received_size) => received_size as isize,
+        Err(e) => e.to_errno() as isize,
+    }
 }
 
 #[no_mangle]
@@ -178,9 +212,12 @@ pub unsafe extern "C" fn rt_mq_recv_killable(
     buffer: *mut ffi::c_void,
     size: usize,
     timeout: i32,
-) -> usize {
+) -> isize {
     assert!(!mq.is_null());
-    (*mq).receive_killable(buffer as *mut u8, size as usize, timeout) as usize
+    match (*mq).receive_killable(buffer as *mut u8, size, timeout) {
+        Ok(received_size) => received_size as isize,
+        Err(e) => e.to_errno() as isize,
+    }
 }
 
 #[no_mangle]
@@ -191,7 +228,9 @@ pub unsafe extern "C" fn rt_mq_control(
 ) -> i32 {
     assert!(!mq.is_null());
     if cmd == IPC_CMD_RESET as ffi::c_int {
-        (*mq).reset()
+        (*mq)
+            .reset()
+            .map_or_else(|e| e.to_errno(), |_| code::EOK.to_errno())
     } else {
         code::ERROR.to_errno()
     }
@@ -208,13 +247,15 @@ pub unsafe extern "C" fn rt_mq_send_wait_prio(
     suspend_flag: ffi::c_int,
 ) -> i32 {
     assert!(!mq.is_null());
-    (*mq).send_wait_prio(
-        buffer as *const u8,
-        size as usize,
-        prio,
-        timeout,
-        suspend_flag as u32,
-    )
+    (*mq)
+        .send_wait_prio(
+            buffer as *const u8,
+            size as usize,
+            prio,
+            timeout,
+            suspend_flag as u32,
+        )
+        .map_or_else(|e| e.to_errno(), |_| code::EOK.to_errno())
 }
 
 #[cfg(feature = "messagequeue_priority")]
@@ -226,13 +267,16 @@ pub unsafe extern "C" fn rt_mq_recv_prio(
     prio: *mut i32,
     timeout: i32,
     suspend_flag: ffi::c_int,
-) -> usize {
+) -> isize {
     assert!(!mq.is_null());
-    (*mq).receive_prio(
+    match (*mq).receive_prio(
         buffer as *mut u8,
         size as usize,
         prio,
         timeout,
         suspend_flag as u32,
-    )
+    ) {
+        Ok(received_size) => received_size as isize,
+        Err(e) => e.to_errno() as isize,
+    }
 }

@@ -10,6 +10,7 @@ pub mod mailbox;
 pub mod message_queue;
 #[cfg(feature = "semaphore")]
 pub mod semaphore;
+pub mod wait_list;
 
 pub use lock::{
     heaplock::{new_heaplock, HeapLock},

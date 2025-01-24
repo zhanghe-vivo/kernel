@@ -3,7 +3,7 @@ use crate::{
     error::{code, Error},
     impl_kobject,
     object::*,
-    sync::ipc_common::*,
+    sync::{ipc_common::*, wait_list::WaitMode},
     thread::{SuspendFlag, Thread},
     timer::TimerControlAction,
 };
@@ -43,10 +43,10 @@ impl KEvent {
                     let cur_ref = &mut *slot;
 
                     if let Ok(s) = CString::try_from_fmt(fmt!("{:p}", slot)) {
-                        cur_ref.init(s.as_ptr() as *const i8, IPC_WAIT_MODE_PRIO as u8);
+                        cur_ref.init(s.as_ptr() as *const i8, WaitMode::Priority);
                     } else {
                         let default = "default";
-                        cur_ref.init(default.as_ptr() as *const i8, IPC_WAIT_MODE_PRIO as u8);
+                        cur_ref.init(default.as_ptr() as *const i8, WaitMode::Priority);
                     }
                 }
                 Ok(())
@@ -62,22 +62,11 @@ impl KEvent {
     }
 
     pub fn send(&self, set: u32) -> Result<(), Error> {
-        let result = unsafe { (*self.raw.get()).send(set) };
-        if result == code::EOK.to_errno() {
-            Ok(())
-        } else {
-            Err(Error::from_errno(result))
-        }
+        unsafe { (*self.raw.get()).send(set) }
     }
 
     pub fn receive(&self, set: u32, option: u32, timeout: i32) -> Result<u32, Error> {
-        let mut retmsg = 0u32;
-        let result = unsafe { (*self.raw.get()).receive(set, option as u8, timeout, &mut retmsg) };
-        if result == code::EOK.to_errno() {
-            Ok(retmsg)
-        } else {
-            Err(Error::from_errno(result))
-        }
+        unsafe { (*self.raw.get()).receive(set, option as u8, timeout) }
     }
 }
 
@@ -105,22 +94,16 @@ impl_kobject!(Event);
 
 impl Event {
     #[inline]
-    pub fn new(name: [i8; NAME_MAX], flag: u8) -> impl PinInit<Self> {
-        assert!((flag == IPC_WAIT_MODE_FIFO as u8) || (flag == IPC_WAIT_MODE_PRIO as u8));
-
-        crate::debug_not_in_interrupt!();
-
+    pub fn new(name: [i8; NAME_MAX], wait_mode: WaitMode) -> impl PinInit<Self> {
         pin_init!(Self {
             parent<-KObjectBase::new(ObjectClassType::ObjectClassEvent as u8, name),
             set: 0,
-            inner_queue<-SysQueue::new(mem::size_of::<u32>(), 1, IPC_SYS_QUEUE_STUB, flag as u32)
+            inner_queue<-SysQueue::new(mem::size_of::<u32>(), 1, IPC_SYS_QUEUE_STUB, wait_mode)
         })
     }
 
     #[inline]
-    pub fn init(&mut self, name: *const i8, flag: u8) {
-        assert!((flag == IPC_WAIT_MODE_FIFO as u8) || (flag == IPC_WAIT_MODE_PRIO as u8));
-
+    pub fn init(&mut self, name: *const i8, wait_mode: WaitMode) {
         self.parent
             .init(ObjectClassType::ObjectClassEvent as u8, name);
 
@@ -131,7 +114,7 @@ impl Event {
             mem::size_of::<u32>(),
             1,
             IPC_SYS_QUEUE_STUB,
-            flag as u32,
+            wait_mode,
         );
     }
 
@@ -149,8 +132,8 @@ impl Event {
     }
 
     #[inline]
-    pub fn new_raw(name: *const i8, flag: u8) -> *mut Self {
-        let event = Box::pin_init(Event::new(char_ptr_to_array(name), flag));
+    pub fn new_raw(name: *const i8, wait_mode: WaitMode) -> *mut Self {
+        let event = Box::pin_init(Event::new(char_ptr_to_array(name), wait_mode));
         match event {
             Ok(evt) => unsafe { Box::leak(Pin::into_inner_unchecked(evt)) },
             Err(_) => return null_mut(),
@@ -171,14 +154,14 @@ impl Event {
         self.parent.delete();
     }
 
-    pub fn send(&mut self, set: u32) -> i32 {
+    pub fn send(&mut self, set: u32) -> Result<(), Error> {
         assert_eq!(self.type_name(), ObjectClassType::ObjectClassEvent as u8);
 
         let mut need_schedule = false;
         let mut need_clear_set = 0u32;
 
         if set == 0 {
-            return code::ERROR.to_errno();
+            return Err(code::ERROR);
         }
 
         // Critical section for event flag query and set
@@ -189,27 +172,28 @@ impl Event {
 
             crate::doubly_linked_list_for_each!(
                 node,
-                &self.inner_queue.dequeue_waiter.working_queue,
+                &self.inner_queue.dequeue_waiter.wait_list,
                 {
-                    let thread =
-                        unsafe { &mut *(crate::thread_list_node_entry!(node.as_ptr()) as *mut Thread) };
+                    let thread = unsafe {
+                        &mut *(crate::thread_list_node_entry!(node.as_ptr()) as *mut Thread)
+                    };
 
-                    let mut status = code::ERROR.to_errno();
+                    let mut status = code::ERROR;
                     if thread.event_info.info as u32 & EVENT_AND > 0u32 {
                         if thread.event_info.set & self.set == thread.event_info.set {
-                            status = code::EOK.to_errno();
+                            status = code::EOK;
                         }
                     } else if thread.event_info.info as u32 & EVENT_OR > 0u32 {
                         if thread.event_info.set & self.set > 0u32 {
                             thread.event_info.set = thread.event_info.set & self.set;
-                            status = code::EOK.to_errno();
+                            status = code::EOK;
                         }
                     } else {
                         self.inner_queue.unlock();
-                        return code::EINVAL.to_errno();
+                        return Err(code::EINVAL);
                     }
 
-                    if status == code::EOK.to_errno() {
+                    if status == code::EOK {
                         if thread.event_info.info as u32 & EVENT_CLEAR > 0u32 {
                             need_clear_set |= (*thread).event_info.set;
                         }
@@ -228,12 +212,12 @@ impl Event {
                 self.set &= !need_clear_set;
             }
         }
-        
+
         if need_schedule {
             Cpu::get_current_scheduler().do_task_schedule();
         }
 
-        code::EOK.to_errno()
+        Ok(())
     }
 
     fn receive_internal(
@@ -241,56 +225,50 @@ impl Event {
         set: u32,
         option: u8,
         timeout: i32,
-        recved: *mut u32,
-        suspend_flag: u32,
-    ) -> i32 {
+        suspend_flag: SuspendFlag,
+    ) -> Result<u32, Error> {
         assert_eq!(self.type_name(), ObjectClassType::ObjectClassEvent as u8);
 
         crate::debug_scheduler_available!(true);
 
         if set == 0 {
-            return code::ERROR.to_errno();
+            return Err(code::ERROR);
         }
 
         let mut time_out = timeout;
-        let mut status = code::ERROR.to_errno();
+        let mut status = code::ERROR;
 
         let thread_ptr = crate::current_thread_ptr!();
         if thread_ptr.is_null() {
-            return code::ERROR.to_errno();
+            return Err(code::ERROR);
         }
 
         // SAFETY: thread ensured not null
         let thread = unsafe { &mut *thread_ptr };
-
         thread.error = code::EINTR;
 
         // Critical section for event flag query and set
         {
+            // SAFETY: recved is not used when error occurs
+            #[allow(unused_mut, unused_assignments)]
+            let mut recved = 0u32;
             let spin_guard = self.inner_queue.spinlock.acquire();
 
             if option as u32 & EVENT_AND > 0u32 {
                 if (self.set & set) == set {
-                    status = code::EOK.to_errno();
+                    status = code::EOK;
                 }
             } else if option as u32 & EVENT_OR > 0u32 {
                 if self.set & set > 0 {
-                    status = code::EOK.to_errno();
+                    status = code::EOK;
                 }
             } else {
-                assert!(false);
+                return Err(code::EINVAL);
             }
 
-            if status == code::EOK.to_errno() {
+            if status == code::EOK {
                 thread.error = code::EOK;
-
-                if !recved.is_null() {
-                    // SAFETY: recved is null checked
-                    unsafe {
-                        *recved = self.set & set;
-                    }
-                }
-
+                recved = self.set & set;
                 thread.event_info.set = self.set & set;
                 thread.event_info.info = option;
 
@@ -299,19 +277,13 @@ impl Event {
                 }
             } else if timeout == 0 {
                 thread.error = code::ETIMEDOUT;
-                return code::ETIMEDOUT.to_errno();
+                return Err(code::ETIMEDOUT);
             } else {
                 thread.event_info.set = set;
                 thread.event_info.info = option;
 
-                let ret = self
-                    .inner_queue
-                    .dequeue_waiter
-                    .wait(thread, suspend_flag as u32);
-                if ret != code::EOK.to_errno() {
-                    return ret;
-                }
-              
+                self.inner_queue.dequeue_waiter.wait(thread, suspend_flag)?;
+
                 if timeout > 0 {
                     thread.thread_timer.timer_control(
                         TimerControlAction::SetTime,
@@ -325,60 +297,38 @@ impl Event {
                 Cpu::get_current_scheduler().do_task_schedule();
 
                 if thread.error != code::EOK {
-                    return thread.error.to_errno();
+                    return Err(thread.error);
                 }
-
-                let _ = self.inner_queue.spinlock.acquire();
-
-                if recved != null_mut() {
-                    // SAFETY: recved is null checked
-                    unsafe {
-                        *recved = (*thread).event_info.set;
-                    }
+                {
+                    let _ = self.inner_queue.spinlock.acquire();
+                    recved = (*thread).event_info.set;
                 }
             }
+            Ok(recved)
         }
-
-        thread.error.to_errno()
     }
 
-    pub fn receive(&mut self, set: u32, option: u8, timeout: i32, recved: *mut u32) -> i32 {
-        self.receive_internal(
-            set,
-            option,
-            timeout,
-            recved,
-            SuspendFlag::Uninterruptible as u32,
-        )
+    #[inline]
+    pub fn receive(&mut self, set: u32, option: u8, timeout: i32) -> Result<u32, Error> {
+        self.receive_internal(set, option, timeout, SuspendFlag::Uninterruptible)
     }
 
+    #[inline]
     pub fn receive_interruptible(
         &mut self,
         set: u32,
         option: u8,
         timeout: i32,
-        recved: *mut u32,
-    ) -> i32 {
-        self.receive_internal(
-            set,
-            option,
-            timeout,
-            recved,
-            SuspendFlag::Interruptible as u32,
-        )
+    ) -> Result<u32, Error> {
+        self.receive_internal(set, option, timeout, SuspendFlag::Interruptible)
     }
 
-    pub fn receive_killable(
-        &mut self,
-        set: u32,
-        option: u8,
-        timeout: i32,
-        recved: *mut u32,
-    ) -> i32 {
-        self.receive_internal(set, option, timeout, recved, SuspendFlag::Killable as u32)
+    #[inline]
+    pub fn receive_killable(&mut self, set: u32, option: u8, timeout: i32) -> Result<u32, Error> {
+        self.receive_internal(set, option, timeout, SuspendFlag::Killable)
     }
 
-    pub fn reset(&mut self) -> i32 {
+    pub fn reset(&mut self) -> Result<(), Error> {
         assert_eq!(self.type_name(), ObjectClassType::ObjectClassEvent as u8);
 
         // Critical section for event reset
@@ -389,7 +339,7 @@ impl Event {
         }
         Cpu::get_current_scheduler().do_task_schedule();
 
-        code::EOK.to_errno()
+        Ok(())
     }
 }
 

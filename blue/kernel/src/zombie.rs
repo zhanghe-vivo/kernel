@@ -70,7 +70,7 @@ impl ZombieManager {
                 core::ptr::null_mut(), (blue_kconfig::THREAD_PRIORITY_MAX - 2) as u8, 32),
             sem <- unsafe {
                 pin_init_from_closure::<_, ::core::convert::Infallible>(|slot| {
-                    (*slot).init(ZOMBIE_NAME.as_char_ptr(), 0, ipc_common::IPC_WAIT_MODE_FIFO as u8);
+                    (*slot).init(ZOMBIE_NAME.as_char_ptr(), 0, ipc_common::WaitMode::Fifo);
                     Ok(())
                 })
             },

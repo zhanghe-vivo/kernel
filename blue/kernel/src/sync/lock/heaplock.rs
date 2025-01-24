@@ -1,8 +1,4 @@
-use crate::{
-    cpu::Cpu,
-    error::code,
-    sync::{ipc_common::IPC_FLAG_PRIO, lock::mutex::*},
-};
+use crate::{cpu::Cpu, sync::lock::mutex::*};
 
 #[cfg(feature = "heap_isr")]
 use crate::sync::lock::spinlock::SpinLockBackend;
@@ -35,18 +31,18 @@ unsafe impl super::Backend for HeapLockBackend {
     unsafe fn init(ptr: *mut Self::State, name: *const core::ffi::c_char) {
         // SAFETY: The safety requirements ensure that `ptr` is valid for writes, and `name` and
         // `key` are valid for read indefinitely.
-        unsafe { (*ptr).init(name, IPC_FLAG_PRIO as u8) };
+        unsafe { (*ptr).init(name) };
     }
 
     unsafe fn lock(ptr: *mut Self::State) -> Self::GuardState {
         // SAFETY: The safety requirements of this function ensure that `ptr` points to valid
         // memory, and that it has been initialised before.
         unsafe {
-            if Cpu::get_current_thread().is_some() {
+            let _ = if Cpu::get_current_thread().is_some() {
                 (*ptr).lock()
             } else {
-                code::EOK.to_errno()
-            }
+                Ok(())
+            };
         };
     }
 
@@ -55,7 +51,7 @@ unsafe impl super::Backend for HeapLockBackend {
         // caller is the owner of the mutex.
         unsafe {
             if Cpu::get_current_thread().is_some() {
-                (*ptr).unlock();
+                let _ = (*ptr).unlock();
             }
         }
     }

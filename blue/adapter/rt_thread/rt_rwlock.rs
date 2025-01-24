@@ -1,4 +1,7 @@
-use crate::blue_kernel::{error::code, sync::lock::rwlock::RwLock};
+use crate::blue_kernel::{
+    error::code,
+    sync::{lock::rwlock::RwLock, wait_list::WaitMode},
+};
 
 #[no_mangle]
 pub unsafe extern "C" fn rt_rwlock_init(
@@ -7,43 +10,57 @@ pub unsafe extern "C" fn rt_rwlock_init(
     flag: u8,
 ) -> i32 {
     assert!(!rwlock.is_null());
-    (*rwlock).init(name, flag);
+    let Ok(wait_mode) = WaitMode::try_from(flag as u32) else {
+        return code::EINVAL.to_errno();
+    };
+    (*rwlock).init(name, wait_mode);
     code::EOK.to_errno()
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn rt_rwlock_detach(rwlock: *mut RwLock) -> i32 {
     assert!(!rwlock.is_null());
-    (*rwlock).detach();
-    code::EOK.to_errno()
+    (*rwlock)
+        .detach()
+        .map_or_else(|e| e.to_errno(), |_| code::EOK.to_errno())
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn rt_rwlock_lock_read(rwlock: *mut RwLock) -> i32 {
     assert!(!rwlock.is_null());
-    (*rwlock).lock_read()
+    (*rwlock)
+        .lock_read()
+        .map_or_else(|e| e.to_errno(), |_| code::EOK.to_errno())
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn rt_rwlock_lock_write(rwlock: *mut RwLock) -> i32 {
     assert!(!rwlock.is_null());
-    (*rwlock).lock_write()
+    (*rwlock)
+        .lock_write()
+        .map_or_else(|e| e.to_errno(), |_| code::EOK.to_errno())
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn rt_rwlock_try_lock_read(rwlock: *mut RwLock) -> i32 {
     assert!(!rwlock.is_null());
-    (*rwlock).try_lock_read()
+    (*rwlock)
+        .try_lock_read()
+        .map_or_else(|e| e.to_errno(), |_| code::EOK.to_errno())
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn rt_rwlock_try_lock_write(rwlock: *mut RwLock) -> i32 {
     assert!(!rwlock.is_null());
-    (*rwlock).try_lock_write()
+    (*rwlock)
+        .try_lock_write()
+        .map_or_else(|e| e.to_errno(), |_| code::EOK.to_errno())
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn rt_rwlock_unlock(rwlock: *mut RwLock) -> i32 {
     assert!(!rwlock.is_null());
-    (*rwlock).unlock()
+    (*rwlock)
+        .unlock()
+        .map_or_else(|e| e.to_errno(), |_| code::EOK.to_errno())
 }

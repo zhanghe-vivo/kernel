@@ -2,23 +2,20 @@ use crate::{
     allocator::{align_up_size, free, malloc},
     blue_kconfig::ALIGN_SIZE,
     cpu::Cpu,
-    doubly_linked_list_for_each,
     error::{code, Error},
     object::*,
-    sync::RawSpin,
-    thread::{SuspendFlag, Thread},
+    sync::{wait_list::WaitList, RawSpin},
 };
-use blue_infra::list::doubly_linked_list::{LinkedListNode, ListHead};
 use core::{
     mem,
     pin::Pin,
     ptr::{self, null_mut, NonNull},
     slice,
 };
-use pinned_init::{pin_data, pin_init, pin_init_from_closure, pinned_drop, PinInit};
+use pinned_init::{pin_data, pin_init_from_closure, pinned_drop, PinInit};
 
-pub const IPC_WAIT_MODE_FIFO: u32 = 0;
-pub const IPC_WAIT_MODE_PRIO: u32 = 1;
+use super::wait_list::WaitMode;
+
 pub const IPC_MUTEX_NESTED_MAX: u32 = 255;
 pub const IPC_SEMAPHORE_COUNT_MAX: u32 = 65535;
 pub const IPC_RING_BUFFER_ITEM_MAX: u32 = 65535;
@@ -75,10 +72,10 @@ pub struct SysQueue {
     pub(crate) working_mode: u32,
     /// Queue for waiting to enqueue items in the working sysqueue
     #[pin]
-    pub(crate) enqueue_waiter: WaitQueue,
+    pub(crate) enqueue_waiter: WaitList,
     /// Queue for waiting to dequeue items in the working sysqueue
     #[pin]
-    pub(crate) dequeue_waiter: WaitQueue,
+    pub(crate) dequeue_waiter: WaitList,
     /// Spin lock for sysqueue
     pub(crate) spinlock: RawSpin,
 }
@@ -179,7 +176,7 @@ impl SysQueue {
         item_size: usize,
         item_max_count: usize,
         working_mode: u32,
-        waiting_mode: u32,
+        waiting_mode: WaitMode,
     ) -> impl PinInit<Self> {
         let init = move |slot: *mut Self| {
             let sysq = unsafe { &mut *(slot as *mut SysQueue) };
@@ -193,10 +190,10 @@ impl SysQueue {
             sysq.init_storage_internal(null_mut());
 
             unsafe {
-                let _ = WaitQueue::new(waiting_mode)
-                    .__pinned_init(&mut sysq.enqueue_waiter as *mut WaitQueue);
-                let _ = WaitQueue::new(waiting_mode)
-                    .__pinned_init(&mut sysq.dequeue_waiter as *mut WaitQueue);
+                let _ = WaitList::new(waiting_mode)
+                    .__pinned_init(&mut sysq.enqueue_waiter as *mut WaitList);
+                let _ = WaitList::new(waiting_mode)
+                    .__pinned_init(&mut sysq.dequeue_waiter as *mut WaitList);
             }
 
             sysq.spinlock = RawSpin::new();
@@ -213,7 +210,7 @@ impl SysQueue {
         item_size: usize,
         item_max_count: usize,
         working_mode: u32,
-        waiting_mode: u32,
+        waiting_mode: WaitMode,
     ) -> Error {
         self.item_size = item_size;
         self.item_max_count = item_max_count;
@@ -224,10 +221,10 @@ impl SysQueue {
         let buf_size = self.init_storage_internal(buffer);
 
         unsafe {
-            let _ = WaitQueue::new(waiting_mode)
-                .__pinned_init(&mut self.enqueue_waiter as *mut WaitQueue);
-            let _ = WaitQueue::new(waiting_mode)
-                .__pinned_init(&mut self.dequeue_waiter as *mut WaitQueue);
+            let _ = WaitList::new(waiting_mode)
+                .__pinned_init(&mut self.enqueue_waiter as *mut WaitList);
+            let _ = WaitList::new(waiting_mode)
+                .__pinned_init(&mut self.dequeue_waiter as *mut WaitList);
         }
 
         self.spinlock = RawSpin::new();
@@ -319,14 +316,15 @@ impl SysQueue {
     }
 
     #[inline]
-    pub(crate) fn pop_fifo(&mut self, buffer: &mut *mut u8, size: usize) -> i32 {
+    pub(crate) fn pop_fifo(&mut self, buffer: *mut u8, size: usize) -> i32 {
+        assert!(!buffer.is_null());
         assert_eq!(self.item_size, size);
 
         if let Some(buffer_raw) = self.queue_buf {
             unsafe {
                 ptr::copy_nonoverlapping(
                     buffer_raw.as_ptr().offset(self.read_pos as isize),
-                    *buffer,
+                    buffer,
                     size,
                 );
             }
@@ -485,13 +483,9 @@ impl SysQueue {
             return code::ENOSPC.to_errno();
         }
 
-        if !self.dequeue_waiter.is_empty() {
-            self.dequeue_waiter.wake();
-
+        if self.dequeue_waiter.wake() {
             self.spinlock.unlock();
-
             Cpu::get_current_scheduler().do_task_schedule();
-
             return code::EOK.to_errno();
         }
 
@@ -550,37 +544,35 @@ impl SysQueue {
         size as i32
     }
 
-    pub fn try_dequeue_stub(&mut self) -> i32 {
+    pub fn try_dequeue_stub(&mut self) -> Result<(), Error> {
         self.lock();
         let ret = self.pop_stub();
         self.unlock();
 
-        if ret { code::EOK.to_errno() } else { code::ERROR.to_errno() }
+        if ret {
+            Ok(())
+        } else {
+            Err(code::EBUSY)
+        }
     }
 
-    pub fn wake_dequeue_stub_sched(&mut self) -> i32 { 
-        let mut need_schedule = false;
+    pub fn wake_dequeue_stub_sched(&mut self) -> Result<(), Error> {
         self.lock();
 
-        if !self.dequeue_waiter.is_empty() {
-            self.dequeue_waiter.wake();
-            need_schedule = true;
+        if self.dequeue_waiter.wake() {
+            self.unlock();
+            Cpu::get_current_scheduler().do_task_schedule();
         } else {
             if self.count() < IPC_QUEUE_BUFFER_ITEM_MAX as usize {
                 self.force_push_stub();
+                self.unlock();
             } else {
                 self.unlock();
-                return code::ENOSPC.to_errno();
+                return Err(code::ENOSPC);
             }
         }
 
-        self.unlock();
-
-        if need_schedule {
-            Cpu::get_current_scheduler().do_task_schedule();
-        }
-
-        code::EOK.to_errno()
+        Ok(())
     }
 
     pub fn wake_all_dequeue_stub_locked(&mut self) -> i32 {
@@ -588,7 +580,11 @@ impl SysQueue {
         let ret = self.dequeue_waiter.wake_all();
         self.unlock();
 
-        if ret { code::EOK.to_errno() } else { code::ERROR.to_errno() }
+        if ret {
+            code::EOK.to_errno()
+        } else {
+            code::ERROR.to_errno()
+        }
     }
 
     #[inline]
@@ -598,139 +594,6 @@ impl SysQueue {
     #[inline]
     pub(crate) fn unlock(&self) {
         self.spinlock.unlock();
-    }
-}
-
-/// WaitQueue for pending threads
-#[repr(C)]
-#[pin_data]
-pub(crate) struct WaitQueue {
-    /// WaitQueue impl by ListHead
-    #[pin]
-    pub(crate) working_queue: ListHead,
-    /// WaitQueue working mode, FIFO or PRIO
-    waiting_mode: u32,
-}
-
-impl WaitQueue {
-    #[inline]
-    pub(crate) fn new(waiting_mode: u32) -> impl PinInit<Self> {
-        pin_init!(Self {
-            working_queue <- ListHead::new(),
-            waiting_mode: waiting_mode
-        })
-    }
-
-    #[allow(dead_code)]
-    #[inline]
-    pub(crate) fn init(&mut self, waiting_mode: u32) {
-        unsafe {
-            let _ = ListHead::new().__pinned_init(&mut self.working_queue as *mut ListHead);
-        }
-        self.waiting_mode = waiting_mode;
-    }
-
-    #[allow(dead_code)]
-    #[inline]
-    pub(crate) fn waiting_mode(&self) -> u32 {
-        self.waiting_mode
-    }
-
-    #[inline]
-    pub(crate) fn is_empty(&self) -> bool {
-        self.working_queue.is_empty()
-    }
-
-    #[inline]
-    pub(crate) fn head(&self) -> Option<NonNull<LinkedListNode>> {
-        self.working_queue.next()
-    }
-
-    #[allow(dead_code)]
-    #[inline]
-    pub(crate) fn tail(&self) -> Option<NonNull<LinkedListNode>> {
-        self.working_queue.prev()
-    }
-
-    #[allow(dead_code)]
-    #[inline]
-    pub(crate) fn count(&self) -> usize {
-        self.working_queue.size()
-    }
-
-    pub(crate) fn wait(&mut self, thread: &mut Thread, pending_mode: u32) -> i32 {
-        if !thread.stat.is_suspended() {
-            let ret = if thread.suspend(SuspendFlag::from_u8(pending_mode as u8)) {
-                code::EOK.to_errno()
-            } else {
-                code::ERROR.to_errno()
-            };
-
-            if ret != code::EOK.to_errno() {
-                return ret;
-            }
-        }
-
-        match self.waiting_mode as u32 {
-            IPC_WAIT_MODE_FIFO => {
-                unsafe {
-                    Pin::new_unchecked(&mut self.working_queue)
-                        .push_back(Pin::new_unchecked(&mut thread.list_node))
-                };
-            }
-            IPC_WAIT_MODE_PRIO => {
-                doubly_linked_list_for_each!(node, &self.working_queue, {
-                    let queued_thread_ptr =
-                        unsafe { crate::thread_list_node_entry!(node.as_ptr()) as *mut Thread };
-
-                    let queued_thread = unsafe { &mut *queued_thread_ptr };
-
-                    if thread.priority.get_current() < queued_thread.priority.get_current() {
-                        unsafe {
-                            Pin::new_unchecked(&mut thread.list_node)
-                                .insert_after(Pin::new_unchecked(&mut queued_thread.list_node));
-                        }
-                        break;
-                    }
-                });
-
-                if ptr::eq(node.as_ptr(), &self.working_queue) {
-                    unsafe {
-                        Pin::new_unchecked(&mut self.working_queue)
-                            .push_back(Pin::new_unchecked(&mut thread.list_node))
-                    };
-                }
-            }
-            _ => {}
-        }
-
-        code::EOK.to_errno()
-    }
-
-    #[inline]
-    pub(crate) fn wake(&mut self) -> bool {
-        if let Some(node) = unsafe { Pin::new_unchecked(&mut self.working_queue).pop_front() } {
-            let thread = unsafe { &mut *crate::thread_list_node_entry!(node.as_ptr()) };
-            thread.error = code::EOK;
-            return thread.resume();
-        }
-
-        false
-    }
-
-    #[inline]
-    pub(crate) fn wake_all(&mut self) -> bool {
-        let mut ret = true;
-        while let Some(node) = unsafe { Pin::new_unchecked(&mut self.working_queue).pop_front() } {
-            let thread = unsafe { &mut *crate::thread_list_node_entry!(node.as_ptr()) };
-            thread.error = code::ERROR;
-            let resume_stat = thread.resume();
-            if !resume_stat {
-                ret = resume_stat;
-            }
-        }
-
-        ret
     }
 }
 

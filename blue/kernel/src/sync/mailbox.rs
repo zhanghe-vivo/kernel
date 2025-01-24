@@ -4,8 +4,8 @@ use crate::{
     error::{code, Error},
     impl_kobject,
     object::*,
-    sync::ipc_common::*,
-    thread::{SuspendFlag, Thread},
+    sync::{ipc_common::*, wait_list::WaitMode},
+    thread::SuspendFlag,
     timer::TimerControlAction,
 };
 #[allow(unused_imports)]
@@ -70,7 +70,7 @@ impl KMailbox {
                         mem::size_of::<usize>(),
                         size,
                         0,
-                        IPC_WAIT_MODE_FIFO as u32,
+                        WaitMode::Fifo,
                     );
                 }
                 Ok(())
@@ -86,22 +86,11 @@ impl KMailbox {
     }
 
     pub fn send(&self, set: usize) -> Result<(), Error> {
-        let result = unsafe { (*self.raw.get()).send(set) };
-        if result == code::EOK.to_errno() {
-            Ok(())
-        } else {
-            Err(Error::from_errno(result))
-        }
+        unsafe { (*self.raw.get()).send(set) }
     }
 
     pub fn receive(&self, timeout: i32) -> Result<usize, Error> {
-        let mut retmsg = 0 as usize;
-        let result = unsafe { (*self.raw.get()).receive(&mut retmsg, timeout) };
-        if result == code::EOK.to_errno() {
-            Ok(retmsg)
-        } else {
-            Err(Error::from_errno(result))
-        }
+        unsafe { (*self.raw.get()).receive(timeout) }
     }
 }
 
@@ -122,20 +111,15 @@ impl_kobject!(Mailbox);
 
 impl Mailbox {
     #[inline]
-    pub fn new(name: [i8; NAME_MAX], size: usize, flag: u8) -> impl PinInit<Self> {
-        assert!((flag == IPC_WAIT_MODE_FIFO as u8) || (flag == IPC_WAIT_MODE_PRIO as u8));
-
-        crate::debug_not_in_interrupt!();
-
+    pub fn new(name: [i8; NAME_MAX], size: usize, wait_mode: WaitMode) -> impl PinInit<Self> {
         pin_init!(Self {
             parent<-KObjectBase::new(ObjectClassType::ObjectClassMailBox as u8, name),
-            inner_queue<-SysQueue::new(mem::size_of::<usize>(), size, IPC_SYS_QUEUE_FIFO, flag as u32),
+            inner_queue<-SysQueue::new(mem::size_of::<usize>(), size, IPC_SYS_QUEUE_FIFO, wait_mode),
         })
     }
-    #[inline]
-    pub fn init(&mut self, name: *const i8, buffer: *mut u8, size: usize, flag: u8) {
-        assert!((flag == IPC_WAIT_MODE_FIFO as u8) || (flag == IPC_WAIT_MODE_PRIO as u8));
 
+    #[inline]
+    pub fn init(&mut self, name: *const i8, buffer: *mut u8, size: usize, wait_mode: WaitMode) {
         self.parent
             .init(ObjectClassType::ObjectClassMailBox as u8, name);
 
@@ -144,7 +128,7 @@ impl Mailbox {
             mem::size_of::<usize>(),
             size,
             IPC_SYS_QUEUE_FIFO,
-            flag as u32,
+            wait_mode,
         );
     }
 
@@ -163,8 +147,8 @@ impl Mailbox {
     }
 
     #[inline]
-    pub fn new_raw(name: *const i8, size: usize, flag: u8) -> *mut Self {
-        let mailbox = Box::pin_init(Mailbox::new(char_ptr_to_array(name), size, flag));
+    pub fn new_raw(name: *const i8, size: usize, wait_mode: WaitMode) -> *mut Self {
+        let mailbox = Box::pin_init(Mailbox::new(char_ptr_to_array(name), size, wait_mode));
         match mailbox {
             Ok(mb) => unsafe { Box::leak(Pin::into_inner_unchecked(mb)) },
             Err(_) => return null_mut(),
@@ -186,7 +170,12 @@ impl Mailbox {
         self.parent.delete();
     }
 
-    fn send_wait_internal(&mut self, value: usize, timeout: i32, suspend_flag: u32) -> i32 {
+    fn send_wait_internal(
+        &mut self,
+        value: usize,
+        timeout: i32,
+        suspend_flag: SuspendFlag,
+    ) -> Result<(), Error> {
         let mut timeout = timeout;
         #[allow(unused_variables)]
         let scheduler = timeout != 0;
@@ -195,7 +184,7 @@ impl Mailbox {
         let mut tick_delta = 0;
         let thread_ptr = crate::current_thread_ptr!();
         if thread_ptr.is_null() {
-            return code::ERROR.to_errno();
+            return Err(code::ERROR);
         }
 
         // SAFETY: thread_ptr is null checked
@@ -205,7 +194,7 @@ impl Mailbox {
 
         if self.inner_queue.is_full() && timeout == 0 {
             self.inner_queue.unlock();
-            return code::ENOSPC.to_errno();
+            return Err(code::ENOSPC);
         }
 
         while self.inner_queue.is_full() {
@@ -213,16 +202,16 @@ impl Mailbox {
 
             if timeout == 0 {
                 self.inner_queue.unlock();
-
-                return code::ENOSPC.to_errno();
+                return Err(code::ENOSPC);
             }
 
-            let ret = self.inner_queue.enqueue_waiter.wait(thread, suspend_flag);
-
-            if ret != code::EOK.to_errno() {
-                self.inner_queue.unlock();
-                return ret;
-            }
+            self.inner_queue
+                .enqueue_waiter
+                .wait(thread, suspend_flag)
+                .map_err(|e| {
+                    self.inner_queue.unlock();
+                    e
+                })?;
 
             if timeout > 0 {
                 tick_delta = get_tick();
@@ -239,7 +228,7 @@ impl Mailbox {
             Cpu::get_current_scheduler().do_task_schedule();
 
             if thread.error != code::EOK {
-                return thread.error.to_errno();
+                return Err(thread.error);
             }
 
             self.inner_queue.lock();
@@ -259,77 +248,74 @@ impl Mailbox {
             == 0
         {
             self.inner_queue.unlock();
-            return code::ENOSPC.to_errno();
+            return Err(code::ENOSPC);
         }
 
-        if !self.inner_queue.dequeue_waiter.is_empty() {
-            self.inner_queue.dequeue_waiter.wake();
-
+        if self.inner_queue.dequeue_waiter.wake() {
             self.inner_queue.unlock();
 
             Cpu::get_current_scheduler().do_task_schedule();
 
-            return code::EOK.to_errno();
+            return Ok(());
         }
 
         self.inner_queue.unlock();
 
-        return code::EOK.to_errno();
+        Ok(())
     }
 
-    pub fn send_wait(&mut self, value: usize, timeout: i32) -> i32 {
-        self.send_wait_internal(value, timeout, SuspendFlag::Uninterruptible as u32)
+    pub fn send_wait(&mut self, value: usize, timeout: i32) -> Result<(), Error> {
+        self.send_wait_internal(value, timeout, SuspendFlag::Uninterruptible)
     }
 
-    pub fn send_wait_interruptible(&mut self, value: usize, timeout: i32) -> i32 {
-        self.send_wait_internal(value, timeout, SuspendFlag::Interruptible as u32)
+    pub fn send_wait_interruptible(&mut self, value: usize, timeout: i32) -> Result<(), Error> {
+        self.send_wait_internal(value, timeout, SuspendFlag::Interruptible)
     }
 
-    pub fn send_wait_killable(&mut self, value: usize, timeout: i32) -> i32 {
-        self.send_wait_internal(value, timeout, SuspendFlag::Killable as u32)
+    pub fn send_wait_killable(&mut self, value: usize, timeout: i32) -> Result<(), Error> {
+        self.send_wait_internal(value, timeout, SuspendFlag::Killable)
     }
 
-    pub fn send(&mut self, value: usize) -> i32 {
+    pub fn send(&mut self, value: usize) -> Result<(), Error> {
         self.send_wait(value, 0)
     }
 
-    pub fn send_interruptible(&mut self, value: usize) -> i32 {
+    pub fn send_interruptible(&mut self, value: usize) -> Result<(), Error> {
         self.send_wait_interruptible(value, 0)
     }
 
-    pub fn send_killable(&mut self, value: usize) -> i32 {
+    pub fn send_killable(&mut self, value: usize) -> Result<(), Error> {
         self.send_wait_killable(value, 0)
     }
 
-    pub fn urgent(&mut self, value: usize) -> i32 {
+    pub fn urgent(&mut self, value: usize) -> Result<(), Error> {
         assert_eq!(self.type_name(), ObjectClassType::ObjectClassMailBox as u8);
 
         self.inner_queue.lock();
 
         if self.inner_queue.is_full() {
             self.inner_queue.unlock();
-            return code::ENOSPC.to_errno();
+            return Err(code::ENOSPC);
         }
 
         self.inner_queue
             .urgent_fifo(&value as *const usize as *const u8, mem::size_of::<usize>());
 
-        if !self.inner_queue.dequeue_waiter.is_empty() {
-            self.inner_queue.dequeue_waiter.wake();
-
+        if self.inner_queue.dequeue_waiter.wake() {
             self.inner_queue.unlock();
-
             Cpu::get_current_scheduler().do_task_schedule();
-
-            return code::EOK.to_errno();
+            return Ok(());
         }
 
         self.inner_queue.unlock();
-
-        code::EOK.to_errno()
+        Ok(())
     }
 
-    fn receive_internal(&mut self, value: &mut usize, timeout: i32, suspend_flag: u32) -> i32 {
+    fn receive_internal(
+        &mut self,
+        timeout: i32,
+        suspend_flag: SuspendFlag,
+    ) -> Result<usize, Error> {
         assert_eq!(self.type_name(), ObjectClassType::ObjectClassMailBox as u8);
 
         let mut timeout = timeout;
@@ -338,14 +324,14 @@ impl Mailbox {
         crate::debug_scheduler_available!(scheduler);
 
         let mut tick_delta = 0;
-
         let thread_ptr = unsafe { crate::current_thread!().unwrap().as_mut() };
+        let mut value: usize = 0;
 
         self.inner_queue.lock();
 
         if self.inner_queue.is_empty() && timeout == 0 {
             self.inner_queue.unlock();
-            return code::ETIMEDOUT.to_errno();
+            return Err(code::ETIMEDOUT);
         }
 
         let thread = &mut *thread_ptr;
@@ -356,17 +342,16 @@ impl Mailbox {
                 self.inner_queue.unlock();
                 thread.error = code::ETIMEDOUT;
 
-                return code::ETIMEDOUT.to_errno();
+                return Err(code::ETIMEDOUT);
             }
 
-            let ret = self
-                .inner_queue
+            self.inner_queue
                 .dequeue_waiter
-                .wait(thread, suspend_flag as u32);
-            if ret != code::EOK.to_errno() {
-                self.inner_queue.unlock();
-                return ret;
-            }
+                .wait(thread, suspend_flag)
+                .map_err(|e| {
+                    self.inner_queue.unlock();
+                    e
+                })?;
 
             if timeout > 0 {
                 tick_delta = Cpu::get_by_id(0).tick_load();
@@ -383,7 +368,7 @@ impl Mailbox {
             Cpu::get_current_scheduler().do_task_schedule();
 
             if thread.error != code::EOK {
-                return thread.error.to_errno();
+                return Err(thread.error);
             }
 
             self.inner_queue.lock();
@@ -397,61 +382,46 @@ impl Mailbox {
             }
         }
 
-        self.inner_queue.pop_fifo(
-            &mut (value as *mut usize as *mut u8),
-            mem::size_of::<usize>(),
-        );
+        self.inner_queue
+            .pop_fifo(&mut value as *mut usize as *mut u8, mem::size_of::<usize>());
 
-        if !self.inner_queue.enqueue_waiter.is_empty() {
-            if let Some(node) = self.inner_queue.enqueue_waiter.head() {
-                let thread: *mut Thread = unsafe { crate::thread_list_node_entry!(node.as_ptr()) };
-                unsafe {
-                    (*thread).error = code::EOK;
-                    (*thread).resume();
-                }
-            }
-
+        if self.inner_queue.enqueue_waiter.wake() {
             self.inner_queue.unlock();
-
             Cpu::get_current_scheduler().do_task_schedule();
-
-            return code::EOK.to_errno();
+            return Ok(value);
         }
 
         self.inner_queue.unlock();
-
-        code::EOK.to_errno()
+        return Ok(value);
     }
 
-    pub fn receive(&mut self, value: &mut usize, timeout: i32) -> i32 {
-        self.receive_internal(value, timeout, SuspendFlag::Uninterruptible as u32)
+    pub fn receive(&mut self, timeout: i32) -> Result<usize, Error> {
+        self.receive_internal(timeout, SuspendFlag::Uninterruptible)
     }
 
-    pub fn receive_interruptible(&mut self, value: &mut usize, timeout: i32) -> i32 {
-        self.receive_internal(value, timeout, SuspendFlag::Interruptible as u32)
+    pub fn receive_interruptible(&mut self, timeout: i32) -> Result<usize, Error> {
+        self.receive_internal(timeout, SuspendFlag::Interruptible)
     }
 
-    pub fn receive_killable(&mut self, value: &mut usize, timeout: i32) -> i32 {
-        self.receive_internal(value, timeout, SuspendFlag::Killable as u32)
+    pub fn receive_killable(&mut self, timeout: i32) -> Result<usize, Error> {
+        self.receive_internal(timeout, SuspendFlag::Killable)
     }
 
-    pub fn reset(&mut self) -> i32 {
+    pub fn reset(&mut self) -> Result<(), Error> {
         assert_eq!(self.type_name(), ObjectClassType::ObjectClassMailBox as u8);
 
-        let spin_guard = self.inner_queue.spinlock.acquire();
-
-        self.inner_queue.dequeue_waiter.wake_all();
-        self.inner_queue.enqueue_waiter.wake_all();
-
-        self.inner_queue.item_in_queue = 0;
-        self.inner_queue.read_pos = 0;
-        self.inner_queue.write_pos = 0;
-
-        drop(spin_guard);
+        {
+            let _ = self.inner_queue.spinlock.acquire();
+            self.inner_queue.dequeue_waiter.wake_all();
+            self.inner_queue.enqueue_waiter.wake_all();
+            self.inner_queue.item_in_queue = 0;
+            self.inner_queue.read_pos = 0;
+            self.inner_queue.write_pos = 0;
+        }
 
         Cpu::get_current_scheduler().do_task_schedule();
 
-        code::EOK.to_errno()
+        Ok(())
     }
 }
 

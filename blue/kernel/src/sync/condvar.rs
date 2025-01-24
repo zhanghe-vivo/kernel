@@ -1,20 +1,21 @@
 use crate::{
     clock::WAITING_FOREVER,
     cpu::Cpu,
-    error::code,
+    error::{code, Error},
     impl_kobject,
     object::{KObjectBase, KernelObject, ObjectClassType, NAME_MAX},
-    sync::{ipc_common::*, lock::mutex::Mutex},
+    sync::{ipc_common::IPC_SYS_QUEUE_STUB, lock::mutex::Mutex, wait_list::WaitMode},
     thread::SuspendFlag,
     timer::TimerControlAction,
 };
-use blue_infra::list::doubly_linked_list::ListHead;
 use core::{ffi::c_void, ptr::null_mut};
-use pinned_init::*;
+use pinned_init::{pin_data, pin_init, PinInit};
+
+use super::ipc_common::SysQueue;
 
 ///
 /// Condition variable raw structure
-/// 
+///
 #[repr(C)]
 #[pin_data]
 pub struct CondVar {
@@ -30,12 +31,7 @@ impl_kobject!(CondVar);
 
 impl CondVar {
     #[inline]
-    pub(crate) fn new(name: [i8; NAME_MAX], waiting_mode: u8) -> impl PinInit<Self> {
-        assert!(
-            (waiting_mode == IPC_WAIT_MODE_FIFO as u8)
-                || (waiting_mode == IPC_WAIT_MODE_PRIO as u8)
-        );
-
+    pub(crate) fn new(name: [i8; NAME_MAX], waiting_mode: WaitMode) -> impl PinInit<Self> {
         crate::debug_not_in_interrupt!();
 
         pin_init!(Self {
@@ -44,18 +40,14 @@ impl CondVar {
                 core::mem::size_of::<u32>(),
                 0,
                 IPC_SYS_QUEUE_STUB,
-                waiting_mode as u32,
+                waiting_mode,
             )
         })
     }
 
     #[allow(dead_code)]
     #[inline]
-    pub fn init(&mut self, name: *const i8, waiting_mode: u8) {
-        assert!(
-            (waiting_mode == IPC_WAIT_MODE_FIFO as u8)
-                || (waiting_mode == IPC_WAIT_MODE_PRIO as u8)
-        );
+    pub fn init(&mut self, name: *const i8, waiting_mode: WaitMode) {
         self.parent
             .init(ObjectClassType::ObjectClassCondVar as u8, name);
         self.inner_queue.init(
@@ -63,16 +55,12 @@ impl CondVar {
             core::mem::size_of::<u32>(),
             0,
             IPC_SYS_QUEUE_STUB,
-            waiting_mode as u32,
+            waiting_mode,
         );
     }
 
     #[inline]
-    pub(crate) fn init_dyn(&mut self, name: *const i8, waiting_mode: u8) {
-        assert!(
-            (waiting_mode == IPC_WAIT_MODE_FIFO as u8)
-                || (waiting_mode == IPC_WAIT_MODE_PRIO as u8)
-        );
+    pub(crate) fn init_dyn(&mut self, name: *const i8, waiting_mode: WaitMode) {
         self.parent
             .init_dyn(ObjectClassType::ObjectClassCondVar as u8, name);
         self.inner_queue.init(
@@ -80,7 +68,7 @@ impl CondVar {
             core::mem::size_of::<u32>(),
             0,
             IPC_SYS_QUEUE_STUB,
-            waiting_mode as u32,
+            waiting_mode,
         );
     }
 
@@ -94,50 +82,45 @@ impl CondVar {
     }
 
     #[inline]
-    pub fn wait(&mut self, mutex: &mut Mutex) -> i32 {
-        self.wait_timeout(
-            mutex,
-            SuspendFlag::Uninterruptible as u32,
-            WAITING_FOREVER as i32,
-        )
+    pub fn wait(&mut self, mutex: &mut Mutex) -> Result<(), Error> {
+        self.wait_timeout(mutex, SuspendFlag::Uninterruptible, WAITING_FOREVER as i32)
     }
 
     #[inline]
     pub(crate) fn wait_timeout(
         &mut self,
         mutex: &mut Mutex,
-        pending_mode: u32,
+        pending_mode: SuspendFlag,
         timeout: i32,
-    ) -> i32 {
+    ) -> Result<(), Error> {
         let mut time_out = timeout;
-        let mut result = code::EOK.to_errno();
 
         let thread_ptr = crate::current_thread_ptr!();
         if mutex.owner != thread_ptr {
-            return code::ERROR.to_errno();
+            return Err(code::ERROR);
         }
 
         self.inner_queue.lock();
 
         if self.inner_queue.item_in_queue > 0 {
-            self.inner_queue.try_dequeue_stub();
+            let _ = self.inner_queue.try_dequeue_stub();
             self.inner_queue.unlock();
         } else {
             if time_out == 0 {
-                self.inner_queue.unlock();
-                if mutex.unlock() != code::EOK.to_errno() {
-                    return code::ERROR.to_errno();
-                }
-                return code::ETIMEDOUT.to_errno();
+                mutex.unlock()?;
+                return Err(code::ETIMEDOUT);
             } else {
                 crate::debug_in_thread_context!();
-
                 let thread = unsafe { &mut (*thread_ptr) };
-
                 thread.error = code::EOK;
+
                 self.inner_queue
                     .dequeue_waiter
-                    .wait(thread, pending_mode);
+                    .wait(thread, pending_mode)
+                    .map_err(|e| {
+                        self.inner_queue.unlock();
+                        e
+                    })?;
 
                 if time_out > 0 {
                     thread.thread_timer.timer_control(
@@ -148,51 +131,47 @@ impl CondVar {
                     thread.thread_timer.start();
                 }
 
-                if mutex.unlock() != code::EOK.to_errno() {
-                    self.inner_queue.unlock();
-                    return code::ERROR.to_errno();
-                }
-
                 self.inner_queue.unlock();
+                mutex.unlock()?;
 
                 Cpu::get_current_scheduler().do_task_schedule();
 
                 if thread.error != code::EOK {
-                    result = thread.error.to_errno();
+                    return Err(thread.error);
                 }
             }
         }
-        if mutex.lock() != code::EOK.to_errno() {
-            return code::ERROR.to_errno();
-        }
-        return result;
+
+        // hold mutex again
+        mutex.lock()?;
+        Ok(())
     }
 
-    #[inline] pub fn try_wait(&mut self) -> i32 {
+    #[inline]
+    pub fn try_wait(&mut self) -> Result<(), Error> {
         self.inner_queue.try_dequeue_stub()
     }
 
     #[inline]
-    pub fn notify(&mut self) -> i32 {
+    pub fn notify(&mut self) -> Result<(), Error> {
         self.inner_queue.wake_dequeue_stub_sched()
     }
 
     #[inline]
-    pub fn notify_all(&mut self) -> i32 {
-        #[allow(unused_assignments)]
-        let mut result = code::EOK.to_errno();
+    pub fn notify_all(&mut self) -> Result<(), Error> {
         loop {
-            result = self.inner_queue.try_dequeue_stub();
-            if result == code::ERROR.to_errno() {
-                self.inner_queue.wake_dequeue_stub_sched();
-            } else if result == code::EOK.to_errno() {
-                break;
-            } else {
-                return code::EINVAL.to_errno();
+            match self.inner_queue.try_dequeue_stub() {
+                Ok(()) => break,
+                Err(code::EBUSY) => {
+                    let _ = self.inner_queue.wake_dequeue_stub_sched();
+                }
+                Err(e) => {
+                    return Err(e);
+                }
             }
         }
 
-        code::EOK.to_errno()
+        Ok(())
     }
 }
 

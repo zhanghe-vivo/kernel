@@ -820,7 +820,7 @@ impl Thread {
                 if !mutex.is_null() {
                     // as mutex will be removed from list, so we need to get prev node
                     node = node.prev().unwrap_unchecked().as_ref();
-                    (*mutex).unlock();
+                    let _ = (*mutex).unlock();
                 }
             }
         });
@@ -850,8 +850,11 @@ impl Thread {
     }
 
     #[inline]
-    pub(crate) fn update_priority(&mut self, priority: u8, suspend_flag: u32) -> Error {
-        let mut ret = code::EOK;
+    pub(crate) fn update_priority(
+        &mut self,
+        priority: u8,
+        suspend_flag: SuspendFlag,
+    ) -> Result<(), Error> {
         // Change priority of the thread.
         self.change_priority(priority);
         while self.stat.is_suspended() {
@@ -862,25 +865,28 @@ impl Thread {
                 // Re-insert thread to suspended thread list.
                 self.remove_thread_list_node();
 
-                ret = Error::from_errno(
-                    pending_mutex
-                        .inner_queue
-                        .enqueue_waiter
-                        .wait(self, suspend_flag as u32),
-                );
-
-                if ret == code::EOK {
-                    pending_mutex.update_priority();
-                    let mutex_priority = owner_thread.get_mutex_priority();
-                    if mutex_priority != owner_thread.priority.get_current() {
-                        owner_thread.change_priority(mutex_priority);
-                    } else {
-                        ret = code::ERROR;
+                match pending_mutex
+                    .inner_queue
+                    .enqueue_waiter
+                    .wait(self, suspend_flag)
+                {
+                    Ok(_) => {
+                        pending_mutex.update_priority();
+                        let mutex_priority = owner_thread.get_mutex_priority();
+                        if mutex_priority != owner_thread.priority.get_current() {
+                            owner_thread.change_priority(mutex_priority);
+                        } else {
+                            return Err(code::ERROR);
+                        }
+                    }
+                    Err(e) => {
+                        return Err(e);
                     }
                 }
             }
         }
-        ret
+
+        Ok(())
     }
 
     pub fn start(&mut self) {
