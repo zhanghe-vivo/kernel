@@ -4,25 +4,26 @@ use crate::{
     error::code,
     impl_kobject,
     object::{KObjectBase, KernelObject, ObjectClassType, NAME_MAX},
-    sync::{ipc_common::*, lock::mutex::Mutex, semaphore::Semaphore, RawSpin},
+    sync::{ipc_common::*, lock::mutex::Mutex},
     thread::SuspendFlag,
     timer::TimerControlAction,
 };
+use blue_infra::list::doubly_linked_list::ListHead;
 use core::{ffi::c_void, ptr::null_mut};
 use pinned_init::*;
 
+///
 /// Condition variable raw structure
+/// 
 #[repr(C)]
 #[pin_data]
 pub struct CondVar {
     /// Inherit from KObjectBase
     #[pin]
     pub(crate) parent: KObjectBase,
-    /// Spin lock raw condition var uses
-    pub(crate) spinlock: RawSpin,
-    /// Inner semaphore condvar uses
+    /// Inner queue condvar uses
     #[pin]
-    pub(crate) inner_sem: Semaphore,
+    pub(crate) inner_queue: SysQueue,
 }
 
 impl_kobject!(CondVar);
@@ -39,8 +40,12 @@ impl CondVar {
 
         pin_init!(Self {
             parent<-KObjectBase::new(ObjectClassType::ObjectClassCondVar as u8, name),
-            spinlock: RawSpin::new(),
-            inner_sem<-Semaphore::new(name, 0, waiting_mode as u8)
+            inner_queue<-SysQueue::new(
+                core::mem::size_of::<u32>(),
+                0,
+                IPC_SYS_QUEUE_STUB,
+                waiting_mode as u32,
+            )
         })
     }
 
@@ -53,8 +58,13 @@ impl CondVar {
         );
         self.parent
             .init(ObjectClassType::ObjectClassCondVar as u8, name);
-        self.spinlock = RawSpin::new();
-        self.inner_sem.init_dyn(name, 0, waiting_mode as u8);
+        self.inner_queue.init(
+            null_mut(),
+            core::mem::size_of::<u32>(),
+            0,
+            IPC_SYS_QUEUE_STUB,
+            waiting_mode as u32,
+        );
     }
 
     #[inline]
@@ -65,19 +75,24 @@ impl CondVar {
         );
         self.parent
             .init_dyn(ObjectClassType::ObjectClassCondVar as u8, name);
-        self.spinlock = RawSpin::new();
-        self.inner_sem.init_dyn(name, 0, waiting_mode as u8);
+        self.inner_queue.init(
+            null_mut(),
+            core::mem::size_of::<u32>(),
+            0,
+            IPC_SYS_QUEUE_STUB,
+            waiting_mode as u32,
+        );
     }
 
     #[inline]
     pub fn detach(&mut self) {
         assert_eq!(self.type_name(), ObjectClassType::ObjectClassCondVar as u8);
-
-        self.inner_sem.detach();
+        self.inner_queue.wake_all_dequeue_stub_locked();
         if self.is_static_kobject() {
             self.parent.detach();
         }
     }
+
     #[inline]
     pub fn wait(&mut self, mutex: &mut Mutex) -> i32 {
         self.wait_timeout(
@@ -102,14 +117,14 @@ impl CondVar {
             return code::ERROR.to_errno();
         }
 
-        let spin_guard = self.spinlock.acquire();
+        self.inner_queue.lock();
 
-        if self.inner_sem.inner_queue.item_in_queue > 0 {
-            self.inner_sem.inner_queue.pop_stub();
-            drop(spin_guard);
+        if self.inner_queue.item_in_queue > 0 {
+            self.inner_queue.try_dequeue_stub();
+            self.inner_queue.unlock();
         } else {
             if time_out == 0 {
-                drop(spin_guard);
+                self.inner_queue.unlock();
                 if mutex.unlock() != code::EOK.to_errno() {
                     return code::ERROR.to_errno();
                 }
@@ -120,8 +135,7 @@ impl CondVar {
                 let thread = unsafe { &mut (*thread_ptr) };
 
                 thread.error = code::EOK;
-                self.inner_sem
-                    .inner_queue
+                self.inner_queue
                     .dequeue_waiter
                     .wait(thread, pending_mode);
 
@@ -135,10 +149,11 @@ impl CondVar {
                 }
 
                 if mutex.unlock() != code::EOK.to_errno() {
+                    self.inner_queue.unlock();
                     return code::ERROR.to_errno();
                 }
 
-                drop(spin_guard);
+                self.inner_queue.unlock();
 
                 Cpu::get_current_scheduler().do_task_schedule();
 
@@ -153,16 +168,13 @@ impl CondVar {
         return result;
     }
 
+    #[inline] pub fn try_wait(&mut self) -> i32 {
+        self.inner_queue.try_dequeue_stub()
+    }
+
     #[inline]
     pub fn notify(&mut self) -> i32 {
-        let spin_guard = self.spinlock.acquire();
-        if !self.inner_sem.inner_queue.dequeue_waiter.is_empty() {
-            drop(spin_guard);
-            self.inner_sem.release();
-            return code::EOK.to_errno();
-        }
-
-        code::EOK.to_errno()
+        self.inner_queue.wake_dequeue_stub_sched()
     }
 
     #[inline]
@@ -170,9 +182,9 @@ impl CondVar {
         #[allow(unused_assignments)]
         let mut result = code::EOK.to_errno();
         loop {
-            result = self.inner_sem.try_take();
-            if result == code::ETIMEDOUT.to_errno() {
-                self.inner_sem.release();
+            result = self.inner_queue.try_dequeue_stub();
+            if result == code::ERROR.to_errno() {
+                self.inner_queue.wake_dequeue_stub_sched();
             } else if result == code::EOK.to_errno() {
                 break;
             } else {

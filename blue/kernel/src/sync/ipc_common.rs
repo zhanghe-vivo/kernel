@@ -550,6 +550,47 @@ impl SysQueue {
         size as i32
     }
 
+    pub fn try_dequeue_stub(&mut self) -> i32 {
+        self.lock();
+        let ret = self.pop_stub();
+        self.unlock();
+
+        if ret { code::EOK.to_errno() } else { code::ERROR.to_errno() }
+    }
+
+    pub fn wake_dequeue_stub_sched(&mut self) -> i32 { 
+        let mut need_schedule = false;
+        self.lock();
+
+        if !self.dequeue_waiter.is_empty() {
+            self.dequeue_waiter.wake();
+            need_schedule = true;
+        } else {
+            if self.count() < IPC_QUEUE_BUFFER_ITEM_MAX as usize {
+                self.force_push_stub();
+            } else {
+                self.unlock();
+                return code::ENOSPC.to_errno();
+            }
+        }
+
+        self.unlock();
+
+        if need_schedule {
+            Cpu::get_current_scheduler().do_task_schedule();
+        }
+
+        code::EOK.to_errno()
+    }
+
+    pub fn wake_all_dequeue_stub_locked(&mut self) -> i32 {
+        self.lock();
+        let ret = self.dequeue_waiter.wake_all();
+        self.unlock();
+
+        if ret { code::EOK.to_errno() } else { code::ERROR.to_errno() }
+    }
+
     #[inline]
     pub(crate) fn lock(&self) {
         self.spinlock.lock();

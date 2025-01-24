@@ -97,12 +97,12 @@ impl RwLock {
         if self.rw_count != 0 || self.reader_waiting != 0 || self.writer_waiting != 0 {
             return code::EBUSY.to_errno();
         } else {
-            result = self.read_cond.inner_sem.try_take();
+            result = self.read_cond.try_wait();
             if result == code::EOK.to_errno() {
-                result = self.write_cond.inner_sem.try_take();
+                result = self.write_cond.try_wait();
                 if result == code::EOK.to_errno() {
-                    self.read_cond.inner_sem.release();
-                    self.write_cond.inner_sem.release();
+                    self.read_cond.notify();
+                    self.write_cond.notify();
                     self.read_cond.detach();
                     self.write_cond.detach();
                 } else {
