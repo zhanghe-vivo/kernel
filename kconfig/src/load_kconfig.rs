@@ -4,8 +4,8 @@ use cargo_kconfig::{kbool, kint, load_kcfg};
 use enum_iterator::Sequence;
 
 load_kcfg!(
-    kconfig_path = "kconfig/config",
-    dotconfig_path = "kconfig/config",
+    kconfig_path = "../../kernel/kconfig/config",
+    dotconfig_path = "../../kernel/kconfig/config",
 );
 
 pub const ALIGN_SIZE: usize = kint!(ALIGN_SIZE) as usize;

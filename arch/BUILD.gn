@@ -1,0 +1,34 @@
+import("//build/template/build_template.gni")
+build_rust("blue_arch") {
+    crate_type = "rlib"
+    sources = [
+        "src/lib.rs",
+    ]
+    edition = "2021"
+
+    if (target_cpu == "arm"){
+        deps = [
+            "//external/cortex-m:cortex_m",
+            "//external/tock-registers/v0.9.0:tock_registers"
+        ]
+    } else if (target_cpu == "aarch64"){
+        #TODO:add aarch64-cpu
+        deps = [
+            
+        ]
+    }
+    rustflags = []
+    if (rust_target == "thumbv7m-none-eabi") {
+        rustflags += [
+        "--cfg","cortex_m",
+        "--cfg","armv7m",
+        ]
+    }else if (rust_target == "thumbv8m.main-none-eabihf"){
+        rustflags += [
+        "--cfg","cortex_m",
+        "--cfg","armv8m",
+        "--cfg","armv8m_main",
+        "--cfg","has_fpu"
+        ]
+    }
+}

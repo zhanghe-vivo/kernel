@@ -1,0 +1,42 @@
+import("//build/template/build_template.gni")
+build_rust("blue_kernel") {
+    crate_type = "rlib"
+    sources = [
+        "src/lib.rs",
+    ]
+    edition = "2021"
+    deps = [
+        "//kernel/arch:blue_arch",
+        "//kernel/infra:blue_infra",
+        "//kernel/kconfig:blue_kconfig",
+        "//external/paste/v1.0.15:paste",
+        "//external/pinned-init/v0.0.8:pinned_init",
+        "//external/log/v0.4.22:log",
+        "//external/const-default/v1.0.0:const_default",
+        "//external/cfg-if/v1.0.0:cfg_if"
+    ]
+    features = [
+        "tlsf",
+        "overflow_check",
+        "idle_hook",
+        "heap",
+        "heap_isr",
+        "debugging_init",
+        "event",
+        "messagequeue",
+        "mailbox",
+        "mutex",
+        "semaphore",
+        "rwlock",
+        "condvar",
+        "compat_newlibc",
+        "thread_priority_max",
+        "schedule_with_time_slice"
+    ]
+    rustflags = []
+    if (rust_target == "thumbv8m.main-none-eabihf" || rust_target == "thumbv7m-none-eabi" ){
+        rustflags += [
+            "--cfg","hardware_schedule"
+        ]
+    }
+}
