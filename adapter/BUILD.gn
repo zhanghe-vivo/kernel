@@ -1,38 +1,39 @@
-import("//build/template/build_template.gni")
+import("//build/templates/build_template.gni")
 build_rust("adapter") {
-    crate_type = "staticlib"
-    sources = [
-        "lib.rs",
-    ]
-    edition = "2021"
-    features = [
-        "tlsf",
-        "overflow_check",
-        "idle_hook",
-        "heap",
-        "heap_isr",
-        "debugging_init",
-        "event",
-        "messagequeue",
-        "mailbox",
-        "mutex",
-        "semaphore",
-        "rwlock",
-        "condvar",
-        "compat_newlibc",
-        "thread_priority_max",
-        "schedule_with_time_slice"
-    ]
+  crate_type = "staticlib"
+  sources = [ "lib.rs" ]
+  edition = "2021"
+  features = [
+    "tlsf",
+    "overflow_check",
+    "idle_hook",
+    "heap",
+    "heap_isr",
+    "debugging_init",
+    "event",
+    "messagequeue",
+    "mailbox",
+    "mutex",
+    "semaphore",
+    "rwlock",
+    "condvar",
+    "compat_newlibc",
+    "thread_priority_max",
+    "schedule_with_time_slice",
+  ]
 
-    deps = [
-        "//kernel/arch:blue_arch",        
-        "//kernel/kernel:blue_kernel",
-        "//kernel/infra:blue_infra",
-        "//kernel/kconfig:blue_kconfig",
-        "//external/pinned-init/v0.0.8:pinned_init",
+  deps = [
+    "//external/pinned-init/v0.0.8:pinned_init",
+    "//kernel/arch:blue_arch",
+    "//kernel/infra:blue_infra",
+    "//kernel/kconfig:blue_kconfig",
+    "//kernel/kernel:blue_kernel",
+  ]
+  rustflags = []
+  if (adapter == "rt_thread") {
+    rustflags += [
+      "--cfg",
+      "rt_thread",
     ]
-    rustflags = []
-    if (adapter == "rt_thread"){
-        rustflags += ["--cfg", "rt_thread"]
-    }
+  }
 }
