@@ -1,53 +1,59 @@
-import("//build/template/build_template.gni")
+import("//build/templates/build_template.gni")
 
-bindgen("bsp_bindgen"){
-    header = "include/rt_wrapper.h"
-    include_dirs = [
-        "//kernel/kernel/include",
-        "//rt-dev/components/drivers/include",
-        "//kernel/adapter/rt_thread/include",
-        "//rt-dev/include/",
-        "//rt-dev/components/finsh",
-    ]
-    if (bsp == "qemu-mps2-an385"){
-        include_dirs += ["//rt-dev/bsp/qemu-mps2-an385"]
-    }else if (bsp == "qemu-mps3-an547"){
-        include_dirs += ["//rt-dev/bsp/qemu-mps3-an547"]
-    }
-    inputs = [
-        "//kernel/kernel/include/rust_wrapper.inc",
-        "//rt-dev/include/rtdef.h",
-        "//rt-dev/components/drivers/include/rtdevice.h",
-        "//rt-dev/include/rtthread.h",
-    ]
-    cflags = ["-fshort-enums","--target=$rust_target","-fsigned-char"]
+bindgen("bsp_bindgen") {
+  header = "include/rt_wrapper.h"
+  include_dirs = [
+    "//kernel/kernel/include",
+    "//rt-dev/components/drivers/include",
+    "//kernel/adapter/rt_thread/include",
+    "//rt-dev/include/",
+    "//rt-dev/components/finsh",
+  ]
+  include_dirs += [ "//rt-dev/bsp/$bsp" ]
+  inputs = [
+    "//kernel/kernel/include/rust_wrapper.inc",
+    "//rt-dev/include/rtdef.h",
+    "//rt-dev/components/drivers/include/rtdevice.h",
+    "//rt-dev/include/rtthread.h",
+  ]
+  cflags = [
+    "-fshort-enums",
+    "--target=$llvm_target",
+    "-fsigned-char",
+  ]
 }
 
 build_rust("blue_bsp") {
-    crate_type = "staticlib"
-    sources = [
-        "src/lib.rs",
-    ]
-    edition = "2021"
-    features = ["enable_uart0","enable_uart1"]
-    deps = [
-        "//kernel/arch:blue_arch",        
-        "//kernel/kernel:blue_kernel",
-        "//external/thiserror/v2.0.9:thiserror",
-        "//external/embedded-hal/v1.0.0:embedded_hal",
-        "//external/embedded-io/v0.6.1:embedded_io",
-        "//external/tock-registers/v0.9.0:tock_registers",
-        "//external/cortex-m:cortex_m",
-        ":bsp_bindgen"
-    ]
-    rustflags = []
-    if (bsp == "qemu-mps2-an385"){
-        rustflags += ["--cfg", "target_board=\"qemu_mps2_an385\""]
-    }else if (bsp == "qemu-mps3-an547"){
-        rustflags += ["--cfg", "target_board=\"qemu-mps3-an547\""]
-    }
+  crate_type = "staticlib"
+  sources = [ "src/lib.rs" ]
+  edition = "2021"
+  features = [
+    "enable_uart0",
+    "enable_uart1",
+  ]
+  deps = [
+    ":bsp_bindgen",
+    "//external/cortex-m:cortex_m",
+    "//external/embedded-hal/v1.0.0:embedded_hal",
+    "//external/embedded-io/v0.6.1:embedded_io",
+    "//external/thiserror/v2.0.9:thiserror",
+    "//external/tock-registers/v0.9.0:tock_registers",
+    "//kernel/arch:blue_arch",
+    "//kernel/kernel:blue_kernel",
+  ]
 
-    output_file = get_target_outputs(":bsp_bindgen")
-    rustenv = [ "BINDGEN_DIR=" + rebase_path(output_file[0]) ]
+  if (bsp == "qemu-mps2-an385") {
+    rustflags = [
+      "--cfg",
+      "target_board=\"$bsp\"",
+    ]
+  } else if (bsp == "qemu-mps3-an547") {
+    rustflags = [
+      "--cfg",
+      "target_board=\"qemu-mps3-an547\"",
+    ]
+  }
+
+  output_file = get_target_outputs(":bsp_bindgen")
+  rustenv = [ "BINDGEN_DIR=" + rebase_path(output_file[0]) ]
 }
-

@@ -1,13 +1,11 @@
-import("//build/template/build_template.gni")
+import("//build/templates/build_template.gni")
 build_rust("blue_kconfig") {
-    crate_type = "rlib"
-    sources = [
-        "src/load_kconfig.rs",
-    ]
-    inputs = ["config/.config"]
-    edition = "2021"
-    deps = [
-        "//external/cargo-kconfig/v0.1.1:cargo_kconfig",
-        "//external/enum-iterator/v1.5.0:enum_iterator"
-    ]
+  crate_type = "rlib"
+  sources = [ "src/load_kconfig.rs" ]
+  inputs = [ "config/.config" ]
+  edition = "2021"
+  deps = [
+    "//external/cargo-kconfig/v0.1.1:cargo_kconfig",
+    "//external/enum-iterator/v1.5.0:enum_iterator",
+  ]
 }

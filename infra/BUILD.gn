@@ -1,13 +1,8 @@
-import("//build/template/build_template.gni")
+import("//build/templates/build_template.gni")
 build_rust("blue_infra") {
   crate_type = "rlib"
-  sources = [
-    "src/lib.rs",
-  ]
+  sources = [ "src/lib.rs" ]
   edition = "2021"
 
-  deps = [
-    "//external/pinned-init/v0.0.8:pinned_init"
-  ]
-
+  deps = [ "//external/pinned-init/v0.0.8:pinned_init" ]
 }
