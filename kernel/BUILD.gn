@@ -39,3 +39,13 @@ build_rust("blue_kernel") {
     ]
   }
 }
+
+cbindgen("rust_wrapper") {
+  deps = [ ":blue_kernel" ]
+  sources = [ "cbindgen.toml" ]
+  args = [
+           "--quiet",
+           "-c",
+         ] + rebase_path([ "cbindgen.toml" ], root_build_dir) +
+         rebase_path([ "." ], root_build_dir)
+}

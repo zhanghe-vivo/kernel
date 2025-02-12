@@ -45,12 +45,12 @@ build_rust("blue_bsp") {
   if (bsp == "qemu-mps2-an385") {
     rustflags = [
       "--cfg",
-      "target_board=\"$bsp\"",
+      "target_board=\"qemu_mps2_an385\"",
     ]
   } else if (bsp == "qemu-mps3-an547") {
     rustflags = [
       "--cfg",
-      "target_board=\"qemu-mps3-an547\"",
+      "target_board=\"qemu_mps3_an547\"",
     ]
   }
 
