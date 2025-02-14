@@ -1,24 +1,28 @@
 import("//build/templates/build_template.gni")
 
 bindgen("bsp_bindgen") {
-  header = "include/rt_wrapper.h"
+  deps = [ "//kernel/kernel:rust_wrapper" ]
+  bindgen_flags = [
+    "--use-core",
+    "--ctypes-prefix",
+    "core::ffi",
+  ]
+  sources = [ "include/rt_wrapper.h" ]
   include_dirs = [
-    "//kernel/kernel/include",
     "//rt-dev/components/drivers/include",
     "//kernel/adapter/rt_thread/include",
     "//rt-dev/include/",
     "//rt-dev/components/finsh",
+    "//rt-dev/bsp/$bsp",
   ]
-  include_dirs += [ "//rt-dev/bsp/$bsp" ]
   inputs = [
-    "//kernel/kernel/include/rust_wrapper.inc",
     "//rt-dev/include/rtdef.h",
     "//rt-dev/components/drivers/include/rtdevice.h",
     "//rt-dev/include/rtthread.h",
   ]
   cflags = [
-    "-fshort-enums",
     "--target=$llvm_target",
+    "-fshort-enums",
     "-fsigned-char",
   ]
 }
