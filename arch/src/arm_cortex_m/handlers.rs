@@ -189,26 +189,26 @@ pub unsafe extern "C" fn HardFault_Handler() {
 pub unsafe extern "C" fn HardFault_Handler() {
     unsafe {
         naked_asm!(
-            // 1. 确定使用的栈指针
-            "tst     lr, #0x04", // 检查 SPSEL 位
-            "ite     eq",        // if-then-else 块
-            "mrseq   r0, msp",   // 如果 SPSEL 位为 0，使用 MSP
-            "mrsne   r0, psp",   // 如果 SPSEL 位为 1，使用 PSP
-            // 2. 保存上下文
-            "stmdb   r0!, {{r4-r11}}", // 保存寄存器
+            // 1. Determine which stack pointer was used
+            "tst     lr, #0x04",
+            "ite     eq",
+            "mrseq   r0, msp",
+            "mrsne   r0, psp",
+            // 2. Save context
+            "stmdb   r0!, {{r4-r11}}",
             "mov     r1, #0",          // no tz context supported yet. reserved.
-            "mrs     r2, psplim",      // 获取 PSPLIM
-            "mov     r3, lr",          // EXC_RETURN 值
-            "mrs     r4, control",     // CONTROL 寄存器
-            "stmdb   r0!, {{r1-r4}}",  // 保存寄存器
-            // 3. 更新栈指针
-            "tst     lr, #0x04", // 再次检查栈指针
+            "mrs     r2, psplim",
+            "mov     r3, lr",
+            "mrs     r4, control",
+            "stmdb   r0!, {{r1-r4}}",
+            // 3. Update stack pointer
+            "tst     lr, #0x04",
             "ite     eq",
             "msreq   msp, r0",
-            "msrne   psp, r0", // 如果使用 PSP，更新 PSP
-            // 4. 调用 C 处理函数
+            "msrne   psp, r0", // If using PSP, update PSP
+            // 4. Call C handler function
             "push    {{lr}}",    // save origin lr
-            "bl      HardFault", // 调用 C 处理函数
+            "bl      HardFault", // Call C handler function
             "pop     {{lr}}",
             "bx      lr",
         )
@@ -269,7 +269,6 @@ pub unsafe extern "C" fn SysTick_Handler() {
 
 #[doc(hidden)]
 #[link_section = ".vector_table.exceptions"]
-#[linkage = "weak"]
 #[no_mangle]
 pub static __EXCEPTIONS: [Vector; 15] = [
     // Exception 0: Reset.
@@ -338,28 +337,3 @@ pub static __EXCEPTIONS: [Vector; 15] = [
         handler: SysTick_Handler,
     },
 ];
-
-// If we are not targeting a specific device we bind all the potential device specific interrupts
-// to the default handler
-#[cfg(any(armv7m, armv7em))]
-#[doc(hidden)]
-#[link_section = ".vector_table.interrupts"]
-#[linkage = "weak"]
-#[no_mangle]
-static __INTERRUPTS: [Vector; 240] = [Vector { reserved: 0 }; 240];
-
-// ARMv8-M can have up to 496 device specific interrupts
-#[cfg(armv8m)]
-#[doc(hidden)]
-#[link_section = ".vector_table.interrupts"]
-#[linkage = "weak"]
-#[no_mangle]
-static __INTERRUPTS: [Vector; 496] = [Vector { reserved: 0 }; 496];
-
-// ARMv6-M can only have a maximum of 32 device specific interrupts
-#[cfg(armv6m)]
-#[doc(hidden)]
-#[link_section = ".vector_table.interrupts"]
-#[linkage = "weak"]
-#[no_mangle]
-static __INTERRUPTS: [Vector; 32] = [Vector { reserved: 0 }; 32];
