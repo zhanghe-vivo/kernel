@@ -105,3 +105,51 @@ impl Arch {
         unsafe { cortex_m::peripheral::NVIC::is_active(irq) }
     }
 }
+
+/// Interrupt vector table configuration for ARM Cortex-M processors.
+///
+/// Users must define their own `__INTERRUPTS` based on their specific device requirements.
+/// The interrupt vector table should be placed in the `.vector_table.interrupts` section.
+///
+/// # Example
+///
+/// ```rust
+/// use core::arch::global_asm;
+///
+/// #[link_section = ".vector_table.interrupts"]
+/// #[no_mangle]
+/// static __INTERRUPTS: InterruptTable = [
+///     Vector { handler: WWDG },            // Window Watchdog interrupt
+///     Vector { handler: PVD },             // PVD through EXTI Line detection
+///     Vector { handler: TAMPER },          // Tamper interrupt
+///     Vector { handler: RTC },             // RTC global interrupt
+///     // ... other device-specific interrupts ...
+///     Vector { handler: DEFAULT_HANDLER }, // Default handler for unused interrupts
+/// ];
+///
+/// // Declare external interrupt handlers
+/// extern "C" {
+///     fn WWDG();
+///     fn PVD();
+///     fn TAMPER();
+///     fn RTC();
+/// }
+/// ```
+///
+/// # Architecture-specific Details
+///
+/// Maximum number of device-specific interrupts for different ARM Cortex-M architectures:
+/// - ARMv6-M: 32 interrupts
+/// - ARMv7-M/ARMv7E-M: 240 interrupts
+/// - ARMv8-M: 496 interrupts
+///
+/// # Safety
+///
+/// The interrupt vector table must be properly aligned and contain valid function pointers
+/// for all used interrupt vectors. Incorrect configuration may lead to undefined behavior.
+#[cfg(armv6m)]
+pub type InterruptTable = [Vector; 32];
+#[cfg(any(armv7m, armv7em))]
+pub type InterruptTable = [Vector; 240];
+#[cfg(armv8m)]
+pub type InterruptTable = [Vector; 496];

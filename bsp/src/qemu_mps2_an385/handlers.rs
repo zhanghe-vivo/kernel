@@ -1,4 +1,4 @@
-use crate::arch::Vector;
+use crate::arch::{Vector, InterruptTable};
 use crate::kernel::println;
 
 macro_rules! default_irq_handler {
@@ -55,7 +55,7 @@ default_irq_handler!(GPIO0_7_Handler);
 #[doc(hidden)]
 #[link_section = ".vector_table.interrupts"]
 #[no_mangle]
-static __INTERRUPTS: [Vector; 240] = {
+static __INTERRUPTS: InterruptTable = {
     let mut arr = [Vector { reserved: 0 }; 240];
     arr[0] = Vector {
         handler: UART0RX_Handler,

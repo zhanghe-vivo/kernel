@@ -9,6 +9,6 @@ mod smp;
 mod stack_frame;
 mod startup;
 
-pub use interrupt::{IrqNumber, Vector};
+pub use interrupt::{InterruptTable, IrqNumber, Vector};
 pub use startup::reset_handler_inner;
 pub struct Arch;

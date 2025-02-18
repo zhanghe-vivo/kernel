@@ -1,4 +1,4 @@
-use crate::arch::Vector;
+use crate::arch::{Vector, InterruptTable};
 use crate::kernel::println;
 
 macro_rules! default_irq_handler {
@@ -50,7 +50,7 @@ default_irq_handler!(UARTTX4_Handler);
 #[doc(hidden)]
 #[link_section = ".vector_table.interrupts"]
 #[no_mangle]
-static __INTERRUPTS: [Vector; 496] = {
+static __INTERRUPTS: InterruptTable = {
     let mut arr = [Vector { reserved: 0 }; 496];
     arr[0] = Vector {
         handler: NONSEC_WATCHDOG_RESET_REQ_Handler,
