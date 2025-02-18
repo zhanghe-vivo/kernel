@@ -11,7 +11,6 @@ use crate::{
     println,
     stack::Stack,
     static_init::UnsafeStaticInit,
-    str::CStr,
     sync::{lock::mutex::*, RawSpin, SpinLock},
     timer::{Timer, TimerState},
     zombie,
@@ -403,7 +402,7 @@ impl<const STACK_SIZE: usize> StackAlignedField<STACK_SIZE> {
 impl<const STACK_SIZE: usize> ThreadWithStack<STACK_SIZE> {
     #[inline]
     pub fn new(
-        name: &'static CStr,
+        name: &'static ffi::CStr,
         entry: ThreadEntryFn,
         parameter: *mut usize,
         priority: u8,
@@ -423,7 +422,7 @@ impl<const STACK_SIZE: usize> ThreadWithStack<STACK_SIZE> {
     #[cfg(feature = "smp")]
     #[inline]
     pub fn new_with_bind(
-        name: &'static CStr,
+        name: &'static ffi::CStr,
         entry: ThreadEntryFn,
         parameter: *mut usize,
         priority: u8,
@@ -461,7 +460,7 @@ impl<const STACK_SIZE: usize> core::ops::DerefMut for ThreadWithStack<STACK_SIZE
 impl Thread {
     #[inline]
     pub fn static_new(
-        name: &'static CStr,
+        name: &'static ffi::CStr,
         entry: ThreadEntryFn,
         parameter: *mut usize,
         stack_start: *mut u8,
@@ -484,7 +483,7 @@ impl Thread {
 
     #[inline]
     pub fn dyn_new(
-        name: &'static CStr,
+        name: &'static ffi::CStr,
         entry: ThreadEntryFn,
         parameter: *mut usize,
         stack_start: *mut u8,
@@ -508,7 +507,7 @@ impl Thread {
     #[cfg(feature = "smp")]
     #[inline]
     pub(crate) fn new_with_bind(
-        name: &'static CStr,
+        name: &'static ffi::CStr,
         entry: ThreadEntryFn,
         parameter: *mut usize,
         stack_start: *mut u8,
@@ -531,7 +530,7 @@ impl Thread {
     }
 
     fn new_internal(
-        name: &'static CStr,
+        name: &'static ffi::CStr,
         entry: ThreadEntryFn,
         parameter: *mut usize,
         stack_start: *mut u8,
@@ -544,9 +543,9 @@ impl Thread {
         let init = move |slot: *mut Self| {
             let obj = unsafe { &mut *(slot as *mut KObjectBase) };
             if is_static {
-                obj.init(ObjectClassType::ObjectClassThread as u8, name.as_char_ptr())
+                obj.init(ObjectClassType::ObjectClassThread as u8, name.as_ptr())
             } else {
-                obj.init_internal(ObjectClassType::ObjectClassThread as u8, name.as_char_ptr())
+                obj.init_internal(ObjectClassType::ObjectClassThread as u8, name.as_ptr())
             }
 
             let cur_ref = unsafe { &mut *(slot as *mut Self) };
@@ -571,7 +570,7 @@ impl Thread {
             cur_ref.cleanup = Self::default_cleanup;
 
             let init = Timer::static_init(
-                name.as_char_ptr(),
+                name.as_ptr(),
                 Self::handle_timeout,
                 cur_ref as *mut _ as *mut ffi::c_void,
                 0,
@@ -635,7 +634,7 @@ impl Thread {
 
     #[cfg(feature = "heap")]
     pub fn try_new_in_heap(
-        name: &'static CStr,
+        name: &'static ffi::CStr,
         entry: ThreadEntryFn,
         parameter: *mut usize,
         stack_size: usize,
@@ -730,8 +729,8 @@ impl Thread {
     }
 
     #[inline]
-    pub(crate) fn get_name(&self) -> &CStr {
-        unsafe { CStr::from_char_ptr(self.name()) }
+    pub(crate) fn get_name(&self) -> &ffi::CStr {
+        unsafe { ffi::CStr::from_ptr(self.name()) }
     }
 
     #[inline]
@@ -787,7 +786,7 @@ impl Thread {
     unsafe extern "C" fn exit() {
         let th = crate::current_thread!().unwrap().as_mut();
         th.detach();
-        panic!("!!! never get here !!!, thread {}", th.get_name());
+        panic!("!!! never get here !!!, thread {:?}", th.get_name());
     }
 
     #[inline]

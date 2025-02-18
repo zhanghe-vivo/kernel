@@ -1,5 +1,6 @@
 #![allow(dead_code)]
-use crate::kernel::{c_str, str::CStr};
+use crate::kernel::c_str;
+use core::ffi::CStr;
 
 /* ================================================================================ */
 /* ================              Peripheral memory map             ================ */
@@ -35,4 +36,4 @@ pub const TICK_PER_SECOND: u32 = 100;
 
 pub const UART0_NAME: &CStr = c_str!("uart0");
 pub const UART1_NAME: &CStr = c_str!("uart1");
-pub const CONSOLE_DEVICE_NAME: *const core::ffi::c_char = UART0_NAME.as_char_ptr();
+pub const CONSOLE_DEVICE_NAME: *const core::ffi::c_char = UART0_NAME.as_ptr();

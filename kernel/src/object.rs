@@ -22,7 +22,6 @@ use pinned_init::{pin_data, pin_init, PinInit};
 #[derive(Debug)]
 #[repr(C)]
 pub struct KObjectBase {
-    /// TODO: change type to String
     /// name of kernel object
     pub name: [i8; NAME_MAX],
     /// type of kernel object
@@ -294,8 +293,7 @@ macro_rules! impl_kobject {
 #[macro_export]
 macro_rules! format_name {
     ($name:expr,$width:expr) => {{
-        use crate::str::CStr;
-        let name_cstr = CStr::from_char_ptr($name);
+        let name_cstr = core::ffi::CStr::from_ptr($name);
         match name_cstr.to_str() {
             Ok(name) => {
                 crate::print!("{:<1$}", name, $width);
