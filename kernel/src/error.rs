@@ -1,6 +1,6 @@
-use crate::{cpu::Cpu, str::CStr};
+use crate::cpu::Cpu;
 use alloc::alloc::{AllocError, LayoutError};
-use core::{num::TryFromIntError, ptr, str::Utf8Error};
+use core::{ffi::CStr, num::TryFromIntError, ptr, str::Utf8Error};
 
 pub mod code {
     use crate::klibc;
@@ -110,7 +110,7 @@ impl From<core::convert::Infallible> for Error {
 }
 
 pub fn strerror(error: i32) -> *const core::ffi::c_char {
-    Error(error).name().as_char_ptr()
+    Error(error).name().as_ptr()
 }
 
 pub unsafe fn get_errno() -> i32 {

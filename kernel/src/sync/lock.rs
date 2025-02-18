@@ -5,12 +5,10 @@
 //! It contains a generic Rust lock and guard that allow for different backends (e.g., mutexes,
 //! spinlocks, raw spinlocks) to be provided with minimal effort.
 #![allow(dead_code)]
-use crate::{
-    ext_types::{Opaque, ScopeGuard},
-    str::CStr,
-};
+use crate::ext_types::{Opaque, ScopeGuard};
 use core::{
     cell::UnsafeCell,
+    ffi::CStr,
     marker::{PhantomData, PhantomPinned},
 };
 use pinned_init::{pin_data, pin_init, pin_init_from_closure, PinInit};
@@ -116,7 +114,7 @@ impl<T, B: Backend> Lock<T, B> {
             // SAFETY: `slot` is valid while the closure is called and both `name` and `key` have
             // static lifetimes so they live indefinitely.
             state <- Opaque::ffi_init(|slot| unsafe {
-                B::init(slot, name.as_char_ptr())
+                B::init(slot, name.as_ptr())
             }),
         })
     }

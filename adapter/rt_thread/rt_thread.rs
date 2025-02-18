@@ -6,7 +6,6 @@ use crate::blue_kernel::{
     klibc,
     object::{KernelObject, ObjectClassType},
     process,
-    str::CStr,
     thread::{SuspendFlag, Thread, ThreadCleanupFn, ThreadEntryFn},
 };
 use core::{
@@ -32,7 +31,7 @@ pub extern "C" fn rt_thread_init(
     assert!(!stack_start.is_null());
     assert!(tick != 0);
 
-    let name_cstr = unsafe { CStr::from_char_ptr(name) };
+    let name_cstr = unsafe { ffi::CStr::from_ptr(name) };
     let init = Thread::static_new(
         name_cstr,
         entry,
@@ -100,7 +99,7 @@ pub extern "C" fn rt_thread_create(
     priority: u8,
     tick: u32,
 ) -> *mut Thread {
-    let name_cstr = unsafe { CStr::from_char_ptr(name) };
+    let name_cstr = unsafe { ffi::CStr::from_ptr(name) };
 
     let thread = Thread::try_new_in_heap(
         name_cstr,

@@ -12,7 +12,6 @@ use crate::{
     blue_kconfig, c_str, clock,
     error::code,
     scheduler,
-    str::CStr,
     sync::ipc_common,
     thread::{ThreadEntryFn, ThreadWithStack},
 };
@@ -20,7 +19,7 @@ use crate::{
 #[cfg(feature = "smp")]
 const ZOMBIE_THREAD_STACK_SIZE: usize = blue_kconfig::IDLE_THREAD_STACK_SIZE as usize;
 #[cfg(feature = "smp")]
-const ZOMBIE_NAME: &'static crate::ctr::CStr = crate::c_str!("zombie");
+const ZOMBIE_NAME: &'static core::ffi::CStr = crate::c_str!("zombie");
 
 pub(crate) static mut ZOMBIE_MANAGER: UnsafeStaticInit<ZombieManager, ZombieManagerInit> =
     UnsafeStaticInit::new(ZombieManagerInit);
@@ -70,7 +69,7 @@ impl ZombieManager {
                 core::ptr::null_mut(), (blue_kconfig::THREAD_PRIORITY_MAX - 2) as u8, 32),
             sem <- unsafe {
                 pin_init_from_closure::<_, ::core::convert::Infallible>(|slot| {
-                    (*slot).init(ZOMBIE_NAME.as_char_ptr(), 0, ipc_common::WaitMode::Fifo);
+                    (*slot).init(ZOMBIE_NAME.as_ptr(), 0, ipc_common::WaitMode::Fifo);
                     Ok(())
                 })
             },

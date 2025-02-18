@@ -31,7 +31,7 @@ pub struct UartInstance {
 
 #[cfg(feature = "enable_uart0")]
 pub static mut UART0_INSTANCE: UartInstance = UartInstance {
-    name: UART0_NAME.as_char_ptr(),
+    name: UART0_NAME.as_ptr(),
     // Safety: Uart Base Address is valid
     uart: unsafe { Uart::new(UART0_BASE as *mut u32) },
     irq: UART0RX_IRQn,
@@ -41,7 +41,7 @@ pub static mut UART0_INSTANCE: UartInstance = UartInstance {
 
 #[cfg(feature = "enable_uart1")]
 pub static mut UART1_INSTANCE: UartInstance = UartInstance {
-    name: UART1_NAME.as_char_ptr(),
+    name: UART1_NAME.as_ptr(),
     // Safety: Uart Base Address is valid
     uart: unsafe { Uart::new(UART1_BASE as *mut u32) },
     irq: UART1RX_IRQn,

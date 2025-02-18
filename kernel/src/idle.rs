@@ -6,10 +6,10 @@ use core::{
 use crate::{
     cpu,
     static_init::UnsafeStaticInit,
-    str::CStr,
     thread::{ThreadEntryFn, ThreadWithStack},
     zombie,
 };
+use core::ffi::CStr;
 use pinned_init::{pin_data, pin_init, pin_init_array_from_fn, PinInit};
 
 const IDLE_NAME: &'static CStr = crate::c_str!("Idle");
