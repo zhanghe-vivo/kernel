@@ -3,11 +3,11 @@ use crate::blue_kernel::{
     clock,
     cpu::Cpu,
     error::code,
-    klibc,
     object::{KernelObject, ObjectClassType},
     process,
     thread::{SuspendFlag, Thread, ThreadCleanupFn, ThreadEntryFn},
 };
+use blue_infra::klibc;
 use core::{
     ffi,
     pin::Pin,

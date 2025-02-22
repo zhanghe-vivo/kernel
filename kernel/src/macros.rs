@@ -69,3 +69,26 @@ macro_rules! doubly_linked_list_for_each {
         }
     };
 }
+
+/// Creates a new [`CStr`] from a string literal.
+///
+/// The string literal should not contain any `NUL` bytes.
+///
+/// # Examples
+///
+/// ```
+/// # use kernel::c_str;
+/// # use core::ffi::CStr;
+/// const MY_CSTR: &CStr = c_str!("My awesome CStr!");
+/// ```
+#[macro_export]
+macro_rules! c_str {
+    ($str:expr) => {{
+        const S: &str = concat!($str, "\0");
+        const C: &core::ffi::CStr = match core::ffi::CStr::from_bytes_with_nul(S.as_bytes()) {
+            Ok(v) => v,
+            Err(_) => panic!("string contains interior NUL"),
+        };
+        C
+    }};
+}

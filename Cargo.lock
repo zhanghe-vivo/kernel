@@ -112,6 +112,8 @@ dependencies = [
 name = "blue_infra"
 version = "0.1.0"
 dependencies = [
+ "cfg-if",
+ "memchr",
  "pinned-init",
 ]
 

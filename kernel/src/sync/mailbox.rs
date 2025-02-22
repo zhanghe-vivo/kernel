@@ -19,9 +19,8 @@ use core::{
     ptr::null_mut,
 };
 
-use crate::alloc::boxed::Box;
+use crate::alloc::{boxed::Box, ffi::CString, format};
 use core::pin::Pin;
-use kernel::{fmt, str::CString};
 use pinned_init::{pin_data, pin_init, pin_init_from_closure, pinned_drop, InPlaceInit, PinInit};
 
 #[pin_data(PinnedDrop)]
@@ -52,7 +51,7 @@ impl KMailbox {
                 unsafe {
                     let cur_ref = &mut *slot;
 
-                    if let Ok(s) = CString::try_from_fmt(fmt!("{:p}", slot)) {
+                    if let Ok(s) = CString::new(format!("{:p}", slot)) {
                         cur_ref.parent.init(
                             ObjectClassType::ObjectClassMailBox as u8,
                             s.as_ptr() as *const i8,

@@ -13,7 +13,6 @@ pub use blue_arch;
 #[allow(unused_imports)]
 use blue_arch::arch as _;
 pub use blue_kconfig;
-// TODO: add os compat cfg
 
 pub mod allocator;
 pub mod clock;
@@ -23,7 +22,6 @@ pub mod error;
 mod ext_types;
 pub mod idle;
 pub mod irq;
-pub mod klibc;
 mod macros;
 pub mod object;
 pub mod print;
@@ -32,7 +30,6 @@ pub mod scheduler;
 mod stack;
 pub mod startup;
 pub mod static_init;
-pub mod str;
 pub mod sync;
 pub mod thread;
 pub mod timer;

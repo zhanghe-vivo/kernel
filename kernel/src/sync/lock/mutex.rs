@@ -1,5 +1,5 @@
 use crate::{
-    alloc::boxed::Box,
+    alloc::{boxed::Box, ffi::CString, format},
     blue_kconfig::THREAD_PRIORITY_MAX,
     clock::WAITING_FOREVER,
     cpu::Cpu,
@@ -12,7 +12,6 @@ use crate::{
     timer::TimerControlAction,
 };
 use blue_infra::list::doubly_linked_list::LinkedListNode;
-
 use core::{
     cell::UnsafeCell,
     ffi,
@@ -22,7 +21,6 @@ use core::{
     pin::Pin,
     ptr::{null_mut, NonNull},
 };
-use kernel::{fmt, str::CString};
 use pinned_init::*;
 
 #[pin_data(PinnedDrop)]
@@ -57,7 +55,7 @@ impl<T> KMutex<T> {
                 unsafe {
                     let cur_ref = &mut *slot;
 
-                    if let Ok(s) = CString::try_from_fmt(fmt!("{:p}", slot)) {
+                    if let Ok(s) = CString::new(format!("{:p}", slot)) {
                         cur_ref.init(s.as_ptr() as *const i8);
                     } else {
                         let default = "default";

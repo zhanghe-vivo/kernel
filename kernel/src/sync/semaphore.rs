@@ -10,9 +10,8 @@ use crate::{
 };
 use core::{ffi::c_void, marker::PhantomPinned, mem, pin::Pin, ptr::null_mut};
 
-use crate::alloc::boxed::Box;
+use crate::alloc::{boxed::Box, ffi::CString, format};
 use core::cell::UnsafeCell;
-use kernel::{fmt, str::CString};
 
 use pinned_init::{pin_data, pin_init, pin_init_from_closure, pinned_drop, InPlaceInit, PinInit};
 
@@ -44,7 +43,7 @@ impl KSemaphore {
                 unsafe {
                     let cur_ref = &mut *slot;
 
-                    if let Ok(s) = CString::try_from_fmt(fmt!("{:p}", slot)) {
+                    if let Ok(s) = CString::new(format!("{:p}", slot)) {
                         cur_ref.init(s.as_ptr() as *const i8, value, WaitMode::Priority);
                     } else {
                         let default = "default";

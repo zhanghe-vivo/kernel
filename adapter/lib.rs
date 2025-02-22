@@ -4,6 +4,7 @@
 #![allow(non_snake_case)]
 #![allow(dead_code)]
 #![feature(linkage)]
+#![feature(c_size_t)]
 
 pub use blue_arch;
 pub use blue_kernel;
