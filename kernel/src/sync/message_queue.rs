@@ -22,10 +22,9 @@ use core::{
     slice,
 };
 
-use crate::alloc::boxed::Box;
+use crate::alloc::{boxed::Box, ffi::CString, format};
 use cfg_if;
 use core::pin::Pin;
-use kernel::{fmt, str::CString};
 use pinned_init::{pin_data, pin_init, pin_init_from_closure, pinned_drop, InPlaceInit, PinInit};
 
 #[pin_data(PinnedDrop)]
@@ -56,7 +55,7 @@ impl KMessageQueue {
                 unsafe {
                     let cur_ref = &mut *slot;
 
-                    if let Ok(s) = CString::try_from_fmt(fmt!("{:p}", slot)) {
+                    if let Ok(s) = CString::new(format!("{:p}", slot)) {
                         cur_ref.init(
                             s.as_ptr() as *const i8,
                             null_mut(),

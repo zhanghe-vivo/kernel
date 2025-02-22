@@ -1,11 +1,13 @@
 use crate::{
     cpu::Cpu,
-    klibc::strncmp,
     object::{KObjectBase, ObjectClassType, NAME_MAX, OBJECT_CLASS_STATIC},
     static_init::UnsafeStaticInit,
     sync::RawSpin,
 };
-use blue_infra::list::doubly_linked_list::{LinkedListNode, ListHead};
+use blue_infra::{
+    klibc,
+    list::doubly_linked_list::{LinkedListNode, ListHead},
+};
 
 use core::{
     ffi,
@@ -240,7 +242,7 @@ pub fn find_object(object_tpye: u8, name: *const i8) -> *const KObjectBase {
     crate::doubly_linked_list_for_each!(node, list, {
         unsafe {
             let object = crate::list_head_entry!(node.as_ptr(), KObjectBase, list);
-            if strncmp(
+            if klibc::strncmp(
                 (*object).name.as_ptr() as *const ffi::c_char,
                 name,
                 NAME_MAX,

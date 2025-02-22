@@ -27,7 +27,6 @@ build_rust("blue_kernel") {
     "semaphore",
     "rwlock",
     "condvar",
-    "compat_newlibc",
     "thread_priority_max",
     "schedule_with_time_slice",
   ]

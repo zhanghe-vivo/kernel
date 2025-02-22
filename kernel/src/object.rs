@@ -1,6 +1,5 @@
 use crate::{
     allocator::{free, malloc},
-    klibc::{memset, strncpy},
     process::{foreach, insert, remove, Kprocess},
     sync::{
         condvar::CondVar,
@@ -13,8 +12,11 @@ use crate::{
     thread::Thread,
     timer::Timer,
 };
-use blue_infra::list::doubly_linked_list::{LinkedListNode, ListHead};
-use core::{fmt::Debug, mem, pin::Pin, ptr};
+use blue_infra::{
+    klibc,
+    list::doubly_linked_list::{LinkedListNode, ListHead},
+};
+use core::{ffi::c_void, fmt::Debug, mem, pin::Pin, ptr};
 use pinned_init::{pin_data, pin_init, PinInit};
 
 /// Base kernel Object
@@ -43,7 +45,7 @@ impl KObjectBase {
     pub(crate) fn init_internal(&mut self, type_: u8, name: *const i8) {
         self.type_ = type_;
         unsafe {
-            strncpy(self.name.as_mut_ptr(), name, (NAME_MAX - 1) as usize);
+            klibc::strncpy(self.name.as_mut_ptr(), name, (NAME_MAX - 1) as usize);
             Pin::new_unchecked(&mut self.list).reset();
         }
 
@@ -71,7 +73,7 @@ impl KObjectBase {
         if object.is_null() {
             return ptr::null_mut();
         }
-        unsafe { memset(object as *mut u8, 0x0, object_size) };
+        unsafe { klibc::memset(object as *mut c_void, 0x0, object_size) };
 
         let obj_ref = unsafe { &mut *object };
         obj_ref.init_internal(type_, name);
@@ -173,7 +175,7 @@ impl KernelObject for KObjectBase {
     fn set_name(&mut self, name: *const i8) {
         assert!(!name.is_null());
         unsafe {
-            strncpy(self.name.as_mut_ptr(), name, (NAME_MAX - 1) as usize);
+            klibc::strncpy(self.name.as_mut_ptr(), name, (NAME_MAX - 1) as usize);
         }
     }
 
