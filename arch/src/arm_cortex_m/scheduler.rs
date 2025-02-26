@@ -179,7 +179,7 @@ impl Arch {
         }
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn trigger_switch() {
         SCB::set_pendsv();
         // Barriers are normally not required but do ensure the code is completely
