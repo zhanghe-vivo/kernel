@@ -8,6 +8,8 @@
 #![feature(linkage)]
 #![allow(unused)]
 
+/// Maximum number of addresses to store in a backtrace
+const MAX_BACKTRACE_ADDRESSES: usize = 10;
 #[cfg(all(cortex_m, target_os = "none"))]
 pub mod arm_cortex_m;
 #[cfg(all(cortex_m, target_os = "none"))]

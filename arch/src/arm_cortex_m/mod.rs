@@ -1,6 +1,7 @@
 //! ARM Cortex-M hardware support.
 
 mod asm;
+mod backtrace;
 mod exception;
 mod interrupt;
 mod register;

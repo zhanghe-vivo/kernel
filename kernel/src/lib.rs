@@ -10,8 +10,6 @@
 pub extern crate alloc;
 extern crate self as kernel;
 pub use blue_arch;
-#[allow(unused_imports)]
-use blue_arch::arch as _;
 pub use blue_kconfig;
 
 pub mod allocator;
@@ -43,6 +41,9 @@ fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
         cpu::Cpus::lock_cpus();
     }
     println!("{}", info);
+
+    println!("Backtrace in Panic: {}", blue_arch::arch::Arch::backtrace());
+
     #[cfg(debug_assertions)]
     loop {
         atomic::compiler_fence(Ordering::SeqCst);
