@@ -124,7 +124,7 @@ impl IdleTheads {
     pub(crate) fn new() -> impl PinInit<Self> {
         pin_init!(Self {
             threads <- pin_init_array_from_fn(|i| ThreadWithStack::new_with_bind(IDLE_NAME, Self::idle_thread_entry as ThreadEntryFn,
-                ptr::null_mut(), (blue_kconfig::THREAD_PRIORITY_MAX - 1) as u8, 32, i as u8)),
+                ptr::null_mut(), (bluekernel_kconfig::THREAD_PRIORITY_MAX - 1) as u8, 32, i as u8)),
         })
     }
 
@@ -134,7 +134,7 @@ impl IdleTheads {
     pub(crate) fn new() -> impl PinInit<Self> {
         pin_init!(Self {
             threads <- pin_init_array_from_fn(|_i| ThreadWithStack::new(IDLE_NAME, Self::idle_thread_entry as ThreadEntryFn,
-                 ptr::null_mut(), (blue_kconfig::THREAD_PRIORITY_MAX - 1) as u8, 32)),
+                 ptr::null_mut(), (bluekernel_kconfig::THREAD_PRIORITY_MAX - 1) as u8, 32)),
         })
     }
 

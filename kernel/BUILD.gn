@@ -1,5 +1,5 @@
 import("//build/templates/build_template.gni")
-build_rust("blue_kernel") {
+build_rust("bluekernel") {
   crate_type = "rlib"
   sources = [ "src/lib.rs" ]
   edition = "2021"
@@ -9,9 +9,9 @@ build_rust("blue_kernel") {
     "//external/log/v0.4.22:log",
     "//external/paste/v1.0.15:paste",
     "//external/pinned-init/v0.0.8:pinned_init",
-    "//kernel/arch:blue_arch",
-    "//kernel/infra:blue_infra",
-    "//kernel/kconfig:blue_kconfig",
+    "//kernel/arch:bluekernel_arch",
+    "//kernel/infra:bluekernel_infra",
+    "//kernel/kconfig:bluekernel_kconfig",
   ]
   features = [
     "tlsf",
@@ -40,7 +40,7 @@ build_rust("blue_kernel") {
 }
 
 cbindgen("rust_wrapper") {
-  deps = [ ":blue_kernel" ]
+  deps = [ ":bluekernel" ]
   sources = [ "cbindgen.toml" ]
   args = [
            "--quiet",

@@ -23,7 +23,7 @@
 use crate::cpu::Cpu;
 #[cfg(feature = "debugging_spinlock")]
 use crate::{irq::IrqLock, println, thread::Thread};
-use blue_arch::arch::Arch;
+use bluekernel_arch::arch::Arch;
 #[cfg(feature = "smp")]
 use core::sync::atomic::{AtomicUsize, Ordering};
 #[cfg(feature = "debugging_spinlock")]

@@ -1,4 +1,4 @@
-use crate::blue_kernel::allocator;
+use crate::bluekernel::allocator;
 use core::ffi;
 
 #[no_mangle]

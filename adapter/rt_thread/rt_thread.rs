@@ -1,4 +1,4 @@
-use crate::blue_kernel::{
+use crate::bluekernel::{
     alloc::boxed::Box,
     clock,
     cpu::Cpu,
@@ -7,7 +7,7 @@ use crate::blue_kernel::{
     process,
     thread::{SuspendFlag, Thread, ThreadCleanupFn, ThreadEntryFn},
 };
-use blue_infra::klibc;
+use bluekernel_infra::klibc;
 use core::{
     ffi,
     pin::Pin,

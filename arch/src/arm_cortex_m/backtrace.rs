@@ -8,7 +8,7 @@ pub struct BacktraceResult {
 impl fmt::Display for BacktraceResult {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "\n========== Backtrace: ================\n")?;
-        write!(f, "arm-none-eabi-addr2line -e blue_kernel -a ")?;
+        write!(f, "arm-none-eabi-addr2line -e bluekernel -a ")?;
         for (i, address) in self.addresses.iter().enumerate() {
             if let Some(addr) = address {
                 write!(f, " 0x{:08x} ", addr)?;

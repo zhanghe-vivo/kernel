@@ -1,4 +1,4 @@
-use crate::blue_kernel::sync::lock::spinlock::RawSpin;
+use crate::bluekernel::sync::lock::spinlock::RawSpin;
 
 /// Initialize a static spinlock object.
 ///

@@ -1,6 +1,6 @@
 use crate::{
     alloc::{boxed::Box, ffi::CString, format},
-    blue_kconfig::THREAD_PRIORITY_MAX,
+    bluekernel_kconfig::THREAD_PRIORITY_MAX,
     clock::WAITING_FOREVER,
     cpu::Cpu,
     current_thread_ptr,
@@ -11,7 +11,7 @@ use crate::{
     thread::{SuspendFlag, Thread},
     timer::TimerControlAction,
 };
-use blue_infra::list::doubly_linked_list::LinkedListNode;
+use bluekernel_infra::list::doubly_linked_list::LinkedListNode;
 use core::{
     cell::UnsafeCell,
     ffi,

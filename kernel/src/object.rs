@@ -12,7 +12,7 @@ use crate::{
     thread::Thread,
     timer::Timer,
 };
-use blue_infra::{
+use bluekernel_infra::{
     klibc,
     list::doubly_linked_list::{LinkedListNode, ListHead},
 };
@@ -274,7 +274,7 @@ macro_rules! impl_kobject {
             }
             fn foreach<F>(callback: F, type_: u8) -> Result<(), i32>
             where
-                F: Fn(&blue_infra::list::doubly_linked_list::ListHead),
+                F: Fn(&bluekernel_infra::list::doubly_linked_list::ListHead),
                 Self: Sized
             {
                 KObjectBase::foreach(callback, type_)
@@ -282,7 +282,7 @@ macro_rules! impl_kobject {
             fn get_info<FF,F>(callback_forword: FF, callback: F, type_: u8) -> Result<(), i32>
             where
                 FF: Fn(),
-                F: Fn(&blue_infra::list::doubly_linked_list::ListHead),
+                F: Fn(&bluekernel_infra::list::doubly_linked_list::ListHead),
                 Self: Sized
             {
                 KObjectBase::get_info(callback_forword,callback, type_)

@@ -103,7 +103,7 @@ fn main() {
 }
 
 fn feature_to_cargo() {
-    for feature in all::<blue_kconfig::Feature>() {
+    for feature in all::<bluekernel_kconfig::Feature>() {
         if feature.is_enabled() {
             println!("cargo:rustc-cfg=feature=\"{}\"", feature.to_string());
         }

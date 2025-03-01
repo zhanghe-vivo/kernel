@@ -1,9 +1,9 @@
-use crate::blue_kernel::{
+use crate::bluekernel::{
     error::code,
     object::{KObjectBase, KernelObject},
     process,
 };
-use blue_infra::klibc;
+use bluekernel_infra::klibc;
 use core::{ffi, slice};
 
 /// This function will return the length of object list in object container.

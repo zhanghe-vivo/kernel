@@ -1,4 +1,4 @@
-use crate::{blue_kconfig::TICK_PER_SECOND, cpu::Cpu, timer};
+use crate::{bluekernel_kconfig::TICK_PER_SECOND, cpu::Cpu, timer};
 
 pub const WAITING_FOREVER: u32 = u32::MAX;
 

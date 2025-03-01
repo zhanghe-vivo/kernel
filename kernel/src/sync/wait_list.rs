@@ -4,7 +4,7 @@ use core::{
     ptr::{self, NonNull},
 };
 
-use blue_infra::list::doubly_linked_list::{LinkedListNode, ListHead};
+use bluekernel_infra::list::doubly_linked_list::{LinkedListNode, ListHead};
 use pinned_init::{pin_data, pin_init, PinInit};
 
 use crate::{

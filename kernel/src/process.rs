@@ -4,7 +4,7 @@ use crate::{
     static_init::UnsafeStaticInit,
     sync::RawSpin,
 };
-use blue_infra::{
+use bluekernel_infra::{
     klibc,
     list::doubly_linked_list::{LinkedListNode, ListHead},
 };

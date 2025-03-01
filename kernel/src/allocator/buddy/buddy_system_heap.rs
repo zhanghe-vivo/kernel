@@ -2,7 +2,7 @@
 use core::{alloc::Layout, cmp, fmt, mem, ptr::NonNull};
 
 use crate::allocator::block_hdr::*;
-use blue_infra::list::doubly_linked_list::SinglyLinkedList;
+use bluekernel_infra::list::doubly_linked_list::SinglyLinkedList;
 /// A heap that uses buddy system with configurable order.
 ///
 /// # Usage

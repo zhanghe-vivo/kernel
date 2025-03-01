@@ -1,4 +1,4 @@
-use crate::blue_kernel::error;
+use crate::bluekernel::error;
 
 #[no_mangle]
 pub unsafe extern "C" fn rt_strerror(error: i32) -> *const core::ffi::c_char {

@@ -1,7 +1,7 @@
 //! Extensions to the [`alloc`] crate.
 
 #![warn(missing_docs)]
-use crate::{blue_kconfig::ALIGN_SIZE, static_init::UnsafeStaticInit};
+use crate::{bluekernel_kconfig::ALIGN_SIZE, static_init::UnsafeStaticInit};
 use core::{
     alloc::{GlobalAlloc, Layout},
     ptr,

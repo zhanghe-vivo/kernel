@@ -3,7 +3,7 @@ use alloc::alloc::{AllocError, LayoutError};
 use core::{ffi::CStr, num::TryFromIntError, ptr, str::Utf8Error};
 
 pub mod code {
-    use blue_infra::klibc;
+    use bluekernel_infra::klibc;
     pub const EOK: super::Error = super::Error(0);
     pub const TRUE: super::Error = super::Error(1);
     pub const FLASE: super::Error = super::Error(0);

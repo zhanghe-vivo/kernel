@@ -1,10 +1,10 @@
 use crate::{
-    blue_kconfig::THREAD_PRIORITY_MAX,
+    bluekernel_kconfig::THREAD_PRIORITY_MAX,
     cpu::Cpu,
     thread::{Thread, ThreadState},
 };
-use blue_arch::arch::Arch;
-use blue_infra::list::doubly_linked_list::ListHead;
+use bluekernel_arch::arch::Arch;
+use bluekernel_infra::list::doubly_linked_list::ListHead;
 
 #[cfg(feature = "smp")]
 use crate::{

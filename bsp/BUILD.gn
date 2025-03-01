@@ -27,7 +27,7 @@ bindgen("bsp_bindgen") {
   ]
 }
 
-build_rust("blue_bsp") {
+build_rust("bluekernel_bsp") {
   crate_type = "staticlib"
   sources = [ "src/lib.rs" ]
   edition = "2021"
@@ -42,8 +42,8 @@ build_rust("blue_bsp") {
     "//external/embedded-io/v0.6.1:embedded_io",
     "//external/thiserror/v2.0.9:thiserror",
     "//external/tock-registers/v0.9.0:tock_registers",
-    "//kernel/arch:blue_arch",
-    "//kernel/kernel:blue_kernel",
+    "//kernel/arch:bluekernel_arch",
+    "//kernel/kernel:bluekernel",
   ]
 
   if (bsp == "qemu-mps2-an385") {

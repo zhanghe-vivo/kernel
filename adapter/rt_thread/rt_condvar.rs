@@ -1,4 +1,4 @@
-use crate::blue_kernel::{
+use crate::bluekernel::{
     error::code,
     sync::{condvar::CondVar, lock::mutex::Mutex, wait_list::WaitMode},
 };

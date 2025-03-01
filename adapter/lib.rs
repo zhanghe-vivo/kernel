@@ -6,9 +6,9 @@
 #![feature(linkage)]
 #![feature(c_size_t)]
 
-pub use blue_arch;
-pub use blue_kernel;
-// use blue_kernel as kernel;
+pub use bluekernel;
+pub use bluekernel_arch;
+// use bluekernel as kernel;
 
 #[cfg(rt_thread)]
 pub mod rt_thread;

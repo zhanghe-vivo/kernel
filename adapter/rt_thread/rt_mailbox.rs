@@ -1,4 +1,4 @@
-use crate::blue_kernel::{
+use crate::bluekernel::{
     error::code,
     sync::{ipc_common::IPC_CMD_RESET, mailbox::Mailbox, wait_list::WaitMode},
 };

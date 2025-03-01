@@ -1,5 +1,5 @@
 import("//build/templates/build_template.gni")
-build_rust("blue_arch") {
+build_rust("bluekernel_arch") {
   crate_type = "rlib"
   sources = [ "src/lib.rs" ]
   edition = "2021"

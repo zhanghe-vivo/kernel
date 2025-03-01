@@ -9,8 +9,8 @@
 
 pub extern crate alloc;
 extern crate self as kernel;
-pub use blue_arch;
-pub use blue_kconfig;
+pub use bluekernel_arch;
+pub use bluekernel_kconfig;
 
 pub mod allocator;
 pub mod clock;
@@ -42,7 +42,10 @@ fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
     }
     println!("{}", info);
 
-    println!("Backtrace in Panic: {}", blue_arch::arch::Arch::backtrace());
+    println!(
+        "Backtrace in Panic: {}",
+        bluekernel_arch::arch::Arch::backtrace()
+    );
 
     #[cfg(debug_assertions)]
     loop {
@@ -50,7 +53,7 @@ fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
     }
     #[cfg(not(debug_assertions))]
     {
-        blue_arch::arch::Arch::sys_reset()
+        bluekernel_arch::arch::Arch::sys_reset()
     }
 }
 
@@ -60,9 +63,9 @@ fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
 macro_rules! debug_not_in_interrupt {
     () => {
         use crate::cpu;
-        use blue_arch::IInterrupt;
+        use bluekernel_arch::IInterrupt;
 
-        let level = blue_arch::arch::Arch::disable_interrupts();
+        let level = bluekernel_arch::arch::Arch::disable_interrupts();
         if cpu::Cpu::interrupt_nest_load() != 0 {
             crate::kprintf!(
                 b"Function[%s] shall not be used in ISR\n",
@@ -70,7 +73,7 @@ macro_rules! debug_not_in_interrupt {
             );
             assert!(false);
         }
-        blue_arch::arch::Arch::enable_interrupts(level);
+        bluekernel_arch::arch::Arch::enable_interrupts(level);
     };
 }
 
@@ -81,12 +84,12 @@ macro_rules! debug_not_in_interrupt {
 #[macro_export]
 macro_rules! debug_in_thread_context {
     () => {
-        let level = blue_arch::arch::Arch::disable_interrupts();
+        let level = bluekernel_arch::arch::Arch::disable_interrupts();
         if cpu::Cpu::get_current_thread().is_none() {
             assert!(false);
         }
         kernel::debug_not_in_interrupt!();
-        blue_arch::arch::Arch::enable_interrupts(level);
+        bluekernel_arch::arch::Arch::enable_interrupts(level);
     };
 }
 
@@ -102,8 +105,8 @@ macro_rules! debug_scheduler_available {
         if $need_check {
             use crate::irq;
 
-            let interrupt_disabled = !blue_arch::arch::Arch::is_interrupts_active();
-            let level = blue_arch::arch::Arch::disable_interrupts();
+            let interrupt_disabled = !bluekernel_arch::arch::Arch::is_interrupts_active();
+            let level = bluekernel_arch::arch::Arch::disable_interrupts();
             if cpu::Cpu::get_current_scheduler().get_sched_lock_level() != 0 {
                 crate::kprintf!(
                     b"Function[%s]: scheduler is not available\n",
@@ -120,7 +123,7 @@ macro_rules! debug_scheduler_available {
                 assert!(false);
             }
             kernel::debug_in_thread_context!();
-            blue_arch::arch::Arch::enable_interrupts(level);
+            bluekernel_arch::arch::Arch::enable_interrupts(level);
         }
     }};
 }

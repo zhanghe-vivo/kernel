@@ -1,4 +1,4 @@
-use crate::blue_kernel::{
+use crate::bluekernel::{
     error::code,
     sync::{lock::rwlock::RwLock, wait_list::WaitMode},
 };

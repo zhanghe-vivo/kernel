@@ -1,6 +1,6 @@
 use crate::{c_str, components, cpu, idle, thread::Thread, timer};
 use alloc::boxed::Box;
-use blue_kconfig::{MAIN_THREAD_PRIORITY, MAIN_THREAD_STACK_SIZE};
+use bluekernel_kconfig::{MAIN_THREAD_PRIORITY, MAIN_THREAD_STACK_SIZE};
 use core::{pin::Pin, ptr};
 
 #[cfg(not(feature = "heap"))]
@@ -72,7 +72,7 @@ fn application_init() {
 
 #[no_mangle]
 pub extern "C" fn _startup() -> ! {
-    blue_arch::arch::Arch::disable_interrupts();
+    bluekernel_arch::arch::Arch::disable_interrupts();
     cpu::init_cpus();
     unsafe { timer::TIMER_WHEEL.init_once() };
     idle::IdleTheads::init_once();
