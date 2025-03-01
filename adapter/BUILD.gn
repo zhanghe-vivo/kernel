@@ -24,10 +24,10 @@ build_rust("adapter") {
 
   deps = [
     "//external/pinned-init/v0.0.8:pinned_init",
-    "//kernel/arch:blue_arch",
-    "//kernel/infra:blue_infra",
-    "//kernel/kconfig:blue_kconfig",
-    "//kernel/kernel:blue_kernel",
+    "//kernel/arch:bluekernel_arch",
+    "//kernel/infra:bluekernel_infra",
+    "//kernel/kconfig:bluekernel_kconfig",
+    "//kernel/kernel:bluekernel",
   ]
   rustflags = []
   if (adapter == "rt_thread") {

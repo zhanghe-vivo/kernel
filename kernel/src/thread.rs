@@ -3,7 +3,7 @@
 use crate::cpu::CPU_DETACHED;
 use crate::{
     alloc::boxed::Box,
-    blue_kconfig::ALIGN_SIZE,
+    bluekernel_kconfig::ALIGN_SIZE,
     clock,
     cpu::{Cpu, CPUS_NUMBER},
     error::{code, Error},
@@ -16,8 +16,8 @@ use crate::{
     zombie,
 };
 use alloc::alloc;
-use blue_arch::arch::Arch;
-use blue_infra::list::doubly_linked_list::{LinkedListNode, ListHead};
+use bluekernel_arch::arch::Arch;
+use bluekernel_infra::list::doubly_linked_list::{LinkedListNode, ListHead};
 use core::{
     alloc::{AllocError, Layout},
     cell::{Cell, UnsafeCell},

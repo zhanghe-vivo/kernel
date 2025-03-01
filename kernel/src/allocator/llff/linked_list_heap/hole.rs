@@ -7,7 +7,7 @@ use core::{
 
 use crate::{
     allocator::{align_down_size, align_up, align_up_size, block_hdr::*},
-    blue_kconfig::ALIGN_SIZE,
+    bluekernel_kconfig::ALIGN_SIZE,
 };
 
 /// A sorted list of holes. It uses the the holes itself to store its nodes.

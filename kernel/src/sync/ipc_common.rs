@@ -1,6 +1,6 @@
 use crate::{
     allocator::{align_up_size, free, malloc},
-    blue_kconfig::ALIGN_SIZE,
+    bluekernel_kconfig::ALIGN_SIZE,
     cpu::Cpu,
     error::{code, Error},
     object::*,

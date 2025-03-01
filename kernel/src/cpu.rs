@@ -2,10 +2,10 @@
 #[cfg(feature = "smp")]
 use crate::scheduler::PriorityTableManager;
 use crate::{
-    blue_kconfig::CPUS_NR, process, scheduler::Scheduler, static_init::UnsafeStaticInit,
+    bluekernel_kconfig::CPUS_NR, process, scheduler::Scheduler, static_init::UnsafeStaticInit,
     sync::RawSpin, thread,
 };
-use blue_arch::arch::Arch;
+use bluekernel_arch::arch::Arch;
 
 use core::{
     ptr::NonNull,

@@ -5,7 +5,7 @@ use crate::{
     sync::RawSpin,
     thread::{Thread, ThreadWithStack},
 };
-use blue_infra::list::doubly_linked_list::{LinkedListNode, ListHead};
+use bluekernel_infra::list::doubly_linked_list::{LinkedListNode, ListHead};
 use core::{
     ffi::{c_char, c_void},
     pin::Pin,

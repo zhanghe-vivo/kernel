@@ -1,4 +1,4 @@
-use blue_arch::arch::Arch;
+use bluekernel_arch::arch::Arch;
 
 #[no_mangle]
 #[inline(always)]

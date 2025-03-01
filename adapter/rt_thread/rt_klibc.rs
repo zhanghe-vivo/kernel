@@ -1,4 +1,4 @@
-use blue_infra::klibc;
+use bluekernel_infra::klibc;
 use core::ffi::{c_char, c_int, c_size_t, c_void};
 
 /// rt_weak void *rt_memset(void *s, int c, rt_ubase_t count)

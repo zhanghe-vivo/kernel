@@ -9,7 +9,7 @@ use crate::{
     thread::SuspendFlag,
     timer::TimerControlAction,
 };
-use blue_kconfig::ALIGN_SIZE;
+use bluekernel_kconfig::ALIGN_SIZE;
 #[allow(unused_imports)]
 use core::{
     alloc::AllocError,

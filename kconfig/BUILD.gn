@@ -1,5 +1,5 @@
 import("//build/templates/build_template.gni")
-build_rust("blue_kconfig") {
+build_rust("bluekernel_kconfig") {
   crate_type = "rlib"
   sources = [ "src/load_kconfig.rs" ]
   inputs = [ "config/.config" ]

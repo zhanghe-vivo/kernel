@@ -3,13 +3,13 @@ use crate::{
     thread::Thread,
 };
 use alloc::alloc::{dealloc, Layout};
-use blue_infra::list::doubly_linked_list::ListHead;
+use bluekernel_infra::list::doubly_linked_list::ListHead;
 use core::{pin::Pin, ptr::NonNull};
 use pinned_init::{pin_data, pin_init, PinInit};
 
 #[cfg(feature = "smp")]
 use crate::{
-    blue_kconfig, c_str, clock,
+    bluekernel_kconfig, c_str, clock,
     error::code,
     scheduler,
     sync::ipc_common,
@@ -17,7 +17,7 @@ use crate::{
 };
 
 #[cfg(feature = "smp")]
-const ZOMBIE_THREAD_STACK_SIZE: usize = blue_kconfig::IDLE_THREAD_STACK_SIZE as usize;
+const ZOMBIE_THREAD_STACK_SIZE: usize = bluekernel_kconfig::IDLE_THREAD_STACK_SIZE as usize;
 #[cfg(feature = "smp")]
 const ZOMBIE_NAME: &'static core::ffi::CStr = crate::c_str!("zombie");
 
@@ -66,7 +66,7 @@ impl ZombieManager {
         pin_init!(Self {
             zombies_list <- new_spinlock!(ListHead::new()),
             thread <- ThreadWithStack::new(ZOMBIE_NAME, Self::zombie_thread_entry as ThreadEntryFn,
-                core::ptr::null_mut(), (blue_kconfig::THREAD_PRIORITY_MAX - 2) as u8, 32),
+                core::ptr::null_mut(), (bluekernel_kconfig::THREAD_PRIORITY_MAX - 2) as u8, 32),
             sem <- unsafe {
                 pin_init_from_closure::<_, ::core::convert::Infallible>(|slot| {
                     (*slot).init(ZOMBIE_NAME.as_ptr(), 0, ipc_common::WaitMode::Fifo);
@@ -123,7 +123,7 @@ impl ZombieManager {
                         // free stack
                         let layout = Layout::from_size_align_unchecked(
                             (*th).stack().size(),
-                            blue_kconfig::ALIGN_SIZE as usize,
+                            bluekernel_kconfig::ALIGN_SIZE as usize,
                         );
                         dealloc((*th).stack().bottom_ptr() as *mut u8, layout);
                         // delete thread object

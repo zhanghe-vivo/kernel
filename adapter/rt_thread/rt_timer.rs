@@ -1,4 +1,4 @@
-use crate::blue_kernel::{
+use crate::bluekernel::{
     error::code,
     object::{KObjectBase, KernelObject, ObjectClassType},
     timer::{TimeoutFn, Timer, TimerControlAction},
