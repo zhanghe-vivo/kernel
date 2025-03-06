@@ -248,7 +248,6 @@ impl ThreadPriority {
         self.high_mask
     }
 
-    /// 获取组掩码
     #[inline]
     pub fn get_number_mask(&self) -> u32 {
         self.number_mask

@@ -6,6 +6,8 @@
 #![feature(allocator_api)]
 #![feature(alloc_layout_extra)]
 #![feature(c_size_t)]
+#![feature(alloc_error_handler)]
+#![feature(c_variadic)]
 
 pub extern crate alloc;
 extern crate self as kernel;
@@ -31,6 +33,7 @@ pub mod static_init;
 pub mod sync;
 pub mod thread;
 pub mod timer;
+pub mod vfs;
 mod zombie;
 #[allow(unused_imports)]
 use core::sync::atomic::{self, Ordering};

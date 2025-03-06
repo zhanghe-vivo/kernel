@@ -9,6 +9,7 @@ build_rust("bluekernel") {
     "//external/log/v0.4.22:log",
     "//external/paste/v1.0.15:paste",
     "//external/pinned-init/v0.0.8:pinned_init",
+    "//external/spin/v0.9.8:spin",
     "//kernel/arch:bluekernel_arch",
     "//kernel/infra:bluekernel_infra",
     "//kernel/kconfig:bluekernel_kconfig",

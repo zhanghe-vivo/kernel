@@ -5,12 +5,10 @@ build_rust("bluekernel_infra") {
   edition = "2021"
 
   deps = [
-    "//external/pinned-init/v0.0.8:pinned_init",
     "//external/cfg-if/v1.0.0:cfg_if",
     "//external/memchr/v2.7.4:memchr",
+    "//external/pinned-init/v0.0.8:pinned_init",
   ]
 
-  features = [
-    "compat_newlibc",
-  ]
+  features = [ "compat_newlibc" ]
 }

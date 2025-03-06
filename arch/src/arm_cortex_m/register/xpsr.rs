@@ -148,43 +148,36 @@ mod tests {
     fn test_xpsr_flags() {
         let mut xpsr = Xpsr { bits: 0 };
 
-        // 测试 N 标志位
         xpsr.bits = 1 << 31;
         assert!(xpsr.n());
         xpsr.bits = 0;
         assert!(!xpsr.n());
 
-        // 测试 Z 标志位
         xpsr.bits = 1 << 30;
         assert!(xpsr.z());
         xpsr.bits = 0;
         assert!(!xpsr.z());
 
-        // 测试 C 标志位
         xpsr.bits = 1 << 29;
         assert!(xpsr.c());
         xpsr.bits = 0;
         assert!(!xpsr.c());
 
-        // 测试 V 标志位
         xpsr.bits = 1 << 28;
         assert!(xpsr.v());
         xpsr.bits = 0;
         assert!(!xpsr.v());
 
-        // 测试 Q 标志位
         xpsr.bits = 1 << 27;
         assert!(xpsr.q());
         xpsr.bits = 0;
         assert!(!xpsr.q());
 
-        // 测试 T 标志位
         xpsr.bits = 1 << 24;
         assert!(xpsr.t());
         xpsr.bits = 0;
         assert!(!xpsr.t());
 
-        // 测试异常号
         xpsr.bits = 0x1F;
         assert_eq!(xpsr.e(), 0x1F);
         xpsr.bits = 0;

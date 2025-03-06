@@ -80,9 +80,7 @@ unsafe extern "C" fn uart_configure(
     let instance = &mut *((*serial).parent.user_data as *mut UartInstance);
 
     instance.uart.init(SYSTEM_CORE_CLOCK, (*cfg).baud_rate);
-    // 启用 NVIC 中断
     Arch::enable_irq(instance.irq);
-    // 清除状态
     instance.uart.clear_interrupt();
 
     rt_bindings::RT_EOK as i32

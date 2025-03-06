@@ -15,6 +15,7 @@ static mut MAIN_THREAD: Thread = Thread {};
 #[no_mangle]
 pub extern "C" fn main_thread_entry(_parameter: *mut core::ffi::c_void) {
     unsafe {
+        let _ = crate::vfs::vfs_api::vfs_init();
         components::components_init();
         #[cfg(feature = "smp")]
         {
