@@ -13,7 +13,7 @@ config MAIN_THREAD_PRIORITY
     int "Set main thread priority"
 
 config MAIN_THREAD_STACK_SIZE
-    default 4096
+    default 12288
     int "Set main thread stack size"
 
 config SMP

@@ -18,9 +18,8 @@ const STACK_MAGIC_WORD: u32 = 0xa5a5_a5a5;
 impl Stack {
     /// Create a new stack object from an existing byte array with a fixed size
     pub fn new(stack: *const u8, size: usize) -> Self {
-        // 确保地址是4字节对齐的
+        // address and size must be 4-byte aligned
         assert_eq!((stack as usize) & 0x3, 0);
-        // 确保大小是4字节对齐的
         assert_eq!(size & 0x3, 0);
 
         #[cfg(feature = "stack_highwater_check")]

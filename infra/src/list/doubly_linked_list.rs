@@ -677,15 +677,10 @@ mod tests {
         Pin::as_mut(&mut list).push_front(node2.as_mut());
         Pin::as_mut(&mut list).push_back(node3.as_mut());
         assert_eq!(list.size(), 3);
-
-        // 移除 node3
         Pin::as_mut(&mut node3).remove_from_list();
         assert_eq!(list.size(), 2);
-
-        // 移除 node2
         Pin::as_mut(&mut node2).remove_from_list();
         assert_eq!(list.size(), 1);
-
         assert!(!list.is_empty());
         assert!(list.next().is_some());
         assert!(list.prev().is_some());
@@ -753,13 +748,10 @@ mod tests {
     #[test]
     fn test_clear() {
         let mut list = LinkedList::new();
-        // 添加一些元素
         for i in 0..10 {
             list.push_back(i);
         }
         assert_eq!(list.len(), 10);
-
-        // 清空列表
         list.clear();
         assert!(list.is_empty());
         assert_eq!(list.len(), 0);
@@ -769,8 +761,6 @@ mod tests {
     #[test]
     fn test_push_pop_alternating() {
         let mut list = LinkedList::new();
-
-        // 交替进行 push 和 pop 操作
         for i in 0..100 {
             list.push_back(i);
             list.push_front(-i);

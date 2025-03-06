@@ -210,7 +210,6 @@ impl KernelObject for KObjectBase {
 pub(crate) const OBJECT_CLASS_STATIC: u8 = 0x80;
 
 impl ObjectClassType {
-    // 为枚举类型添加方法
     fn get_object_size(index: u8) -> usize {
         match index {
             //< The object is a process.

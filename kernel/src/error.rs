@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::cpu::Cpu;
 use alloc::alloc::{AllocError, LayoutError};
 use core::{ffi::CStr, num::TryFromIntError, ptr, str::Utf8Error};
@@ -20,23 +22,36 @@ pub mod code {
     pub const ENOENT: super::Error = super::Error(-klibc::ENOENT);
     pub const ENODEV: super::Error = super::Error(-klibc::ENODEV);
     pub const EPERM: super::Error = super::Error(-klibc::EPERM);
+    pub const EAGAIN: super::Error = super::Error(-klibc::EAGAIN);
+    pub const EBADF: super::Error = super::Error(-klibc::EBADF);
+    pub const EEXIST: super::Error = super::Error(-klibc::EEXIST);
+    pub const ENOTDIR: super::Error = super::Error(-klibc::ENOTDIR);
+    pub const EISDIR: super::Error = super::Error(-klibc::EISDIR);
+    pub const ENOTEMPTY: super::Error = super::Error(-klibc::ENOTEMPTY);
+    pub const EACCES: super::Error = super::Error(-klibc::EACCES);
 }
 
-const EOK_STR: &'static CStr = crate::c_str!("OK      ");
-const ERROR_STR: &'static CStr = crate::c_str!("ERROR   ");
-const ETIMEDOUT_STR: &'static CStr = crate::c_str!("Timeout ");
+const UNKNOW_STR: &'static CStr = crate::c_str!("EUNKNOW ");
+const EOK_STR: &'static CStr = crate::c_str!("OK ");
+const ERROR_STR: &'static CStr = crate::c_str!("ERROR ");
+const ETIMEDOUT_STR: &'static CStr = crate::c_str!("Timedout ");
 const ENOSPC_STR: &'static CStr = crate::c_str!("No space left on device ");
 const ENODATA_STR: &'static CStr = crate::c_str!("No data available ");
-const ENOMEM_STR: &'static CStr = crate::c_str!("Cannot allocate memory  ");
-const ENOSYS_STR: &'static CStr = crate::c_str!("Function not implemented  ");
-const EBUSY_STR: &'static CStr = crate::c_str!("Device or resource busy   ");
-const EIO_STR: &'static CStr = crate::c_str!("Input/output error     ");
+const ENOMEM_STR: &'static CStr = crate::c_str!("Cannot allocate memory ");
+const ENOSYS_STR: &'static CStr = crate::c_str!("Function not implemented ");
+const EBUSY_STR: &'static CStr = crate::c_str!("Device or resource busy ");
+const EIO_STR: &'static CStr = crate::c_str!("Input/output error ");
 const EINTR_STR: &'static CStr = crate::c_str!("Interrupted system call ");
-const EINVAL_STR: &'static CStr = crate::c_str!("Invalid argument  ");
-const ENOENT_STR: &'static CStr = crate::c_str!("No such file or directory  ");
-const EPERM_STR: &'static CStr = crate::c_str!("Operation not permitted   ");
+const EINVAL_STR: &'static CStr = crate::c_str!("Invalid argument ");
+const ENOENT_STR: &'static CStr = crate::c_str!("No such file or directory ");
+const EPERM_STR: &'static CStr = crate::c_str!("Operation not permitted ");
 const ENODEV_STR: &'static CStr = crate::c_str!("No Such Device ");
-const UNKNOW_STR: &'static CStr = crate::c_str!("EUNKNOW ");
+const EAGAIN_STR: &'static CStr = crate::c_str!("Try again ");
+const EBADFD_STR: &'static CStr = crate::c_str!("File descriptor in bad state ");
+const EEXIST_STR: &'static CStr = crate::c_str!("File exists");
+const ENOTDIR_STR: &'static CStr = crate::c_str!("Not a directory");
+const EISDIR_STR: &'static CStr = crate::c_str!("Is a directory");
+const ENOTEMPTY_STR: &'static CStr = crate::c_str!("Directory not empty");
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
@@ -155,4 +170,12 @@ pub unsafe fn _errno() -> *mut i32 {
     }
 
     &mut (*tid).error.0
+}
+
+impl core::fmt::Display for Error {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        // Convert CStr to str, fallback to error code if conversion fails
+        let err_msg = self.name().to_str().unwrap_or("Unknown error");
+        write!(f, "Error({}): {}", self.0, err_msg)
+    }
 }
