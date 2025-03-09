@@ -138,7 +138,7 @@ impl Mutex {
 
         let init = move |slot: *mut Self| unsafe {
             let cur_ref = &mut *slot;
-            let _ = KObjectBase::new(ObjectClassType::ObjectClassMutex as u8, name)
+            let _ = KObjectBase::new(ObjectClassType::ObjectClassMutex, name)
                 .__pinned_init(&mut cur_ref.parent as *mut KObjectBase);
 
             cur_ref.owner = null_mut();
@@ -161,8 +161,7 @@ impl Mutex {
     #[inline]
     pub fn init(&mut self, name: *const i8) {
         // Flag can only be WaitMode::Priority.
-        self.parent
-            .init(ObjectClassType::ObjectClassMutex as u8, name);
+        self.parent.init(ObjectClassType::ObjectClassMutex, name);
 
         self.init_internal();
     }
@@ -170,7 +169,7 @@ impl Mutex {
     #[inline]
     pub fn init_dyn(&mut self, name: *const i8) {
         self.parent
-            .init_dyn(ObjectClassType::ObjectClassMutex as u8, name);
+            .init_dyn(ObjectClassType::ObjectClassMutex, name);
         self.init_internal();
     }
 
@@ -197,7 +196,7 @@ impl Mutex {
 
     #[inline]
     pub fn detach(&mut self) {
-        assert_eq!(self.type_name(), ObjectClassType::ObjectClassMutex as u8);
+        assert_eq!(self.type_name(), ObjectClassType::ObjectClassMutex);
 
         // Critical section
         {
@@ -226,7 +225,7 @@ impl Mutex {
 
     #[inline]
     pub fn delete_raw(&mut self) {
-        assert_eq!(self.type_name(), ObjectClassType::ObjectClassMutex as u8);
+        assert_eq!(self.type_name(), ObjectClassType::ObjectClassMutex);
         assert!(!self.is_static_kobject());
 
         crate::debug_not_in_interrupt!();
@@ -256,7 +255,7 @@ impl Mutex {
         crate::debug_scheduler_available!(true);
 
         // Assert that the object type is `ObjectClassMutex` by checking its type name.
-        assert_eq!(self.type_name(), ObjectClassType::ObjectClassMutex as u8);
+        assert_eq!(self.type_name(), ObjectClassType::ObjectClassMutex);
 
         let thread_ptr = current_thread_ptr!();
         assert!(!thread_ptr.is_null());
@@ -433,7 +432,7 @@ impl Mutex {
     ///
     pub fn unlock(&mut self) -> Result<(), Error> {
         // Verify this is actually a mutex object
-        assert_eq!(self.type_name(), ObjectClassType::ObjectClassMutex as u8);
+        assert_eq!(self.type_name(), ObjectClassType::ObjectClassMutex);
 
         // Mutex release must happen in thread context due to ownership checks
         crate::debug_in_thread_context!();

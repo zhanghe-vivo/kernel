@@ -35,7 +35,7 @@ impl CondVar {
         crate::debug_not_in_interrupt!();
 
         pin_init!(Self {
-            parent<-KObjectBase::new(ObjectClassType::ObjectClassCondVar as u8, name),
+            parent<-KObjectBase::new(ObjectClassType::ObjectClassCondVar, name),
             inner_queue<-SysQueue::new(
                 core::mem::size_of::<u32>(),
                 0,
@@ -48,8 +48,7 @@ impl CondVar {
     #[allow(dead_code)]
     #[inline]
     pub fn init(&mut self, name: *const i8, waiting_mode: WaitMode) {
-        self.parent
-            .init(ObjectClassType::ObjectClassCondVar as u8, name);
+        self.parent.init(ObjectClassType::ObjectClassCondVar, name);
         self.inner_queue.init(
             null_mut(),
             core::mem::size_of::<u32>(),
@@ -62,7 +61,7 @@ impl CondVar {
     #[inline]
     pub(crate) fn init_dyn(&mut self, name: *const i8, waiting_mode: WaitMode) {
         self.parent
-            .init_dyn(ObjectClassType::ObjectClassCondVar as u8, name);
+            .init_dyn(ObjectClassType::ObjectClassCondVar, name);
         self.inner_queue.init(
             null_mut(),
             core::mem::size_of::<u32>(),
@@ -74,7 +73,7 @@ impl CondVar {
 
     #[inline]
     pub fn detach(&mut self) {
-        assert_eq!(self.type_name(), ObjectClassType::ObjectClassCondVar as u8);
+        assert_eq!(self.type_name(), ObjectClassType::ObjectClassCondVar);
         self.inner_queue.wake_all_dequeue_stub_locked();
         if self.is_static_kobject() {
             self.parent.detach();

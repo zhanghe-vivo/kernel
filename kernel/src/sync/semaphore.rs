@@ -100,7 +100,7 @@ impl Semaphore {
     pub fn new(name: [i8; NAME_MAX], value: u16, waiting_mode: WaitMode) -> impl PinInit<Self> {
         let init = move |slot: *mut Self| unsafe {
             let cur_ref = &mut *slot;
-            let _ = KObjectBase::new(ObjectClassType::ObjectClassSemaphore as u8, name)
+            let _ = KObjectBase::new(ObjectClassType::ObjectClassSemaphore, name)
                 .__pinned_init(&mut cur_ref.parent as *mut KObjectBase);
             let _ = SysQueue::new(
                 mem::size_of::<u32>(),
@@ -118,7 +118,7 @@ impl Semaphore {
     #[inline]
     pub fn init(&mut self, name: *const i8, value: u16, waiting_mode: WaitMode) {
         self.parent
-            .init(ObjectClassType::ObjectClassSemaphore as u8, name);
+            .init(ObjectClassType::ObjectClassSemaphore, name);
 
         self.inner_queue.init(
             null_mut(),
@@ -133,7 +133,7 @@ impl Semaphore {
     #[inline]
     pub fn init_dyn(&mut self, name: *const i8, value: u16, waiting_mode: WaitMode) {
         self.parent
-            .init_dyn(ObjectClassType::ObjectClassSemaphore as u8, name);
+            .init_dyn(ObjectClassType::ObjectClassSemaphore, name);
         self.init_internal(value, waiting_mode);
     }
 
@@ -170,10 +170,7 @@ impl Semaphore {
 
     #[inline]
     pub fn delete_raw(&mut self) {
-        assert_eq!(
-            self.type_name(),
-            ObjectClassType::ObjectClassSemaphore as u8
-        );
+        assert_eq!(self.type_name(), ObjectClassType::ObjectClassSemaphore);
         assert!(!self.is_static_kobject());
 
         crate::debug_not_in_interrupt!();
@@ -191,10 +188,7 @@ impl Semaphore {
 
     pub fn take_internal(&mut self, timeout: i32, pending_mode: SuspendFlag) -> Result<(), Error> {
         let mut time_out = timeout as i32;
-        assert_eq!(
-            self.type_name(),
-            ObjectClassType::ObjectClassSemaphore as u8
-        );
+        assert_eq!(self.type_name(), ObjectClassType::ObjectClassSemaphore);
 
         #[allow(unused_variables)]
         let check = self.count() == 0 && timeout != 0;
@@ -262,10 +256,7 @@ impl Semaphore {
     }
 
     pub fn release(&mut self) -> Result<(), Error> {
-        assert_eq!(
-            self.type_name(),
-            ObjectClassType::ObjectClassSemaphore as u8
-        );
+        assert_eq!(self.type_name(), ObjectClassType::ObjectClassSemaphore);
 
         let mut need_schedule = false;
         self.inner_queue.lock();
@@ -291,10 +282,7 @@ impl Semaphore {
     }
 
     pub fn reset(&mut self, value: u32) -> Result<(), Error> {
-        assert_eq!(
-            self.type_name(),
-            ObjectClassType::ObjectClassSemaphore as u8
-        );
+        assert_eq!(self.type_name(), ObjectClassType::ObjectClassSemaphore);
 
         self.inner_queue.lock();
 

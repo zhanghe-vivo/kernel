@@ -266,7 +266,7 @@ impl Timer {
         let init = move |slot: *mut Self| {
             let obj = unsafe { &mut *(slot as *mut KObjectBase) };
             if is_static {
-                obj.init(ObjectClassType::ObjectClassTimer as u8, name);
+                obj.init(ObjectClassType::ObjectClassTimer, name);
             }
             let cur_ref = unsafe { &mut *slot };
             cur_ref.flag = TimerState(flag & !(TimerState::ACTIVATED.to_u32() as u8));

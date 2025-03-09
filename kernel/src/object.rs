@@ -27,35 +27,35 @@ pub struct KObjectBase {
     /// name of kernel object
     pub name: [i8; NAME_MAX],
     /// type of kernel object
-    pub type_: u8,
+    pub type_: ObjectClassType,
     /// list node of kernel object
     #[pin]
     pub list: LinkedListNode,
 }
 
 impl KObjectBase {
-    pub fn init(&mut self, type_: u8, name: *const i8) {
-        self.init_internal(type_ | OBJECT_CLASS_STATIC, name);
+    pub fn init(&mut self, type_: ObjectClassType, name: *const i8) {
+        self.init_internal(type_.with_static(), name);
     }
 
-    pub(crate) fn init_dyn(&mut self, type_: u8, name: *const i8) {
+    pub(crate) fn init_dyn(&mut self, type_: ObjectClassType, name: *const i8) {
         self.init_internal(type_, name);
     }
 
-    pub(crate) fn init_internal(&mut self, type_: u8, name: *const i8) {
+    pub(crate) fn init_internal(&mut self, type_: ObjectClassType, name: *const i8) {
         self.type_ = type_;
         unsafe {
             klibc::strncpy(self.name.as_mut_ptr(), name, (NAME_MAX - 1) as usize);
             Pin::new_unchecked(&mut self.list).reset();
         }
 
-        if type_ & (!OBJECT_CLASS_STATIC) != ObjectClassType::ObjectClassProcess as u8 {
+        if type_.without_static() != ObjectClassType::ObjectClassProcess {
             insert(type_, &mut self.list);
         }
     }
 
     /// This new function called by rust
-    pub(crate) fn new(type_: u8, name: [i8; NAME_MAX]) -> impl PinInit<Self> {
+    pub(crate) fn new(type_: ObjectClassType, name: [i8; NAME_MAX]) -> impl PinInit<Self> {
         pin_init!(Self {
             name: name,
             type_: type_,
@@ -64,8 +64,8 @@ impl KObjectBase {
     }
 
     /// This new function called by c
-    pub fn new_raw(type_: u8, name: *const i8) -> *mut KObjectBase {
-        let object_size = ObjectClassType::get_object_size(type_ as u8);
+    pub fn new_raw(type_: ObjectClassType, name: *const i8) -> *mut KObjectBase {
+        let object_size = ObjectClassType::get_object_size(type_);
 
         crate::debug_not_in_interrupt!();
 
@@ -82,13 +82,13 @@ impl KObjectBase {
 
     pub fn detach(&mut self) {
         remove(self);
-        self.type_ = ObjectClassType::ObjectClassUninit as u8;
+        self.type_ = ObjectClassType::ObjectClassUninit;
     }
 
     pub fn delete(&mut self) {
-        assert!((self.type_ & OBJECT_CLASS_STATIC) == 0);
+        assert!(!self.type_.is_static());
         remove(self);
-        self.type_ = ObjectClassType::ObjectClassUninit as u8;
+        self.type_ = ObjectClassType::ObjectClassUninit;
         free(self as *mut _ as *mut u8);
     }
 }
@@ -138,12 +138,15 @@ pub enum ObjectClassType {
     #[cfg(feature = "heap")]
     ObjectClassMemory,
     ObjectClassUnknown,
+
+    // The object is a static object (bit flag)
+    Static = 0x80,
 }
 
 /// Common interface of a kernel object.
 pub trait KernelObject {
     /// Get the name of the type of the kernel object.
-    fn type_name(&self) -> u8;
+    fn type_name(&self) -> ObjectClassType;
     /// Get kernel object's name.
     fn name(&self) -> *const i8;
     /// Set kernel object's name.
@@ -151,12 +154,16 @@ pub trait KernelObject {
     /// Checks whether the kernel object is a static object.
     fn is_static_kobject(&self) -> bool;
     /// This function is used to iterate all kernel objects.
-    fn foreach<F>(callback: F, type_: u8) -> Result<(), i32>
+    fn foreach<F>(callback: F, type_: ObjectClassType) -> Result<(), i32>
     where
         F: Fn(&ListHead),
         Self: Sized;
     /// Get the kernel object info.
-    fn get_info<FF, F>(callback_forword: FF, callback: F, type_: u8) -> Result<(), i32>
+    fn get_info<FF, F>(
+        callback_forword: FF,
+        callback: F,
+        type_: ObjectClassType,
+    ) -> Result<(), i32>
     where
         FF: Fn(),
         F: Fn(&ListHead),
@@ -164,8 +171,8 @@ pub trait KernelObject {
 }
 
 impl KernelObject for KObjectBase {
-    fn type_name(&self) -> u8 {
-        self.type_ & (!OBJECT_CLASS_STATIC)
+    fn type_name(&self) -> ObjectClassType {
+        self.type_.without_static()
     }
 
     fn name(&self) -> *const i8 {
@@ -180,14 +187,10 @@ impl KernelObject for KObjectBase {
     }
 
     fn is_static_kobject(&self) -> bool {
-        let obj_type = self.type_;
-        if (obj_type & OBJECT_CLASS_STATIC) != 0 {
-            return true;
-        }
-        return false;
+        self.type_.is_static()
     }
 
-    fn foreach<F>(callback: F, type_: u8) -> Result<(), i32>
+    fn foreach<F>(callback: F, type_: ObjectClassType) -> Result<(), i32>
     where
         F: Fn(&ListHead),
         Self: Sized,
@@ -195,7 +198,7 @@ impl KernelObject for KObjectBase {
         foreach(callback, type_)
     }
 
-    fn get_info<FF, F>(callback_forword: FF, callback: F, type_: u8) -> Result<(), i32>
+    fn get_info<FF, F>(callback_forword: FF, callback: F, type_: ObjectClassType) -> Result<(), i32>
     where
         FF: Fn(),
         F: Fn(&ListHead),
@@ -206,52 +209,111 @@ impl KernelObject for KObjectBase {
     }
 }
 
-/// The object is a static object.
-pub(crate) const OBJECT_CLASS_STATIC: u8 = 0x80;
-
 impl ObjectClassType {
-    fn get_object_size(index: u8) -> usize {
-        match index {
-            //< The object is a process.
-            x if x == Self::ObjectClassProcess as u8 => mem::size_of::<Kprocess>(),
-            //< The object is a thread.
-            x if x == Self::ObjectClassThread as u8 => mem::size_of::<Thread>(),
-            //< The object is a semaphore.
+    pub fn with_static(self) -> Self {
+        Self::from_u8(self as u8 | Self::Static as u8)
+    }
+
+    pub fn without_static(self) -> Self {
+        Self::from_u8(self as u8 & (Self::Static as u8 ^ 0xFF))
+    }
+
+    pub fn is_static(self) -> bool {
+        (self as u8 & Self::Static as u8) != 0
+    }
+
+    pub fn from_u8(value: u8) -> Self {
+        // transmute will not work for release mode
+        let base_type = value & (Self::Static as u8 ^ 0xFF);
+        let is_static = (value & Self::Static as u8) != 0;
+
+        let mut result = match base_type {
+            // 基本类型
+            x if x == Self::ObjectClassUninit as u8 => Self::ObjectClassUninit,
+            x if x == Self::ObjectClassProcess as u8 => Self::ObjectClassProcess,
+            x if x == Self::ObjectClassThread as u8 => Self::ObjectClassThread,
             #[cfg(feature = "semaphore")]
-            x if x == Self::ObjectClassSemaphore as u8 => mem::size_of::<Semaphore>(),
-            //< The object is a mutex.
+            x if x == Self::ObjectClassSemaphore as u8 => Self::ObjectClassSemaphore,
             #[cfg(feature = "mutex")]
-            x if x == Self::ObjectClassMutex as u8 => mem::size_of::<Mutex>(),
-            //< The object is a condition variable.
+            x if x == Self::ObjectClassMutex as u8 => Self::ObjectClassMutex,
             #[cfg(feature = "condvar")]
-            x if x == Self::ObjectClassCondVar as u8 => mem::size_of::<CondVar>(),
-            //< The object is a RwLock.
+            x if x == Self::ObjectClassCondVar as u8 => Self::ObjectClassCondVar,
             #[cfg(feature = "rwlock")]
-            x if x == Self::ObjectClassRwLock as u8 => mem::size_of::<RwLock>(),
-            //< The object is an event.
+            x if x == Self::ObjectClassRwLock as u8 => Self::ObjectClassRwLock,
             #[cfg(feature = "event")]
-            x if x == Self::ObjectClassEvent as u8 => mem::size_of::<Event>(),
-            //< The object is a mailbox.
+            x if x == Self::ObjectClassEvent as u8 => Self::ObjectClassEvent,
             #[cfg(feature = "mailbox")]
-            x if x == Self::ObjectClassMailBox as u8 => mem::size_of::<Mailbox>(),
-            //< The object is a message queue.
+            x if x == Self::ObjectClassMailBox as u8 => Self::ObjectClassMailBox,
             #[cfg(feature = "messagequeue")]
-            x if x == Self::ObjectClassMessageQueue as u8 => mem::size_of::<MessageQueue>(),
-            //< The object is a memory heap.
+            x if x == Self::ObjectClassMessageQueue as u8 => Self::ObjectClassMessageQueue,
             #[cfg(feature = "memheap")]
-            x if x == Self::ObjectClassMemHeap as u8 => mem::size_of::<Memheap>(),
-            //< The object is a memory pool.
+            x if x == Self::ObjectClassMemHeap as u8 => Self::ObjectClassMemHeap,
             #[cfg(feature = "mempool")]
-            x if x == Self::ObjectClassMemPool as u8 => mem::size_of::<Mempool>(),
-            //< The object is a device.
-            x if x == Self::ObjectClassDevice as u8 => mem::size_of::<Device>(),
-            //< The object is a timer.
-            x if x == Self::ObjectClassTimer as u8 => mem::size_of::<Timer>(),
-            //< The object is memory.
+            x if x == Self::ObjectClassMemPool as u8 => Self::ObjectClassMemPool,
+            x if x == Self::ObjectClassDevice as u8 => Self::ObjectClassDevice,
+            x if x == Self::ObjectClassTimer as u8 => Self::ObjectClassTimer,
             #[cfg(feature = "heap")]
-            x if x == Self::ObjectClassMemory as u8 => mem::size_of::<Memory>(),
-            _ => unreachable!("not a static kobject type!"),
+            x if x == Self::ObjectClassMemory as u8 => Self::ObjectClassMemory,
+            _ => Self::ObjectClassUnknown,
+        };
+
+        if is_static {
+            unsafe { *(&mut result as *mut Self as *mut u8) |= Self::Static as u8 };
         }
+
+        result
+    }
+
+    pub fn try_from_u8(value: u8) -> Option<Self> {
+        let base_type = value & (Self::Static as u8 ^ 0xFF);
+
+        if base_type < Self::ObjectClassUnknown as u8 && base_type != 0 {
+            Some(Self::from_u8(value))
+        } else {
+            None
+        }
+    }
+
+    fn get_object_size(obj_type: Self) -> usize {
+        match obj_type.without_static() {
+            Self::ObjectClassProcess => mem::size_of::<Kprocess>(),
+            Self::ObjectClassThread => mem::size_of::<Thread>(),
+            #[cfg(feature = "semaphore")]
+            Self::ObjectClassSemaphore => mem::size_of::<Semaphore>(),
+            #[cfg(feature = "mutex")]
+            Self::ObjectClassMutex => mem::size_of::<Mutex>(),
+            #[cfg(feature = "condvar")]
+            Self::ObjectClassCondVar => mem::size_of::<CondVar>(),
+            #[cfg(feature = "rwlock")]
+            Self::ObjectClassRwLock => mem::size_of::<RwLock>(),
+            #[cfg(feature = "event")]
+            Self::ObjectClassEvent => mem::size_of::<Event>(),
+            #[cfg(feature = "mailbox")]
+            Self::ObjectClassMailBox => mem::size_of::<Mailbox>(),
+            #[cfg(feature = "messagequeue")]
+            Self::ObjectClassMessageQueue => mem::size_of::<MessageQueue>(),
+            #[cfg(feature = "memheap")]
+            Self::ObjectClassMemHeap => mem::size_of::<Memheap>(),
+            #[cfg(feature = "mempool")]
+            Self::ObjectClassMemPool => mem::size_of::<Mempool>(),
+            Self::ObjectClassDevice => mem::size_of::<Device>(),
+            Self::ObjectClassTimer => mem::size_of::<Timer>(),
+            #[cfg(feature = "heap")]
+            Self::ObjectClassMemory => mem::size_of::<Memory>(),
+            _ => unreachable!("not a valid kobject type!"),
+        }
+    }
+}
+
+impl From<u8> for ObjectClassType {
+    fn from(value: u8) -> Self {
+        Self::from_u8(value)
+    }
+}
+
+impl From<ObjectClassType> for u8 {
+    fn from(value: ObjectClassType) -> Self {
+        value as u8
     }
 }
 
@@ -259,7 +321,7 @@ impl ObjectClassType {
 macro_rules! impl_kobject {
     ($class:ident $( $fn:tt )*) => {
         impl $crate::object::KernelObject for $class {
-            fn type_name(&self) -> u8{
+            fn type_name(&self) -> ObjectClassType{
                 self.parent.type_name()
             }
             fn name(&self) -> *const i8{
@@ -271,14 +333,14 @@ macro_rules! impl_kobject {
             fn is_static_kobject(&self) -> bool{
                 self.parent.is_static_kobject()
             }
-            fn foreach<F>(callback: F, type_: u8) -> Result<(), i32>
+            fn foreach<F>(callback: F, type_: ObjectClassType) -> Result<(), i32>
             where
                 F: Fn(&bluekernel_infra::list::doubly_linked_list::ListHead),
                 Self: Sized
             {
                 KObjectBase::foreach(callback, type_)
             }
-            fn get_info<FF,F>(callback_forword: FF, callback: F, type_: u8) -> Result<(), i32>
+            fn get_info<FF,F>(callback_forword: FF, callback: F, type_: ObjectClassType) -> Result<(), i32>
             where
                 FF: Fn(),
                 F: Fn(&bluekernel_infra::list::doubly_linked_list::ListHead),

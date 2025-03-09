@@ -39,7 +39,7 @@ impl RwLock {
         crate::debug_not_in_interrupt!();
 
         pin_init!(Self {
-            parent<-KObjectBase::new(ObjectClassType::ObjectClassRwLock as u8, name),
+            parent<-KObjectBase::new(ObjectClassType::ObjectClassRwLock, name),
             mutex<-Mutex::new(name),
             read_cond<-CondVar::new(name, waiting_mode),
             write_cond<-CondVar::new(name, waiting_mode),
@@ -60,21 +60,20 @@ impl RwLock {
     }
     #[inline]
     pub fn init(&mut self, name: *const i8, waiting_mode: WaitMode) {
-        self.parent
-            .init(ObjectClassType::ObjectClassRwLock as u8, name);
+        self.parent.init(ObjectClassType::ObjectClassRwLock, name);
         self.init_internal(name, waiting_mode);
     }
 
     #[inline]
     pub(crate) fn init_dyn(&mut self, name: *const i8, waiting_mode: WaitMode) {
         self.parent
-            .init_dyn(ObjectClassType::ObjectClassRwLock as u8, name);
+            .init_dyn(ObjectClassType::ObjectClassRwLock, name);
         self.init_internal(name, waiting_mode);
     }
 
     #[inline]
     pub fn detach(&mut self) -> Result<(), Error> {
-        assert_eq!(self.type_name(), ObjectClassType::ObjectClassRwLock as u8);
+        assert_eq!(self.type_name(), ObjectClassType::ObjectClassRwLock);
 
         let guard = self.mutex.acquire()?;
 

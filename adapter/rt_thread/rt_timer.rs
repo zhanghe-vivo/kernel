@@ -28,7 +28,7 @@ pub extern "C" fn rt_timer_init(
 pub extern "C" fn rt_timer_detach(timer: *mut Timer) -> i32 {
     assert!(!timer.is_null());
     let timer_ref = unsafe { &mut *timer };
-    assert!(timer_ref.type_name() == ObjectClassType::ObjectClassTimer as u8);
+    assert!(timer_ref.type_name() == ObjectClassType::ObjectClassTimer);
     assert!(timer_ref.is_static_kobject() != false);
     timer_ref.detach();
     code::EOK.to_errno()
@@ -44,7 +44,7 @@ pub extern "C" fn rt_timer_create(
 ) -> *mut Timer {
     assert!(!Some(timeout).is_none());
     assert!(time < u32::MAX);
-    let timer = KObjectBase::new_raw(ObjectClassType::ObjectClassTimer as u8, name) as *mut Timer;
+    let timer = KObjectBase::new_raw(ObjectClassType::ObjectClassTimer, name) as *mut Timer;
     if timer.is_null() {
         return ptr::null_mut();
     }
@@ -59,7 +59,7 @@ pub extern "C" fn rt_timer_create(
 pub extern "C" fn rt_timer_delete(timer: *mut Timer) -> i32 {
     assert!(!timer.is_null());
     let timer_ref = unsafe { &mut *timer };
-    assert!(timer_ref.type_name() == ObjectClassType::ObjectClassTimer as u8);
+    assert!(timer_ref.type_name() == ObjectClassType::ObjectClassTimer);
     assert!(!timer_ref.is_static_kobject());
     timer_ref.delete();
     code::EOK.to_errno()
@@ -69,7 +69,7 @@ pub extern "C" fn rt_timer_delete(timer: *mut Timer) -> i32 {
 pub extern "C" fn rt_timer_start(timer: *mut Timer) -> i32 {
     assert!(!timer.is_null());
     let timer_ref = unsafe { &mut *timer };
-    assert!(timer_ref.type_name() == ObjectClassType::ObjectClassTimer as u8);
+    assert!(timer_ref.type_name() == ObjectClassType::ObjectClassTimer);
     timer_ref.start();
     code::EOK.to_errno()
 }
@@ -78,7 +78,7 @@ pub extern "C" fn rt_timer_start(timer: *mut Timer) -> i32 {
 pub extern "C" fn rt_timer_stop(timer: *mut Timer) -> i32 {
     assert!(!timer.is_null());
     let timer_ref = unsafe { &mut *timer };
-    assert!(timer_ref.type_name() == ObjectClassType::ObjectClassTimer as u8);
+    assert!(timer_ref.type_name() == ObjectClassType::ObjectClassTimer);
     timer_ref.stop();
     code::EOK.to_errno()
 }
@@ -87,7 +87,7 @@ pub extern "C" fn rt_timer_stop(timer: *mut Timer) -> i32 {
 pub extern "C" fn rt_timer_control(timer: *mut Timer, cmd: u8, arg: *mut ffi::c_void) -> i32 {
     assert!(!timer.is_null());
     let timer_ref = unsafe { &mut *timer };
-    assert!(timer_ref.type_name() == ObjectClassType::ObjectClassTimer as u8);
+    assert!(timer_ref.type_name() == ObjectClassType::ObjectClassTimer);
     timer_ref.timer_control(TimerControlAction::from_u8(cmd), arg);
     code::EOK.to_errno()
 }

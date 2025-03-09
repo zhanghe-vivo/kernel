@@ -52,14 +52,13 @@ impl KMailbox {
                     let cur_ref = &mut *slot;
 
                     if let Ok(s) = CString::new(format!("{:p}", slot)) {
-                        cur_ref.parent.init(
-                            ObjectClassType::ObjectClassMailBox as u8,
-                            s.as_ptr() as *const i8,
-                        );
+                        cur_ref
+                            .parent
+                            .init(ObjectClassType::ObjectClassMailBox, s.as_ptr() as *const i8);
                     } else {
                         let default = "default";
                         cur_ref.parent.init(
-                            ObjectClassType::ObjectClassMailBox as u8,
+                            ObjectClassType::ObjectClassMailBox,
                             default.as_ptr() as *const i8,
                         );
                     }
@@ -112,15 +111,14 @@ impl Mailbox {
     #[inline]
     pub fn new(name: [i8; NAME_MAX], size: usize, wait_mode: WaitMode) -> impl PinInit<Self> {
         pin_init!(Self {
-            parent<-KObjectBase::new(ObjectClassType::ObjectClassMailBox as u8, name),
+            parent<-KObjectBase::new(ObjectClassType::ObjectClassMailBox, name),
             inner_queue<-SysQueue::new(mem::size_of::<usize>(), size, IPC_SYS_QUEUE_FIFO, wait_mode),
         })
     }
 
     #[inline]
     pub fn init(&mut self, name: *const i8, buffer: *mut u8, size: usize, wait_mode: WaitMode) {
-        self.parent
-            .init(ObjectClassType::ObjectClassMailBox as u8, name);
+        self.parent.init(ObjectClassType::ObjectClassMailBox, name);
 
         self.inner_queue.init(
             buffer,
@@ -133,7 +131,7 @@ impl Mailbox {
 
     #[inline]
     pub fn detach(&mut self) {
-        assert_eq!(self.type_name(), ObjectClassType::ObjectClassMailBox as u8);
+        assert_eq!(self.type_name(), ObjectClassType::ObjectClassMailBox);
 
         self.inner_queue.lock();
         self.inner_queue.dequeue_waiter.wake_all();
@@ -156,7 +154,7 @@ impl Mailbox {
 
     #[inline]
     pub fn delete_raw(&mut self) {
-        assert_eq!(self.type_name(), ObjectClassType::ObjectClassMailBox as u8);
+        assert_eq!(self.type_name(), ObjectClassType::ObjectClassMailBox);
         assert!(!self.is_static_kobject());
 
         crate::debug_not_in_interrupt!();
@@ -288,7 +286,7 @@ impl Mailbox {
     }
 
     pub fn urgent(&mut self, value: usize) -> Result<(), Error> {
-        assert_eq!(self.type_name(), ObjectClassType::ObjectClassMailBox as u8);
+        assert_eq!(self.type_name(), ObjectClassType::ObjectClassMailBox);
 
         self.inner_queue.lock();
 
@@ -315,7 +313,7 @@ impl Mailbox {
         timeout: i32,
         suspend_flag: SuspendFlag,
     ) -> Result<usize, Error> {
-        assert_eq!(self.type_name(), ObjectClassType::ObjectClassMailBox as u8);
+        assert_eq!(self.type_name(), ObjectClassType::ObjectClassMailBox);
 
         let mut timeout = timeout;
         #[allow(unused_variables)]
@@ -407,7 +405,7 @@ impl Mailbox {
     }
 
     pub fn reset(&mut self) -> Result<(), Error> {
-        assert_eq!(self.type_name(), ObjectClassType::ObjectClassMailBox as u8);
+        assert_eq!(self.type_name(), ObjectClassType::ObjectClassMailBox);
 
         {
             let _ = self.inner_queue.spinlock.acquire();

@@ -1,6 +1,6 @@
 use crate::bluekernel::{
     error::code,
-    object::{KObjectBase, KernelObject},
+    object::{KObjectBase, KernelObject, ObjectClassType},
     process,
 };
 use bluekernel_infra::klibc;
@@ -17,7 +17,7 @@ use core::{ffi, slice};
 /// The length of object list.
 #[no_mangle]
 pub extern "C" fn rt_object_get_length(object_type: u8) -> usize {
-    process::size(object_type)
+    process::get_object_size(ObjectClassType::from(object_type))
 }
 
 /// This function will copy the object pointer of the specified type, with the maximum size specified by maxlen.
@@ -43,7 +43,7 @@ pub unsafe extern "C" fn rt_object_get_pointers(
 
     let object_slice: &mut [*mut KObjectBase] =
         slice::from_raw_parts_mut(pointers as *mut *mut KObjectBase, maxlen);
-    process::get_objects_by_type(object_type as u8, object_slice)
+    process::get_objects_by_type(ObjectClassType::from(object_type), object_slice)
 }
 
 /// This function will initialize an object and add it to object system
@@ -64,10 +64,10 @@ pub extern "C" fn rt_object_init(object: *mut KObjectBase, type_: u8, name: *con
     assert!(!object.is_null());
     let obj_ref = unsafe { &mut *(object as *mut KObjectBase) };
     #[cfg(feature = "debugging_object")]
-    process::object_addr_detect(type_ as u8, obj_ref);
+    process::object_addr_detect(ObjectClassType::from(type_), obj_ref);
     // initialize object's parameters
     // set object type to static
-    obj_ref.init(type_ as u8, name);
+    obj_ref.init(ObjectClassType::from(type_), name);
 }
 
 /// This function will detach a static object from the object system,
@@ -93,7 +93,7 @@ pub extern "C" fn rt_object_detach(object: *mut KObjectBase) {
 #[cfg(feature = "heap")]
 #[no_mangle]
 pub extern "C" fn rt_object_allocate(type_: u8, name: *const ffi::c_char) -> *mut KObjectBase {
-    KObjectBase::new_raw(type_ as u8, name)
+    KObjectBase::new_raw(ObjectClassType::from(type_), name)
 }
 
 /// This function will delete an object and release object memory.
@@ -153,7 +153,7 @@ pub extern "C" fn rt_object_get_type(object: *mut KObjectBase) -> u8 {
     /* object check */
     assert!(!object.is_null());
     let obj = unsafe { &mut *(object as *mut KObjectBase) };
-    obj.type_name()
+    obj.type_name() as u8
 }
 
 /// This function will find specified name object from object
@@ -174,7 +174,7 @@ pub extern "C" fn rt_object_get_type(object: *mut KObjectBase) -> u8 {
 /// This function shall not be invoked in interrupt status.
 #[no_mangle]
 pub extern "C" fn rt_object_find(name: *const ffi::c_char, type_: u8) -> *mut KObjectBase {
-    process::find_object(type_, name) as *mut KObjectBase
+    process::find_object(ObjectClassType::from(type_), name) as *mut KObjectBase
 }
 
 /// This function will return the name of the specified object container
@@ -214,5 +214,5 @@ pub extern "C" fn rt_object_for_each_callback(
     callback_fn: extern "C" fn(*mut KObjectBase, usize, *mut ffi::c_void),
     args: *mut ffi::c_void,
 ) {
-    let _ = process::bindings_foreach(callback_fn, obj_type, args);
+    let _ = process::bindings_foreach(callback_fn, ObjectClassType::from(obj_type), args);
 }

@@ -542,9 +542,9 @@ impl Thread {
         let init = move |slot: *mut Self| {
             let obj = unsafe { &mut *(slot as *mut KObjectBase) };
             if is_static {
-                obj.init(ObjectClassType::ObjectClassThread as u8, name.as_ptr())
+                obj.init(ObjectClassType::ObjectClassThread, name.as_ptr())
             } else {
-                obj.init_internal(ObjectClassType::ObjectClassThread as u8, name.as_ptr())
+                obj.init_internal(ObjectClassType::ObjectClassThread, name.as_ptr())
             }
 
             let cur_ref = unsafe { &mut *(slot as *mut Self) };
@@ -769,7 +769,7 @@ impl Thread {
         debug_assert!(para != ptr::null_mut());
 
         let thread = unsafe { &mut *(para as *mut Thread) };
-        debug_assert!(thread.type_name() == ObjectClassType::ObjectClassThread as u8);
+        debug_assert!(thread.type_name() == ObjectClassType::ObjectClassThread);
 
         let scheduler = Cpu::get_current_scheduler();
         let level = scheduler.sched_lock();

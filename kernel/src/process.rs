@@ -1,6 +1,6 @@
 use crate::{
     cpu::Cpu,
-    object::{KObjectBase, ObjectClassType, NAME_MAX, OBJECT_CLASS_STATIC},
+    object::{KObjectBase, ObjectClassType, NAME_MAX},
     static_init::UnsafeStaticInit,
     sync::RawSpin,
 };
@@ -83,7 +83,7 @@ impl Kprocess {
             let cur_ref = &mut *slot;
             KObjectBase::init(
                 &mut *(slot as *mut KObjectBase),
-                ObjectClassType::ObjectClassProcess as u8,
+                ObjectClassType::ObjectClassProcess,
                 crate::c_str!("kprocess").as_ptr() as *const i8,
             );
             let _ =
@@ -121,65 +121,65 @@ impl Kprocess {
     }
 
     #[inline]
-    fn get_object_list_mut(&self, object_tpye: u8) -> &mut ListHead {
+    fn get_object_list_mut(&self, object_type: ObjectClassType) -> &mut ListHead {
         let process = Kprocess::get_process();
         let _ = process.lock.acquire();
-        match object_tpye & (!OBJECT_CLASS_STATIC) {
-            x if x == ObjectClassType::ObjectClassThread as u8 => &mut process.threads,
+        match object_type.without_static() {
+            ObjectClassType::ObjectClassThread => &mut process.threads,
             #[cfg(feature = "semaphore")]
-            x if x == ObjectClassType::ObjectClassSemaphore as u8 => &mut process.semaphore,
+            ObjectClassType::ObjectClassSemaphore => &mut process.semaphore,
             #[cfg(feature = "mutex")]
-            x if x == ObjectClassType::ObjectClassMutex as u8 => &mut process.mutex,
+            ObjectClassType::ObjectClassMutex => &mut process.mutex,
             #[cfg(feature = "rwlock")]
-            x if x == ObjectClassType::ObjectClassRwLock as u8 => &mut process.rwlock,
+            ObjectClassType::ObjectClassRwLock => &mut process.rwlock,
             #[cfg(feature = "event")]
-            x if x == ObjectClassType::ObjectClassEvent as u8 => &mut process.event,
+            ObjectClassType::ObjectClassEvent => &mut process.event,
             #[cfg(feature = "condvar")]
-            x if x == ObjectClassType::ObjectClassCondVar as u8 => &mut process.condvar,
+            ObjectClassType::ObjectClassCondVar => &mut process.condvar,
             #[cfg(feature = "mailbox")]
-            x if x == ObjectClassType::ObjectClassMailBox as u8 => &mut process.mailbox,
+            ObjectClassType::ObjectClassMailBox => &mut process.mailbox,
             #[cfg(feature = "messagequeue")]
-            x if x == ObjectClassType::ObjectClassMessageQueue as u8 => &mut process.msgqueue,
+            ObjectClassType::ObjectClassMessageQueue => &mut process.msgqueue,
             #[cfg(feature = "memheap")]
-            x if x == ObjectClassType::ObjectClassMemHeap as u8 => &mut process.memheap,
+            ObjectClassType::ObjectClassMemHeap => &mut process.memheap,
             #[cfg(feature = "mempool")]
-            x if x == ObjectClassType::ObjectClassMemPool as u8 => &mut process.mempool,
-            x if x == ObjectClassType::ObjectClassDevice as u8 => &mut process.device,
-            x if x == ObjectClassType::ObjectClassTimer as u8 => &mut process.timer,
+            ObjectClassType::ObjectClassMemPool => &mut process.mempool,
+            ObjectClassType::ObjectClassDevice => &mut process.device,
+            ObjectClassType::ObjectClassTimer => &mut process.timer,
             #[cfg(feature = "heap")]
-            x if x == ObjectClassType::ObjectClassMemory as u8 => &mut process.memory,
+            ObjectClassType::ObjectClassMemory => &mut process.memory,
             _ => unreachable!("not a kernel object type!"),
         }
     }
 
     #[inline]
-    fn get_object_list(&self, object_tpye: u8) -> &ListHead {
+    fn get_object_list(&self, object_type: ObjectClassType) -> &ListHead {
         let process = Kprocess::get_process();
         let _ = process.lock.acquire();
-        match object_tpye & (!OBJECT_CLASS_STATIC) {
-            x if x == ObjectClassType::ObjectClassThread as u8 => &process.threads,
+        match object_type.without_static() {
+            ObjectClassType::ObjectClassThread => &process.threads,
             #[cfg(feature = "semaphore")]
-            x if x == ObjectClassType::ObjectClassSemaphore as u8 => &process.semaphore,
+            ObjectClassType::ObjectClassSemaphore => &process.semaphore,
             #[cfg(feature = "mutex")]
-            x if x == ObjectClassType::ObjectClassMutex as u8 => &process.mutex,
+            ObjectClassType::ObjectClassMutex => &process.mutex,
             #[cfg(feature = "rwlock")]
-            x if x == ObjectClassType::ObjectClassRwLock as u8 => &process.rwlock,
+            ObjectClassType::ObjectClassRwLock => &process.rwlock,
             #[cfg(feature = "event")]
-            x if x == ObjectClassType::ObjectClassEvent as u8 => &process.event,
+            ObjectClassType::ObjectClassEvent => &process.event,
             #[cfg(feature = "condvar")]
-            x if x == ObjectClassType::ObjectClassCondVar as u8 => &process.condvar,
+            ObjectClassType::ObjectClassCondVar => &process.condvar,
             #[cfg(feature = "mailbox")]
-            x if x == ObjectClassType::ObjectClassMailBox as u8 => &process.mailbox,
+            ObjectClassType::ObjectClassMailBox => &process.mailbox,
             #[cfg(feature = "messagequeue")]
-            x if x == ObjectClassType::ObjectClassMessageQueue as u8 => &process.msgqueue,
+            ObjectClassType::ObjectClassMessageQueue => &process.msgqueue,
             #[cfg(feature = "memheap")]
-            x if x == ObjectClassType::ObjectClassMemHeap as u8 => &process.memheap,
+            ObjectClassType::ObjectClassMemHeap => &process.memheap,
             #[cfg(feature = "mempool")]
-            x if x == ObjectClassType::ObjectClassMemPool as u8 => &process.mempool,
-            x if x == ObjectClassType::ObjectClassDevice as u8 => &process.device,
-            x if x == ObjectClassType::ObjectClassTimer as u8 => &process.timer,
+            ObjectClassType::ObjectClassMemPool => &process.mempool,
+            ObjectClassType::ObjectClassDevice => &process.device,
+            ObjectClassType::ObjectClassTimer => &process.timer,
             #[cfg(feature = "heap")]
-            x if x == ObjectClassType::ObjectClassMemory as u8 => &process.memory,
+            ObjectClassType::ObjectClassMemory => &process.memory,
             _ => unreachable!("not a kernel object type!"),
         }
     }
@@ -192,8 +192,8 @@ impl Kprocess {
         process
     }
 
-    fn insert(&mut self, object_tpye: u8, node: &mut ListHead) {
-        let list = self.get_object_list_mut(object_tpye);
+    fn insert(&mut self, object_type: ObjectClassType, node: &mut ListHead) {
+        let list = self.get_object_list_mut(object_type);
         let _ = self.lock.acquire();
 
         unsafe {
@@ -202,8 +202,8 @@ impl Kprocess {
     }
 
     #[cfg(feature = "debugging_object")]
-    fn addr_detect(&mut self, object_tpye: u8, ptr: &mut KObjectBase) {
-        let list = self.get_object_list(object_tpye);
+    fn addr_detect(&mut self, object_type: ObjectClassType, ptr: &mut KObjectBase) {
+        let list = self.get_object_list(object_type);
         let _ = self.lock.acquire();
         crate::doubly_linked_list_for_each!(node, list, {
             let obj = unsafe { crate::list_head_entry!(node.as_ptr(), KObjectBase, list) };
@@ -212,20 +212,20 @@ impl Kprocess {
     }
 }
 
-pub fn insert(object_tpye: u8, node: &mut ListHead) {
+pub fn insert(object_type: ObjectClassType, node: &mut ListHead) {
     let process = Kprocess::get_process();
-    process.insert(object_tpye, node);
+    process.insert(object_type, node);
 }
 
 #[cfg(feature = "debugging_object")]
-pub fn object_addr_detect(object_tpye: u8, ptr: &mut KObjectBase) {
+pub fn object_addr_detect(object_type: ObjectClassType, ptr: &mut KObjectBase) {
     let process = Kprocess::get_process();
-    process.addr_detect(object_tpye, ptr);
+    process.addr_detect(object_type, ptr);
 }
 
 /// TODO: remove this fuction
 /// Find the kernel object by name
-pub fn find_object(object_tpye: u8, name: *const i8) -> *const KObjectBase {
+pub fn find_object(object_type: ObjectClassType, name: *const i8) -> *const KObjectBase {
     if name.is_null() {
         return ptr::null_mut();
     }
@@ -234,7 +234,7 @@ pub fn find_object(object_tpye: u8, name: *const i8) -> *const KObjectBase {
     crate::debug_not_in_interrupt!();
 
     let process = Kprocess::get_process();
-    let list = process.get_object_list(object_tpye);
+    let list = process.get_object_list(object_type);
     let _ = process.lock.acquire();
     /* enter critical */
     Cpu::get_current_scheduler().preempt_disable();
@@ -260,9 +260,12 @@ pub fn find_object(object_tpye: u8, name: *const i8) -> *const KObjectBase {
     ptr::null_mut()
 }
 
-pub fn get_objects_by_type(object_type: u8, objects: &mut [*mut KObjectBase]) -> usize {
-    if object_type > ObjectClassType::ObjectClassUninit as u8
-        && object_type < ObjectClassType::ObjectClassUnknown as u8
+pub fn get_objects_by_type(
+    object_type: ObjectClassType,
+    objects: &mut [*mut KObjectBase],
+) -> usize {
+    if object_type > ObjectClassType::ObjectClassUninit
+        && object_type < ObjectClassType::ObjectClassUnknown
     {
         let mut count: usize = 0;
         let maxlen: usize = objects.len();
@@ -283,7 +286,7 @@ pub fn get_objects_by_type(object_type: u8, objects: &mut [*mut KObjectBase]) ->
     }
 }
 
-pub fn foreach<F>(callback: F, object_type: u8) -> Result<(), i32>
+pub fn foreach<F>(callback: F, object_type: ObjectClassType) -> Result<(), i32>
 where
     F: Fn(&ListHead),
 {
@@ -301,7 +304,7 @@ where
 
 pub fn bindings_foreach(
     callback: extern "C" fn(*mut KObjectBase, usize, *mut core::ffi::c_void),
-    object_type: u8,
+    object_type: ObjectClassType,
     args: *mut ffi::c_void,
 ) -> Result<(), i32> {
     let process = Kprocess::get_process();
@@ -319,7 +322,7 @@ pub fn bindings_foreach(
     Ok(())
 }
 
-pub fn size(object_type: u8) -> usize {
+pub fn get_object_size(object_type: ObjectClassType) -> usize {
     let process = Kprocess::get_process();
     let list = process.get_object_list(object_type);
     let _ = process.lock.acquire();

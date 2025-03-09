@@ -61,7 +61,7 @@ pub extern "C" fn rt_thread_startup(thread: *mut Thread) -> i32 {
     // parameter check
     assert!(!thread.is_null());
     let th_mut = unsafe { &mut *thread };
-    assert!(th_mut.type_name() == ObjectClassType::ObjectClassThread as u8);
+    assert!(th_mut.type_name() == ObjectClassType::ObjectClassThread);
     assert!(th_mut.stat.is_init());
     th_mut.start();
 
@@ -73,7 +73,7 @@ pub extern "C" fn rt_thread_close(thread: *mut Thread) -> i32 {
     // parameter check
     assert!(!thread.is_null());
     let th_mut = unsafe { &mut *thread };
-    assert!(th_mut.type_name() == ObjectClassType::ObjectClassThread as u8);
+    assert!(th_mut.type_name() == ObjectClassType::ObjectClassThread);
     th_mut.close();
 
     return code::EOK.to_errno();
@@ -84,7 +84,7 @@ pub extern "C" fn rt_thread_detach(thread: *mut Thread) -> i32 {
     // parameter check
     assert!(!thread.is_null());
     let th = unsafe { &mut *thread };
-    assert!(th.type_name() == ObjectClassType::ObjectClassThread as u8);
+    assert!(th.type_name() == ObjectClassType::ObjectClassThread);
     th.detach();
     return code::EOK.to_errno();
 }
@@ -123,7 +123,7 @@ pub extern "C" fn rt_thread_create(
 pub extern "C" fn rt_thread_delete(thread: *mut Thread) -> i32 {
     assert!(!thread.is_null());
     let th = unsafe { &mut *thread };
-    assert!(th.type_name() == ObjectClassType::ObjectClassThread as u8);
+    assert!(th.type_name() == ObjectClassType::ObjectClassThread);
     assert!(!th.is_static_kobject());
     th.detach();
     return code::EOK.to_errno();
@@ -165,7 +165,7 @@ pub enum ThreadControlAction {
 pub extern "C" fn rt_thread_control(thread: *mut Thread, cmd: u32, arg: *mut ffi::c_void) -> i32 {
     assert!(!thread.is_null());
     let th = unsafe { &mut *thread };
-    assert!(th.type_name() == ObjectClassType::ObjectClassThread as u8);
+    assert!(th.type_name() == ObjectClassType::ObjectClassThread);
     match cmd {
         val if val == ThreadControlAction::ThreadCtrlChagePriority as u32 => {
             let priority_ptr = NonNull::new(arg as *mut u8);
@@ -204,7 +204,7 @@ pub extern "C" fn rt_thread_control(thread: *mut Thread, cmd: u32, arg: *mut ffi
 
 #[no_mangle]
 pub extern "C" fn rt_thread_find(name: *mut ffi::c_char) -> *mut Thread {
-    return process::find_object(ObjectClassType::ObjectClassThread as u8, name) as *mut Thread;
+    return process::find_object(ObjectClassType::ObjectClassThread, name) as *mut Thread;
 }
 
 #[no_mangle]
@@ -226,7 +226,7 @@ pub extern "C" fn rt_thread_get_name(
 pub extern "C" fn rt_thread_suspend_with_flag(thread: *mut Thread, suspend_flag: u32) -> i32 {
     assert!(!thread.is_null());
     let th = unsafe { &mut *thread };
-    assert!(th.type_name() == ObjectClassType::ObjectClassThread as u8);
+    assert!(th.type_name() == ObjectClassType::ObjectClassThread);
     if th.suspend(SuspendFlag::from_u8(suspend_flag as u8)) {
         return code::EOK.to_errno();
     }
@@ -242,7 +242,7 @@ pub extern "C" fn rt_thread_suspend(thread: *mut Thread) -> i32 {
 pub extern "C" fn rt_thread_resume(thread: *mut Thread) -> i32 {
     assert!(!thread.is_null());
     let th = unsafe { &mut *thread };
-    assert!(th.type_name() == ObjectClassType::ObjectClassThread as u8);
+    assert!(th.type_name() == ObjectClassType::ObjectClassThread);
     if th.resume() {
         code::EOK.to_errno()
     } else {

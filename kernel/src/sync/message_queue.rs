@@ -137,7 +137,7 @@ impl MessageQueue {
     ) -> Result<Pin<Box<Self>>, AllocError> {
         crate::debug_not_in_interrupt!();
         Box::pin_init(pin_init!(Self {
-            parent<-KObjectBase::new(ObjectClassType::ObjectClassMessageQueue as u8, name),
+            parent<-KObjectBase::new(ObjectClassType::ObjectClassMessageQueue, name),
             inner_queue<-SysQueue::new(msg_size as usize, max_msgs as usize, working_mode as u32, waiting_mode),
         }))
     }
@@ -153,7 +153,7 @@ impl MessageQueue {
         waiting_mode: WaitMode,
     ) -> Error {
         self.parent
-            .init(ObjectClassType::ObjectClassMessageQueue as u8, name);
+            .init(ObjectClassType::ObjectClassMessageQueue, name);
 
         if buffer.is_null() || item_size == 0 || buffer_size == 0 {
             return code::EINVAL;
@@ -186,10 +186,7 @@ impl MessageQueue {
 
     #[inline]
     pub fn detach(&mut self) {
-        assert_eq!(
-            self.type_name(),
-            ObjectClassType::ObjectClassMessageQueue as u8
-        );
+        assert_eq!(self.type_name(), ObjectClassType::ObjectClassMessageQueue);
 
         self.inner_queue.lock();
         self.inner_queue.dequeue_waiter.wake_all();
@@ -224,10 +221,7 @@ impl MessageQueue {
 
     #[inline]
     pub fn delete_raw(&mut self) {
-        assert_eq!(
-            self.type_name(),
-            ObjectClassType::ObjectClassMessageQueue as u8
-        );
+        assert_eq!(self.type_name(), ObjectClassType::ObjectClassMessageQueue);
         assert!(!self.is_static_kobject());
 
         crate::debug_not_in_interrupt!();
@@ -251,10 +245,7 @@ impl MessageQueue {
     ) -> Result<(), Error> {
         let mut timeout = timeout;
 
-        assert_eq!(
-            self.type_name(),
-            ObjectClassType::ObjectClassMessageQueue as u8
-        );
+        assert_eq!(self.type_name(), ObjectClassType::ObjectClassMessageQueue);
 
         assert!(size != 0);
 
@@ -380,10 +371,7 @@ impl MessageQueue {
     }
 
     pub fn urgent(&mut self, buffer: *const u8, size: usize) -> i32 {
-        assert_eq!(
-            self.type_name(),
-            ObjectClassType::ObjectClassMessageQueue as u8
-        );
+        assert_eq!(self.type_name(), ObjectClassType::ObjectClassMessageQueue);
         assert!(!buffer.is_null());
         assert!(size != 0);
 
@@ -419,10 +407,7 @@ impl MessageQueue {
     ) -> Result<usize, Error> {
         let mut timeout = timeout;
 
-        assert_eq!(
-            self.type_name(),
-            ObjectClassType::ObjectClassMessageQueue as u8
-        );
+        assert_eq!(self.type_name(), ObjectClassType::ObjectClassMessageQueue);
         assert!(!buffer.is_null());
         assert!(size != 0);
 
@@ -545,10 +530,7 @@ impl MessageQueue {
     }
 
     pub fn reset(&mut self) -> Result<(), Error> {
-        assert_eq!(
-            self.type_name(),
-            ObjectClassType::ObjectClassMessageQueue as u8
-        );
+        assert_eq!(self.type_name(), ObjectClassType::ObjectClassMessageQueue);
 
         let spin_guard = self.inner_queue.spinlock.acquire();
 

@@ -95,7 +95,7 @@ impl Event {
     #[inline]
     pub fn new(name: [i8; NAME_MAX], wait_mode: WaitMode) -> impl PinInit<Self> {
         pin_init!(Self {
-            parent<-KObjectBase::new(ObjectClassType::ObjectClassEvent as u8, name),
+            parent<-KObjectBase::new(ObjectClassType::ObjectClassEvent, name),
             set: 0,
             inner_queue<-SysQueue::new(mem::size_of::<u32>(), 1, IPC_SYS_QUEUE_STUB, wait_mode)
         })
@@ -103,8 +103,7 @@ impl Event {
 
     #[inline]
     pub fn init(&mut self, name: *const i8, wait_mode: WaitMode) {
-        self.parent
-            .init(ObjectClassType::ObjectClassEvent as u8, name);
+        self.parent.init(ObjectClassType::ObjectClassEvent, name);
 
         self.set = 0;
 
@@ -119,7 +118,7 @@ impl Event {
 
     #[inline]
     pub fn detach(&mut self) {
-        assert_eq!(self.type_name(), ObjectClassType::ObjectClassEvent as u8);
+        assert_eq!(self.type_name(), ObjectClassType::ObjectClassEvent);
 
         self.inner_queue.lock();
         self.inner_queue.dequeue_waiter.wake_all();
@@ -141,7 +140,7 @@ impl Event {
 
     #[inline]
     pub fn delete_raw(&mut self) {
-        assert_eq!(self.type_name(), ObjectClassType::ObjectClassEvent as u8);
+        assert_eq!(self.type_name(), ObjectClassType::ObjectClassEvent);
         assert!(!self.is_static_kobject());
 
         crate::debug_not_in_interrupt!();
@@ -154,7 +153,7 @@ impl Event {
     }
 
     pub fn send(&mut self, set: u32) -> Result<(), Error> {
-        assert_eq!(self.type_name(), ObjectClassType::ObjectClassEvent as u8);
+        assert_eq!(self.type_name(), ObjectClassType::ObjectClassEvent);
 
         let mut need_schedule = false;
         let mut need_clear_set = 0u32;
@@ -226,7 +225,7 @@ impl Event {
         timeout: i32,
         suspend_flag: SuspendFlag,
     ) -> Result<u32, Error> {
-        assert_eq!(self.type_name(), ObjectClassType::ObjectClassEvent as u8);
+        assert_eq!(self.type_name(), ObjectClassType::ObjectClassEvent);
 
         crate::debug_scheduler_available!(true);
 
@@ -328,7 +327,7 @@ impl Event {
     }
 
     pub fn reset(&mut self) -> Result<(), Error> {
-        assert_eq!(self.type_name(), ObjectClassType::ObjectClassEvent as u8);
+        assert_eq!(self.type_name(), ObjectClassType::ObjectClassEvent);
 
         // Critical section for event reset
         {
