@@ -35,7 +35,7 @@ macro_rules! init_export {
     ($func: ident, $level: ident) => {
         paste! {
             #[allow(non_upper_case_globals)]
-            static [<"fuc" $func>]: &str = stringify!($func);
+            static [<"fuc" $func>]: &str = concat!(stringify!($func), "\0");
             #[link_section = concat!(".rti_fn.", level_to_string!($level))]
             #[used]
             #[allow(non_upper_case_globals)]
@@ -102,9 +102,9 @@ pub extern "C" fn rt_components_board_init() {
         while desc < &init_desc_rti_board_end {
             let desc_ptr = unsafe { &(*desc) };
             let fn_name = desc_ptr.fn_name;
-            kprintf!(b"initialize %s", fn_name);
+            kprintf!(b"initialize %s\n\0", fn_name);
             let result = (desc_ptr.fn_ptr)();
-            kprintf!(b":%d done\n", result);
+            kprintf!(b":%d done\n\0", result);
             desc = unsafe { desc.add(1) };
         }
     }
@@ -128,9 +128,9 @@ pub fn components_init() {
         while desc < &init_desc_rti_end {
             let desc_ptr = unsafe { &(*desc) };
             let fn_name = desc_ptr.fn_name;
-            kprintf!(b"initialize %s", fn_name);
+            kprintf!(b"initialize %s\n\0", fn_name);
             let result = (desc_ptr.fn_ptr)();
-            kprintf!(b":%d done\n", result);
+            kprintf!(b":%d done\n\0", result);
             desc = unsafe { desc.add(1) };
         }
     }

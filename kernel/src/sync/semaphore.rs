@@ -8,7 +8,13 @@ use crate::{
     thread::SuspendFlag,
     timer::TimerControlAction,
 };
-use core::{ffi::c_void, marker::PhantomPinned, mem, pin::Pin, ptr::null_mut};
+use core::{
+    ffi::{c_void, CStr},
+    marker::PhantomPinned,
+    mem,
+    pin::Pin,
+    ptr::null_mut,
+};
 
 use crate::alloc::{boxed::Box, ffi::CString, format};
 use core::cell::UnsafeCell;
@@ -97,7 +103,7 @@ impl_kobject!(Semaphore);
 
 impl Semaphore {
     #[inline]
-    pub fn new(name: [i8; NAME_MAX], value: u16, waiting_mode: WaitMode) -> impl PinInit<Self> {
+    pub fn new(name: &'static str, value: u16, waiting_mode: WaitMode) -> impl PinInit<Self> {
         let init = move |slot: *mut Self| unsafe {
             let cur_ref = &mut *slot;
             let _ = KObjectBase::new(ObjectClassType::ObjectClassSemaphore, name)
@@ -159,16 +165,18 @@ impl Semaphore {
         }
     }
 
-    #[inline]
     pub fn new_raw(name: *const i8, value: u16, wait_mode: WaitMode) -> *mut Self {
-        let semaphore = Box::pin_init(Semaphore::new(char_ptr_to_array(name), value, wait_mode));
+        let semaphore = Box::pin_init(Semaphore::new(
+            unsafe { CStr::from_ptr(name).to_str().unwrap_or("default") },
+            value,
+            wait_mode,
+        ));
         match semaphore {
             Ok(sem) => unsafe { Box::leak(Pin::into_inner_unchecked(sem)) },
-            Err(_) => return null_mut(),
+            Err(_) => null_mut(),
         }
     }
 
-    #[inline]
     pub fn delete_raw(&mut self) {
         assert_eq!(self.type_name(), ObjectClassType::ObjectClassSemaphore);
         assert!(!self.is_static_kobject());

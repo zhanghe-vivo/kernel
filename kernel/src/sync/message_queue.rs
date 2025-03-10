@@ -14,7 +14,7 @@ use bluekernel_kconfig::ALIGN_SIZE;
 use core::{
     alloc::AllocError,
     cell::UnsafeCell,
-    ffi::{self, c_char, c_void},
+    ffi::{c_char, c_void, CStr},
     marker::PhantomPinned,
     mem,
     mem::MaybeUninit,
@@ -129,7 +129,7 @@ impl_kobject!(MessageQueue);
 
 impl MessageQueue {
     pub fn new(
-        name: [i8; NAME_MAX],
+        name: &str,
         msg_size: u16,
         max_msgs: u16,
         working_mode: u8,
@@ -207,7 +207,7 @@ impl MessageQueue {
         waiting_mode: WaitMode,
     ) -> *mut MessageQueue {
         let message_queue = MessageQueue::new(
-            char_ptr_to_array(name),
+            unsafe { CStr::from_ptr(name).to_str().unwrap_or("default") },
             msg_size as u16,
             max_msgs as u16,
             working_mode,

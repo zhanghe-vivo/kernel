@@ -3,7 +3,7 @@ use crate::{
     cpu::Cpu,
     error::{code, Error},
     impl_kobject,
-    object::{KObjectBase, KernelObject, ObjectClassType, NAME_MAX},
+    object::{KObjectBase, KernelObject, ObjectClassType},
     sync::{ipc_common::IPC_SYS_QUEUE_STUB, lock::mutex::Mutex, wait_list::WaitMode},
     thread::SuspendFlag,
     timer::TimerControlAction,
@@ -31,7 +31,7 @@ impl_kobject!(CondVar);
 
 impl CondVar {
     #[inline]
-    pub(crate) fn new(name: [i8; NAME_MAX], waiting_mode: WaitMode) -> impl PinInit<Self> {
+    pub(crate) fn new(name: &'static str, waiting_mode: WaitMode) -> impl PinInit<Self> {
         crate::debug_not_in_interrupt!();
 
         pin_init!(Self {

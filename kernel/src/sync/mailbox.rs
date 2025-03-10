@@ -12,7 +12,7 @@ use crate::{
 use core::{
     cell::UnsafeCell,
     ffi,
-    ffi::{c_char, c_void},
+    ffi::{c_char, c_void, CStr},
     marker::PhantomPinned,
     mem,
     mem::MaybeUninit,
@@ -109,7 +109,7 @@ impl_kobject!(Mailbox);
 
 impl Mailbox {
     #[inline]
-    pub fn new(name: [i8; NAME_MAX], size: usize, wait_mode: WaitMode) -> impl PinInit<Self> {
+    pub fn new(name: &'static str, size: usize, wait_mode: WaitMode) -> impl PinInit<Self> {
         pin_init!(Self {
             parent<-KObjectBase::new(ObjectClassType::ObjectClassMailBox, name),
             inner_queue<-SysQueue::new(mem::size_of::<usize>(), size, IPC_SYS_QUEUE_FIFO, wait_mode),
@@ -145,10 +145,14 @@ impl Mailbox {
 
     #[inline]
     pub fn new_raw(name: *const i8, size: usize, wait_mode: WaitMode) -> *mut Self {
-        let mailbox = Box::pin_init(Mailbox::new(char_ptr_to_array(name), size, wait_mode));
+        let mailbox = Box::pin_init(Mailbox::new(
+            unsafe { CStr::from_ptr(name).to_str().unwrap_or("default") },
+            size,
+            wait_mode,
+        ));
         match mailbox {
             Ok(mb) => unsafe { Box::leak(Pin::into_inner_unchecked(mb)) },
-            Err(_) => return null_mut(),
+            Err(_) => null_mut(),
         }
     }
 

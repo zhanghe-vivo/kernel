@@ -14,7 +14,7 @@ use crate::{
 use bluekernel_infra::list::doubly_linked_list::LinkedListNode;
 use core::{
     cell::UnsafeCell,
-    ffi,
+    ffi::{c_void, CStr},
     marker::PhantomPinned,
     mem,
     ops::{Deref, DerefMut},
@@ -133,20 +133,15 @@ impl_kobject!(Mutex);
 
 impl Mutex {
     #[inline]
-    pub fn new(name: [i8; NAME_MAX]) -> impl PinInit<Self> {
+    pub fn new(name: &'static str) -> impl PinInit<Self> {
         crate::debug_not_in_interrupt!();
 
         let init = move |slot: *mut Self| unsafe {
             let cur_ref = &mut *slot;
             let _ = KObjectBase::new(ObjectClassType::ObjectClassMutex, name)
                 .__pinned_init(&mut cur_ref.parent as *mut KObjectBase);
-
-            cur_ref.owner = null_mut();
-            cur_ref.priority = 0xFF;
-            cur_ref.ceiling_priority = 0xFF;
             let _ =
                 LinkedListNode::new().__pinned_init(&mut cur_ref.taken_node as *mut LinkedListNode);
-
             let _ = SysQueue::new(
                 mem::size_of::<u32>(),
                 1,
@@ -154,6 +149,9 @@ impl Mutex {
                 WaitMode::Priority,
             )
             .__pinned_init(&mut cur_ref.inner_queue as *mut SysQueue);
+            cur_ref.owner = null_mut();
+            cur_ref.priority = 0xff;
+            cur_ref.ceiling_priority = 0xff;
             Ok(())
         };
         unsafe { pin_init_from_closure(init) }
@@ -216,10 +214,12 @@ impl Mutex {
 
     #[inline]
     pub fn new_raw(name: *const i8) -> *mut Self {
-        let mutex = Box::pin_init(Mutex::new(char_ptr_to_array(name)));
+        let mutex = Box::pin_init(Mutex::new(unsafe {
+            CStr::from_ptr(name).to_str().unwrap_or("default")
+        }));
         match mutex {
             Ok(mtx) => unsafe { Box::leak(Pin::into_inner_unchecked(mtx)) },
-            Err(_) => return null_mut(),
+            Err(_) => null_mut(),
         }
     }
 
@@ -341,7 +341,7 @@ impl Mutex {
                     if timeout > 0 {
                         thread.thread_timer.timer_control(
                             TimerControlAction::SetTime,
-                            (&mut timeout) as *mut i32 as *mut ffi::c_void,
+                            (&mut timeout) as *mut i32 as *mut c_void,
                         );
 
                         thread.thread_timer.start();

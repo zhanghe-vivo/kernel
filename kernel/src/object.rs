@@ -55,9 +55,17 @@ impl KObjectBase {
     }
 
     /// This new function called by rust
-    pub(crate) fn new(type_: ObjectClassType, name: [i8; NAME_MAX]) -> impl PinInit<Self> {
+    pub(crate) fn new(type_: ObjectClassType, name: &str) -> impl PinInit<Self> {
+        let mut name_array = [0i8; NAME_MAX];
+        let bytes = name.as_bytes();
+        let copy_len = core::cmp::min(bytes.len(), NAME_MAX - 1);
+        for i in 0..copy_len {
+            name_array[i] = bytes[i] as i8;
+        }
+        name_array[copy_len] = 0;
+
         pin_init!(Self {
-            name: name,
+            name: name_array,
             type_: type_,
             list <- LinkedListNode::new(),
         })

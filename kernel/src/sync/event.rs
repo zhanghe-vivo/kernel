@@ -7,7 +7,11 @@ use crate::{
     thread::{SuspendFlag, Thread},
     timer::TimerControlAction,
 };
-use core::{ffi::c_void, marker::PhantomPinned, ptr::null_mut};
+use core::{
+    ffi::{c_void, CStr},
+    marker::PhantomPinned,
+    ptr::null_mut,
+};
 
 use crate::alloc::{boxed::Box, ffi::CString, format};
 use core::{cell::UnsafeCell, mem, pin::Pin};
@@ -93,7 +97,7 @@ impl_kobject!(Event);
 
 impl Event {
     #[inline]
-    pub fn new(name: [i8; NAME_MAX], wait_mode: WaitMode) -> impl PinInit<Self> {
+    pub fn new(name: &'static str, wait_mode: WaitMode) -> impl PinInit<Self> {
         pin_init!(Self {
             parent<-KObjectBase::new(ObjectClassType::ObjectClassEvent, name),
             set: 0,
@@ -131,10 +135,13 @@ impl Event {
 
     #[inline]
     pub fn new_raw(name: *const i8, wait_mode: WaitMode) -> *mut Self {
-        let event = Box::pin_init(Event::new(char_ptr_to_array(name), wait_mode));
+        let event = Box::pin_init(Event::new(
+            unsafe { CStr::from_ptr(name).to_str().unwrap_or("default") },
+            wait_mode,
+        ));
         match event {
             Ok(evt) => unsafe { Box::leak(Pin::into_inner_unchecked(evt)) },
-            Err(_) => return null_mut(),
+            Err(_) => null_mut(),
         }
     }
 

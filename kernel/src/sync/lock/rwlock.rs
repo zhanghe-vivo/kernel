@@ -1,7 +1,7 @@
 use crate::{
     error::{code, Error},
     impl_kobject,
-    object::{KObjectBase, KernelObject, ObjectClassType, NAME_MAX},
+    object::{KObjectBase, KernelObject, ObjectClassType},
     sync::{condvar::CondVar, lock::mutex::Mutex, wait_list::WaitMode},
     thread::SuspendFlag,
 };
@@ -35,9 +35,7 @@ impl_kobject!(RwLock);
 
 impl RwLock {
     #[inline]
-    pub(crate) fn new(name: [i8; NAME_MAX], waiting_mode: WaitMode) -> impl PinInit<Self> {
-        crate::debug_not_in_interrupt!();
-
+    pub(crate) fn new(name: &'static str, waiting_mode: WaitMode) -> impl PinInit<Self> {
         pin_init!(Self {
             parent<-KObjectBase::new(ObjectClassType::ObjectClassRwLock, name),
             mutex<-Mutex::new(name),
