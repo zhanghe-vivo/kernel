@@ -1,0 +1,21 @@
+common_crate_rustflags = []
+
+if (bsp == "qemu-mps2-an385") {
+  common_crate_rustflags += [
+    "--cfg",
+    "cortex_m",
+    "--cfg",
+    "armv7m",
+  ]
+} else if (bsp == "qemu-mps3-an547") {
+  common_crate_rustflags += [
+    "--cfg",
+    "cortex_m",
+    "--cfg",
+    "armv8m",
+    "--cfg",
+    "armv8m_main",
+    "--cfg",
+    "has_fpu",
+  ]
+}

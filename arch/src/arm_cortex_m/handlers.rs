@@ -1,7 +1,6 @@
+use crate::arch::{reset_handler_inner, Vector};
 use core::arch::naked_asm;
 use cortex_m::asm;
-use crate::arch::reset_handler_inner;
-use crate::arch::Vector;
 
 #[link_section = ".text.vector_handlers"]
 #[linkage = "weak"]
@@ -196,7 +195,7 @@ pub unsafe extern "C" fn HardFault_Handler() {
             "mrsne   r0, psp",
             // 2. Save context
             "stmdb   r0!, {{r4-r11}}",
-            "mov     r1, #0",          // no tz context supported yet. reserved.
+            "mov     r1, #0", // no tz context supported yet. reserved.
             "mrs     r2, psplim",
             "mov     r3, lr",
             "mrs     r4, control",
@@ -249,8 +248,17 @@ pub unsafe extern "C" fn SecureFault_Handler() {
 #[link_section = ".text.vector_handlers"]
 #[linkage = "weak"]
 #[no_mangle]
+#[naked]
 pub unsafe extern "C" fn SVCall_Handler() {
-    Default_Handler();
+    unsafe {
+        naked_asm!(
+            "tst   lr, #4", // Check mode
+            "ite   eq",
+            "mrseq r0, msp",
+            "mrsne r0, psp",
+            "b     SVCall",
+        )
+    }
 }
 
 #[link_section = ".text.vector_handlers"]

@@ -7,7 +7,7 @@ mod interrupt;
 mod register;
 mod scheduler;
 mod smp;
-mod stack_frame;
+pub mod stack_frame;
 mod startup;
 
 pub use interrupt::{InterruptTable, IrqNumber, Vector};

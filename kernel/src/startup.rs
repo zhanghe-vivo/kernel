@@ -24,7 +24,9 @@ pub extern "C" fn main_thread_entry(_parameter: *mut core::ffi::c_void) {
 
         extern "C" {
             pub fn main() -> i32;
+            pub fn test_bk_scal();
         }
+        test_bk_scal();
         main();
     }
 }

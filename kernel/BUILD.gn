@@ -1,4 +1,6 @@
 import("//build/templates/build_template.gni")
+import("//kernel/common_crate_rustflags.gni")
+
 build_rust("bluekernel") {
   crate_type = "rlib"
   sources = [ "src/lib.rs" ]
@@ -11,6 +13,7 @@ build_rust("bluekernel") {
     "//external/pinned-init/v0.0.8:pinned_init",
     "//external/spin/v0.9.8:spin",
     "//kernel/arch:bluekernel_arch",
+    "//kernel/header:bluekernel_header",
     "//kernel/infra:bluekernel_infra",
     "//kernel/kconfig:bluekernel_kconfig",
   ]
@@ -32,12 +35,20 @@ build_rust("bluekernel") {
     "schedule_with_time_slice",
   ]
 
+  rustflags = []
+  if (direct_syscall_handler) {
+    rustflags += [
+      "--cfg",
+      "direct_syscall_handler",
+    ]
+  }
   if (bsp == "qemu-mps2-an385" || bsp == "qemu-mps3-an547") {
-    rustflags = [
+    rustflags += [
       "--cfg",
       "hardware_schedule",
     ]
   }
+  rustflags += common_crate_rustflags
 }
 
 cbindgen("rust_wrapper") {

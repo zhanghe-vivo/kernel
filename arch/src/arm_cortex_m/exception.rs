@@ -1,6 +1,6 @@
 use crate::arch::{
     register::xpsr,
-    stack_frame::{ExceptionFrame, ExceptionFrameFpu, StackSettings},
+    stack_frame::{ExceptionFrame, ExceptionFrameFpu, StackFrame, StackSettings},
     startup, Arch,
 };
 use core::fmt;
