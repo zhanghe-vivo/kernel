@@ -200,7 +200,7 @@ impl TimerWheel {
     fn next_timeout_tick(&mut self) -> u32 {
         let mut next_timeout_tick = u32::MAX;
         let _guard = self.timer_wheel_lock.acquire();
-        for i in 0..TIMER_WHEEL_SIZE - 1 {
+        for i in 0..TIMER_WHEEL_SIZE {
             if let Some(timer_node) = self.row[i].next() {
                 unsafe {
                     let timer = crate::container_of!(timer_node.as_ptr(), Timer, list_node);
@@ -304,7 +304,7 @@ impl Timer {
         let init_tick = self.init_tick;
         let timeout_tick = Cpu::get_by_id(0).tick_load() + init_tick;
         self.timeout_tick = timeout_tick;
-        let cursor = (time_wheel.cursor + init_tick as usize) & (TIMER_WHEEL_SIZE - 1);
+        let cursor= (timeout_tick as usize) & (TIMER_WHEEL_SIZE - 1);
         let mut timer_node = &mut time_wheel.row[cursor];
         let header_ptr = timer_node as *mut ListHead;
 
@@ -471,21 +471,20 @@ impl Timer {
 
         let timer_wheel = unsafe { &mut *addr_of_mut!(SOFT_TIMER_WHEEL) };
         loop {
-            let mut next_timeout = timer_wheel.next_timeout_tick();
+            let next_timeout = timer_wheel.next_timeout_tick();
             if next_timeout == u32::MAX {
                 if let Some(mut thread) = crate::current_thread!() {
                     unsafe { (thread.as_mut()).suspend(SuspendFlag::Uninterruptible) };
                     Cpu::get_current_scheduler().do_task_schedule();
                 };
             } else {
-                next_timeout = next_timeout.wrapping_sub(Cpu::get_by_id(0).tick_load());
-                if next_timeout < u32::MAX / 2 {
-                    let _ = Thread::sleep(next_timeout);
-                    timer_wheel.cursor =
-                        (timer_wheel.cursor + next_timeout as usize) & (TIMER_WHEEL_SIZE - 1);
+                let wait_time = next_timeout.wrapping_sub(Cpu::get_by_id(0).tick_load());
+                if wait_time < u32::MAX / 2 {
+                    let _ = Thread::sleep(wait_time);
+                    timer_wheel.cursor = (next_timeout as usize) & (TIMER_WHEEL_SIZE - 1);
                 }
+                timer_wheel.timer_check(true);
             }
-            timer_wheel.timer_check(true);
         }
     }
 
