@@ -366,6 +366,12 @@ pub struct Thread {
     #[cfg(feature = "debugging_spinlock")]
     lock_info: LockInfo,
 
+    /// Indicate whether the stack should be free'ed when this thread
+    /// goes to end of life. This usually happens when Thread's user
+    /// doesn't specify stack_start and Thread's ctor allocates a stack
+    /// for the user.
+    should_free_stack: bool,
+
     #[pin]
     pin: PhantomPinned,
 }
@@ -626,6 +632,9 @@ impl Thread {
                     hold_count: 0,
                 };
             }
+
+            cur_ref.should_free_stack = false;
+
             Ok(())
         };
         unsafe { pin_init_from_closure(init) }
@@ -647,12 +656,20 @@ impl Thread {
         let ptr = unsafe { alloc::alloc(layout) };
 
         match NonNull::new(ptr) {
-            Some(_p) => {
-                let thread = Box::pin_init(Thread::dyn_new(
+            Some(_) => {
+                let mut thread = Box::pin_init(Thread::dyn_new(
                     name, entry, parameter, ptr, stack_size, priority, tick,
                 ));
                 match thread {
-                    Ok(_) => return thread,
+                    Ok(ref mut pinned_thread) => {
+                        unsafe {
+                            pinned_thread
+                                .as_mut()
+                                .get_unchecked_mut()
+                                .set_should_free_stack(true)
+                        };
+                        return thread;
+                    }
                     Err(_) => {
                         unsafe { alloc::dealloc(ptr, layout) };
                         return Err(AllocError);
@@ -1133,6 +1150,14 @@ impl Thread {
     #[cfg(feature = "debugging_spinlock")]
     pub(crate) fn clear_wait(&mut self) {
         self.lock_info.wait_lock = None;
+    }
+
+    pub(crate) fn should_free_stack(&self) -> bool {
+        self.should_free_stack
+    }
+
+    pub(crate) fn set_should_free_stack(&mut self, flag: bool) {
+        self.should_free_stack = flag;
     }
 }
 

@@ -96,43 +96,35 @@ impl ZombieManager {
     }
 
     pub(crate) fn reclaim(&self) {
-        loop {
-            // get defunct thread
-            if let Some(thread) = self.zombie_dequeue() {
-                let th = thread.as_ptr();
-                #[cfg(feature = "signals")]
-                unsafe {
-                    rt_bindings::rt_thread_free_sig(th);
-                }
-                // if it's a system object, detach it
-                let object_is_systemobject = unsafe { (*th).is_static_kobject() };
-                if object_is_systemobject {
-                    // detach this object
-                    unsafe { (*th).parent.detach() };
-                }
-
-                // invoke thread cleanup
-                let func = unsafe { (*th).get_cleanup_fn() };
-                func(th);
-
-                // if need free, delete it
-                #[cfg(feature = "heap")]
-                if !object_is_systemobject {
-                    // SAFETY: thread is a dynamic object, delete thread stack and thread object manually.
-                    unsafe {
-                        // free stack
-                        let layout = Layout::from_size_align_unchecked(
-                            (*th).stack().size(),
-                            bluekernel_kconfig::ALIGN_SIZE as usize,
-                        );
-                        dealloc((*th).stack().bottom_ptr() as *mut u8, layout);
-                        // delete thread object
-                        (*th).parent.delete()
-                    };
-                }
-            } else {
-                break;
+        while let Some(thread) = self.zombie_dequeue() {
+            let th = thread.as_ptr();
+            #[cfg(feature = "signals")]
+            unsafe {
+                rt_bindings::rt_thread_free_sig(th);
             }
+
+            let func = unsafe { (*th).get_cleanup_fn() };
+            func(th);
+
+            if unsafe { (*th).should_free_stack() } {
+                unsafe {
+                    let layout = Layout::from_size_align_unchecked(
+                        (*th).stack().size(),
+                        bluekernel_kconfig::ALIGN_SIZE as usize,
+                    );
+                    dealloc((*th).stack().bottom_ptr() as *mut u8, layout);
+                }
+            }
+
+            // If it's a system object, just detach it. Must be noted, object.parent.delete() implies
+            // object.parent.detach().
+            let object_is_systemobject = unsafe { (*th).is_static_kobject() };
+            if object_is_systemobject {
+                unsafe { (*th).parent.detach() };
+                continue;
+            }
+
+            unsafe { (*th).parent.delete() };
         }
     }
 
