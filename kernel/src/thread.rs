@@ -2,8 +2,6 @@
 #[cfg(feature = "smp")]
 use crate::cpu::CPU_DETACHED;
 use crate::{
-    alloc::boxed::Box,
-    bluekernel_kconfig::ALIGN_SIZE,
     clock,
     cpu::{Cpu, CPUS_NUMBER},
     error::{code, Error},
@@ -15,11 +13,9 @@ use crate::{
     timer::{Timer, TimerState},
     zombie,
 };
-use alloc::alloc;
 use bluekernel_arch::arch::Arch;
 use bluekernel_infra::list::doubly_linked_list::{LinkedListNode, ListHead};
 use core::{
-    alloc::{AllocError, Layout},
     cell::{Cell, UnsafeCell},
     ffi,
     marker::PhantomPinned,
@@ -30,7 +26,7 @@ use core::{
 };
 use pinned_init::{
     init, pin_data, pin_init, pin_init_array_from_fn, pin_init_from_closure, pinned_drop, zeroed,
-    InPlaceInit, Init, PinInit,
+    Init, PinInit,
 };
 
 // compatible with C
@@ -648,36 +644,30 @@ impl Thread {
         stack_size: usize,
         priority: u8,
         tick: u32,
-    ) -> Result<Pin<Box<Self>>, AllocError> {
-        assert!(tick != 0);
-        assert!(stack_size != 0);
-        // Need to alloc and drop stack manually.
-        let layout = unsafe { Layout::from_size_align_unchecked(stack_size, ALIGN_SIZE as usize) };
-        let ptr = unsafe { alloc::alloc(layout) };
+    ) -> Option<NonNull<Thread>> {
+        use crate::allocator::{free, malloc};
+        assert!(stack_size > 0, "Stack size should not be zero");
+        assert!(tick > 0, "Tick can't be zero or the thread can't run");
 
-        match NonNull::new(ptr) {
-            Some(_) => {
-                let mut thread = Box::pin_init(Thread::dyn_new(
-                    name, entry, parameter, ptr, stack_size, priority, tick,
-                ));
-                match thread {
-                    Ok(ref mut pinned_thread) => {
-                        unsafe {
-                            pinned_thread
-                                .as_mut()
-                                .get_unchecked_mut()
-                                .set_should_free_stack(true)
-                        };
-                        return thread;
-                    }
-                    Err(_) => {
-                        unsafe { alloc::dealloc(ptr, layout) };
-                        return Err(AllocError);
-                    }
-                }
-            }
-            None => return Err(AllocError),
+        let stack_addr = malloc(stack_size);
+        if stack_addr.is_null() {
+            return None;
         }
+        let heap_ptr = KObjectBase::new_raw(ObjectClassType::ObjectClassThread, name.as_ptr());
+        if heap_ptr.is_null() {
+            unsafe { free(stack_addr) };
+            return None;
+        }
+        let pinned_init = Thread::dyn_new(
+            name, entry, parameter, stack_addr, stack_size, priority, tick,
+        );
+        unsafe {
+            let _ = pinned_init.__pinned_init(heap_ptr as *mut Thread);
+        }
+        // We have checked heap_ptr is not null.
+        let mut new_thread = unsafe { NonNull::new_unchecked(heap_ptr as *mut Thread) };
+        unsafe { new_thread.as_mut().set_should_free_stack(true) };
+        return Some(new_thread);
     }
 
     // Used for hw_context_switch.

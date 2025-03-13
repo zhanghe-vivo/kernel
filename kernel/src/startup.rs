@@ -1,7 +1,6 @@
 use crate::{c_str, components, cpu, idle, thread::Thread, timer};
-use alloc::boxed::Box;
 use bluekernel_kconfig::{MAIN_THREAD_PRIORITY, MAIN_THREAD_STACK_SIZE};
-use core::{pin::Pin, ptr};
+use core::{intrinsics::unlikely, ptr};
 
 #[cfg(not(feature = "heap"))]
 #[no_mangle]
@@ -11,7 +10,7 @@ static mut MAIN_THREAD_STACK: [u8; MAIN_THREAD_STACK_SIZE] = [0; MAIN_THREAD_STA
 #[no_mangle]
 static mut MAIN_THREAD: Thread = Thread {};
 
-///The system main thread. In this thread will call the components_init()
+/// The system main thread. In this thread will call the components_init().
 #[no_mangle]
 pub extern "C" fn main_thread_entry(_parameter: *mut core::ffi::c_void) {
     unsafe {
@@ -31,7 +30,7 @@ pub extern "C" fn main_thread_entry(_parameter: *mut core::ffi::c_void) {
     }
 }
 
-///This function will create and start the main thread
+/// This function will create and start the main thread.
 fn application_init() {
     let tid;
 
@@ -46,13 +45,7 @@ fn application_init() {
             20 as u32,
         );
 
-        tid = match thread {
-            Ok(th) => {
-                // need to free by zombie.
-                unsafe { Box::leak(Pin::into_inner_unchecked(th)) }
-            }
-            Err(_) => ptr::null_mut(),
-        }
+        tid = thread.map_or(ptr::null_mut(), |ptr| ptr.as_ptr());
     }
     #[cfg(not(feature = "heap"))]
     {
@@ -69,6 +62,11 @@ fn application_init() {
         unsafe {
             let _ = init.__pinned_init(tid);
         }
+    }
+
+    if unlikely(tid.is_null()) {
+        // TODO: Log something since rare event happens.
+        return;
     }
     unsafe { (&mut *tid).start() };
 }

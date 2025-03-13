@@ -81,6 +81,7 @@ impl KObjectBase {
         if object.is_null() {
             return ptr::null_mut();
         }
+
         unsafe { klibc::memset(object as *mut c_void, 0x0, object_size) };
 
         let obj_ref = unsafe { &mut *object };

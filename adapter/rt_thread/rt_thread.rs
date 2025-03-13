@@ -1,5 +1,4 @@
 use crate::bluekernel::{
-    alloc::boxed::Box,
     clock,
     cpu::Cpu,
     error::code,
@@ -10,7 +9,6 @@ use crate::bluekernel::{
 use bluekernel_infra::klibc;
 use core::{
     ffi,
-    pin::Pin,
     ptr::{self, NonNull},
 };
 use pinned_init::PinInit;
@@ -109,13 +107,7 @@ pub extern "C" fn rt_thread_create(
         priority,
         tick,
     );
-    match thread {
-        Ok(th) => {
-            // need to free by zombie.
-            unsafe { Box::leak(Pin::into_inner_unchecked(th)) }
-        }
-        Err(_) => return ptr::null_mut(),
-    }
+    thread.map_or(ptr::null_mut(), |ptr| ptr.as_ptr())
 }
 
 #[cfg(feature = "heap")]
