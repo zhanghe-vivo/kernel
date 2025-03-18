@@ -1,4 +1,4 @@
-use bluekernel_arch::arch::Arch;
+use crate::arch::Arch;
 
 #[no_mangle]
 #[inline(always)]

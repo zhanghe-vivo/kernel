@@ -1,22 +1,76 @@
 import("//build/templates/build_template.gni")
 import("//kernel/common_crate_rustflags.gni")
 
-build_rust("bluekernel") {
+build_rust("rustkernel") {
+  crate_type = "bin"
+  sources = [ "src/main.rs" ]
+  edition = "2021"
+  deps = [
+    "//kernel/scal:bluekernel_scal",
+    ":bluekernel2",
+  ]
+
+  inputs = [ "//kernel/kernel/src/bsp/$bsp/link.x" ]
+  rustflags = [
+    "-C", "link-arg=-T" + rebase_path("//kernel/kernel/src/bsp/$bsp/link.x"),
+    "-C", "link-arg=--enable-non-contiguous-regions",
+
+    # use gcc to link
+    "-C", "linker=arm-none-eabi-gcc",
+    "-C", "link-arg=-Wl,--no-wchar-size-warning",
+    "-C", "link-arg=-lgcc",
+    "-C", "link-arg=-Wl,--gc-sections",
+    "-C", "link-arg=-Wl,-Map=rustkernel.map",
+    # use lld to link
+    # # Tell rustc to use the LLVM linker. This avoids needing GCC as a dependency
+    # # to build the kernel.
+    # "-C", "linker=rust-lld",
+    # # Use the LLVM lld executable with the `-flavor gnu` flag.
+    # "-C", "linker-flavor=ld.lld",
+    # Enable link-time-optimization
+    "-C", "lto",
+    # Have rustc generate stack sizes for analyzing the size of stack frames.
+    "-Z", "emit-stack-sizes",
+  ]
+
+  if (bsp == "qemu_mps2_an385") {
+    rustflags += [
+      "-C", "link-arg=-mcpu=cortex-m3",
+      "-C", "link-arg=-mthumb",
+    ]
+  } else if (bsp == "qemu_mps3_an547") {
+    rustflags += [
+      "-C", "link-arg=-march=armv8.1-m.main+mve.fp+fp.dp",
+      "-C", "link-arg=-mcpu=cortex-m55",
+      "-C", "link-arg=-mthumb",
+      "-C", "link-arg=-mfpu=fpv5-d16",
+      "-C", "link-arg=-mfloat-abi=hard",
+    ]
+  }
+
+  rustflags += common_crate_rustflags
+}
+
+build_rust("bluekernel2") {
   crate_type = "rlib"
   sources = [ "src/lib.rs" ]
   edition = "2021"
   deps = [
     "//external/cfg-if/v1.0.0:cfg_if",
     "//external/const-default/v1.0.0:const_default",
+    "//external/cortex-m:cortex_m",
+    "//external/embedded-io/v0.6.1:embedded_io",
     "//external/log/v0.4.22:log",
-    "//external/paste/v1.0.15:paste",
     "//external/pinned-init/v0.0.8:pinned_init",
     "//external/spin/v0.9.8:spin",
+    "//external/thiserror/v2.0.9:thiserror",
+    "//external/tock-registers/v0.9.0:tock_registers",
     "//kernel/arch:bluekernel_arch",
     "//kernel/header:bluekernel_header",
     "//kernel/infra:bluekernel_infra",
     "//kernel/kconfig:bluekernel_kconfig",
   ]
+
   features = [
     "tlsf",
     "overflow_check",
@@ -42,17 +96,87 @@ build_rust("bluekernel") {
       "direct_syscall_handler",
     ]
   }
-  if (bsp == "qemu-mps2-an385" || bsp == "qemu-mps3-an547") {
+  if (bsp == "qemu_mps2_an385" || bsp == "qemu_mps3_an547") {
     rustflags += [
       "--cfg",
       "hardware_schedule",
     ]
   }
+
+  rustflags += [
+    "--cfg",
+    "target_board=\"$bsp\"",
+  ]
+
+  rustflags += common_crate_rustflags
+}
+
+build_rust("bluekernel") {
+  crate_type = "rlib"
+  sources = [ "src/lib.rs" ]
+  edition = "2021"
+  deps = [
+    "//external/cfg-if/v1.0.0:cfg_if",
+    "//external/const-default/v1.0.0:const_default",
+    "//external/cortex-m:cortex_m",
+    "//external/embedded-io/v0.6.1:embedded_io",
+    "//external/log/v0.4.22:log",
+    "//external/pinned-init/v0.0.8:pinned_init",
+    "//external/spin/v0.9.8:spin",
+    "//external/thiserror/v2.0.9:thiserror",
+    "//external/tock-registers/v0.9.0:tock_registers",
+    "//kernel/arch:bluekernel_arch",
+    "//kernel/header:bluekernel_header",
+    "//kernel/infra:bluekernel_infra",
+    "//kernel/kconfig:bluekernel_kconfig",
+    "//kernel/bindings:os_bindings",
+  ]
+
+  features = [
+    "tlsf",
+    "overflow_check",
+    "idle_hook",
+    "heap",
+    "heap_isr",
+    "debugging_init",
+    "event",
+    "messagequeue",
+    "mailbox",
+    "mutex",
+    "semaphore",
+    "rwlock",
+    "condvar",
+    "thread_priority_max",
+    "schedule_with_time_slice",
+    "os_adapter",
+    "enable_uart0",
+    "enable_uart1",
+  ]
+
+  rustflags = []
+  if (direct_syscall_handler) {
+    rustflags += [
+      "--cfg",
+      "direct_syscall_handler",
+    ]
+  }
+  if (bsp == "qemu_mps2_an385" || bsp == "qemu_mps3_an547") {
+    rustflags += [
+      "--cfg",
+      "hardware_schedule",
+    ]
+  }
+
+  rustflags += [
+    "--cfg",
+    "target_board=\"$bsp\"",
+  ]
+
   rustflags += common_crate_rustflags
 }
 
 cbindgen("rust_wrapper") {
-  deps = [ ":bluekernel" ]
+  # deps = [ ":bluekernel" ]
   sources = [ "cbindgen.toml" ]
   args = [
            "--quiet",

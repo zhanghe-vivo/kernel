@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use bluekernel_arch::arch::Arch;
+use crate::arch::Arch;
 use core::{
     cell::{Cell, UnsafeCell},
     ops::{Deref, DerefMut},

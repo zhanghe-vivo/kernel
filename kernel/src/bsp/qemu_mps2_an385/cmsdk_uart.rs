@@ -1,4 +1,4 @@
-use core::hint::spin_loop;
+use core::{fmt, hint::spin_loop};
 use embedded_io::{ErrorKind, ErrorType, Read, ReadReady, Write, WriteReady};
 
 use tock_registers::{
@@ -197,6 +197,15 @@ unsafe impl Sync for Uart {}
 
 impl ErrorType for Uart {
     type Error = Error;
+}
+
+impl fmt::Write for Uart {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        for c in s.as_bytes() {
+            self.write_byte(*c);
+        }
+        Ok(())
+    }
 }
 
 impl Write for Uart {

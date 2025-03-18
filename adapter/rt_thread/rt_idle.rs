@@ -1,4 +1,4 @@
-use crate::bluekernel::{error::code, idle};
+use crate::kernel::{error::code, idle};
 
 #[cfg(feature = "idle_hook")]
 #[no_mangle]

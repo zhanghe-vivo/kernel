@@ -1,4 +1,4 @@
-use crate::{c_str, components, cpu, idle, thread::Thread, timer};
+use crate::{arch::Arch, bsp, c_str, cpu, idle, thread::Thread, timer};
 use bluekernel_kconfig::{MAIN_THREAD_PRIORITY, MAIN_THREAD_STACK_SIZE};
 use core::{intrinsics::unlikely, ptr};
 
@@ -12,22 +12,27 @@ static mut MAIN_THREAD: Thread = Thread {};
 
 /// The system main thread. In this thread will call the components_init().
 #[no_mangle]
-pub extern "C" fn main_thread_entry(_parameter: *mut core::ffi::c_void) {
-    unsafe {
-        let _ = crate::vfs::vfs_api::vfs_init();
-        components::components_init();
-        #[cfg(feature = "smp")]
-        {
-            rt_hw_secondary_cpu_up();
-        }
+pub extern "C" fn main_thread_entry(_parameter: *mut core::ffi::c_void) -> i32 {
+    let _ = crate::vfs::vfs_api::vfs_init();
 
+    #[cfg(feature = "os_adapter")]
+    {
         extern "C" {
-            pub fn main() -> i32;
-            pub fn test_bk_scal();
+            fn adapter_components_init();
         }
-        test_bk_scal();
-        main();
+        unsafe { adapter_components_init() };
     }
+
+    #[cfg(feature = "smp")]
+    {
+        rt_hw_secondary_cpu_up();
+    }
+
+    // The user's main
+    extern "C" {
+        fn main() -> i32;
+    }
+    unsafe { main() }
 }
 
 /// This function will create and start the main thread.
@@ -73,17 +78,11 @@ fn application_init() {
 
 #[no_mangle]
 pub extern "C" fn _startup() -> ! {
-    bluekernel_arch::arch::Arch::disable_interrupts();
+    Arch::disable_interrupts();
     cpu::init_cpus();
     unsafe { timer::TIMER_WHEEL.init_once() };
     idle::IdleTheads::init_once();
-
-    // FIXME: board_init is in bsp, causing dependency issues
-    unsafe extern "C" {
-        unsafe fn board_init();
-    }
-    unsafe { board_init() };
-
+    bsp::init::board_init();
     timer::system_timer_thread_init();
     application_init();
 

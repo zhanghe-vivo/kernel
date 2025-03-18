@@ -6,7 +6,6 @@ members = [
     "adapter",
     "infra",
     "kconfig",
-    "bsp",
 ]
 
 [patch.crates-io]

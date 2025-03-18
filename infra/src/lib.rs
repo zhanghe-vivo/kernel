@@ -6,6 +6,7 @@
 #![feature(pointer_is_aligned_to)]
 #![feature(ptr_as_uninit)]
 #![feature(slice_as_chunks)]
+#![feature(core_intrinsics)]
 
 pub mod klibc;
 pub mod list;

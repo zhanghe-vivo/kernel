@@ -1,4 +1,4 @@
-use crate::bluekernel::{
+use crate::kernel::{
     clock,
     cpu::Cpu,
     error::code,

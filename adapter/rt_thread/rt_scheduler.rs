@@ -1,4 +1,4 @@
-use crate::bluekernel::{cpu::Cpu, error::code};
+use crate::kernel::{cpu::Cpu, error::code};
 
 #[cfg(feature = "smp")]
 #[no_mangle]

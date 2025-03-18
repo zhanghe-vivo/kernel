@@ -1,4 +1,6 @@
-use crate::kprintf;
+use crate::kernel::println;
+#[cfg(feature = "debugging_init")]
+use core::ffi::CStr;
 use paste::paste;
 
 type InitFn = extern "C" fn() -> i32;
@@ -92,19 +94,20 @@ pub extern "C" fn rti_end() -> i32 {
 
 init_export!(rti_end, level6_end);
 
-///Onboard components initialization.
+/// Onboard components initialization.
 /// This funtion will be called to complete the initialization of the on-board peripherals.
-#[no_mangle]
-pub extern "C" fn rt_components_board_init() {
+pub fn rt_components_board_init() {
     #[cfg(feature = "debugging_init")]
     {
         let mut desc: *const InitDesc = &init_desc_rti_board_start;
         while desc < &init_desc_rti_board_end {
             let desc_ptr = unsafe { &(*desc) };
             let fn_name = desc_ptr.fn_name;
-            kprintf!(b"initialize %s\n\0", fn_name);
+            println!("initialize {}", unsafe {
+                CStr::from_ptr(fn_name).to_string_lossy()
+            });
             let result = (desc_ptr.fn_ptr)();
-            kprintf!(b":%d done\n\0", result);
+            println!(":{} done", result);
             desc = unsafe { desc.add(1) };
         }
     }
@@ -121,16 +124,18 @@ pub extern "C" fn rt_components_board_init() {
 }
 
 ///kernel components Initialization.
-pub fn components_init() {
+pub fn rt_components_init() {
     #[cfg(feature = "debugging_init")]
     {
         let mut desc: *const InitDesc = &init_desc_rti_board_end;
         while desc < &init_desc_rti_end {
             let desc_ptr = unsafe { &(*desc) };
             let fn_name = desc_ptr.fn_name;
-            kprintf!(b"initialize %s\n\0", fn_name);
+            println!("initialize {}", unsafe {
+                CStr::from_ptr(fn_name).to_string_lossy()
+            });
             let result = (desc_ptr.fn_ptr)();
-            kprintf!(b":%d done\n\0", result);
+            println!(":{} done", result);
             desc = unsafe { desc.add(1) };
         }
     }

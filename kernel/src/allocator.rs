@@ -254,11 +254,6 @@ pub fn free_align(ptr: *mut u8) {
 /// * `total` - Output parameter containing the total available memory on the heap.
 /// * `used` - Output parameter containing the currently used memory on the heap.
 /// * `max_used` - Output parameter containing the largest amount of memory ever used during execution.
-pub fn memory_info(total: *mut usize, used: *mut usize, max_used: *mut usize) {
-    let (total_size, used_size, maximum) = HEAP.memory_info();
-    unsafe {
-        *total = total_size;
-        *used = used_size;
-        *max_used = maximum;
-    }
+pub fn memory_info() -> (usize, usize, usize) {
+    HEAP.memory_info()
 }

@@ -14,14 +14,14 @@ build_rust("bluekernel_arch") {
     deps = []
   }
   rustflags = []
-  if (bsp == "qemu-mps2-an385") {
+  if (bsp == "qemu_mps2_an385") {
     rustflags += [
       "--cfg",
       "cortex_m",
       "--cfg",
       "armv7m",
     ]
-  } else if (bsp == "qemu-mps3-an547") {
+  } else if (bsp == "qemu_mps3_an547") {
     rustflags += [
       "--cfg",
       "cortex_m",

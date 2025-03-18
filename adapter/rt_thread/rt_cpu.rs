@@ -1,6 +1,6 @@
 #[cfg(feature = "smp")]
-use crate::bluekernel::arch::Arch;
-use crate::bluekernel::cpu::Cpu;
+use crate::arch::Arch;
+use crate::kernel::cpu::Cpu;
 
 #[no_mangle]
 pub unsafe extern "C" fn rt_interrupt_nest_load() -> u32 {

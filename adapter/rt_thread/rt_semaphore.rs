@@ -1,4 +1,4 @@
-use crate::bluekernel::{
+use crate::kernel::{
     error::code,
     sync::{ipc_common::IPC_CMD_RESET, semaphore::Semaphore, wait_list::WaitMode},
     thread::SuspendFlag,

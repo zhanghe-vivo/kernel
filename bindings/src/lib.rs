@@ -3,4 +3,9 @@
 #![allow(non_snake_case)]
 #![allow(dead_code)]
 
+#![no_std]
+
+use core::include;
+use core::env;
+
 include!(env!("BINDGEN_DIR"));

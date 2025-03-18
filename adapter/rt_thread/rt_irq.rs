@@ -1,4 +1,4 @@
-use crate::bluekernel::{cpu::Cpu, irq};
+use crate::kernel::{cpu::Cpu, irq};
 /// This function will be invoked by BSP, when entering interrupt service routine
 ///
 /// Note: Please don't invoke this routine in application

@@ -2,6 +2,7 @@
 #[cfg(feature = "smp")]
 use crate::cpu::CPU_DETACHED;
 use crate::{
+    arch::Arch,
     clock,
     cpu::{Cpu, CPUS_NUMBER},
     error::{code, Error},
@@ -13,7 +14,6 @@ use crate::{
     timer::{Timer, TimerState},
     zombie,
 };
-use bluekernel_arch::arch::Arch;
 use bluekernel_infra::list::doubly_linked_list::{LinkedListNode, ListHead};
 use core::{
     cell::{Cell, UnsafeCell},
@@ -30,7 +30,7 @@ use pinned_init::{
 };
 
 // compatible with C
-pub type ThreadEntryFn = extern "C" fn(*mut ffi::c_void);
+pub type ThreadEntryFn = extern "C" fn(*mut ffi::c_void) -> i32;
 pub type ThreadCleanupFn = extern "C" fn(*mut Thread);
 
 /// Returns the currently running thread.
@@ -655,7 +655,7 @@ impl Thread {
         }
         let heap_ptr = KObjectBase::new_raw(ObjectClassType::ObjectClassThread, name.as_ptr());
         if heap_ptr.is_null() {
-            unsafe { free(stack_addr) };
+            free(stack_addr);
             return None;
         }
         let pinned_init = Thread::dyn_new(

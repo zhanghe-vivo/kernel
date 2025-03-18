@@ -7,8 +7,9 @@
 #![feature(c_size_t)]
 
 pub use bluekernel;
+use bluekernel as kernel;
 pub use bluekernel_arch;
-// use bluekernel as kernel;
+use bluekernel_arch::arch;
 
 #[cfg(rt_thread)]
 pub mod rt_thread;

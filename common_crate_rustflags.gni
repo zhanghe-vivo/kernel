@@ -1,13 +1,13 @@
 common_crate_rustflags = []
 
-if (bsp == "qemu-mps2-an385") {
+if (bsp == "qemu_mps2_an385") {
   common_crate_rustflags += [
     "--cfg",
     "cortex_m",
     "--cfg",
     "armv7m",
   ]
-} else if (bsp == "qemu-mps3-an547") {
+} else if (bsp == "qemu_mps3_an547") {
   common_crate_rustflags += [
     "--cfg",
     "cortex_m",

@@ -9,43 +9,33 @@ pub struct WriteTo<'a> {
 }
 
 #[macro_export]
-macro_rules! kprintf {
-    ($fmt:expr) => (unsafe {
-        use crate::print;
-        print::rt_kprintf($fmt.as_ptr().cast())
-    });
-    ($fmt:expr, $($arg:tt)*) => (unsafe {
-        use crate::print;
-        print::rt_kprintf($fmt.as_ptr().cast(), $($arg)*)
-    });
-}
-
-#[macro_export]
 macro_rules! println {
-    ($fmt:expr) => (kernel::print!(concat!($fmt, "\n")));
-    ($fmt:expr, $($arg:tt)*) => (kernel::print!(concat!($fmt, "\n"), $($arg)*));
-}
-
-#[macro_export]
-macro_rules! print {
-    ($($arg:tt)*) => ({
+    ($fmt:expr) => ({
         use core::fmt::Write;
-        let mut writer = kernel::print::Console {};
-        writer.write_fmt(format_args!($($arg)*)).unwrap();
+        let mut writer = crate::kernel::print::Console {};
+        writer.write_fmt(format_args!(concat!($fmt, "\n"))).unwrap();
+    });
+    ($fmt:expr, $($arg:tt)*) => ({
+        use core::fmt::Write;
+        let mut writer = crate::kernel::print::Console {};
+        writer.write_fmt(format_args!(concat!($fmt, "\n"), $($arg)*)).unwrap();
     });
 }
 
-const CONSOLE_BUF_SIZE: usize = 64;
 impl fmt::Write for Console {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
-        let mut buf = [0; CONSOLE_BUF_SIZE];
-        for chunk in s.as_bytes().chunks(CONSOLE_BUF_SIZE - 1) {
-            buf[..chunk.len()].copy_from_slice(chunk);
-            unsafe {
-                rt_kputs(buf.as_ptr().cast());
-            }
+        #[cfg(not(feature = "os_adapter"))]
+        unsafe {
+            crate::bsp::uart::UART0.write_str(s)
         }
-        Ok(())
+        #[cfg(feature = "os_adapter")]
+        {
+            extern "C" {
+                fn adapter_console_write_str(s: *const core::ffi::c_char, len: usize);
+            }
+            unsafe { adapter_console_write_str(s.as_ptr() as *const core::ffi::c_char, s.len()) };
+            Ok(())
+        }
     }
 }
 
@@ -110,10 +100,4 @@ pub fn format_to_str<'a>(buf: &'a mut [u8], arg: fmt::Arguments) -> Result<&'a s
     let mut w = WriteTo::new(buf);
     fmt::write(&mut w, arg)?;
     w.as_str().ok_or(fmt::Error)
-}
-
-//TODO: remove this
-extern "C" {
-    pub fn rt_kprintf(fmt: *const core::ffi::c_char, ...) -> core::ffi::c_int;
-    pub fn rt_kputs(str_: *const core::ffi::c_char);
 }

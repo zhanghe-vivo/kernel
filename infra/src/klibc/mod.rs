@@ -364,6 +364,12 @@ pub unsafe extern "C" fn strnlen(s: *const c_char, size: c_size_t) -> c_size_t {
     unsafe { NulTerminated::new(s) }.take(size).count()
 }
 
+/// See <https://pubs.opengroup.org/onlinepubs/9799919799/functions/abort.html>.
+#[no_mangle]
+pub unsafe extern "C" fn abort() -> ! {
+    core::intrinsics::abort();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

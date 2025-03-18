@@ -1,0 +1,38 @@
+import("//build/templates/build_template.gni")
+
+# if (adapter == "rt_thread") {
+bindgen("bindings") {
+    deps = [ "//kernel/kernel:rust_wrapper" ]
+    bindgen_flags = [
+        "--use-core",
+        "--ctypes-prefix",
+        "core::ffi",
+    ]
+    sources = [ "include/rt_wrapper.h" ]
+    include_dirs = [
+        "//rt-dev/components/drivers/include",
+        "//kernel/adapter/rt_thread/include",
+        "//rt-dev/include/",
+        "//rt-dev/components/finsh",
+        "//rt-dev/bsp/$bsp",
+    ]
+    inputs = [
+        "//rt-dev/include/rtdef.h",
+        "//rt-dev/components/drivers/include/rtdevice.h",
+        "//rt-dev/include/rtthread.h",
+    ]
+    cflags = [
+        "--target=$llvm_target",
+        "-fshort-enums",
+        "-fsigned-char",
+    ]
+}
+# }
+
+build_rust("os_bindings") {
+    crate_type = "rlib"
+    sources = [ "src/lib.rs" ]
+    deps = [ ":bindings" ]
+    output_file = get_target_outputs(":bindings")
+    rustenv = [ "BINDGEN_DIR=" + rebase_path(output_file[0]) ]
+}

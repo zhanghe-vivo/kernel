@@ -145,7 +145,7 @@ impl IdleTheads {
         }
     }
 
-    extern "C" fn idle_thread_entry(_parameter: *mut ffi::c_void) {
+    extern "C" fn idle_thread_entry(_parameter: *mut ffi::c_void) -> i32 {
         #[cfg(feature = "smp")]
         unsafe {
             if Arch::smp::core_id() != 0u8 {

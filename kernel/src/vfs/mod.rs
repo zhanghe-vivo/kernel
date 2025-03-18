@@ -1,6 +1,6 @@
 //! lib.rs
 pub mod vfs_api;
-mod vfs_devfs;
+// mod vfs_devfs;
 mod vfs_dirent;
 mod vfs_fd;
 mod vfs_log;

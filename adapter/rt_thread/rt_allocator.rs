@@ -1,4 +1,4 @@
-use crate::bluekernel::allocator;
+use crate::kernel::allocator;
 use core::ffi;
 
 #[no_mangle]
@@ -33,7 +33,12 @@ pub unsafe extern "C" fn rt_free_align(ptr: *mut ffi::c_void) {
 
 #[no_mangle]
 pub extern "C" fn rt_memory_info(total: *mut usize, used: *mut usize, max_used: *mut usize) {
-    allocator::memory_info(total, used, max_used);
+    let (t, u, m) = allocator::memory_info();
+    unsafe {
+        *total = t;
+        *used = u;
+        *max_used = m;
+    }
 }
 
 #[no_mangle]

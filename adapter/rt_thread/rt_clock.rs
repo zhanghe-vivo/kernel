@@ -1,4 +1,4 @@
-use crate::bluekernel::{clock, cpu::Cpu};
+use crate::kernel::{clock, cpu::Cpu};
 
 #[doc = "This function will return current tick from operating system startup."]
 #[no_mangle]

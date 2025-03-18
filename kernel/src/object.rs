@@ -362,21 +362,6 @@ macro_rules! impl_kobject {
     };
 }
 
-#[macro_export]
-macro_rules! format_name {
-    ($name:expr,$width:expr) => {{
-        let name_cstr = core::ffi::CStr::from_ptr($name);
-        match name_cstr.to_str() {
-            Ok(name) => {
-                crate::print!("{:<1$}", name, $width);
-            }
-            Err(_) => {
-                crate::println!("Error when converting C string to UTF-8");
-            }
-        }
-    }};
-}
-
 //TODO: add mempool
 pub struct Mempool;
 

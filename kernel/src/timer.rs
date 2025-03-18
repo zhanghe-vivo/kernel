@@ -304,7 +304,7 @@ impl Timer {
         let init_tick = self.init_tick;
         let timeout_tick = Cpu::get_by_id(0).tick_load() + init_tick;
         self.timeout_tick = timeout_tick;
-        let cursor= (timeout_tick as usize) & (TIMER_WHEEL_SIZE - 1);
+        let cursor = (timeout_tick as usize) & (TIMER_WHEEL_SIZE - 1);
         let mut timer_node = &mut time_wheel.row[cursor];
         let header_ptr = timer_node as *mut ListHead;
 
@@ -466,7 +466,7 @@ impl Timer {
     }
 
     /// system timer thread entry
-    extern "C" fn timer_thread_entry(_parameter: *mut c_void) {
+    extern "C" fn timer_thread_entry(_parameter: *mut c_void) -> i32 {
         use crate::thread::SuspendFlag;
 
         let timer_wheel = unsafe { &mut *addr_of_mut!(SOFT_TIMER_WHEEL) };

@@ -20,10 +20,9 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 #![allow(dead_code)]
-use crate::cpu::Cpu;
+use crate::{arch::Arch, cpu::Cpu};
 #[cfg(feature = "debugging_spinlock")]
 use crate::{irq::IrqLock, println, thread::Thread};
-use bluekernel_arch::arch::Arch;
 #[cfg(feature = "smp")]
 use core::sync::atomic::{AtomicUsize, Ordering};
 #[cfg(feature = "debugging_spinlock")]

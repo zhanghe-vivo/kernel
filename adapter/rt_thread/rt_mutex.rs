@@ -1,4 +1,4 @@
-use crate::bluekernel::{error::code, sync::lock::mutex::Mutex, thread::SuspendFlag};
+use crate::kernel::{error::code, sync::lock::mutex::Mutex, thread::SuspendFlag};
 use core::ffi;
 
 #[no_mangle]

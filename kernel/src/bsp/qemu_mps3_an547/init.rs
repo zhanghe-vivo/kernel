@@ -1,8 +1,7 @@
 use super::{sys_config, systick::Systick, uart};
 use crate::{
     arch::Arch,
-    kernel::{allocator, components},
-    rt_bindings,
+    kernel::{allocator, idle::IDLE_HOOK_LIST},
 };
 use core::ptr::addr_of;
 
@@ -26,9 +25,17 @@ pub extern "C" fn board_init() {
     /* initialize hardware interrupt */
     let _ = Systick::init(sys_config::TICK_PER_SECOND);
     uart::uart_init();
-    components::rt_components_board_init();
-    unsafe {
-        rt_bindings::rt_console_set_device(sys_config::CONSOLE_DEVICE_NAME);
-        rt_bindings::rt_thread_idle_sethook(Some(idle_wfi));
+
+    #[cfg(feature = "os_adapter")]
+    {
+        extern "C" {
+            fn adapter_board_init();
+
+        }
+        unsafe { adapter_board_init() };
+        unsafe { os_bindings::rt_console_set_device(sys_config::CONSOLE_DEVICE_NAME) };
     }
+
+    #[cfg(feature = "idle_hook")]
+    IDLE_HOOK_LIST.sethook(idle_wfi as *mut _);
 }

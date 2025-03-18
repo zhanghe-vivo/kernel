@@ -53,8 +53,8 @@ macro_rules! define_syscall_handler {
             }
 
             #[inline]
-            pub unsafe extern "C" fn handle_context(ctx: &Context) -> usize {
-                map_args!(ctx.args, 0 $(, $arg, $argty)*);
+            pub unsafe extern "C" fn handle_context(_ctx: &Context) -> usize {
+                map_args!(_ctx.args, 0 $(, $arg, $argty)*);
                 handle($($arg),*) as usize
             }
         }

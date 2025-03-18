@@ -1,5 +1,4 @@
 use crate::arch::{Vector, InterruptTable};
-use crate::kernel::println;
 
 macro_rules! default_irq_handler {
     ($handler_name:ident) => {
@@ -7,7 +6,7 @@ macro_rules! default_irq_handler {
         #[linkage = "weak"]
         #[no_mangle]
         pub unsafe extern "C" fn $handler_name() {
-            println!("{}", stringify!($handler_name));
+            crate::println!("{}", stringify!($handler_name));
         }
     };
 }
@@ -31,11 +30,11 @@ default_irq_handler!(CPU0_CTI_0_Handler);
 default_irq_handler!(CPU0_CTI_1_Handler);
 default_irq_handler!(System_Timestamp_Counter_Handler);
 #[cfg(feature = "enable_uart0")]
-use crate::qemu_mps3_an547::UARTRX0_Handler;
+use crate::bsp::UARTRX0_Handler;
 #[cfg(not(feature = "enable_uart0"))]
 default_irq_handler!(UARTRX0_Handler);
 #[cfg(feature = "enable_uart1")]
-use crate::qemu_mps3_an547::UARTRX1_Handler;
+use crate::bsp::UARTRX1_Handler;
 #[cfg(not(feature = "enable_uart1"))]
 default_irq_handler!(UARTRX1_Handler);
 default_irq_handler!(UARTTX0_Handler);
