@@ -2,6 +2,7 @@
 #[cfg(feature = "smp")]
 use crate::cpu::CPU_DETACHED;
 use crate::{
+    allocator::malloc,
     arch::Arch,
     clock,
     cpu::{Cpu, CPUS_NUMBER},
@@ -412,11 +413,16 @@ impl<const STACK_SIZE: usize> ThreadWithStack<STACK_SIZE> {
         pin_init!(&this in Self {
             stack <- StackAlignedField::<STACK_SIZE>::new(),
             inner <- unsafe { pin_init_from_closure(move |slot: *mut UnsafeCell<Thread>| {
-                    let stack_addr = this.as_ref().stack.get_buf_ptr();
-                    let init = Thread::static_new(name, entry, parameter, stack_addr, STACK_SIZE, priority, tick);
-                    init.__pinned_init(slot.cast::<Thread>())
-                }
-            )},
+                let stack_addr = this.as_ref().stack.get_buf_ptr();
+                let init = ThreadBuilder::default().stack_start(stack_addr)
+                                        .stack_size(STACK_SIZE)
+                                        .entry_fn(entry)
+                                        .arg(parameter as *mut ffi::c_void)
+                                        .priority(priority)
+                                        .tick(tick)
+                                        .name(name).build_pinned_init();
+                init.__pinned_init(slot.cast::<Thread>())
+            })},
         })
     }
 
@@ -434,7 +440,14 @@ impl<const STACK_SIZE: usize> ThreadWithStack<STACK_SIZE> {
             stack <- StackAlignedField::<STACK_SIZE>::new(),
             inner <- unsafe { pin_init_from_closure(move |slot: *mut UnsafeCell<Thread>| {
                     let stack_addr = this.as_ref().stack.get_buf_ptr();
-                    let init = Thread::new_with_bind(name, entry, parameter, stack_addr, STACK_SIZE, priority, tick, cpu);
+                    let init = ThreadBuilder::default().stack_start(stack_addr)
+                        .stack_size(STACK_SIZE)
+                        .entry_fn(entry)
+                        .args(parameter as *mut ffi::c_void)
+                        .priority(priority)
+                        .tick(tick)
+                        .cpu(cpu)
+                        .name(name).build_pinned_init();
                     init.__pinned_init(slot.cast::<Thread>())
                 }
             )},
@@ -459,217 +472,6 @@ impl<const STACK_SIZE: usize> core::ops::DerefMut for ThreadWithStack<STACK_SIZE
 }
 
 impl Thread {
-    #[inline]
-    pub fn static_new(
-        name: &'static ffi::CStr,
-        entry: ThreadEntryFn,
-        parameter: *mut usize,
-        stack_start: *mut u8,
-        stack_size: usize,
-        priority: u8,
-        tick: u32,
-    ) -> impl PinInit<Self> {
-        Self::new_internal(
-            name,
-            entry,
-            parameter,
-            stack_start,
-            stack_size,
-            priority,
-            tick,
-            CPUS_NUMBER as u8,
-            true,
-        )
-    }
-
-    #[inline]
-    pub fn dyn_new(
-        name: &'static ffi::CStr,
-        entry: ThreadEntryFn,
-        parameter: *mut usize,
-        stack_start: *mut u8,
-        stack_size: usize,
-        priority: u8,
-        tick: u32,
-    ) -> impl PinInit<Self> {
-        Self::new_internal(
-            name,
-            entry,
-            parameter,
-            stack_start,
-            stack_size,
-            priority,
-            tick,
-            CPUS_NUMBER as u8,
-            false,
-        )
-    }
-
-    #[cfg(feature = "smp")]
-    #[inline]
-    pub(crate) fn new_with_bind(
-        name: &'static ffi::CStr,
-        entry: ThreadEntryFn,
-        parameter: *mut usize,
-        stack_start: *mut u8,
-        stack_size: usize,
-        priority: u8,
-        tick: u32,
-        cpu: u8,
-    ) -> impl PinInit<Self> {
-        Self::new_internal(
-            name,
-            entry,
-            parameter,
-            stack_start,
-            stack_size,
-            priority,
-            tick,
-            cpu,
-            true,
-        )
-    }
-
-    fn new_internal(
-        name: &'static ffi::CStr,
-        entry: ThreadEntryFn,
-        parameter: *mut usize,
-        stack_start: *mut u8,
-        stack_size: usize,
-        priority: u8,
-        tick: u32,
-        _cpu: u8,
-        is_static: bool,
-    ) -> impl PinInit<Self> {
-        let init = move |slot: *mut Self| {
-            let obj = unsafe { &mut *(slot as *mut KObjectBase) };
-            if is_static {
-                obj.init(ObjectClassType::ObjectClassThread, name.as_ptr())
-            } else {
-                obj.init_internal(ObjectClassType::ObjectClassThread, name.as_ptr())
-            }
-
-            let cur_ref = unsafe { &mut *(slot as *mut Self) };
-            let _ = unsafe {
-                LinkedListNode::new().__pinned_init(&mut cur_ref.list_node as *mut LinkedListNode)
-            };
-
-            cur_ref.stat.set_base_state(ThreadState::INIT);
-            cur_ref.priority = ThreadPriority::new(priority);
-
-            cur_ref.stack = Stack::new(stack_start, stack_size);
-            let sp = unsafe {
-                Arch::init_task_stack(
-                    stack_start.offset(stack_size as isize) as *mut usize,
-                    stack_start as *mut usize,
-                    mem::transmute(entry),
-                    parameter,
-                    Self::exit as *const usize,
-                ) as *mut usize
-            };
-            cur_ref.stack.set_sp(sp);
-            cur_ref.cleanup = Self::default_cleanup;
-
-            let init = Timer::static_init(
-                name.as_ptr(),
-                Self::handle_timeout,
-                cur_ref as *mut _ as *mut ffi::c_void,
-                0,
-                (TimerState::ONE_SHOT.to_u32() | TimerState::THREAD_TIMER.to_u32()) as u8,
-            );
-            unsafe {
-                let _ = init.__pinned_init(&mut cur_ref.thread_timer as *mut Timer);
-            }
-
-            cur_ref.tid = Self::new_tid();
-            unsafe {
-                (&raw const TIDS as *const UnsafeStaticInit<Tid, TidInit>)
-                    .as_ref()
-                    .unwrap_unchecked()
-                    .id
-                    .lock()[cur_ref.tid as usize]
-                    .set(Some(NonNull::new_unchecked(slot)));
-            }
-
-            cur_ref.spinlock = RawSpin::new();
-            cur_ref.error = code::EOK;
-
-            #[cfg(feature = "schedule_with_time_slice")]
-            {
-                cur_ref.time_slice = TimeSlice {
-                    init: tick,
-                    remaining: tick,
-                };
-            }
-
-            #[cfg(feature = "smp")]
-            {
-                cur_ref.cpu_affinity = CpuAffinity {
-                    bind_cpu: _cpu,
-                    oncpu: CPUS_NUMBER as u8,
-                };
-            }
-
-            #[cfg(feature = "mutex")]
-            unsafe {
-                let _ = MutexInfo::new().__pinned_init(&mut cur_ref.mutex_info as *mut MutexInfo);
-            }
-
-            #[cfg(feature = "event")]
-            {
-                cur_ref.event_info = EventInfo { set: 0, info: 0 };
-            }
-
-            #[cfg(feature = "debugging_spinlock")]
-            {
-                cur_ref.lock_info = LockInfo {
-                    wait_lock: None,
-                    hold_locks: [None; 8],
-                    hold_count: 0,
-                };
-            }
-
-            cur_ref.should_free_stack = false;
-
-            Ok(())
-        };
-        unsafe { pin_init_from_closure(init) }
-    }
-
-    #[cfg(feature = "heap")]
-    pub fn try_new_in_heap(
-        name: &'static ffi::CStr,
-        entry: ThreadEntryFn,
-        parameter: *mut usize,
-        stack_size: usize,
-        priority: u8,
-        tick: u32,
-    ) -> Option<NonNull<Thread>> {
-        use crate::allocator::{free, malloc};
-        assert!(stack_size > 0, "Stack size should not be zero");
-        assert!(tick > 0, "Tick can't be zero or the thread can't run");
-
-        let stack_addr = malloc(stack_size);
-        if stack_addr.is_null() {
-            return None;
-        }
-        let heap_ptr = KObjectBase::new_raw(ObjectClassType::ObjectClassThread, name.as_ptr());
-        if heap_ptr.is_null() {
-            free(stack_addr);
-            return None;
-        }
-        let pinned_init = Thread::dyn_new(
-            name, entry, parameter, stack_addr, stack_size, priority, tick,
-        );
-        unsafe {
-            let _ = pinned_init.__pinned_init(heap_ptr as *mut Thread);
-        }
-        // We have checked heap_ptr is not null.
-        let mut new_thread = unsafe { NonNull::new_unchecked(heap_ptr as *mut Thread) };
-        unsafe { new_thread.as_mut().set_should_free_stack(true) };
-        return Some(new_thread);
-    }
-
     // Used for hw_context_switch.
     #[inline]
     pub(crate) fn sp_ptr(&self) -> *const usize {
@@ -1170,4 +972,234 @@ crate::impl_kobject!(Thread);
 #[no_mangle]
 pub extern "C" fn bindgen_thread(_thread: Thread) {
     0;
+}
+
+pub struct ThreadBuilder {
+    static_allocated: Option<NonNull<Thread>>,
+    name: Option<&'static ffi::CStr>,
+    entry_fn: Option<ThreadEntryFn>,
+    arg: *mut core::ffi::c_void,
+    cleanup_fn: Option<ThreadCleanupFn>,
+    stack_start: Option<NonNull<u8>>,
+    stack_size: usize,
+    priority: u8,
+    tick: u32,
+    cpu: u8,
+}
+
+impl Default for ThreadBuilder {
+    fn default() -> Self {
+        Self {
+            static_allocated: None,
+            name: None,
+            entry_fn: None,
+            arg: core::ptr::null_mut(),
+            cleanup_fn: None,
+            stack_start: None,
+            stack_size: 0,
+            priority: 0,
+            tick: 0,
+            cpu: 0,
+        }
+    }
+}
+
+impl ThreadBuilder {
+    pub fn new() -> Self {
+        ThreadBuilder::default()
+    }
+
+    #[inline(always)]
+    pub fn static_allocated(mut self, static_allocated: NonNull<Thread>) -> Self {
+        self.static_allocated = Some(static_allocated);
+        self
+    }
+
+    #[inline(always)]
+    pub fn name(mut self, name: &'static ffi::CStr) -> Self {
+        self.name = Some(name);
+        self
+    }
+
+    #[inline(always)]
+    pub fn entry_fn(mut self, entry_fn: ThreadEntryFn) -> Self {
+        self.entry_fn = Some(entry_fn);
+        self
+    }
+
+    #[inline(always)]
+    pub fn arg(mut self, arg: *mut ffi::c_void) -> Self {
+        self.arg = arg;
+        self
+    }
+
+    #[inline(always)]
+    pub fn cleanup_fn(mut self, cleanup_fn: ThreadCleanupFn) -> Self {
+        self.cleanup_fn = Some(cleanup_fn);
+        self
+    }
+
+    #[inline(always)]
+    pub fn stack_start(mut self, stack_start: *mut u8) -> Self {
+        assert!(
+            !stack_start.is_null(),
+            "User should have allocated valid stack space"
+        );
+        self.stack_start = NonNull::new(stack_start);
+        self
+    }
+
+    #[inline(always)]
+    pub fn stack_size(mut self, stack_size: usize) -> Self {
+        assert!(stack_size > 0, "Stack size should not be zero");
+        self.stack_size = stack_size;
+        self
+    }
+
+    #[inline(always)]
+    pub fn priority(mut self, priority: u8) -> Self {
+        self.priority = priority;
+        self
+    }
+
+    #[inline(always)]
+    pub fn tick(mut self, tick: u32) -> Self {
+        assert!(
+            tick > 0,
+            "Tick should not be zero or the thread is unable to run"
+        );
+        self.tick = tick;
+        self
+    }
+
+    // Must be noted, if a field implements non-trivial Drop, we must initialize it
+    // via pinned-init. If the field is POD, we can use assignment to initialize it
+    // or use core::ptr::write.
+    fn raw_inplace_init(&mut self, ptr: *mut Thread) -> Result<(), &'static str> {
+        let base_ptr = unsafe { (&mut ((*ptr).parent)) as *mut KObjectBase };
+        let base = unsafe { &mut (*base_ptr) };
+        if self.static_allocated.is_some() {
+            base.init(
+                ObjectClassType::ObjectClassThread,
+                self.name.unwrap().as_ptr(),
+            )
+        } else {
+            base.init_internal(
+                ObjectClassType::ObjectClassThread,
+                self.name.unwrap().as_ptr(),
+            )
+        }
+        let thread = unsafe { &mut (*ptr) };
+        let _ = unsafe { ListHead::new().__pinned_init(&mut thread.list_node as *mut ListHead) };
+        thread.stat.set_base_state(ThreadState::INIT);
+        thread.priority = ThreadPriority::new(self.priority);
+        // If user doesn't specify an existing stack, we'll allocate one.
+        let stack_start = self.stack_start.unwrap_or_else(|| {
+            let stack_start = malloc(self.stack_size);
+            thread.set_should_free_stack(true);
+            unsafe { NonNull::new_unchecked(stack_start) }
+        });
+        thread.stack = Stack::new(stack_start.as_ptr(), self.stack_size);
+        let sp = unsafe {
+            Arch::init_task_stack(
+                stack_start.as_ptr().offset(self.stack_size as isize) as *mut usize,
+                stack_start.as_ptr() as *mut usize,
+                mem::transmute(self.entry_fn.unwrap()),
+                mem::transmute(self.arg),
+                Thread::exit as *const usize,
+            ) as *mut usize
+        };
+        thread.stack.set_sp(sp);
+        thread.cleanup = self.cleanup_fn.take().unwrap_or(Thread::default_cleanup);
+        let init = Timer::static_init(
+            self.name.unwrap().as_ptr(),
+            Thread::handle_timeout,
+            thread as *mut _ as *mut ffi::c_void,
+            0,
+            (TimerState::ONE_SHOT.to_u32() | TimerState::THREAD_TIMER.to_u32()) as u8,
+        );
+        unsafe {
+            let _ = init.__pinned_init(&mut thread.thread_timer as *mut Timer);
+        }
+        thread.tid = Thread::new_tid();
+        unsafe {
+            (&raw const TIDS as *const UnsafeStaticInit<Tid, TidInit>)
+                .as_ref()
+                .unwrap_unchecked()
+                .id
+                .lock()[thread.tid as usize]
+                .set(Some(NonNull::new_unchecked(ptr)));
+        }
+        thread.spinlock = RawSpin::new();
+        thread.error = code::EOK;
+
+        #[cfg(feature = "schedule_with_time_slice")]
+        {
+            thread.time_slice = TimeSlice {
+                init: self.tick,
+                remaining: self.tick,
+            };
+        }
+
+        #[cfg(feature = "smp")]
+        {
+            thread.cpu_affinity = CpuAffinity {
+                bind_cpu: self.cpu,
+                oncpu: CPUS_NUMBER as u8,
+            };
+        }
+
+        #[cfg(feature = "mutex")]
+        unsafe {
+            let _ = MutexInfo::new().__pinned_init(&mut thread.mutex_info as *mut MutexInfo);
+        }
+
+        #[cfg(feature = "event")]
+        {
+            thread.event_info = EventInfo { set: 0, info: 0 };
+        }
+
+        #[cfg(feature = "debugging_spinlock")]
+        {
+            thread.lock_info = LockInfo {
+                wait_lock: None,
+                hold_locks: [None; 8],
+                hold_count: 0,
+            };
+        }
+        Ok(())
+    }
+
+    // PinInit is similar to C++ ctor's member initializer list, not ctor's body.
+    pub fn build_pinned_init(mut self) -> impl PinInit<Thread> {
+        let init = move |slot: *mut Thread| {
+            let _ = self.raw_inplace_init(slot);
+            Ok(())
+        };
+        unsafe { pin_init_from_closure(init) }
+    }
+
+    #[cfg(feature = "heap")]
+    pub fn build_from_heap(self) -> Option<NonNull<Thread>> {
+        let ptr = KObjectBase::new_raw(
+            ObjectClassType::ObjectClassThread,
+            (&self).name.as_ref().unwrap().as_ptr(),
+        );
+        let pinned_init = self.build_pinned_init();
+        unsafe {
+            let _ = pinned_init.__pinned_init(ptr as *mut Thread);
+        }
+        NonNull::new(ptr as *mut Thread)
+    }
+
+    pub fn build_from_static_allocation(self) -> Result<(), &'static str> {
+        let Some(ptr) = self.static_allocated else {
+            return Err("The thread object should be statically allocated");
+        };
+        let pinned_init = self.build_pinned_init();
+        unsafe {
+            let _ = pinned_init.__pinned_init(ptr.as_ptr());
+        }
+        Ok(())
+    }
 }

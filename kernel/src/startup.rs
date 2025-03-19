@@ -1,4 +1,9 @@
-use crate::{arch::Arch, bsp, c_str, cpu, idle, thread::Thread, timer};
+use crate::{
+    arch::Arch,
+    bsp, c_str, cpu, idle,
+    thread::{Thread, ThreadBuilder},
+    timer,
+};
 use bluekernel_kconfig::{MAIN_THREAD_PRIORITY, MAIN_THREAD_STACK_SIZE};
 use core::{intrinsics::unlikely, ptr};
 
@@ -41,32 +46,29 @@ fn application_init() {
 
     #[cfg(feature = "heap")]
     {
-        let thread = Thread::try_new_in_heap(
-            c_str!("main"),
-            main_thread_entry,
-            ptr::null_mut() as *mut usize,
-            MAIN_THREAD_STACK_SIZE as usize,
-            MAIN_THREAD_PRIORITY as u8,
-            20 as u32,
-        );
-
+        let thread = ThreadBuilder::default()
+            .name(c_str!("main"))
+            .entry_fn(main_thread_entry)
+            .arg(ptr::null_mut() as *mut core::ffi::c_void)
+            .stack_size(MAIN_THREAD_STACK_SIZE.try_into().unwrap())
+            .priority(MAIN_THREAD_PRIORITY.try_into().unwrap())
+            .tick(20)
+            .build_from_heap();
         tid = thread.map_or(ptr::null_mut(), |ptr| ptr.as_ptr());
     }
     #[cfg(not(feature = "heap"))]
     {
         tid = &MAIN_THREAD;
-        let init = Thread::static_new(
-            c_str!("main"),
-            core::option::Option::Some(main_thread_entry),
-            ptr::null_mut() as *mut usize,
-            MAIN_THREAD_STACK.as_mut_ptr(),
-            MAIN_THREAD_STACK.len(),
-            MAIN_THREAD_PRIORITY as u8,
-            20 as u32,
-        );
-        unsafe {
-            let _ = init.__pinned_init(tid);
-        }
+        let _ = ThreadBuilder::default()
+            .static_allocated(unsafe { NonNull::new_unchecked(tid) })
+            .name(c_str!("main"))
+            .entry_fn(main_thread_entry)
+            .arg(ptr::null_mut() as *mut core::ffi::c_void)
+            .stack_start(MAIN_THREAD_STACK.as_mut_ptr())
+            .stack_size(MAIN_THREAD_STACK.len())
+            .priority(MAIN_THREAD_PRIORITY.try_into().unwrap())
+            .tick(20)
+            .build_from_static_allocation();
     }
 
     if unlikely(tid.is_null()) {

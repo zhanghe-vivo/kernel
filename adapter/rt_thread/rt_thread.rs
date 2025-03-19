@@ -4,7 +4,7 @@ use crate::kernel::{
     error::code,
     object::{KernelObject, ObjectClassType},
     process,
-    thread::{SuspendFlag, Thread, ThreadCleanupFn, ThreadEntryFn},
+    thread::{SuspendFlag, Thread, ThreadBuilder, ThreadCleanupFn, ThreadEntryFn},
 };
 use bluekernel_infra::klibc;
 use core::{
@@ -24,25 +24,18 @@ pub extern "C" fn rt_thread_init(
     priority: u8,
     tick: u32,
 ) -> i32 {
-    // parameter check
-    assert!(!thread.is_null());
-    assert!(!stack_start.is_null());
-    assert!(tick != 0);
-
+    // FIXME: We should check parameters and return proper error codes accordingly.
     let name_cstr = unsafe { ffi::CStr::from_ptr(name) };
-    let init = Thread::static_new(
-        name_cstr,
-        entry,
-        parameter as *mut usize,
-        stack_start as *mut u8,
-        stack_size as usize,
-        priority,
-        tick,
-    );
-    // no Error
-    unsafe {
-        let _ = init.__pinned_init(thread);
-    }
+    let _ = ThreadBuilder::default()
+        .static_allocated(unsafe { NonNull::new_unchecked(thread) })
+        .name(name_cstr)
+        .entry_fn(entry)
+        .arg(parameter)
+        .stack_start(stack_start as *mut u8)
+        .stack_size(stack_size as usize)
+        .priority(priority)
+        .tick(tick)
+        .build_from_static_allocation();
     return code::EOK.to_errno();
 }
 
@@ -98,15 +91,14 @@ pub extern "C" fn rt_thread_create(
     tick: u32,
 ) -> *mut Thread {
     let name_cstr = unsafe { ffi::CStr::from_ptr(name) };
-
-    let thread = Thread::try_new_in_heap(
-        name_cstr,
-        entry,
-        parameter as *mut usize,
-        stack_size as usize,
-        priority,
-        tick,
-    );
+    let thread = ThreadBuilder::default()
+        .name(name_cstr)
+        .entry_fn(entry)
+        .arg(parameter)
+        .stack_size(stack_size as usize)
+        .priority(priority)
+        .tick(tick)
+        .build_from_heap();
     thread.map_or(ptr::null_mut(), |ptr| ptr.as_ptr())
 }
 
