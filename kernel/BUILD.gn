@@ -55,6 +55,7 @@ build_rust("bluekernel2") {
   crate_type = "rlib"
   sources = [ "src/lib.rs" ]
   edition = "2021"
+  proc_macro_deps = [ "//external/paste/v1.0.15:paste" ]
   deps = [
     "//external/cfg-if/v1.0.0:cfg_if",
     "//external/const-default/v1.0.0:const_default",

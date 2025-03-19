@@ -4,8 +4,6 @@ build_rust("bluekernel_kconfig") {
   sources = [ "src/load_kconfig.rs" ]
   inputs = [ "config/.config" ]
   edition = "2021"
-  deps = [
-    "//external/cargo-kconfig/v0.1.1:cargo_kconfig",
-    "//external/enum-iterator/v1.5.0:enum_iterator",
-  ]
+  proc_macro_deps = [ "//external/cargo-kconfig/v0.1.1:cargo_kconfig" ]
+  deps = [ "//external/enum-iterator/v1.5.0:enum_iterator" ]
 }
