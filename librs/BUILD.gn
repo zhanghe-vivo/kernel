@@ -1,7 +1,7 @@
 import("//build/templates/rust.gni")
 
-build_rust("bluekernel_libc") {
+build_rust("librs") {
   crate_type = "rlib"
-  crate_name = "bluekernel_libc"
+  crate_name = "librs"
   sources = [ "src/lib.rs" ]
 }

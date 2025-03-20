@@ -1,1 +1,0 @@
-# BlueKernel libc
