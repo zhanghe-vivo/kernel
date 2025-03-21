@@ -1,17 +1,25 @@
 import("//build/templates/build_template.gni")
 import("//kernel/common_crate_rustflags.gni")
 
-build_rust("rustkernel") {
+build_rust("kernel_integration_test") {
+  testonly = true
   crate_type = "bin"
-  sources = [ "src/main.rs" ]
+  sources = [ "tests/integration_test.rs" ]
   edition = "2021"
   deps = [
     "//kernel/scal:bluekernel_scal",
-    ":bluekernel2",
+    ":bluekernel_test",
   ]
 
   inputs = [ "//kernel/kernel/src/bsp/$bsp/link.x" ]
   rustflags = [
+    # unstable rust custom test framework
+    "--test",
+    "-Z", "panic-abort-tests",
+    "-C", "panic=abort",
+    "-C", "link-arg=-nostartfiles",
+
+    # custom link script
     "-C", "link-arg=-T" + rebase_path("//kernel/kernel/src/bsp/$bsp/link.x"),
     "-C", "link-arg=--enable-non-contiguous-regions",
 
@@ -20,7 +28,7 @@ build_rust("rustkernel") {
     "-C", "link-arg=-Wl,--no-wchar-size-warning",
     "-C", "link-arg=-lgcc",
     "-C", "link-arg=-Wl,--gc-sections",
-    "-C", "link-arg=-Wl,-Map=rustkernel.map",
+    "-C", "link-arg=-Wl,-Map=core_integration_test.map",
     # use lld to link
     # # Tell rustc to use the LLVM linker. This avoids needing GCC as a dependency
     # # to build the kernel.
@@ -51,7 +59,8 @@ build_rust("rustkernel") {
   rustflags += common_crate_rustflags
 }
 
-build_rust("bluekernel2") {
+build_rust("bluekernel_test") {
+  testonly = true
   crate_type = "rlib"
   sources = [ "src/lib.rs" ]
   edition = "2021"
