@@ -592,8 +592,10 @@ impl Thread {
     }
 
     unsafe extern "C" fn exit() {
+        debug_assert!(Arch::is_interrupts_active());
         let th = crate::current_thread!().unwrap().as_mut();
         th.detach();
+        debug_assert!(Arch::is_interrupts_active());
         panic!("!!! never get here !!!, thread {:?}", th.get_name());
     }
 
