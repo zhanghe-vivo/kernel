@@ -229,3 +229,31 @@ run_qemu_check("run_integration_test") {
   runner = ":integration_test_runner"
   checker = "tests/integration_test.rs"
 }
+
+executable("bluekernel_image") {
+  deps = [
+    "//kernel/adapter:adapter",
+    "//kernel/scal:bluekernel_scal",
+    "//rt-dev:rtt",
+  ]
+
+  inputs = [ "//kernel/kernel/src/bsp/$bsp/link.x" ]
+  ldflags = [
+    "-T",
+    rebase_path("//kernel/kernel/src/bsp/$bsp/link.x"),
+    "-Wl,-cref,-u,Reset_Handler",
+  ]
+}
+
+gen_qemu_runner("bluekernel_image_test") {
+  testonly = true
+  img = ":bluekernel_image"
+  qemu = "$qemu_exe"
+  board = "$bsp"
+}
+
+run_qemu_check("check_bluekernel") {
+  testonly = true
+  runner = ":bluekernel_image_test"
+  checker = "//rt-dev/bsp/$bsp/applications/main.c"
+}
