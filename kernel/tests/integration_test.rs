@@ -1,3 +1,6 @@
+// NEWLINE-TIMEOUT: 15
+// ASSERT-SUCC: Kernel test end.
+// ASSERT-FAIL: Backtrace in Panic.*
 #![no_main]
 #![no_std]
 #![feature(custom_test_frameworks)]
