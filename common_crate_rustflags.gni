@@ -19,3 +19,18 @@ if (bsp == "qemu_mps2_an385") {
     "has_fpu",
   ]
 }
+
+test_image_rustflags = [
+  "-Z",
+  "panic-abort-tests",
+  "-C",
+  "panic=abort",
+  "-C",
+  "link-arg=-nostartfiles",
+  "-C",
+  "link-arg=--enable-non-contiguous-regions",
+  "-C",
+  "link-arg=-Wl,--no-wchar-size-warning",
+  "-C",
+  "link-arg=-lgcc",
+]

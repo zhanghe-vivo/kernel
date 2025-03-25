@@ -48,43 +48,9 @@ build_rust("librs_integration_test_image") {
   inputs = [ "//kernel/kernel/src/bsp/$bsp/link.x" ]
   rustflags = [
     "--test",
-    "-Z",
-    "panic-abort-tests",
-    "-C",
-    "panic=abort",
-    "-C",
-    "link-arg=-nostartfiles",
-    "-C",
-    "link-arg=-T" + rebase_path("//kernel/kernel/src/bsp/$bsp/link.x"),
-    "-C",
-    "link-arg=--enable-non-contiguous-regions",
-    "-C",
-    "link-arg=-Wl,--no-wchar-size-warning",
-    "-C",
-    "link-arg=-lgcc",
+    "-Clink-arg=-T" + rebase_path("//kernel/kernel/src/bsp/$bsp/link.x"),
   ]
-  if (bsp == "qemu_mps2_an385") {
-    rustflags += [
-      "-C",
-      "link-arg=-mcpu=cortex-m3",
-      "-C",
-      "link-arg=-mthumb",
-    ]
-  } else if (bsp == "qemu_mps3_an547") {
-    rustflags += [
-      "-C",
-      "link-arg=-march=armv8.1-m.main+mve.fp+fp.dp",
-      "-C",
-      "link-arg=-mcpu=cortex-m55",
-      "-C",
-      "link-arg=-mthumb",
-      "-C",
-      "link-arg=-mfpu=fpv5-d16",
-      "-C",
-      "link-arg=-mfloat-abi=hard",
-    ]
-  }
-
+  rustflags += test_image_rustflags
   rustflags += common_crate_rustflags
 }
 
@@ -117,43 +83,10 @@ build_rust("librs_unittest_image") {
   inputs = [ "//kernel/kernel/src/bsp/$bsp/link.x" ]
   rustflags = [
     "--test",
-    "-Z",
-    "panic-abort-tests",
-    "-C",
-    "panic=abort",
-    "-C",
-    "link-arg=-nostartfiles",
     "-C",
     "link-arg=-T" + rebase_path("//kernel/kernel/src/bsp/$bsp/link.x"),
-    "-C",
-    "link-arg=--enable-non-contiguous-regions",
-    "-C",
-    "link-arg=-Wl,--no-wchar-size-warning",
-    "-C",
-    "link-arg=-lgcc",
   ]
-  if (bsp == "qemu_mps2_an385") {
-    rustflags += [
-      "-C",
-      "link-arg=-mcpu=cortex-m3",
-      "-C",
-      "link-arg=-mthumb",
-    ]
-  } else if (bsp == "qemu_mps3_an547") {
-    rustflags += [
-      "-C",
-      "link-arg=-march=armv8.1-m.main+mve.fp+fp.dp",
-      "-C",
-      "link-arg=-mcpu=cortex-m55",
-      "-C",
-      "link-arg=-mthumb",
-      "-C",
-      "link-arg=-mfpu=fpv5-d16",
-      "-C",
-      "link-arg=-mfloat-abi=hard",
-    ]
-  }
-
+  rustflags += test_image_rustflags
   rustflags += common_crate_rustflags
 }
 
