@@ -26,7 +26,7 @@ use spin::RwLock;
 pub type PosixRoutineEntry = extern "C" fn(arg: *mut c_void) -> *mut c_void;
 
 #[repr(C)]
-pub struct InnerPthreadAttr {
+struct InnerPthreadAttr {
     pub stack_size: usize,
     padding: [usize; 4],
 }
@@ -450,4 +450,36 @@ pub extern "C" fn pthread_mutex_trylock(mutex: *mut pthread_mutex_t) -> c_int {
 pub extern "C" fn pthread_mutex_destroy(mutex: *mut pthread_mutex_t) -> c_int {
     unsafe { core::ptr::drop_in_place(mutex.cast::<Mutex>()) };
     0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    macro_rules! check_align {
+        ($lhs:ident, $rhs:ident) => {
+            assert_eq!(align_of::<$lhs>(), align_of::<$rhs>())
+        };
+    }
+
+    macro_rules! check_size {
+        ($lhs:ident, $rhs:ident) => {
+            assert_eq!(size_of::<$lhs>(), size_of::<$rhs>())
+        };
+    }
+
+    #[test_case]
+    fn check_type_consistency() {
+        check_align!(pthread_mutex_t, Mutex);
+        check_size!(pthread_mutex_t, Mutex);
+        check_align!(pthread_mutexattr_t, MutexAttr);
+        check_size!(pthread_mutexattr_t, MutexAttr);
+        check_align!(pthread_cond_t, Cond);
+        check_size!(pthread_cond_t, Cond);
+        check_align!(usize, pthread_t);
+        check_size!(usize, pthread_t);
+        check_align!(pthread_attr_t, InnerPthreadAttr);
+        check_size!(pthread_attr_t, InnerPthreadAttr);
+        check_align!(pthread_condattr_t, CondAttr);
+        check_size!(pthread_condattr_t, CondAttr);
+    }
 }

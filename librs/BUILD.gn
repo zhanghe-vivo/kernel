@@ -95,16 +95,94 @@ gen_qemu_runner("librs_integration_test_runner") {
   board = "$bsp"
 }
 
+run_qemu_check("run_librs_integration_test") {
+  testonly = true
+  runner = ":librs_integration_test_runner"
+  checker = "tests/integration_test.rs"
+}
+
+build_rust("librs_unittest_image") {
+  testonly = true
+  crate_type = "bin"
+  sources = [ "src/lib.rs" ]
+  edition = "2021"
+
+  deps = [
+    "//external/spin/v0.9.8:spin",
+    "//kernel/header:bluekernel_header",
+    "//kernel/kernel:bluekernel_test",
+    "//kernel/scal:bluekernel_scal_test",
+    "//libc:libc",
+  ]
+  inputs = [ "//kernel/kernel/src/bsp/$bsp/link.x" ]
+  rustflags = [
+    "--test",
+    "-Z",
+    "panic-abort-tests",
+    "-C",
+    "panic=abort",
+    "-C",
+    "link-arg=-nostartfiles",
+    "-C",
+    "link-arg=-T" + rebase_path("//kernel/kernel/src/bsp/$bsp/link.x"),
+    "-C",
+    "link-arg=--enable-non-contiguous-regions",
+    "-C",
+    "link-arg=-Wl,--no-wchar-size-warning",
+    "-C",
+    "link-arg=-lgcc",
+  ]
+  if (bsp == "qemu_mps2_an385") {
+    rustflags += [
+      "-C",
+      "link-arg=-mcpu=cortex-m3",
+      "-C",
+      "link-arg=-mthumb",
+    ]
+  } else if (bsp == "qemu_mps3_an547") {
+    rustflags += [
+      "-C",
+      "link-arg=-march=armv8.1-m.main+mve.fp+fp.dp",
+      "-C",
+      "link-arg=-mcpu=cortex-m55",
+      "-C",
+      "link-arg=-mthumb",
+      "-C",
+      "link-arg=-mfpu=fpv5-d16",
+      "-C",
+      "link-arg=-mfloat-abi=hard",
+    ]
+  }
+
+  rustflags += common_crate_rustflags
+}
+
+gen_qemu_runner("librs_unittest_runner") {
+  testonly = true
+  img = ":librs_unittest_image"
+  qemu = "$qemu_exe"
+  board = "$bsp"
+}
+
+run_qemu_check("run_librs_unittest") {
+  testonly = true
+  runner = ":librs_unittest_runner"
+  checker = "src/lib.rs"
+}
+
 if (direct_syscall_handler) {
-  run_qemu_check("check_librs") {
+  group("check_librs") {
     testonly = true
-    runner = ":librs_integration_test_runner"
-    checker = "tests/integration_test.rs"
+    deps = [
+      ":run_librs_integration_test",
+      ":run_librs_unittest",
+    ]
   }
 } else {
   # FIXME: When in SWI mode, we have trouble handling ExitThread syscall.
   # ExitThread's handler never returns and is in SVC context, current kernel
   # fails to switch to another thread due to lower priority of PendSV
   group("check_librs") {
+    testonly = true
   }
 }

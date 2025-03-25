@@ -1,4 +1,12 @@
+// NEWLINE-TIMEOUT: 10
+// ASSERT-SUCC: Librs unittest ended
+// ASSERT-FAIL: Backtrace in Panic.*
+
 #![cfg_attr(not(feature = "std"), no_std)]
+#![cfg_attr(test, feature(custom_test_frameworks))]
+#![cfg_attr(test, test_runner(librs_test_runner))]
+#![cfg_attr(test, reexport_test_harness_main = "librs_test_main")]
+#![cfg_attr(test, no_main)]
 #![allow(internal_features)]
 #![feature(c_size_t)]
 #![feature(slice_internals)]
@@ -45,4 +53,41 @@ pub unsafe extern "C" fn _Unwind_Backtrace(
 #[linkage = "weak"]
 pub unsafe extern "C" fn _Unwind_GetIP(_context: *mut core::ffi::c_void) -> core::ffi::c_int {
     todo!()
+}
+
+#[cfg(test)]
+use bluekernel::println;
+
+#[cfg(test)]
+pub fn librs_test_runner(tests: &[&dyn Fn()]) {
+    println!("Librs unittest started");
+    println!("Running {} tests", tests.len());
+    for test in tests {
+        test();
+    }
+    println!("Librs unittest ended");
+}
+
+#[cfg(test)]
+extern "C" fn posix_main(_: *mut core::ffi::c_void) -> *mut core::ffi::c_void {
+    librs_test_main();
+    core::ptr::null_mut()
+}
+
+#[cfg(test)]
+#[no_mangle]
+fn main() -> i32 {
+    use libc::pthread_t;
+    use pthread::{pthread_create, pthread_join};
+    // We must enter POSIX subsystem first to perform pthread testing.
+    let mut t: pthread_t = 0;
+    let rc = pthread_create(
+        &mut t as *mut pthread_t,
+        core::ptr::null(),
+        posix_main,
+        core::ptr::null_mut(),
+    );
+    assert_eq!(rc, 0);
+    pthread_join(t, core::ptr::null_mut());
+    0
 }

@@ -1,5 +1,5 @@
 // NEWLINE-TIMEOUT: 10
-// ASSERT-SUCC: Librs test end
+// ASSERT-SUCC: Librs integration test ended
 // ASSERT-FAIL: Backtrace in Panic.*
 #![no_main]
 #![no_std]
@@ -18,12 +18,12 @@ mod pthread;
 mod scal;
 
 pub fn librs_test_runner(tests: &[&dyn Fn()]) {
-    println!("Librs test start...");
+    println!("Librs integration test started");
     println!("Running {} tests", tests.len());
     for test in tests {
         test();
     }
-    println!("Librs test end.");
+    println!("Librs integration test ended");
 }
 
 extern "C" fn posix_main(_: *mut c_void) -> *mut c_void {

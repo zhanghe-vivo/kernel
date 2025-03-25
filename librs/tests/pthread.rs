@@ -21,50 +21,10 @@ use librs::{
     },
 };
 
-macro_rules! check_align {
-    ($lhs:ident, $rhs:ident) => {
-        assert_eq!(align_of::<$lhs>(), align_of::<$rhs>())
-    };
-}
-
-macro_rules! check_size {
-    ($lhs:ident, $rhs:ident) => {
-        assert_eq!(size_of::<$lhs>(), size_of::<$rhs>())
-    };
-}
-
-#[test_case]
-fn check_type_consistency() {
-    check_align!(pthread_mutex_t, Mutex);
-    check_size!(pthread_mutex_t, Mutex);
-    check_align!(pthread_mutexattr_t, MutexAttr);
-    check_size!(pthread_mutexattr_t, MutexAttr);
-    check_align!(pthread_cond_t, Cond);
-    check_size!(pthread_cond_t, Cond);
-    check_align!(usize, pthread_t);
-    check_size!(usize, pthread_t);
-    check_align!(pthread_attr_t, InnerPthreadAttr);
-    check_size!(pthread_attr_t, InnerPthreadAttr);
-    check_align!(pthread_condattr_t, CondAttr);
-    check_size!(pthread_condattr_t, CondAttr);
-}
-
 extern "C" fn mutex_lock_unlock(arg: *mut c_void) -> *mut c_void {
     let mutex = arg.cast::<pthread_mutex_t>();
     assert_eq!(pthread_mutex_lock(mutex), 0);
     assert_eq!(pthread_mutex_unlock(mutex), 0);
-    core::ptr::null_mut()
-}
-
-struct Waiter(*mut pthread_cond_t, *mut pthread_mutex_t, bool);
-
-extern "C" fn cond_wait(arg: *mut c_void) -> *mut c_void {
-    let waiter = unsafe { &*arg.cast::<Waiter>() };
-    assert_eq!(pthread_mutex_lock(waiter.1), 0);
-    while !waiter.2 {
-        assert_eq!(pthread_cond_wait(waiter.0, waiter.1), 0);
-    }
-    assert_eq!(pthread_mutex_unlock(waiter.1), 0);
     core::ptr::null_mut()
 }
 
@@ -98,6 +58,18 @@ fn test_multi_thread_mutex() {
     for t in threads {
         pthread_join(t, core::ptr::null_mut());
     }
+}
+
+struct Waiter(*mut pthread_cond_t, *mut pthread_mutex_t, bool);
+
+extern "C" fn cond_wait(arg: *mut c_void) -> *mut c_void {
+    let waiter = unsafe { &*arg.cast::<Waiter>() };
+    assert_eq!(pthread_mutex_lock(waiter.1), 0);
+    while !waiter.2 {
+        assert_eq!(pthread_cond_wait(waiter.0, waiter.1), 0);
+    }
+    assert_eq!(pthread_mutex_unlock(waiter.1), 0);
+    core::ptr::null_mut()
 }
 
 #[test_case]
@@ -162,7 +134,7 @@ fn test_complex_thread_local() {
     }
 }
 
-extern "C" fn print_my_id(arg: *mut c_void) -> *mut c_void {
+extern "C" fn increase_counter(arg: *mut c_void) -> *mut c_void {
     assert_eq!(THREAD_LOCAL_CHECK.get(), 42);
     let counter: *mut AtomicUsize = unsafe { transmute(arg) };
     THREAD_LOCAL_CHECK.set(unsafe { &*counter }.fetch_add(1, Ordering::Release) + 1);
@@ -181,7 +153,7 @@ fn test_pthread_create_and_join() {
         let rc = pthread_create(
             &mut t as *mut pthread_t,
             core::ptr::null(),
-            print_my_id,
+            increase_counter,
             arg,
         );
         assert_eq!(rc, 0);
@@ -209,7 +181,7 @@ fn test_pthread_create_and_detach() {
         let rc = pthread_create(
             &mut t as *mut pthread_t,
             core::ptr::null(),
-            print_my_id,
+            increase_counter,
             arg,
         );
         assert_eq!(rc, 0);
