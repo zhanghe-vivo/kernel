@@ -12,12 +12,12 @@ pub struct WriteTo<'a> {
 macro_rules! println {
     ($fmt:expr) => ({
         use core::fmt::Write;
-        let mut writer = crate::kernel::print::Console {};
+        let mut writer = $crate::print::Console {};
         writer.write_fmt(format_args!(concat!($fmt, "\n"))).unwrap();
     });
     ($fmt:expr, $($arg:tt)*) => ({
         use core::fmt::Write;
-        let mut writer = crate::kernel::print::Console {};
+        let mut writer = $crate::print::Console {};
         writer.write_fmt(format_args!(concat!($fmt, "\n"), $($arg)*)).unwrap();
     });
 }

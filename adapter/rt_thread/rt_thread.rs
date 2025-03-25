@@ -11,7 +11,6 @@ use core::{
     ffi,
     ptr::{self, NonNull},
 };
-use pinned_init::PinInit;
 
 #[no_mangle]
 pub extern "C" fn rt_thread_init(

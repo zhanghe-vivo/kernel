@@ -1,9 +1,4 @@
-use crate::{
-    arch::Arch,
-    bsp, c_str, cpu, idle,
-    thread::{Thread, ThreadBuilder},
-    timer,
-};
+use crate::{arch::Arch, bsp, c_str, cpu, idle, thread::ThreadBuilder, timer};
 use bluekernel_kconfig::{MAIN_THREAD_PRIORITY, MAIN_THREAD_STACK_SIZE};
 use core::{intrinsics::unlikely, ptr};
 

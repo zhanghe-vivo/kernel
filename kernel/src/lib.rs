@@ -12,7 +12,6 @@
 #![feature(macro_metavar_expr)]
 
 pub extern crate alloc;
-extern crate self as kernel;
 pub use bluekernel_arch::arch;
 pub use bluekernel_kconfig;
 #[cfg(feature = "os_adapter")]

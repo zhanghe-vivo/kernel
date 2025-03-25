@@ -5,7 +5,7 @@ use crate::{
     allocator::malloc,
     arch::Arch,
     clock,
-    cpu::{Cpu, CPUS_NUMBER},
+    cpu::Cpu,
     error::{code, Error},
     object::{KObjectBase, KernelObject, ObjectClassType},
     println,

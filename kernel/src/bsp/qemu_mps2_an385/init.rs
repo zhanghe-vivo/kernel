@@ -1,8 +1,5 @@
 use super::{sys_config, systick::Systick, uart};
-use crate::{
-    arch::Arch,
-    kernel::{allocator, idle::IDLE_HOOK_LIST},
-};
+use crate::{allocator, arch::Arch, idle::IDLE_HOOK_LIST};
 use core::ptr::addr_of;
 
 extern "C" {

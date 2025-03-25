@@ -7,8 +7,7 @@
 #![test_runner(kernel_test_runner)]
 #![reexport_test_harness_main = "kernel_test_main"]
 
-use bluekernel_test as kernel;
-use kernel::{allocator, println, thread::Thread};
+use bluekernel::{allocator, println, thread::Thread};
 
 /// Unstable rust custom test framework test file hierarchy.
 /// Since there is no cargo framework, we manually set it up.

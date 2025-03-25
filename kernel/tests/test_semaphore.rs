@@ -1,5 +1,7 @@
-use bluekernel_test as kernel;
-use kernel::{println, sync::{semaphore::*, wait_list::*}};
+use bluekernel::{
+    println,
+    sync::{semaphore::*, wait_list::*},
+};
 
 #[test_case]
 fn test_sempahore_init() {

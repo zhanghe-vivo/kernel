@@ -5,7 +5,7 @@ use super::{
 };
 use crate::{
     arch::{Arch, IrqNumber},
-    kernel::irq::Irq,
+    irq::Irq,
     os_bindings,
 };
 use core::{ffi::c_char, mem::MaybeUninit};

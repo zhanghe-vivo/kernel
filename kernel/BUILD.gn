@@ -9,7 +9,7 @@ build_rust("kernel_integration_test") {
   edition = "2021"
   deps = [
     ":bluekernel_test",
-    "//kernel/scal:bluekernel_scal",
+    "//kernel/scal:bluekernel_scal_test",
   ]
 
   inputs = [ "//kernel/kernel/src/bsp/$bsp/link.x" ]
@@ -83,6 +83,7 @@ build_rust("kernel_integration_test") {
 
 build_rust("bluekernel_test") {
   testonly = true
+  crate_name = "bluekernel"
   crate_type = "rlib"
   sources = [ "src/lib.rs" ]
   edition = "2021"

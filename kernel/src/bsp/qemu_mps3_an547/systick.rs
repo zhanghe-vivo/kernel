@@ -1,5 +1,5 @@
 use super::sys_config;
-use crate::kernel::{clock, cpu, error};
+use crate::{clock, cpu, error};
 use cortex_m::{peripheral::syst::SystClkSource, Peripherals};
 
 #[no_mangle]

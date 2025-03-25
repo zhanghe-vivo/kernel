@@ -15,3 +15,20 @@ build_rust("bluekernel_scal") {
     deps += [ "//kernel/kernel:bluekernel" ]
   }
 }
+
+build_rust("bluekernel_scal_test") {
+  testonly = true
+  crate_name = "bluekernel_scal"
+  crate_type = "rlib"
+  sources = [ "src/lib.rs" ]
+  edition = "2021"
+  deps = [ "//kernel/header:bluekernel_header" ]
+  rustflags = common_crate_rustflags
+  if (direct_syscall_handler) {
+    rustflags += [
+      "--cfg",
+      "direct_syscall_handler",
+    ]
+    deps += [ "//kernel/kernel:bluekernel_test" ]
+  }
+}

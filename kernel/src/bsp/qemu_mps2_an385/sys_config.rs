@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use crate::kernel::c_str;
+use crate::c_str;
 use core::ffi::CStr;
 
 /* ================================================================================ */
