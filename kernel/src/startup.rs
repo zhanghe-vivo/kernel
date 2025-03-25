@@ -12,7 +12,7 @@ static mut MAIN_THREAD: Thread = Thread {};
 
 /// The system main thread. In this thread will call the components_init().
 #[no_mangle]
-pub extern "C" fn main_thread_entry(_parameter: *mut core::ffi::c_void) -> i32 {
+pub extern "C" fn main_thread_entry(_parameter: *mut core::ffi::c_void) {
     let _ = crate::vfs::vfs_api::vfs_init();
 
     #[cfg(feature = "os_adapter")]
@@ -32,7 +32,7 @@ pub extern "C" fn main_thread_entry(_parameter: *mut core::ffi::c_void) -> i32 {
     extern "C" {
         fn main() -> i32;
     }
-    unsafe { main() }
+    unsafe { main() };
 }
 
 /// This function will create and start the main thread.

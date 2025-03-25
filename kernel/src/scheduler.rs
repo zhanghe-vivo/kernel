@@ -442,8 +442,8 @@ impl Scheduler {
 
                 #[cfg(feature = "debugging_scheduler")]
                 println!(
-                    "start switch to {:?}, sp {:?}",
-                    to_th.get_name(),
+                    "Switching to {:?}, usage of stack: {:?}",
+                    (to_th as *const Thread),
                     to_th.stack.usage()
                 );
 
@@ -515,23 +515,16 @@ impl Scheduler {
                     unsafe {
                         #[cfg(feature = "debugging_scheduler")]
                         println!(
-                            "cpu{} switch from {}: usage: {} to {}: usage: {}",
+                            "cpu #{} switches from {:?} (stack usage: {}) to {:?} (stack usage: {})",
                             self.id,
-                            cur_thread.as_ref().get_name(),
-                            cur_thread.as_ref().stack.usage(),
-                            to_thread.as_ref().get_name(),
+                            cur_thread.unwrap().as_ptr(),
+                            cur_thread.unwrap().as_ref().stack.usage(),
+                            to_thread.as_ptr(),
                             to_thread.as_ref().stack.usage(),
                         );
 
                         #[cfg(feature = "overflow_check")]
                         assert!(!cur_thread.as_ref().stack.check_overflow());
-                        //TODO: call from libcpu
-                        // // TODO: no rt_cpus_lock_status_restore anymore
-                        // rt_bindings::rt_hw_context_switch(
-                        //     cur_thread.as_ref().sp_ptr() as rt_bindings::rt_ubase_t,
-                        //     to_thread.as_ref().sp_ptr() as rt_bindings::rt_ubase_t,
-                        //     to_thread.as_ptr() as *mut rt_bindings::rt_thread,
-                        // );
                     }
                 } else {
                     self.ctx_switch_unlock();
@@ -567,7 +560,7 @@ impl Scheduler {
             self.irq_switch_flag = 1;
 
             #[cfg(feature = "debugging_scheduler")]
-            println!("trigger_switch");
+            println!("Scheduler is triggering context switch...");
 
             Arch::trigger_switch();
         }
@@ -604,25 +597,16 @@ impl Scheduler {
                 unsafe {
                     #[cfg(feature = "debugging_scheduler")]
                     println!(
-                        "cpu{} switch from {}: usage: {} to {}: usage: {}",
+                        "cpu #{} switches from {:?} (stack usage: {}) to {:?} (stack usage: {})",
                         self.id,
-                        cur_thread.as_ref().get_name(),
-                        cur_thread.as_ref().stack.usage(),
-                        to_thread.as_ref().get_name(),
+                        cur_thread.unwrap().as_ptr(),
+                        cur_thread.unwrap().as_ref().stack.usage(),
+                        to_thread.as_ptr(),
                         to_thread.as_ref().stack.usage(),
                     );
 
                     #[cfg(feature = "overflow_check")]
                     assert!(!cur_thread.as_ref().stack.check_overflow());
-
-                    //TODO: call from libcpu
-                    // TODO: no rt_cpus_lock_status_restore anymore
-                    // rt_bindings::rt_hw_context_switch(
-                    //     cur_thread.as_ref().sp_ptr() as rt_bindings::rt_ubase_t,
-                    //     to_thread.as_ref().sp_ptr() as rt_bindings::rt_ubase_t,
-                    //     to_thread.as_ptr() as *mut rt_bindings::rt_thread,
-                    // )
-                    // cur_thread will back here
                 }
             } else {
                 self.ctx_switch_unlock();
@@ -657,18 +641,18 @@ impl Scheduler {
                 #[cfg(feature = "smp")]
                 scheduler.sched_lock_mp();
 
-                /* pick the highest runnable thread, and pass the control to it */
+                // Pick the highest runnable thread, and pass the control to it.
                 let cur_thread = scheduler.get_current_thread();
                 if let Some(to_thread) = scheduler.prepare_context_switch_locked(cur_thread) {
                     if let Some(mut cur_th) = cur_thread {
                         #[cfg(feature = "debugging_scheduler")]
                         unsafe {
                             println!(
-                                "cpu{} switch from {}: usage: {} to {}: usage: {}",
+																"cpu #{} switches from {:?} (stack usage: {}) to {:?} (stack usage: {})",
                                 scheduler.id,
-                                cur_th.as_ref().get_name(),
+                                cur_th.as_ptr(),
                                 cur_th.as_ref().stack().usage(),
-                                to_thread.as_ref().get_name(),
+                                to_thread.as_ptr(),
                                 to_thread.as_ref().stack().usage(),
                             );
                         }
@@ -689,9 +673,9 @@ impl Scheduler {
                         #[cfg(feature = "debugging_scheduler")]
                         unsafe {
                             println!(
-                                "cpu{} switch to {}: usage: {}",
+                                "cpu #{} switches to {:?} (stack usage: {})",
                                 scheduler.id,
-                                to_thread.as_ref().get_name(),
+                                to_thread.as_ptr(),
                                 to_thread.as_ref().stack().usage(),
                             );
                         }

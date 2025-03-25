@@ -60,20 +60,3 @@ macro_rules! bk_syscall {
 
 #[cfg(direct_syscall_handler)]
 pub use bluekernel::bk_syscall;
-
-// FIXME: This should be removed if we have test framework available.
-#[no_mangle]
-pub extern "C" fn test_bk_scal() {
-    tests::test_syscalls();
-}
-
-mod tests {
-    use super::bk_syscall;
-    use bluekernel_header::syscalls::NR::{Echo, Nop};
-    pub(crate) fn test_syscalls() {
-        assert_eq!(bk_syscall!(Nop), 0);
-        for i in 0..1024 {
-            assert_eq!(bk_syscall!(Echo, i), i);
-        }
-    }
-}

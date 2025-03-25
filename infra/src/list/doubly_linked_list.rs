@@ -561,6 +561,9 @@ impl<'a, T: 'a> Iterator for IterMut<'a, T> {
     }
 }
 
+unsafe impl Send for LinkedListNode {}
+unsafe impl Sync for LinkedListNode {}
+
 #[cfg(test)]
 mod tests {
     extern crate alloc;

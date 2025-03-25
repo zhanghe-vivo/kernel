@@ -1,7 +1,110 @@
 import("//build/templates/rust.gni")
+import("//build/toolchain/bluekernel.gni")
+import("//kernel/common_crate_rustflags.gni")
 
 build_rust("librs") {
   crate_type = "rlib"
   crate_name = "librs"
   sources = [ "src/lib.rs" ]
+  deps = [
+    "//external/spin/v0.9.8:spin",
+    "//kernel/header:bluekernel_header",
+    "//kernel/scal:bluekernel_scal",
+    "//libc:libc",
+  ]
+
+  rustflags = common_crate_rustflags
+}
+
+build_rust("librs_test") {
+  testonly = true
+  crate_type = "rlib"
+  crate_name = "librs"
+  sources = [ "src/lib.rs" ]
+  deps = [
+    "//external/spin/v0.9.8:spin",
+    "//kernel/header:bluekernel_header",
+    "//kernel/scal:bluekernel_scal_test",
+    "//libc:libc",
+  ]
+
+  rustflags = common_crate_rustflags
+}
+
+build_rust("librs_integration_test_image") {
+  testonly = true
+  crate_type = "bin"
+  sources = [ "tests/integration_test.rs" ]
+  edition = "2021"
+
+  deps = [
+    ":librs_test",
+    "//external/spin/v0.9.8:spin",
+    "//kernel/header:bluekernel_header",
+    "//kernel/kernel:bluekernel_test",
+    "//kernel/scal:bluekernel_scal_test",
+    "//libc:libc",
+  ]
+  inputs = [ "//kernel/kernel/src/bsp/$bsp/link.x" ]
+  rustflags = [
+    "--test",
+    "-Z",
+    "panic-abort-tests",
+    "-C",
+    "panic=abort",
+    "-C",
+    "link-arg=-nostartfiles",
+    "-C",
+    "link-arg=-T" + rebase_path("//kernel/kernel/src/bsp/$bsp/link.x"),
+    "-C",
+    "link-arg=--enable-non-contiguous-regions",
+    "-C",
+    "link-arg=-Wl,--no-wchar-size-warning",
+    "-C",
+    "link-arg=-lgcc",
+  ]
+  if (bsp == "qemu_mps2_an385") {
+    rustflags += [
+      "-C",
+      "link-arg=-mcpu=cortex-m3",
+      "-C",
+      "link-arg=-mthumb",
+    ]
+  } else if (bsp == "qemu_mps3_an547") {
+    rustflags += [
+      "-C",
+      "link-arg=-march=armv8.1-m.main+mve.fp+fp.dp",
+      "-C",
+      "link-arg=-mcpu=cortex-m55",
+      "-C",
+      "link-arg=-mthumb",
+      "-C",
+      "link-arg=-mfpu=fpv5-d16",
+      "-C",
+      "link-arg=-mfloat-abi=hard",
+    ]
+  }
+
+  rustflags += common_crate_rustflags
+}
+
+gen_qemu_runner("librs_integration_test_runner") {
+  testonly = true
+  img = ":librs_integration_test_image"
+  qemu = "$qemu_exe"
+  board = "$bsp"
+}
+
+if (direct_syscall_handler) {
+  run_qemu_check("check_librs") {
+    testonly = true
+    runner = ":librs_integration_test_runner"
+    checker = "tests/integration_test.rs"
+  }
+} else {
+  # FIXME: When in SWI mode, we have trouble handling ExitThread syscall.
+  # ExitThread's handler never returns and is in SVC context, current kernel
+  # fails to switch to another thread due to lower priority of PendSV
+  group("check_librs") {
+  }
 }

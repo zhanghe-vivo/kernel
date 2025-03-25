@@ -31,8 +31,10 @@ use pinned_init::{
 };
 
 // compatible with C
-pub type ThreadEntryFn = extern "C" fn(*mut ffi::c_void) -> i32;
+pub type ThreadEntryFn = extern "C" fn(*mut ffi::c_void);
 pub type ThreadCleanupFn = extern "C" fn(*mut Thread);
+
+pub(crate) const THREAD_DEFAULT_TICK: u32 = 50;
 
 /// Returns the currently running thread.
 #[macro_export]
@@ -591,12 +593,12 @@ impl Thread {
         scheduler.sched_unlock_with_sched(level);
     }
 
-    unsafe extern "C" fn exit() {
+    pub(crate) unsafe extern "C" fn exit() {
         debug_assert!(Arch::is_interrupts_active());
         let th = crate::current_thread!().unwrap().as_mut();
         th.detach();
         debug_assert!(Arch::is_interrupts_active());
-        panic!("!!! never get here !!!, thread {:?}", th.get_name());
+        panic!("!!! never get here !!!, thread {:?}", th as *const Thread);
     }
 
     #[inline]
@@ -703,7 +705,7 @@ impl Thread {
         let level = scheduler.sched_lock();
 
         #[cfg(feature = "debugging_scheduler")]
-        println!("thread start: {:?}", self.get_name());
+        println!("Thread {:?} is starting...", self as *const Self);
 
         self.priority.update(self.priority.get_current());
         self.stat.set_suspended(SuspendFlag::Uninterruptible);
@@ -720,7 +722,7 @@ impl Thread {
         let level = scheduler.sched_lock();
 
         #[cfg(feature = "debugging_scheduler")]
-        println!("thread close: {:?}", self.get_name());
+        println!("Thread {:?} is closing...", self as *const Self);
 
         if !self.stat.is_close() {
             if !self.stat.is_init() {
@@ -747,7 +749,7 @@ impl Thread {
                 .set(None);
         }
         #[cfg(feature = "debugging_scheduler")]
-        println!("thread detach: {:?}", self.get_name());
+        println!("Thread {:?} is detaching...", self as *const Self);
 
         self.close();
 
@@ -798,7 +800,7 @@ impl Thread {
         thread.error = code::EOK;
 
         #[cfg(feature = "debugging_scheduler")]
-        println!("thread sleep: {:?}", thread.get_name());
+        println!("Thread {:?} is sleeping...", thread as *const Thread);
 
         if thread.suspend(SuspendFlag::Interruptible) {
             thread.thread_timer.restart(tick);
@@ -823,7 +825,7 @@ impl Thread {
         let level = scheduler.sched_lock();
 
         #[cfg(feature = "debugging_scheduler")]
-        println!("thread suspend: {:?}", self.get_name());
+        println!("Thread {:?} is suspending...", self as *const Self);
 
         if (!self.stat.is_ready()) && (!self.stat.is_running()) {
             println!("thread suspend: thread disorder, stat: {:?}", self.stat);
@@ -849,14 +851,11 @@ impl Thread {
         let level = scheduler.sched_lock();
 
         #[cfg(feature = "debugging_scheduler")]
-        println!("thread resume: {:?}", self.get_name());
+        println!("Thread {:?} is resuming...", self as *const Self);
+        unsafe { Pin::new_unchecked(&mut self.list_node).remove_from_list() };
 
         let need_schedule = scheduler.insert_ready_locked(self);
-        // if need_schedule {
-        //     scheduler.sched_unlock_with_sched(level);
-        // } else {
         scheduler.sched_unlock(level);
-        // }
 
         return need_schedule;
     }
@@ -961,7 +960,7 @@ impl PinnedDrop for Thread {
         let this_th = unsafe { Pin::get_unchecked_mut(self) };
 
         #[cfg(feature = "debugging_scheduler")]
-        println!("drop thread: {:?}", this_th.get_name());
+        println!("Dropping thread {:?}", this_th as *const Self);
 
         this_th.detach();
     }

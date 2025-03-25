@@ -2,6 +2,7 @@
 pub mod condvar;
 #[cfg(feature = "event")]
 pub mod event;
+pub mod futex;
 pub mod ipc_common;
 pub mod lock;
 #[cfg(feature = "mailbox")]

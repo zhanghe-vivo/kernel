@@ -8,6 +8,7 @@
 #![feature(ptr_as_uninit)]
 #![feature(slice_as_chunks)]
 #![feature(core_intrinsics)]
+#![allow(internal_features)]
 
 pub mod klibc;
 pub mod list;

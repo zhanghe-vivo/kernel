@@ -10,6 +10,26 @@ pub mod syscalls {
         Nop,
         // For test only.
         Echo,
+        GetTid,
+        CreateThread,
+        ExitThread,
+        AtomicWait,
+        AtomicWake,
         LastNR,
+    }
+}
+
+pub mod thread {
+    pub const DEFAULT_STACK_SIZE: usize = 4096;
+    // FIXME: Should be target dependent.
+    pub const STACK_ALIGN: usize = 4;
+
+    #[repr(C)]
+    pub struct CloneArgs {
+        pub clone_hook: Option<fn(tid: usize, clone_args: &CloneArgs)>,
+        pub entry: extern "C" fn(*mut core::ffi::c_void),
+        pub arg: *mut core::ffi::c_void,
+        pub stack_start: *mut u8,
+        pub stack_size: usize,
     }
 }

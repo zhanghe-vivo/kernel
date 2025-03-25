@@ -466,7 +466,7 @@ impl Timer {
     }
 
     /// system timer thread entry
-    extern "C" fn timer_thread_entry(_parameter: *mut c_void) -> i32 {
+    extern "C" fn timer_thread_entry(_parameter: *mut c_void) {
         use crate::thread::SuspendFlag;
 
         let timer_wheel = unsafe { &mut *addr_of_mut!(SOFT_TIMER_WHEEL) };

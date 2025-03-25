@@ -10,6 +10,7 @@
 #![feature(c_variadic)]
 #![feature(naked_functions)]
 #![feature(macro_metavar_expr)]
+#![feature(pointer_is_aligned_to)]
 
 pub extern crate alloc;
 pub use bluekernel_arch::arch;

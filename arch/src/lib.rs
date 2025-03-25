@@ -10,13 +10,13 @@
 
 /// Maximum number of addresses to store in a backtrace
 const MAX_BACKTRACE_ADDRESSES: usize = 10;
-#[cfg(all(cortex_m, target_os = "none"))]
+#[cfg(all(cortex_m))]
 pub mod arm_cortex_m;
-#[cfg(all(cortex_m, target_os = "none"))]
+#[cfg(all(cortex_m))]
 pub use crate::arm_cortex_m as arch;
 // #[link_section] is only usable from the root crate.
 // See https://github.com/rust-lang/rust/issues/67209.
-#[cfg(all(cortex_m, target_os = "none"))]
+#[cfg(all(cortex_m))]
 include!("arm_cortex_m/handlers.rs");
 
 // #[cfg(all(armv7a, target_os = "none"))]

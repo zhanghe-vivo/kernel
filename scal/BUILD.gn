@@ -2,6 +2,7 @@ import("//build/templates/rust.gni")
 import("//kernel/common_crate_rustflags.gni")
 
 build_rust("bluekernel_scal") {
+  crate_name = "bluekernel_scal"
   crate_type = "rlib"
   sources = [ "src/lib.rs" ]
   edition = "2021"
