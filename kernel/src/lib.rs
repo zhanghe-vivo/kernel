@@ -1,3 +1,6 @@
+// NEWLINE-TIMEOUT: 15
+// ASSERT-SUCC: Kernel unit test end.
+// ASSERT-FAIL: Backtrace in Panic.*
 #![no_std]
 #![allow(internal_features)]
 #![feature(core_intrinsics)]
@@ -11,6 +14,10 @@
 #![feature(naked_functions)]
 #![feature(macro_metavar_expr)]
 #![feature(pointer_is_aligned_to)]
+#![no_main]
+#![feature(custom_test_frameworks)]
+#![test_runner(kernel_utest_runner)]
+#![reexport_test_harness_main = "kernel_utest_main"]
 
 pub extern crate alloc;
 pub use bluekernel_arch::arch;
@@ -156,4 +163,20 @@ macro_rules! debug_in_thread_context {
 #[macro_export]
 macro_rules! debug_scheduler_available {
     ($need_check:expr) => {};
+}
+
+#[cfg(test)]
+pub fn utest_main() {
+    #[cfg(test)]
+    kernel_utest_main();
+}
+
+#[cfg(test)]
+pub fn kernel_utest_runner(tests: &[&dyn Fn()]) {
+    println!("Kernel unit test start...");
+    println!("Running {} tests", tests.len());
+    for test in tests {
+        test();
+    }
+    println!("Kernel unit test end.");
 }

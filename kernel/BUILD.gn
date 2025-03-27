@@ -2,6 +2,29 @@ import("//build/templates/build_template.gni")
 import("//build/toolchain/bluekernel.gni")
 import("//kernel/common_crate_rustflags.gni")
 
+shared_rust_test_flags = [
+   # unstable rust custom test framework
+   "--test",
+
+   # custom link script
+   "-C",
+   "link-arg=-T" + rebase_path("//kernel/kernel/src/bsp/$bsp/link.x"),
+
+   # use lld to link
+   # # Tell rustc to use the LLVM linker. This avoids needing GCC as a dependency
+   # # to build the kernel.
+   # "-C", "linker=rust-lld",
+   # # Use the LLVM lld executable with the `-flavor gnu` flag.
+   # "-C", "linker-flavor=ld.lld",
+   # Enable link-time-optimization
+   "-C",
+   "lto",
+
+   # Have rustc generate stack sizes for analyzing the size of stack frames.
+   "-Z",
+   "emit-stack-sizes",
+]
+
 build_rust("kernel_integration_test") {
   testonly = true
   crate_type = "bin"
@@ -13,28 +36,75 @@ build_rust("kernel_integration_test") {
   ]
 
   inputs = [ "//kernel/kernel/src/bsp/$bsp/link.x" ]
-  rustflags = [
-    # unstable rust custom test framework
-    "--test",
+  rustflags = shared_rust_test_flags
+  rustflags += test_image_rustflags
+  rustflags += common_crate_rustflags
+}
 
-    # custom link script
-    "-C",
-    "link-arg=-T" + rebase_path("//kernel/kernel/src/bsp/$bsp/link.x"),
+share_deps = [   "//external/cfg-if/v1.0.0:cfg_if",
+                 "//external/const-default/v1.0.0:const_default",
+                 "//external/cortex-m:cortex_m",
+                 "//external/embedded-io/v0.6.1:embedded_io",
+                 "//external/log/v0.4.22:log",
+                 "//external/pinned-init/v0.0.8:pinned_init",
+                 "//external/spin/v0.9.8:spin",
+                 "//external/thiserror/v2.0.9:thiserror",
+                 "//external/tock-registers/v0.9.0:tock_registers",
+                 "//kernel/arch:bluekernel_arch",
+                 "//kernel/header:bluekernel_header",
+                 "//kernel/infra:bluekernel_infra",
+                 "//kernel/kconfig:bluekernel_kconfig",
 
-    # use lld to link
-    # # Tell rustc to use the LLVM linker. This avoids needing GCC as a dependency
-    # # to build the kernel.
-    # "-C", "linker=rust-lld",
-    # # Use the LLVM lld executable with the `-flavor gnu` flag.
-    # "-C", "linker-flavor=ld.lld",
-    # Enable link-time-optimization
-    "-C",
-    "lto",
+               ]
 
-    # Have rustc generate stack sizes for analyzing the size of stack frames.
-    "-Z",
-    "emit-stack-sizes",
-  ]
+share_features = [   "tlsf",
+                     "overflow_check",
+                     "idle_hook",
+                     "heap",
+                     "heap_isr",
+                     "debugging_init",
+                     "event",
+                     "messagequeue",
+                     "mailbox",
+                     "mutex",
+                     "semaphore",
+                     "rwlock",
+                     "condvar",
+                     "thread_priority_max",
+                     "schedule_with_time_slice",
+                   ]
+
+share_rust_build_flags = []
+if (direct_syscall_handler) {
+    share_rust_build_flags += [
+        "--cfg",
+        "direct_syscall_handler",
+    ]
+}
+if (bsp == "qemu_mps2_an385" || bsp == "qemu_mps3_an547") {
+    share_rust_build_flags += [
+        "--cfg",
+        "hardware_schedule",
+    ]
+}
+
+share_rust_build_flags += [
+    "--cfg",
+    "target_board=\"$bsp\"",
+]
+
+build_rust("kernel_unit_test") {
+  testonly = true
+  crate_name = "kernel_unit_test"
+  crate_type = "bin"
+  sources = [ "src/lib.rs" ]
+  edition = "2021"
+  proc_macro_deps = [ "//external/paste/v1.0.15:paste" ]
+  deps = share_deps + ["//kernel/kernel:bluekernel_test"]
+  features = share_features
+
+  rustflags = share_rust_build_flags
+  rustflags += shared_rust_test_flags
   rustflags += test_image_rustflags
   rustflags += common_crate_rustflags
 }
@@ -46,59 +116,9 @@ build_rust("bluekernel_test") {
   sources = [ "src/lib.rs" ]
   edition = "2021"
   proc_macro_deps = [ "//external/paste/v1.0.15:paste" ]
-  deps = [
-    "//external/cfg-if/v1.0.0:cfg_if",
-    "//external/const-default/v1.0.0:const_default",
-    "//external/cortex-m:cortex_m",
-    "//external/embedded-io/v0.6.1:embedded_io",
-    "//external/log/v0.4.22:log",
-    "//external/pinned-init/v0.0.8:pinned_init",
-    "//external/spin/v0.9.8:spin",
-    "//external/thiserror/v2.0.9:thiserror",
-    "//external/tock-registers/v0.9.0:tock_registers",
-    "//kernel/arch:bluekernel_arch",
-    "//kernel/header:bluekernel_header",
-    "//kernel/infra:bluekernel_infra",
-    "//kernel/kconfig:bluekernel_kconfig",
-  ]
-
-  features = [
-    "tlsf",
-    "overflow_check",
-    "idle_hook",
-    "heap",
-    "heap_isr",
-    "debugging_init",
-    "event",
-    "messagequeue",
-    "mailbox",
-    "mutex",
-    "semaphore",
-    "rwlock",
-    "condvar",
-    "thread_priority_max",
-    "schedule_with_time_slice",
-  ]
-
-  rustflags = []
-  if (direct_syscall_handler) {
-    rustflags += [
-      "--cfg",
-      "direct_syscall_handler",
-    ]
-  }
-  if (bsp == "qemu_mps2_an385" || bsp == "qemu_mps3_an547") {
-    rustflags += [
-      "--cfg",
-      "hardware_schedule",
-    ]
-  }
-
-  rustflags += [
-    "--cfg",
-    "target_board=\"$bsp\"",
-  ]
-
+  deps = share_deps
+  features = share_features
+  rustflags = share_rust_build_flags
   rustflags += common_crate_rustflags
 }
 
@@ -106,23 +126,7 @@ build_rust("bluekernel") {
   crate_type = "rlib"
   sources = [ "src/lib.rs" ]
   edition = "2021"
-  deps = [
-    "//external/cfg-if/v1.0.0:cfg_if",
-    "//external/const-default/v1.0.0:const_default",
-    "//external/cortex-m:cortex_m",
-    "//external/embedded-io/v0.6.1:embedded_io",
-    "//external/log/v0.4.22:log",
-    "//external/pinned-init/v0.0.8:pinned_init",
-    "//external/spin/v0.9.8:spin",
-    "//external/thiserror/v2.0.9:thiserror",
-    "//external/tock-registers/v0.9.0:tock_registers",
-    "//kernel/arch:bluekernel_arch",
-    "//kernel/bindings:os_bindings",
-    "//kernel/header:bluekernel_header",
-    "//kernel/infra:bluekernel_infra",
-    "//kernel/kconfig:bluekernel_kconfig",
-  ]
-
+  deps = share_deps + ["//kernel/bindings:os_bindings"]
   features = [
     "tlsf",
     "overflow_check",
@@ -144,25 +148,7 @@ build_rust("bluekernel") {
     "enable_uart1",
   ]
 
-  rustflags = []
-  if (direct_syscall_handler) {
-    rustflags += [
-      "--cfg",
-      "direct_syscall_handler",
-    ]
-  }
-  if (bsp == "qemu_mps2_an385" || bsp == "qemu_mps3_an547") {
-    rustflags += [
-      "--cfg",
-      "hardware_schedule",
-    ]
-  }
-
-  rustflags += [
-    "--cfg",
-    "target_board=\"$bsp\"",
-  ]
-
+  rustflags = share_rust_build_flags
   rustflags += common_crate_rustflags
 }
 
@@ -187,6 +173,19 @@ run_qemu_check("run_integration_test") {
   testonly = true
   runner = ":integration_test_runner"
   checker = "tests/integration_test.rs"
+}
+
+gen_qemu_runner("unit_test_runner") {
+  testonly = true
+  img = ":kernel_unit_test"
+  qemu = "$qemu_exe"
+  board = "$bsp"
+}
+
+run_qemu_check("run_unit_test") {
+  testonly = true
+  runner = ":unit_test_runner"
+  checker = "src/lib.rs"
 }
 
 executable("bluekernel_image") {

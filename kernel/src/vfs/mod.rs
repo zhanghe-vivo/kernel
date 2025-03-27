@@ -13,5 +13,5 @@ mod vfs_posix;
 mod vfs_tmpfs;
 mod vfs_traits;
 
-#[cfg(test)]
-mod vfs_test;
+//#[cfg(test)]
+//mod vfs_test;

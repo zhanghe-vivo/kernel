@@ -28,10 +28,15 @@ pub extern "C" fn main_thread_entry(_parameter: *mut core::ffi::c_void) {
         rt_hw_secondary_cpu_up();
     }
 
+    #[cfg(test)]
+    crate::utest_main();
+
     // The user's main
+    #[cfg(not(test))]
     extern "C" {
         fn main() -> i32;
     }
+    #[cfg(not(test))]
     unsafe { main() };
 }
 

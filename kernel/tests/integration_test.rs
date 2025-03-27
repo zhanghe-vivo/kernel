@@ -1,5 +1,5 @@
 // NEWLINE-TIMEOUT: 15
-// ASSERT-SUCC: Kernel test end.
+// ASSERT-SUCC: Kernel integration test end.
 // ASSERT-FAIL: Backtrace in Panic.*
 #![no_main]
 #![no_std]
@@ -15,12 +15,12 @@ mod test_semaphore;
 
 /// Unstable rust custom test framework test runner
 pub fn kernel_test_runner(tests: &[&dyn Fn()]) {
-    println!("Kernel test start...");
+    println!("Kernel integration test start...");
     println!("Running {} tests", tests.len());
     for test in tests {
         test();
     }
-    println!("Kernel test end.");
+    println!("Kernel integration test end.");
 }
 
 #[no_mangle]
