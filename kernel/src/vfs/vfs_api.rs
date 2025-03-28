@@ -6,8 +6,8 @@ use crate::{
     vfs::{vfs_log::*, vfs_manager::*, vfs_mnt::*, vfs_mode::*, vfs_node::*, vfs_posix, vfs_tmpfs},
 };
 use alloc::{slice, string::String, sync::Arc};
-use bluekernel_infra::klibc;
 use core::ffi::{c_char, c_int, c_ulong, c_void, CStr};
+use libc::{EINVAL, S_IFDIR};
 
 /// Initialize the virtual file system  
 pub fn vfs_init() -> Result<(), Error> {
@@ -93,17 +93,17 @@ pub extern "C" fn vfs_mount(
     data: *const c_void,
 ) -> c_int {
     if path.is_null() || filesystemtype.is_null() {
-        return -klibc::EINVAL;
+        return -EINVAL;
     }
 
     let path_str = match unsafe { CStr::from_ptr(path).to_str() } {
         Ok(s) => s,
-        Err(_) => return -klibc::EINVAL,
+        Err(_) => return -EINVAL,
     };
 
     let fs_type_str = match unsafe { CStr::from_ptr(filesystemtype).to_str() } {
         Ok(s) => s,
-        Err(_) => return -klibc::EINVAL,
+        Err(_) => return -EINVAL,
     };
 
     let device_str = if device_name.is_null() {
@@ -111,7 +111,7 @@ pub extern "C" fn vfs_mount(
     } else {
         match unsafe { CStr::from_ptr(device_name).to_str() } {
             Ok(s) => Some(s),
-            Err(_) => return -klibc::EINVAL,
+            Err(_) => return -EINVAL,
         }
     };
 
@@ -130,12 +130,12 @@ pub extern "C" fn vfs_mount(
 #[no_mangle]
 pub extern "C" fn vfs_unmount(path: *const c_char) -> c_int {
     if path.is_null() {
-        return -klibc::EINVAL;
+        return -EINVAL;
     }
 
     let path_str = match unsafe { CStr::from_ptr(path).to_str() } {
         Ok(s) => s,
-        Err(_) => return -klibc::EINVAL,
+        Err(_) => return -EINVAL,
     };
 
     vfs_posix::unmount(path_str)
@@ -157,7 +157,7 @@ pub extern "C" fn vfs_close(fd: i32) -> i32 {
 #[no_mangle]
 pub extern "C" fn vfs_read(fd: i32, buf: *mut u8, count: usize) -> isize {
     if buf.is_null() {
-        return -klibc::EINVAL as isize;
+        return -EINVAL as isize;
     }
 
     let slice = unsafe { slice::from_raw_parts_mut(buf, count) };
@@ -168,7 +168,7 @@ pub extern "C" fn vfs_read(fd: i32, buf: *mut u8, count: usize) -> isize {
 #[no_mangle]
 pub extern "C" fn vfs_write(fd: i32, buf: *const u8, count: usize) -> isize {
     if buf.is_null() {
-        return -klibc::EINVAL as isize;
+        return -EINVAL as isize;
     }
 
     let slice = unsafe { slice::from_raw_parts(buf, count) };

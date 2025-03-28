@@ -7,12 +7,7 @@ use core::{
 };
 extern crate alloc;
 
-mod errno;
-mod fnctl;
 mod iter;
-
-pub use errno::*;
-pub use fnctl::*;
 use iter::{NulTerminated, SrcDstPtrIter};
 
 /// See <https://pubs.opengroup.org/onlinepubs/9799919799/functions/memset.html>.

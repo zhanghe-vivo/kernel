@@ -1,11 +1,13 @@
 mod platform;
 use crate::{
     c_str,
+    clock::tick_from_millisecond,
     cpu::Cpu,
     sync::futex,
     thread::{ThreadBuilder, THREAD_DEFAULT_TICK},
 };
 use bluekernel_header::{syscalls::NR, thread::CloneArgs};
+use libc::timespec;
 
 #[repr(C)]
 #[derive(Default)]
@@ -111,8 +113,10 @@ exit_thread() -> c_long {
 });
 
 define_syscall_handler!(
-atomic_wait(addr: usize, val: usize) -> c_long {
-    futex::atomic_wait(addr, val).map_or_else(|e|e as c_long, |_| 0)
+atomic_wait(addr: usize, val: usize, timeout: Option<&timespec>) -> c_long {
+    let timeout = timeout.map_or(-1, |t| t.tv_sec * 1000 + t.tv_nsec / 1000000);
+    let timeout = tick_from_millisecond(timeout) as i32;
+    futex::atomic_wait(addr, val, timeout).map_or_else(|e|e as c_long, |_| 0)
 });
 
 define_syscall_handler!(

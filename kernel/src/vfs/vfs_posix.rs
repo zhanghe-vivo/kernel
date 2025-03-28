@@ -16,6 +16,10 @@ use core::{
     ffi::{c_char, c_int, c_void},
     slice,
 };
+use libc::{
+    O_ACCMODE, O_APPEND, O_CLOEXEC, O_CREAT, O_DIRECTORY, O_EXCL, O_NOFOLLOW, O_NONBLOCK, O_RDONLY,
+    O_RDWR, O_SYNC, O_TRUNC, O_WRONLY, S_IFDIR,
+};
 use spin::RwLock as SpinRwLock;
 
 /// Mount a filesystem

@@ -22,6 +22,7 @@
 pub extern crate alloc;
 pub use bluekernel_arch::arch;
 pub use bluekernel_kconfig;
+pub use libc;
 #[cfg(feature = "os_adapter")]
 pub use os_bindings;
 

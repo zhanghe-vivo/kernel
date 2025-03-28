@@ -1,7 +1,4 @@
-use crate::{
-    arch::Arch,
-    syscall_handlers::{dispatch_syscall, Context},
-};
+use crate::syscall_handlers::{dispatch_syscall, Context};
 use bluekernel_arch::arm_cortex_m::stack_frame::StackFrame;
 use core::arch::naked_asm;
 

@@ -297,7 +297,6 @@ impl Timer {
 
     /// This function will start the timer
     fn timer_start(&mut self) {
-        let mut need_schedule = false;
         let time_wheel = self.get_timer_wheel();
         self.timer_remove();
         self.flag.unset_state(TimerState::ACTIVATED);
@@ -339,18 +338,17 @@ impl Timer {
         if self.flag.get_state(TimerState::SOFT_TIMER) {
             unsafe {
                 if SOFT_TIMER_STATUS == TimerStatus::Idle && TIMER_THREAD.stat.is_suspended() {
-                    (&raw const TIMER_THREAD
+                    if (&raw const TIMER_THREAD
                         as *const UnsafeStaticInit<ThreadWithStack<TIMER_THREAD_STACK_SIZE>, _>)
                         .cast_mut()
                         .as_mut()
                         .unwrap_unchecked()
-                        .resume();
-                    need_schedule = true;
+                        .resume()
+                    {
+                        Cpu::get_current_scheduler().do_task_schedule();
+                    }
                 }
             }
-        }
-        if need_schedule {
-            Cpu::get_current_scheduler().do_task_schedule();
         }
     }
 

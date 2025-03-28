@@ -19,17 +19,16 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
-use crate::{cpu::Cpu, thread::Thread};
+use crate::{cpu::Cpu, error::code, thread::Thread, timer::TimerControlAction};
 use alloc::{boxed::Box, collections::VecDeque};
-use bluekernel_infra::{
-    klibc::{EAGAIN, EBUSY, EINVAL, ESRCH},
-    list::doubly_linked_list::LinkedListNode,
-};
+use bluekernel_infra::list::doubly_linked_list::LinkedListNode;
 use core::{
+    ffi::c_void,
     marker::PhantomPinned,
     pin::Pin,
     sync::atomic::{AtomicUsize, Ordering},
 };
+use libc::{EAGAIN, EBUSY, EINVAL, ESRCH, ETIMEDOUT};
 use pinned_init::{pin_data, pin_init, InPlaceInit, PinInit};
 use spin::RwLock;
 
@@ -63,13 +62,16 @@ impl FutexEntry {
     }
 }
 
-// TODO: Support timeout.
-pub(crate) fn atomic_wait(addr: usize, val: usize) -> Result<(), i32> {
+// timeout is in system tick.
+pub fn atomic_wait(addr: usize, val: usize, timeout: i32) -> Result<(), i32> {
     let ptr: *const AtomicUsize = addr as *const AtomicUsize;
     let fetched = unsafe { &*ptr }.load(Ordering::Acquire);
     if fetched != val {
         // TODO: We should use the thread_local ERRNO
         return Err(EAGAIN);
+    }
+    if timeout == 0 {
+        return Err(ETIMEDOUT);
     }
     let scheduler = Cpu::get_current_scheduler();
     let Some(current_thread) = scheduler.get_current_thread() else {
@@ -96,8 +98,25 @@ pub(crate) fn atomic_wait(addr: usize, val: usize) -> Result<(), i32> {
         let mut futexes = FUTEXES.write();
         futexes.push_back(pinned_box);
         drop(futexes);
+
+        // Set up timeout if specified
+        if timeout > 0 {
+            unsafe {
+                (*current_thread_ptr).thread_timer.timer_control(
+                    TimerControlAction::SetTime,
+                    (&timeout) as *const i32 as *mut c_void,
+                );
+                (*current_thread_ptr).thread_timer.start();
+            }
+        }
+
         scheduler.do_task_schedule();
         scheduler.preempt_enable();
+
+        // Check if we woke up due to timeout
+        if unsafe { (*current_thread_ptr).error } == code::ETIMEDOUT {
+            return Err(ETIMEDOUT);
+        }
         Ok(())
     } else {
         scheduler.preempt_enable();
@@ -105,7 +124,7 @@ pub(crate) fn atomic_wait(addr: usize, val: usize) -> Result<(), i32> {
     }
 }
 
-pub(crate) fn atomic_wake(addr: usize, how_many: usize) -> Result<usize, ()> {
+pub fn atomic_wake(addr: usize, how_many: usize) -> Result<usize, ()> {
     assert!((addr as *const u8).is_aligned_to(core::mem::size_of::<usize>()));
     let mut woken = 0;
     let mut i = 0;
@@ -115,9 +134,7 @@ pub(crate) fn atomic_wake(addr: usize, how_many: usize) -> Result<usize, ()> {
         if futexes[i].addr == addr {
             let waiting_threads =
                 unsafe { &mut (futexes[i].as_mut().get_unchecked_mut().waiting_threads) };
-            let mut loop_count = 0usize;
             while let Some(elem) = waiting_threads.next() {
-                loop_count += 1;
                 let thread_ptr = unsafe { crate::thread_list_node_entry!(elem.as_ptr()) };
                 // We'll let resume() remove the elem, since the removal is performed in critical region,
                 // thus protected.

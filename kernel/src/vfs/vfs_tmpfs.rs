@@ -20,6 +20,10 @@ use crate::{
         vfs_traits::{FileOperationTrait, FileSystemTrait},
     },
 };
+use libc::{
+    O_ACCMODE, O_APPEND, O_CREAT, O_DIRECTORY, O_EXCL, O_RDWR, O_TRUNC, O_WRONLY, S_IFDIR, S_IFLNK,
+    S_IFMT, S_IFREG,
+};
 
 // File access permissions
 const R_OK: u32 = 4; // Read permission

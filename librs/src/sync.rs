@@ -26,8 +26,8 @@ pub(crate) fn futex_wake(atomic: &AtomicUsize, val: usize) -> c_int {
     woken as c_int
 }
 
-pub(crate) fn futex_wait(atomic: &AtomicUsize, val: usize, _: Option<&timespec>) -> c_int {
-    bk_syscall!(AtomicWait, atomic.as_ptr() as usize, val) as c_int
+pub(crate) fn futex_wait(atomic: &AtomicUsize, val: usize, timeout: Option<&timespec>) -> c_int {
+    bk_syscall!(AtomicWait, atomic.as_ptr() as usize, val, timeout) as c_int
 }
 
 #[repr(i32)]

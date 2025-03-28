@@ -205,9 +205,8 @@ impl Event {
 
                         // node will be removed from working_queue by resume, so we need to get prev node
                         node = unsafe { node.prev().unwrap_unchecked().as_ref() };
-                        thread.remove_thread_list_node();
-                        thread.resume();
                         thread.error = code::EOK;
+                        let _ = thread.resume();
                         need_schedule = true;
                     }
                 }

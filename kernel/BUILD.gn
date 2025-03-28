@@ -32,6 +32,7 @@ build_rust("kernel_integration_test") {
   edition = "2021"
   deps = [
     ":bluekernel_test",
+    "//libc:libc",
     "//kernel/scal:bluekernel_scal_test",
   ]
 
@@ -41,38 +42,40 @@ build_rust("kernel_integration_test") {
   rustflags += common_crate_rustflags
 }
 
-share_deps = [   "//external/cfg-if/v1.0.0:cfg_if",
-                 "//external/const-default/v1.0.0:const_default",
-                 "//external/cortex-m:cortex_m",
-                 "//external/embedded-io/v0.6.1:embedded_io",
-                 "//external/log/v0.4.22:log",
-                 "//external/pinned-init/v0.0.8:pinned_init",
-                 "//external/spin/v0.9.8:spin",
-                 "//external/thiserror/v2.0.9:thiserror",
-                 "//external/tock-registers/v0.9.0:tock_registers",
-                 "//kernel/arch:bluekernel_arch",
-                 "//kernel/header:bluekernel_header",
-                 "//kernel/infra:bluekernel_infra",
-                 "//kernel/kconfig:bluekernel_kconfig",
+share_deps = [
+  "//external/cfg-if/v1.0.0:cfg_if",
+  "//external/const-default/v1.0.0:const_default",
+  "//external/cortex-m:cortex_m",
+  "//external/embedded-io/v0.6.1:embedded_io",
+  "//external/log/v0.4.22:log",
+  "//external/pinned-init/v0.0.8:pinned_init",
+  "//external/spin/v0.9.8:spin",
+  "//external/thiserror/v2.0.9:thiserror",
+  "//external/tock-registers/v0.9.0:tock_registers",
+  "//kernel/arch:bluekernel_arch",
+  "//kernel/header:bluekernel_header",
+  "//kernel/infra:bluekernel_infra",
+  "//kernel/kconfig:bluekernel_kconfig",
+  "//libc:libc",
+]
 
-               ]
-
-share_features = [   "tlsf",
-                     "overflow_check",
-                     "idle_hook",
-                     "heap",
-                     "heap_isr",
-                     "debugging_init",
-                     "event",
-                     "messagequeue",
-                     "mailbox",
-                     "mutex",
-                     "semaphore",
-                     "rwlock",
-                     "condvar",
-                     "thread_priority_max",
-                     "schedule_with_time_slice",
-                   ]
+share_features = [
+  "tlsf",
+  "overflow_check",
+  "idle_hook",
+  "heap",
+  "heap_isr",
+  "debugging_init",
+  "event",
+  "messagequeue",
+  "mailbox",
+  "mutex",
+  "semaphore",
+  "rwlock",
+  "condvar",
+  "thread_priority_max",
+  "schedule_with_time_slice",
+]
 
 share_rust_build_flags = []
 if (direct_syscall_handler) {

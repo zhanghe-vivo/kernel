@@ -4,39 +4,11 @@
 
 use alloc::vec::Vec;
 use core::ffi::c_int;
-
-// File type mask
-pub const S_IFMT: u32 = 0o170000;
-pub const S_IFSOCK: u32 = 0o140000;
-pub const S_IFLNK: u32 = 0o120000;
-pub const S_IFREG: u32 = 0o100000;
-pub const S_IFBLK: u32 = 0o060000;
-pub const S_IFDIR: u32 = 0o040000;
-pub const S_IFCHR: u32 = 0o020000;
-pub const S_IFIFO: u32 = 0o010000;
-
-// Special permission bits
-pub const S_ISUID: u32 = 0o004000;
-pub const S_ISGID: u32 = 0o002000;
-pub const S_ISVTX: u32 = 0o001000;
-
-// User permissions
-pub const S_IRWXU: u32 = 0o700;
-pub const S_IRUSR: u32 = 0o400;
-pub const S_IWUSR: u32 = 0o200;
-pub const S_IXUSR: u32 = 0o100;
-
-// Group permissions
-pub const S_IRWXG: u32 = 0o070;
-pub const S_IRGRP: u32 = 0o040;
-pub const S_IWGRP: u32 = 0o020;
-pub const S_IXGRP: u32 = 0o010;
-
-// Other permissions
-pub const S_IRWXO: u32 = 0o007;
-pub const S_IROTH: u32 = 0o004;
-pub const S_IWOTH: u32 = 0o002;
-pub const S_IXOTH: u32 = 0o001;
+use libc::{
+    O_ACCMODE, O_APPEND, O_CLOEXEC, O_CREAT, O_DIRECTORY, O_EXCL, O_NOFOLLOW, O_NONBLOCK, O_RDONLY,
+    O_RDWR, O_SYNC, O_TRUNC, O_WRONLY, S_IFBLK, S_IFCHR, S_IFDIR, S_IFIFO, S_IFLNK, S_IFMT,
+    S_IFREG, S_IFSOCK,
+};
 
 /// Check if it's a symbolic link
 #[inline]
@@ -100,27 +72,6 @@ pub fn get_file_perm(mode: u32) -> u32 {
 #[allow(non_camel_case_types)]
 pub type mode_t = u32;
 
-// File access modes
-pub const O_RDONLY: i32 = 0o0; // Read only
-pub const O_WRONLY: i32 = 0o1; // Write only
-pub const O_RDWR: i32 = 0o2; // Read and write
-pub const O_ACCMODE: i32 = 0o3; // Access mode mask
-
-// File creation flags
-pub const O_CREAT: i32 = 0o100; // Create file if it doesn't exist
-pub const O_EXCL: i32 = 0o200; // Error if O_CREAT and file exists
-pub const O_NOCTTY: i32 = 0o400; // Don't assign controlling terminal
-pub const O_TRUNC: i32 = 0o1000; // Truncate if exists
-pub const O_APPEND: i32 = 0o2000; // Append mode
-pub const O_NONBLOCK: i32 = 0o4000; // Non-blocking mode
-pub const O_SYNC: i32 = 0o10000; // Synchronous mode
-
-// Directory operation flags
-pub const O_DIRECTORY: i32 = 0o200000; // Fail if not directory
-pub const O_NOFOLLOW: i32 = 0o400000; // Don't follow symlinks
-pub const O_CLOEXEC: i32 = 0o2000000; // Close on exec
-pub const O_PATH: i32 = 0o10000000; // Path-only file descriptor
-
 /// Convert open flags to readable string for debugging
 pub fn flags_to_string(flags: c_int) -> alloc::string::String {
     let mut modes = Vec::new();
@@ -139,9 +90,6 @@ pub fn flags_to_string(flags: c_int) -> alloc::string::String {
     }
     if flags & O_EXCL != 0 {
         modes.push("O_EXCL");
-    }
-    if flags & O_NOCTTY != 0 {
-        modes.push("O_NOCTTY");
     }
     if flags & O_TRUNC != 0 {
         modes.push("O_TRUNC");
@@ -164,9 +112,6 @@ pub fn flags_to_string(flags: c_int) -> alloc::string::String {
     }
     if flags & O_CLOEXEC != 0 {
         modes.push("O_CLOEXEC");
-    }
-    if flags & O_PATH != 0 {
-        modes.push("O_PATH");
     }
     modes.join("|")
 }

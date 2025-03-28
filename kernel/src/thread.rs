@@ -849,11 +849,9 @@ impl Thread {
         let scheduler = Cpu::get_current_scheduler();
 
         let level = scheduler.sched_lock();
-
         #[cfg(feature = "debugging_scheduler")]
         println!("Thread {:?} is resuming...", self as *const Self);
-        unsafe { Pin::new_unchecked(&mut self.list_node).remove_from_list() };
-
+        self.remove_thread_list_node();
         let need_schedule = scheduler.insert_ready_locked(self);
         scheduler.sched_unlock(level);
 
