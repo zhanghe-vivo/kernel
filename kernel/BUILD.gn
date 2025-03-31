@@ -34,6 +34,7 @@ build_rust("kernel_integration_test") {
     ":bluekernel_test",
     "//libc:libc",
     "//kernel/scal:bluekernel_scal_test",
+    "//kernel/infra:bluekernel_infra",
   ]
 
   inputs = [ "//kernel/kernel/src/bsp/$bsp/link.x" ]

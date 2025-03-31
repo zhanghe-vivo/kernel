@@ -2,10 +2,10 @@ use bluekernel::{
     println,
     sync::{semaphore::*, wait_list::*},
 };
+use bluekernel_infra::custom_test;
 
-#[test_case]
-fn test_sempahore_init() {
-    println!("test_semaphore_init...");
-    let _sem = Semaphore::new("sem1", 3, WaitMode::Fifo);
-    println!("[ok]");
+custom_test! {
+    fn test_sempahore_init() {
+        let _sem = Semaphore::new("sem1", 3, WaitMode::Fifo);
+    }
 }
