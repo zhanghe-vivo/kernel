@@ -1,9 +1,8 @@
-use core::fmt;
-use core::hint::spin_loop;
+use core::{fmt, hint::spin_loop};
 use embedded_io::{ErrorKind, ErrorType, Read, ReadReady, Write, WriteReady};
 
 use tock_registers::{
-    interfaces::{Readable, Writeable, ReadWriteable},
+    interfaces::{ReadWriteable, Readable, Writeable},
     register_bitfields, register_structs,
     registers::{ReadOnly, ReadWrite, WriteOnly},
 };
@@ -16,7 +15,7 @@ register_bitfields! [
         DATA OFFSET(0) NUMBITS(8) [],
         /// Framing error
         FE OFFSET(8) NUMBITS(1) [],
-        /// Parity error  
+        /// Parity error
         PE OFFSET(9) NUMBITS(1) [],
         /// Break error
         BE OFFSET(10) NUMBITS(1) [],
@@ -28,7 +27,7 @@ register_bitfields! [
     ReceiveStatus [
         /// Framing error
         FE OFFSET(0) NUMBITS(1) [],
-        /// Parity error  
+        /// Parity error
         PE OFFSET(1) NUMBITS(1) [],
         /// Break error
         BE OFFSET(2) NUMBITS(1) [],
@@ -229,7 +228,7 @@ impl Uart {
 
         // Disable UART before programming
         self.registers().CR.modify(Control::UARTEN::CLEAR);
-                    
+
         // Program Integer Baud Rate
         self.registers().IBRD.set((divisor >> 6) as u32);
 
@@ -240,11 +239,9 @@ impl Uart {
         self.registers().RSR.set(0);
 
         // Enable UART with RX and TX
-        self.registers().CR.modify(
-            Control::UARTEN::SET 
-            + Control::TXE::SET 
-            + Control::RXE::SET
-        );
+        self.registers()
+            .CR
+            .modify(Control::UARTEN::SET + Control::TXE::SET + Control::RXE::SET);
     }
 
     /// Writes a single byte to the UART.
@@ -281,7 +278,7 @@ impl Uart {
             if data.is_set(Data::OE) {
                 return Err(Error::Overrun);
             }
-            
+
             let byte = data.read(Data::DATA) as u8;
             Ok(Some(byte))
         }

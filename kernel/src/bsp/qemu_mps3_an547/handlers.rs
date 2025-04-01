@@ -1,4 +1,4 @@
-use crate::arch::{Vector, InterruptTable};
+use crate::arch::{InterruptTable, Vector};
 
 macro_rules! default_irq_handler {
     ($handler_name:ident) => {
@@ -69,15 +69,9 @@ static __INTERRUPTS: InterruptTable = {
     arr[5] = Vector {
         handler: TIMER2_Handler,
     };
-    arr[6] = Vector {
-        reserved: 0,
-    };
-    arr[7] = Vector {
-        reserved: 0,
-    };
-    arr[8] = Vector {
-        reserved: 0,
-    };
+    arr[6] = Vector { reserved: 0 };
+    arr[7] = Vector { reserved: 0 };
+    arr[8] = Vector { reserved: 0 };
     arr[9] = Vector {
         handler: MPC_Handler,
     };
@@ -90,9 +84,7 @@ static __INTERRUPTS: InterruptTable = {
     arr[12] = Vector {
         handler: BRIDGE_ERROR_Handler,
     };
-    arr[13] = Vector {
-        reserved: 0,
-    };
+    arr[13] = Vector { reserved: 0 };
     arr[14] = Vector {
         handler: MGMT_PPU_Handler,
     };
@@ -102,30 +94,14 @@ static __INTERRUPTS: InterruptTable = {
     arr[16] = Vector {
         handler: CPU0_PPU_Handler,
     };
-    arr[17] = Vector {
-        reserved: 0,
-    };
-    arr[18] = Vector {
-        reserved: 0,
-    };
-    arr[19] = Vector {
-        reserved: 0,
-    };
-    arr[20] = Vector {
-        reserved: 0,
-    };
-    arr[21] = Vector {
-        reserved: 0,
-    };
-    arr[22] = Vector {
-        reserved: 0,
-    };
-    arr[23] = Vector {
-        reserved: 0,
-    };
-    arr[24] = Vector {
-        reserved: 0,
-    };
+    arr[17] = Vector { reserved: 0 };
+    arr[18] = Vector { reserved: 0 };
+    arr[19] = Vector { reserved: 0 };
+    arr[20] = Vector { reserved: 0 };
+    arr[21] = Vector { reserved: 0 };
+    arr[22] = Vector { reserved: 0 };
+    arr[23] = Vector { reserved: 0 };
+    arr[24] = Vector { reserved: 0 };
     arr[25] = Vector {
         handler: DEBUG_PPU_Handler,
     };
@@ -138,45 +114,41 @@ static __INTERRUPTS: InterruptTable = {
     arr[29] = Vector {
         handler: CPU0_CTI_1_Handler,
     };
-    arr[30] = Vector {
-        reserved: 0,
-    };
-    arr[31] = Vector {
-        reserved: 0,
-    };
-  arr[32] = Vector {
+    arr[30] = Vector { reserved: 0 };
+    arr[31] = Vector { reserved: 0 };
+    arr[32] = Vector {
         handler: System_Timestamp_Counter_Handler,
     };
     // In the new version of QEMU (9.20), the UART RX interrupt and TX interrupt have been swapped.
     // For details, see `fix RX/TX interrupts order <https://github.com/qemu/qemu/commit/5a558be93ad628e5bed6e0ee062870f49251725c>`_
-  arr[33] = Vector {
+    arr[33] = Vector {
         handler: UARTTX0_Handler,
     };
-  arr[34] = Vector {
+    arr[34] = Vector {
         handler: UARTRX0_Handler,
     };
-  arr[35] = Vector {
+    arr[35] = Vector {
         handler: UARTRX1_Handler,
     };
-  arr[36] = Vector {
+    arr[36] = Vector {
         handler: UARTTX1_Handler,
     };
-  arr[37] = Vector {
+    arr[37] = Vector {
         handler: UARTRX2_Handler,
     };
-  arr[38] = Vector {
+    arr[38] = Vector {
         handler: UARTTX2_Handler,
     };
-  arr[39] = Vector {
+    arr[39] = Vector {
         handler: UARTRX3_Handler,
     };
-  arr[40] = Vector {
+    arr[40] = Vector {
         handler: UARTTX3_Handler,
     };
-  arr[41] = Vector {
+    arr[41] = Vector {
         handler: UARTRX4_Handler,
     };
-  arr[42] = Vector {
+    arr[42] = Vector {
         handler: UARTTX4_Handler,
     };
 

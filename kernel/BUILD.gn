@@ -3,26 +3,26 @@ import("//build/toolchain/bluekernel.gni")
 import("//kernel/common_crate_rustflags.gni")
 
 shared_rust_test_flags = [
-   # unstable rust custom test framework
-   "--test",
+  # unstable rust custom test framework
+  "--test",
 
-   # custom link script
-   "-C",
-   "link-arg=-T" + rebase_path("//kernel/kernel/src/bsp/$bsp/link.x"),
+  # custom link script
+  "-C",
+  "link-arg=-T" + rebase_path("//kernel/kernel/src/bsp/$bsp/link.x"),
 
-   # use lld to link
-   # # Tell rustc to use the LLVM linker. This avoids needing GCC as a dependency
-   # # to build the kernel.
-   # "-C", "linker=rust-lld",
-   # # Use the LLVM lld executable with the `-flavor gnu` flag.
-   # "-C", "linker-flavor=ld.lld",
-   # Enable link-time-optimization
-   "-C",
-   "lto",
+  # use lld to link
+  # # Tell rustc to use the LLVM linker. This avoids needing GCC as a dependency
+  # # to build the kernel.
+  # "-C", "linker=rust-lld",
+  # # Use the LLVM lld executable with the `-flavor gnu` flag.
+  # "-C", "linker-flavor=ld.lld",
+  # Enable link-time-optimization
+  "-C",
+  "lto",
 
-   # Have rustc generate stack sizes for analyzing the size of stack frames.
-   "-Z",
-   "emit-stack-sizes",
+  # Have rustc generate stack sizes for analyzing the size of stack frames.
+  "-Z",
+  "emit-stack-sizes",
 ]
 
 build_rust("kernel_integration_test") {
@@ -32,9 +32,9 @@ build_rust("kernel_integration_test") {
   edition = "2021"
   deps = [
     ":bluekernel_test",
-    "//libc:libc",
-    "//kernel/scal:bluekernel_scal_test",
     "//kernel/infra:bluekernel_infra",
+    "//kernel/scal:bluekernel_scal_test",
+    "//libc:libc",
   ]
 
   inputs = [ "//kernel/kernel/src/bsp/$bsp/link.x" ]
@@ -80,21 +80,21 @@ share_features = [
 
 share_rust_build_flags = []
 if (direct_syscall_handler) {
-    share_rust_build_flags += [
-        "--cfg",
-        "direct_syscall_handler",
-    ]
+  share_rust_build_flags += [
+    "--cfg",
+    "direct_syscall_handler",
+  ]
 }
 if (bsp == "qemu_mps2_an385" || bsp == "qemu_mps3_an547") {
-    share_rust_build_flags += [
-        "--cfg",
-        "hardware_schedule",
-    ]
+  share_rust_build_flags += [
+    "--cfg",
+    "hardware_schedule",
+  ]
 }
 
 share_rust_build_flags += [
-    "--cfg",
-    "target_board=\"$bsp\"",
+  "--cfg",
+  "target_board=\"$bsp\"",
 ]
 
 build_rust("kernel_unit_test") {
@@ -104,7 +104,7 @@ build_rust("kernel_unit_test") {
   sources = [ "src/lib.rs" ]
   edition = "2021"
   proc_macro_deps = [ "//external/paste/v1.0.15:paste" ]
-  deps = share_deps + ["//kernel/kernel:bluekernel_test"]
+  deps = share_deps + [ "//kernel/kernel:bluekernel_test" ]
   features = share_features
 
   rustflags = share_rust_build_flags
@@ -130,7 +130,7 @@ build_rust("bluekernel") {
   crate_type = "rlib"
   sources = [ "src/lib.rs" ]
   edition = "2021"
-  deps = share_deps + ["//kernel/bindings:os_bindings"]
+  deps = share_deps + [ "//kernel/bindings:os_bindings" ]
   features = [
     "tlsf",
     "overflow_check",

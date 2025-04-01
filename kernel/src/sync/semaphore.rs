@@ -313,7 +313,6 @@ pub extern "C" fn bindgen_sem(_sem: Semaphore) {
     0;
 }
 
-
 #[cfg(test)]
 mod test {
     use super::*;

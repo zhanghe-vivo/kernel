@@ -1,4 +1,4 @@
-use crate::arch::{Vector, InterruptTable};
+use crate::arch::{InterruptTable, Vector};
 
 macro_rules! default_irq_handler {
     ($handler_name:ident) => {

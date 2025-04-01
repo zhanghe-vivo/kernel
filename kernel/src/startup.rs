@@ -37,7 +37,9 @@ pub extern "C" fn main_thread_entry(_parameter: *mut core::ffi::c_void) {
         fn main() -> i32;
     }
     #[cfg(not(test))]
-    unsafe { main() };
+    unsafe {
+        main()
+    };
 }
 
 /// This function will create and start the main thread.
