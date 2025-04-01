@@ -14,6 +14,7 @@ use core::ffi::c_void;
 use libc::pthread_t;
 use librs::pthread::{pthread_create, pthread_join};
 
+mod ctype;
 mod pthread;
 mod scal;
 

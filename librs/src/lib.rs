@@ -25,6 +25,7 @@ extern "C" {
 }
 
 // We don't expose any interfaces or types externally, rust-lang/libc is doing that.
+pub mod ctype;
 pub mod errno;
 pub mod iter;
 pub mod pthread;
