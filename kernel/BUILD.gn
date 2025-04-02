@@ -30,9 +30,9 @@ build_rust("kernel_integration_test") {
   crate_type = "bin"
   sources = [ "tests/integration_test.rs" ]
   edition = "2021"
+  proc_macro_deps = [ "//kernel/test_harness:bluekernel_test_macro" ]
   deps = [
     ":bluekernel_test",
-    "//kernel/infra:bluekernel_infra",
     "//kernel/scal:bluekernel_scal_test",
     "//libc:libc",
   ]
@@ -103,7 +103,10 @@ build_rust("kernel_unit_test") {
   crate_type = "bin"
   sources = [ "src/lib.rs" ]
   edition = "2021"
-  proc_macro_deps = [ "//external/paste/v1.0.15:paste" ]
+  proc_macro_deps = [
+    "//external/paste/v1.0.15:paste",
+    "//kernel/test_harness:bluekernel_test_macro",
+  ]
   deps = share_deps + [ "//kernel/kernel:bluekernel_test" ]
   features = share_features
 

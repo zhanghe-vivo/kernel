@@ -317,11 +317,10 @@ pub extern "C" fn bindgen_sem(_sem: Semaphore) {
 mod test {
     use super::*;
     use crate::println;
-    use bluekernel_infra::custom_test;
+    use bluekernel_test_macro::test;
 
-    custom_test! {
-        fn test_sempahore() {
-            let _sem = Semaphore::new("sem1", 3, WaitMode::Fifo);
-        }
+    #[test]
+    fn test_sempahore() {
+        let _sem = Semaphore::new("sem1", 3, WaitMode::Fifo);
     }
 }

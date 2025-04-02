@@ -1,0 +1,13 @@
+import("//build/templates/build_template.gni")
+build_rust("bluekernel_test_macro") {
+  testonly = true
+  crate_type = "proc-macro"
+  sources = [ "macros/src/lib.rs" ]
+  edition = "2021"
+
+  deps = [
+    "//external/proc-macro2/v1.0.89:proc_macro2",
+    "//external/quote/v1.0.37:quote",
+    "//external/syn/v2.0.87:syn",
+  ]
+}

@@ -4,10 +4,11 @@ use bluekernel::{
     sync::futex::*,
     thread::{Thread, ThreadBuilder},
 };
+use bluekernel_test_macro::test;
 use core::sync::atomic::AtomicUsize;
 use libc::ETIMEDOUT;
 
-#[test_case]
+#[test]
 fn test_futex_timeout() {
     // Create a stack variable to use as futex address
     let futex_addr = AtomicUsize::new(0);
@@ -20,11 +21,9 @@ fn test_futex_timeout() {
 
     assert!(res.is_err());
     assert_eq!(res.unwrap_err(), ETIMEDOUT);
-
-    println!("test_futex_timeout passed");
 }
 
-#[test_case]
+#[test]
 fn test_futex_wake() {
     // Create a stack variable to use as futex address
     let futex_addr = AtomicUsize::new(0);
@@ -36,11 +35,9 @@ fn test_futex_wake() {
     let res = atomic_wake(addr, 1);
     assert!(res.is_ok());
     assert_eq!(res.unwrap(), 0); // No threads were woken up
-
-    println!("test_futex_wake passed");
 }
 
-#[test_case]
+#[test]
 fn test_futex_thread_wait() {
     let futex = Arc::new(AtomicUsize::new(0));
     let futex_clone = futex.clone();
@@ -76,6 +73,4 @@ fn test_futex_thread_wait() {
     let res = atomic_wake(addr, 1);
     assert!(res.is_ok());
     assert_eq!(res.unwrap(), 1);
-
-    println!("test_futex_thread_wait passed");
 }
