@@ -20,6 +20,7 @@
 extern crate alloc;
 // TODO: Move to mman. We use them to allocate tls object.
 extern "C" {
+    pub fn malloc(size: usize) -> *mut core::ffi::c_void;
     pub fn posix_memalign(memptr: *mut *mut u8, align: usize, size: usize) -> core::ffi::c_int;
     pub fn free(ptr: *mut u8);
 }
