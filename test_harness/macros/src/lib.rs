@@ -7,6 +7,7 @@ use syn::{parse_macro_input, FnArg, ItemFn};
 pub fn test(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let input = parse_macro_input!(item as ItemFn);
     let test_name = &input.sig.ident;
+    let input_block = &input.block;
 
     let filtered_params = input
         .sig
@@ -24,8 +25,8 @@ pub fn test(_attr: TokenStream, item: TokenStream) -> TokenStream {
         #[test_case]
         fn #test_name(#(#filtered_params),*) {
             println!("[ RUN      ] {}", stringify!(#test_name));
-            #input
             #( let _ = #param_names; )*
+            #input_block
             println!("[       OK ] {}", stringify!(#test_name));
         }
     };
