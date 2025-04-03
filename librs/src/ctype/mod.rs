@@ -104,7 +104,10 @@ pub extern "C" fn toupper(c: c_int) -> c_int {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test_case]
+    use crate::println;
+    use bluekernel_test_macro::test;
+
+    #[test]
     fn check_is_alnum() {
         assert_eq!(isalnum(b'0' as c_int), 1);
         assert_eq!(isalnum(b'9' as c_int), 1);
@@ -116,7 +119,7 @@ mod tests {
         assert_eq!(isalnum(b'!' as c_int), 0);
     }
 
-    #[test_case]
+    #[test]
     fn check_is_alpha() {
         assert_eq!(isalpha(b'a' as c_int), 1);
         assert_eq!(isalpha(b'z' as c_int), 1);
@@ -128,13 +131,13 @@ mod tests {
         assert_eq!(isalpha(b'!' as c_int), 0);
     }
 
-    #[test_case]
+    #[test]
     fn check_is_ascii() {
         assert_eq!(isascii(b'a' as c_int), 1);
         assert_eq!(isascii(0x80), 0);
     }
 
-    #[test_case]
+    #[test]
     fn check_is_blank() {
         assert_eq!(isblank(b' ' as c_int), 1);
         assert_eq!(isblank(b'\t' as c_int), 1);
@@ -142,7 +145,7 @@ mod tests {
         assert_eq!(isblank(b'0' as c_int), 0);
     }
 
-    #[test_case]
+    #[test]
     fn check_is_cntrl() {
         assert_eq!(iscntrl(0x00), 1);
         assert_eq!(iscntrl(0x1f), 1);
@@ -151,7 +154,7 @@ mod tests {
         assert_eq!(iscntrl(0x7e), 0);
     }
 
-    #[test_case]
+    #[test]
     fn check_is_digit() {
         assert_eq!(isdigit(b'0' as c_int), 1);
         assert_eq!(isdigit(b'9' as c_int), 1);
@@ -159,7 +162,7 @@ mod tests {
         assert_eq!(isdigit(b'z' as c_int), 0);
     }
 
-    #[test_case]
+    #[test]
     fn check_is_space() {
         assert_eq!(isspace(b' ' as c_int), 1);
         assert_eq!(isspace(b'\t' as c_int), 1);

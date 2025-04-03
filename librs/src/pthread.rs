@@ -455,6 +455,9 @@ pub extern "C" fn pthread_mutex_destroy(mutex: *mut pthread_mutex_t) -> c_int {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::println;
+    use bluekernel_test_macro::test;
+
     macro_rules! check_align {
         ($lhs:ident, $rhs:ident) => {
             assert_eq!(align_of::<$lhs>(), align_of::<$rhs>())
@@ -467,7 +470,7 @@ mod tests {
         };
     }
 
-    #[test_case]
+    #[test]
     fn check_type_consistency() {
         check_align!(pthread_mutex_t, Mutex);
         check_size!(pthread_mutex_t, Mutex);

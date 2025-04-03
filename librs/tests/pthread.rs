@@ -1,5 +1,7 @@
 extern crate alloc;
+use crate::println;
 use alloc::vec::Vec;
+use bluekernel_test_macro::test;
 use core::{
     cell::{Cell, RefCell},
     ffi::{c_int, c_size_t, c_void},
@@ -28,7 +30,7 @@ extern "C" fn mutex_lock_unlock(arg: *mut c_void) -> *mut c_void {
     core::ptr::null_mut()
 }
 
-#[test_case]
+#[test]
 fn test_single_thread_mutex() {
     let mut mutex: pthread_mutex_t = unsafe { MaybeUninit::zeroed().assume_init() };
     pthread_mutex_init(&mut mutex as *mut _, core::ptr::null());
@@ -39,7 +41,7 @@ fn test_single_thread_mutex() {
     }
 }
 
-#[test_case]
+#[test]
 fn test_multi_thread_mutex() {
     let mut mutex: pthread_mutex_t = unsafe { MaybeUninit::zeroed().assume_init() };
     let num_threads = 4;
@@ -72,7 +74,7 @@ extern "C" fn cond_wait(arg: *mut c_void) -> *mut c_void {
     core::ptr::null_mut()
 }
 
-#[test_case]
+#[test]
 fn test_mult_thread_cond() {
     let mut cond: pthread_cond_t = unsafe { MaybeUninit::zeroed().assume_init() };
     let condattr: CondAttr = CondAttr::default();
@@ -114,7 +116,7 @@ static THREAD_LOCAL_CHECK: Cell<usize> = Cell::new(42);
 #[thread_local]
 static LOCAL_VEC: RefCell<Vec<i32>> = RefCell::new(Vec::new());
 
-#[test_case]
+#[test]
 fn test_complex_thread_local() {
     fn is_prime(n: i32) -> bool {
         let mut i = 2;
@@ -141,7 +143,7 @@ extern "C" fn increase_counter(arg: *mut c_void) -> *mut c_void {
     core::ptr::null_mut()
 }
 
-#[test_case]
+#[test]
 fn test_pthread_create_and_join() {
     let num_threads = 4;
     let mut threads = Vec::new();
@@ -168,7 +170,7 @@ fn test_pthread_create_and_join() {
     assert_eq!(counter.load(Ordering::Acquire), num_threads);
 }
 
-#[test_case]
+#[test]
 fn test_pthread_create_and_detach() {
     let num_threads = 4;
     let mut threads = Vec::new();
@@ -199,7 +201,7 @@ fn test_pthread_create_and_detach() {
     assert_eq!(num_joined + num_detached, num_threads);
 }
 
-#[test_case]
+#[test]
 fn test_thread_local() {
     assert_eq!(THREAD_LOCAL_CHECK.get(), 42);
 }

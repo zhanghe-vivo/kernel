@@ -37,6 +37,8 @@ build_rust("librs_integration_test_image") {
   sources = [ "tests/integration_test.rs" ]
   edition = "2021"
 
+  proc_macro_deps = [ "//kernel/test_harness:bluekernel_test_macro" ]
+
   deps = [
     ":librs_test",
     "//external/spin/v0.9.8:spin",
@@ -80,6 +82,7 @@ build_rust("librs_unittest_image") {
     "//kernel/scal:bluekernel_scal_test",
     "//libc:libc",
   ]
+  proc_macro_deps = [ "//kernel/test_harness:bluekernel_test_macro" ]
   inputs = [ "//kernel/kernel/src/bsp/$bsp/link.x" ]
   rustflags = [
     "--test",

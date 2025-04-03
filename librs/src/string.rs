@@ -511,28 +511,31 @@ mod dup {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test_case]
+    use crate::println;
+    use bluekernel_test_macro::test;
+
+    #[test]
     fn check_ffs() {
         assert_eq!(ffs(0), 0);
         assert_eq!(ffs(1), 1);
         assert_eq!(ffs(16), 5);
     }
 
-    #[test_case]
+    #[test]
     fn check_ffsl() {
         assert_eq!(ffsl(0), 0);
         assert_eq!(ffsl(1), 1);
         assert_eq!(ffsl(1024), 11);
     }
 
-    #[test_case]
+    #[test]
     fn check_ffsll() {
         assert_eq!(ffsll(0), 0);
         assert_eq!(ffsll(1), 1);
         assert_eq!(ffsll(2048), 12);
     }
 
-    #[test_case]
+    #[test]
     fn check_strchr() {
         let s = b"hello world\0";
         let c = b'l' as c_int;
@@ -540,7 +543,7 @@ mod tests {
         assert_eq!(p, unsafe { s.as_ptr().add(2) } as *mut c_char);
     }
 
-    #[test_case]
+    #[test]
     fn check_strchrnul() {
         let s = b"hello world\0";
         let c = b'l' as c_int;
@@ -548,7 +551,7 @@ mod tests {
         assert_eq!(p, unsafe { s.as_ptr().add(2) } as *mut c_char);
     }
 
-    #[test_case]
+    #[test]
     fn check_strcspn() {
         let s1 = b"hello world\0";
         let s2 = b"aeiou\0";
@@ -556,7 +559,7 @@ mod tests {
         assert_eq!(n, 1);
     }
 
-    #[test_case]
+    #[test]
     fn check_strspn() {
         let s1 = b"hello world\0";
         let s2 = b"hello\0";
@@ -564,7 +567,7 @@ mod tests {
         assert_eq!(n, 5);
     }
 
-    #[test_case]
+    #[test]
     fn check_strpbrk() {
         let s1 = b"hello world\0";
         let s2 = b"aeiou\0";
@@ -572,7 +575,7 @@ mod tests {
         assert_eq!(p, unsafe { s1.as_ptr().add(1) } as *mut c_char);
     }
 
-    #[test_case]
+    #[test]
     fn check_strrchr() {
         let s = b"hello world\0";
         let c = b'l' as c_int;

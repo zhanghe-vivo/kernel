@@ -1,3 +1,5 @@
+use crate::println;
+use bluekernel_test_macro::test;
 use librs::ctype::{
     isalnum, isalpha, isascii, isblank, iscntrl, isdigit, isgraph, islower, isprint, ispunct,
     isspace, isupper, isxdigit, toascii, tolower, toupper,
@@ -38,7 +40,7 @@ const TEST_CASES: &[(
     (EOF, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x7F, EOF, EOF),
 ];
 
-#[test_case]
+#[test]
 fn ctype_test() {
     for (
         c,
