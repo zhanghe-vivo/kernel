@@ -17,6 +17,7 @@ use librs::pthread::{pthread_create, pthread_join};
 mod ctype;
 mod pthread;
 mod scal;
+mod semihosting;
 
 pub fn librs_test_runner(tests: &[&dyn Fn()]) {
     println!("Librs integration test started");

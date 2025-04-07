@@ -41,6 +41,7 @@ build_rust("librs_integration_test_image") {
 
   deps = [
     ":librs_test",
+    "//external/semihosting/v0.1.20:semihosting",
     "//external/spin/v0.9.8:spin",
     "//kernel/header:bluekernel_header",
     "//kernel/kernel:bluekernel_test",
@@ -61,6 +62,7 @@ gen_qemu_runner("librs_integration_test_runner") {
   img = ":librs_integration_test_image"
   qemu = "$qemu_exe"
   board = "$bsp"
+  semihosting = true
 }
 
 run_qemu_check("run_librs_integration_test") {
