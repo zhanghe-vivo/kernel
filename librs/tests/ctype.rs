@@ -41,7 +41,7 @@ const TEST_CASES: &[(
 ];
 
 #[test]
-fn ctype_test() {
+fn test_ctype() {
     for (
         c,
         alnum,

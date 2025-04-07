@@ -15,6 +15,7 @@ pub mod syscalls {
         ExitThread,
         AtomicWait,
         AtomicWake,
+        Exit,
         LastNR,
     }
 }
