@@ -39,7 +39,7 @@ pub mod time;
 pub mod tls;
 pub mod types;
 
-// TODO: remove this when we have a proper libc implementation.
+// FIXME: Remove this when we have a proper libc implementation.
 #[cfg(feature = "posixtestsuite")]
 #[path = "../tests/posixtestsuite/utils.rs"]
 pub mod utils;

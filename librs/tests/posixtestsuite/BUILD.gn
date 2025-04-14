@@ -2,16 +2,16 @@ import("//build/templates/rust.gni")
 import("//build/toolchain/bluekernel.gni")
 import("//kernel/common_crate_rustflags.gni")
 
-group("run_librs_posix_tests") {
+group("run_librs_posix_testsuite") {
   testonly = true
   deps = [ ":run_librs_posix_pthread_create_1_1" ]
 }
 
-build_rust("librs_posix_tests_base") {
+build_rust("librs_for_posix_testsuite") {
   testonly = true
   crate_type = "staticlib"
   crate_name = "librs"
-  sources = [ "../../src/lib.rs" ]
+  sources = [ "//kernel/librs/src/lib.rs" ]
   deps = [
     "//external/spin/v0.9.8:spin",
     "//kernel/header:bluekernel_header",
@@ -27,7 +27,7 @@ executable("librs_posix_image_pthread_create_1_1") {
   testonly = true
 
   deps = [
-    ":librs_posix_tests_base",
+    ":librs_for_posix_testsuite",
     ":pthread_create_1_1",
   ]
   inputs = [ "//kernel/kernel/src/bsp/$bsp/link.x" ]
@@ -51,7 +51,7 @@ gen_qemu_runner("librs_posix_runner_pthread_create_1_1") {
 run_qemu_check("run_librs_posix_pthread_create_1_1") {
   testonly = true
   runner = ":librs_posix_runner_pthread_create_1_1"
-  checker = "//kernel/librs/tests/posixtestsuite/common_checker.test"
+  checker = "common_checker.test"
 }
 
 source_set("pthread_create_1_1") {
@@ -59,7 +59,7 @@ source_set("pthread_create_1_1") {
     "//external/posixtestsuite/conformance/interfaces/pthread_create/1-1.c",
   ]
 
-  include_dirs = [ "../../newlib/include" ]
+  include_dirs = [ "//kernel/librs/newlib/include" ]
   cflags = [
     "-std=gnu99",
     "-D_POSIX_C_SOURCE=200112L",

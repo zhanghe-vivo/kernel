@@ -31,46 +31,6 @@ build_rust("librs_test") {
   rustflags = common_crate_rustflags
 }
 
-build_rust("librs_integration_test_image") {
-  testonly = true
-  crate_type = "bin"
-  sources = [ "tests/integration_test.rs" ]
-  edition = "2021"
-
-  proc_macro_deps = [ "//kernel/test_harness:bluekernel_test_macro" ]
-
-  deps = [
-    ":librs_test",
-    "//external/semihosting/v0.1.20:semihosting",
-    "//external/spin/v0.9.8:spin",
-    "//kernel/header:bluekernel_header",
-    "//kernel/kernel:bluekernel_test",
-    "//kernel/scal:bluekernel_scal_test",
-    "//libc:libc",
-  ]
-  inputs = [ "//kernel/kernel/src/bsp/$bsp/link.x" ]
-  rustflags = [
-    "--test",
-    "-Clink-arg=-T" + rebase_path("//kernel/kernel/src/bsp/$bsp/link.x"),
-  ]
-  rustflags += test_image_rustflags
-  rustflags += common_crate_rustflags
-}
-
-gen_qemu_runner("librs_integration_test_runner") {
-  testonly = true
-  img = ":librs_integration_test_image"
-  qemu = "$qemu_exe"
-  board = "$bsp"
-  semihosting = true
-}
-
-run_qemu_check("run_librs_integration_test") {
-  testonly = true
-  runner = ":librs_integration_test_runner"
-  checker = "tests/integration_test.rs"
-}
-
 build_rust("librs_unittest_image") {
   testonly = true
   crate_type = "bin"
@@ -112,9 +72,9 @@ if (direct_syscall_handler) {
   group("check_librs") {
     testonly = true
     deps = [
-      ":run_librs_integration_test",
       ":run_librs_unittest",
-      "//kernel/librs/tests/posixtestsuite:run_librs_posix_tests",
+      "tests/integration_test:run_librs_integration_test",
+      "tests/posixtestsuite:run_librs_posix_testsuite",
     ]
   }
 } else {
