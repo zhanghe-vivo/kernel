@@ -1,10 +1,12 @@
 import("//build/templates/rust.gni")
-import("//build/toolchain/bluekernel.gni")
 import("//kernel/common_crate_rustflags.gni")
-
+import("//kernel/librs/tests/posixtestsuite/testcase.gni")
 group("run_librs_posix_testsuite") {
   testonly = true
-  deps = [ ":run_librs_posix_pthread_create_1_1" ]
+  deps = [
+    ":run_librs_posix_pthread_create_1_1",
+    ":run_librs_posix_sem_destroy_3_1",
+  ]
 }
 
 build_rust("librs_for_posix_testsuite") {
@@ -15,56 +17,15 @@ build_rust("librs_for_posix_testsuite") {
   deps = [
     "//external/spin/v0.9.8:spin",
     "//kernel/header:bluekernel_header",
-    "//kernel/kernel:bluekernel",
-    "//kernel/scal:bluekernel_scal_test",
+    "//kernel/kernel:bluekernel_posixtestsuite",
+    "//kernel/scal:bluekernel_scal_posixtestsuite",
     "//libc:libc",
   ]
   features = [ "posixtestsuite" ]
   rustflags = common_crate_rustflags
 }
 
-executable("librs_posix_image_pthread_create_1_1") {
-  testonly = true
-
-  deps = [
-    ":librs_for_posix_testsuite",
-    ":pthread_create_1_1",
-  ]
-  inputs = [ "//kernel/kernel/src/bsp/$bsp/link.x" ]
-  ldflags = [
-    "-T",
-    rebase_path("//kernel/kernel/src/bsp/$bsp/link.x"),
-    "-Wl,-cref,-u,Reset_Handler",
-    "-nostartfiles",
-    "-lgcc",
-    "-nodefaultlibs",
-  ]
+posix_testsuite_case("pthread_create_1_1") {
 }
-
-gen_qemu_runner("librs_posix_runner_pthread_create_1_1") {
-  testonly = true
-  img = ":librs_posix_image_pthread_create_1_1"
-  qemu = "$qemu_exe"
-  board = "$bsp"
-}
-
-run_qemu_check("run_librs_posix_pthread_create_1_1") {
-  testonly = true
-  runner = ":librs_posix_runner_pthread_create_1_1"
-  checker = "common_checker.test"
-}
-
-source_set("pthread_create_1_1") {
-  sources = [
-    "//external/posixtestsuite/conformance/interfaces/pthread_create/1-1.c",
-  ]
-
-  include_dirs = [ "//kernel/librs/newlib/include" ]
-  cflags = [
-    "-std=gnu99",
-    "-D_POSIX_C_SOURCE=200112L",
-    "-O2",
-    "-Wall",
-    "-nostartfiles",
-  ]
+posix_testsuite_case("sem_destroy_3_1") {
 }

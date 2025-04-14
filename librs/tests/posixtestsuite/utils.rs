@@ -41,3 +41,30 @@ pub extern "C" fn sleep(seconds: c_uint) -> c_uint {
 pub unsafe extern "C" fn pthread_cancel(thread: pthread_t) -> c_int {
     0
 }
+
+extern "C" fn posix_testsuite_main(_: *mut core::ffi::c_void) -> *mut core::ffi::c_void {
+    extern "C" {
+        fn main() -> i32;
+    }
+    unsafe {
+        main();
+    }
+    core::ptr::null_mut()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn start_posix_testsuite() -> i32 {
+    use crate::pthread::{pthread_create, pthread_join};
+    use libc::pthread_t;
+    // We must enter POSIX subsystem first to perform posix testsuite testing.
+    let mut t: pthread_t = 0;
+    let rc = pthread_create(
+        &mut t as *mut pthread_t,
+        core::ptr::null(),
+        posix_testsuite_main,
+        core::ptr::null_mut(),
+    );
+    assert_eq!(rc, 0);
+    pthread_join(t, core::ptr::null_mut());
+    0
+}

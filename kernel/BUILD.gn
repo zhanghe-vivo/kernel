@@ -110,6 +110,23 @@ build_rust("bluekernel") {
   rustflags += common_crate_rustflags
 }
 
+build_rust("bluekernel_posixtestsuite") {
+  testonly = true
+  crate_name = "bluekernel"
+  crate_type = "rlib"
+  sources = [ "src/lib.rs" ]
+  edition = "2021"
+  proc_macro_deps = [
+    "//external/paste/v1.0.15:paste",
+    "//external/rust-delegate/v0.13.3:delegate",
+  ]
+  deps = shares_deps
+  features = share_features
+  features += [ "posixtestsuite" ]
+  rustflags = share_rust_build_flags
+  rustflags += common_crate_rustflags
+}
+
 cbindgen("rust_wrapper") {
   sources = [ "cbindgen.toml" ]
   args = [

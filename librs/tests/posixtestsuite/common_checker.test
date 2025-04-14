@@ -1,3 +1,3 @@
 // NEWLINE-TIMEOUT: 10
-// ASSERT-SUCC: Test PASSED
-// ASSERT-FAIL: Test FAILED
+// ASSERT-SUCC: (?i)test\spass
+// ASSERT-FAIL: (?i)test\sfail

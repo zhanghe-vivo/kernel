@@ -32,13 +32,13 @@ pub mod ctype;
 pub mod errno;
 pub mod iter;
 pub mod pthread;
+pub mod semaphore;
 pub mod stdlib;
 pub mod string;
 pub mod sync;
 pub mod time;
 pub mod tls;
 pub mod types;
-
 // FIXME: Remove this when we have a proper libc implementation.
 #[cfg(feature = "posixtestsuite")]
 #[path = "../tests/posixtestsuite/utils.rs"]

@@ -1,5 +1,6 @@
 use crate::{
     free, posix_memalign,
+    semaphore::RsSemaphore,
     sync::{
         barrier::{Barrier, BarrierAttr, WaitResult},
         cond::{Cond, CondAttr},
@@ -23,7 +24,7 @@ use core::{
 use libc::{
     clockid_t, pthread_attr_t, pthread_barrier_t, pthread_barrierattr_t, pthread_cond_t,
     pthread_condattr_t, pthread_key_t, pthread_mutex_t, pthread_mutexattr_t, pthread_rwlock_t,
-    pthread_rwlockattr_t, pthread_t, sched_param, timespec, EDEADLK, EINVAL, ESRCH,
+    pthread_rwlockattr_t, pthread_t, sched_param, sem_t, timespec, EDEADLK, EINVAL, ESRCH,
 };
 
 pub const PTHREAD_BARRIER_SERIAL_THREAD: c_int = -1;
@@ -724,5 +725,7 @@ mod tests {
         check_size!(pthread_barrierattr_t, BarrierAttr);
         check_align!(pthread_barrier_t, Barrier);
         check_size!(pthread_barrier_t, Barrier);
+        check_align!(sem_t, RsSemaphore);
+        check_size!(sem_t, RsSemaphore);
     }
 }
