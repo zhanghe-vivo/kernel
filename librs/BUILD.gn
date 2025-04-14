@@ -114,6 +114,7 @@ if (direct_syscall_handler) {
     deps = [
       ":run_librs_integration_test",
       ":run_librs_unittest",
+      "//kernel/librs/tests/posixtestsuite:run_librs_posix_tests",
     ]
   }
 } else {

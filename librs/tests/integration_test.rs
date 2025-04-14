@@ -8,6 +8,7 @@
 #![reexport_test_harness_main = "librs_test_main"]
 #![feature(c_size_t)]
 #![feature(thread_local)]
+#![feature(c_variadic)]
 
 use bluekernel::{allocator, println, thread::Thread};
 use core::ffi::c_void;

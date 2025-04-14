@@ -8,10 +8,12 @@ use core::{
 };
 use libc::timespec;
 
+pub mod barrier;
 pub mod cond;
 pub mod mutex;
 pub mod once;
 pub mod rwlock;
+pub mod semaphore;
 pub mod waitval;
 
 type Result<T, E = c_int> = core::result::Result<T, E>;

@@ -1,8 +1,7 @@
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use libc::timespec;
-
 use super::futex_wait;
+use libc::{c_int, timespec};
 
 pub struct Rwlock {
     state: AtomicUsize,
@@ -139,4 +138,33 @@ impl Rwlock {
             }
         }
     }
+}
+
+#[derive(Clone, Copy, Default, Debug)]
+pub enum Pshared {
+    #[default]
+    Private,
+
+    Shared,
+}
+impl Pshared {
+    pub const fn from_raw(raw: c_int) -> Option<Self> {
+        Some(match raw {
+            crate::pthread::PTHREAD_PROCESS_PRIVATE => Self::Private,
+            crate::pthread::PTHREAD_PROCESS_SHARED => Self::Shared,
+
+            _ => return None,
+        })
+    }
+    pub const fn raw(self) -> c_int {
+        match self {
+            Self::Private => crate::pthread::PTHREAD_PROCESS_PRIVATE,
+            Self::Shared => crate::pthread::PTHREAD_PROCESS_SHARED,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Default)]
+pub(crate) struct RwlockAttr {
+    pub pshared: Pshared,
 }

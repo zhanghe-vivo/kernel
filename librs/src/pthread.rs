@@ -1,8 +1,10 @@
 use crate::{
     free, posix_memalign,
     sync::{
+        barrier::{Barrier, BarrierAttr, WaitResult},
         cond::{Cond, CondAttr},
         mutex::{Mutex, MutexAttr},
+        rwlock::{Pshared, Rwlock as RsRwLock, RwlockAttr},
         waitval::Waitval,
     },
 };
@@ -13,14 +15,20 @@ use bluekernel_header::{
 };
 use bluekernel_scal::bk_syscall;
 use core::{
-    ffi::{c_int, c_size_t, c_void},
+    ffi::{c_int, c_size_t, c_uint, c_void},
     intrinsics::transmute,
+    num::NonZeroU32,
     sync::atomic::{AtomicI8, AtomicUsize, Ordering},
 };
 use libc::{
-    clockid_t, pthread_attr_t, pthread_cond_t, pthread_condattr_t, pthread_key_t, pthread_mutex_t,
-    pthread_mutexattr_t, pthread_t, EDEADLK, EINVAL, ESRCH,
+    clockid_t, pthread_attr_t, pthread_barrier_t, pthread_barrierattr_t, pthread_cond_t,
+    pthread_condattr_t, pthread_key_t, pthread_mutex_t, pthread_mutexattr_t, pthread_rwlock_t,
+    pthread_rwlockattr_t, pthread_t, sched_param, timespec, EDEADLK, EINVAL, ESRCH,
 };
+
+pub const PTHREAD_BARRIER_SERIAL_THREAD: c_int = -1;
+pub const PTHREAD_PROCESS_SHARED: c_int = 1;
+pub const PTHREAD_PROCESS_PRIVATE: c_int = 0;
 use spin::RwLock;
 
 pub type PosixRoutineEntry = extern "C" fn(arg: *mut c_void) -> *mut c_void;
@@ -115,6 +123,20 @@ pub extern "C" fn pthread_attr_setstacksize(
 #[no_mangle]
 pub extern "C" fn pthread_self() -> pthread_t {
     bk_syscall!(GetTid) as pthread_t
+}
+
+#[linkage = "weak"]
+#[no_mangle]
+pub extern "C" fn pthread_getschedparam(
+    _thread: pthread_t,
+    policy: *mut c_int,
+    _param: *mut sched_param,
+) -> c_int {
+    // todo
+    unsafe {
+        *policy = 0;
+    }
+    0
 }
 
 #[linkage = "weak"]
@@ -297,7 +319,29 @@ pub extern "C" fn pthread_getspecific(key: pthread_key_t) -> *mut c_void {
 
 #[linkage = "weak"]
 #[no_mangle]
-pub extern "C" fn pthread_set_name_np(t: pthread_t, name: *const i8) -> c_int {
+pub extern "C" fn pthread_equal(t1: pthread_t, t2: pthread_t) -> c_int {
+    (t1 == t2) as c_int
+}
+
+#[linkage = "weak"]
+#[no_mangle]
+pub extern "C" fn pthread_getconcurrency() -> c_int {
+    0
+}
+
+#[linkage = "weak"]
+#[no_mangle]
+pub extern "C" fn pthread_getcpuclockid(_thread: pthread_t, clock_id: *mut clockid_t) -> c_int {
+    // todo
+    unsafe {
+        *clock_id = 0;
+    }
+    0
+}
+
+#[linkage = "weak"]
+#[no_mangle]
+pub extern "C" fn pthread_set_name_np(_t: pthread_t, _name: *const i8) -> c_int {
     // TODO
     0
 }
@@ -313,6 +357,36 @@ pub extern "C" fn pthread_condattr_init(condattr: *mut pthread_condattr_t) -> c_
 #[no_mangle]
 pub extern "C" fn pthread_condattr_destroy(condattr: *mut pthread_condattr_t) -> c_int {
     unsafe { core::ptr::drop_in_place(condattr.cast::<CondAttr>()) };
+    0
+}
+
+#[linkage = "weak"]
+#[no_mangle]
+pub extern "C" fn pthread_condattr_getclock(
+    condattr: *const pthread_condattr_t,
+    clock: *mut clockid_t,
+) -> c_int {
+    unsafe { *clock = (*condattr.cast::<CondAttr>()).clock };
+    0
+}
+
+#[linkage = "weak"]
+#[no_mangle]
+pub extern "C" fn pthread_condattr_getpshared(
+    condattr: *const pthread_condattr_t,
+    pshared: *mut c_int,
+) -> c_int {
+    unsafe { *pshared = (*condattr.cast::<CondAttr>()).pshared };
+    0
+}
+
+#[linkage = "weak"]
+#[no_mangle]
+pub extern "C" fn pthread_condattr_setpshared(
+    condattr: *mut pthread_condattr_t,
+    pshared: c_int,
+) -> c_int {
+    unsafe { (*condattr.cast::<CondAttr>()).pshared = pshared };
     0
 }
 
@@ -360,11 +434,23 @@ pub extern "C" fn pthread_cond_wait(
 
 #[linkage = "weak"]
 #[no_mangle]
+pub extern "C" fn pthread_cond_timedwait(
+    cond: *mut pthread_cond_t,
+    mutex: *mut pthread_mutex_t,
+    abstime: *const timespec,
+) -> c_int {
+    unsafe {
+        (&*cond.cast::<Cond>()).timedwait(&*mutex.cast::<&Mutex>(), abstime.as_ref().unwrap())
+    }
+    .map_or_else(|e| e, |_| 0)
+}
+
+#[linkage = "weak"]
+#[no_mangle]
 pub extern "C" fn pthread_key_create(
     key: *mut pthread_key_t,
     dtor: Option<extern "C" fn(_: *mut c_void)>,
 ) -> c_int {
-    let tid = pthread_self();
     let new_key = KEY_COUNTER.fetch_add(1, Ordering::Relaxed) as pthread_key_t;
     let mut lock = KEYS.write();
     lock.insert(new_key, Dtor(dtor));
@@ -380,7 +466,6 @@ pub extern "C" fn pthread_key_create(
 #[linkage = "weak"]
 #[no_mangle]
 pub extern "C" fn pthread_key_delete(key: pthread_key_t) -> c_int {
-    let tid = pthread_self();
     KEYS.write().remove(&key);
     0
 }
@@ -452,6 +537,153 @@ pub extern "C" fn pthread_mutex_destroy(mutex: *mut pthread_mutex_t) -> c_int {
     0
 }
 
+#[linkage = "weak"]
+#[no_mangle]
+pub extern "C" fn pthread_rwlock_rdlock(rwlock: *mut pthread_rwlock_t) -> c_int {
+    unsafe { (&*rwlock.cast::<RsRwLock>()).try_acquire_read_lock() }
+        .map_or_else(|e| e as c_int, |_| 0)
+}
+
+#[linkage = "weak"]
+#[no_mangle]
+pub extern "C" fn pthread_rwlock_timedrdlock(
+    rwlock: *mut pthread_rwlock_t,
+    abstime: *const timespec,
+) -> c_int {
+    unsafe { (&*rwlock.cast::<RsRwLock>()).acquire_read_lock(abstime.as_ref()) }
+    //todo return value when timeout
+    0
+}
+
+#[linkage = "weak"]
+#[no_mangle]
+pub extern "C" fn pthread_rwlock_timedwrlock(
+    rwlock: *mut pthread_rwlock_t,
+    abstime: *const timespec,
+) -> c_int {
+    unsafe { (&*rwlock.cast::<RsRwLock>()).acquire_write_lock(abstime.as_ref()) }
+    //todo return value when timeout
+    0
+}
+
+#[linkage = "weak"]
+#[no_mangle]
+pub extern "C" fn pthread_rwlock_tryrdlock(rwlock: *mut pthread_rwlock_t) -> c_int {
+    unsafe { (&*rwlock.cast::<RsRwLock>()).try_acquire_read_lock() }
+        .map_or_else(|e| e as c_int, |_| 0)
+}
+
+#[linkage = "weak"]
+#[no_mangle]
+pub extern "C" fn pthread_rwlockattr_destroy(attr: *mut pthread_rwlockattr_t) -> c_int {
+    unsafe { core::ptr::drop_in_place(attr) };
+    0
+}
+
+#[linkage = "weak"]
+#[no_mangle]
+pub unsafe extern "C" fn pthread_rwlockattr_getpshared(
+    attr: *const pthread_rwlockattr_t,
+    pshared: *mut c_int,
+) -> c_int {
+    core::ptr::write(pshared, (*attr.cast::<RwlockAttr>()).pshared.raw());
+    0
+}
+
+#[linkage = "weak"]
+#[no_mangle]
+pub extern "C" fn pthread_rwlockattr_init(attr: *mut pthread_rwlockattr_t) -> c_int {
+    unsafe { attr.cast::<RwlockAttr>().write(RwlockAttr::default()) };
+    0
+}
+
+#[linkage = "weak"]
+#[no_mangle]
+pub unsafe extern "C" fn pthread_rwlockattr_setpshared(
+    attr: *mut pthread_rwlockattr_t,
+    pshared: c_int,
+) -> c_int {
+    (*attr.cast::<RwlockAttr>()).pshared =
+        Pshared::from_raw(pshared).expect("invalid pshared in pthread_rwlockattr_setpshared");
+
+    0
+}
+
+#[linkage = "weak"]
+#[no_mangle]
+pub unsafe extern "C" fn pthread_barrierattr_init(attr: *mut pthread_barrierattr_t) -> c_int {
+    core::ptr::write(attr.cast::<BarrierAttr>(), BarrierAttr::default());
+    0
+}
+
+#[linkage = "weak"]
+#[no_mangle]
+pub unsafe extern "C" fn pthread_barrierattr_destroy(attr: *mut pthread_barrierattr_t) -> c_int {
+    unsafe { core::ptr::drop_in_place(attr) };
+    0
+}
+
+#[linkage = "weak"]
+#[no_mangle]
+pub unsafe extern "C" fn pthread_barrier_destroy(barrier: *mut pthread_barrier_t) -> c_int {
+    // Behavior is undefined if any thread is currently waiting when this is called.
+
+    // No-op, currently.
+    core::ptr::drop_in_place(barrier.cast::<Barrier>());
+
+    0
+}
+
+#[linkage = "weak"]
+#[no_mangle]
+pub unsafe extern "C" fn pthread_barrier_init(
+    barrier: *mut pthread_barrier_t,
+    attr: *const pthread_barrierattr_t,
+    count: c_uint,
+) -> c_int {
+    let _attr = attr
+        .cast::<BarrierAttr>()
+        .as_ref()
+        .copied()
+        .unwrap_or_default();
+
+    let Some(count) = NonZeroU32::new(count) else {
+        return EINVAL;
+    };
+
+    barrier.cast::<Barrier>().write(Barrier::new(count));
+    0
+}
+
+#[linkage = "weak"]
+#[no_mangle]
+pub unsafe extern "C" fn pthread_barrier_wait(barrier: *mut pthread_barrier_t) -> c_int {
+    let barrier = &*barrier.cast::<Barrier>();
+
+    match barrier.wait() {
+        WaitResult::NotifiedAll => PTHREAD_BARRIER_SERIAL_THREAD,
+        WaitResult::Waited => 0,
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn pthread_barrierattr_setpshared(
+    attr: *mut pthread_barrierattr_t,
+    pshared: c_int,
+) -> c_int {
+    (*attr.cast::<BarrierAttr>()).pshared = pshared;
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn pthread_barrierattr_getpshared(
+    attr: *const pthread_barrierattr_t,
+    pshared: *mut c_int,
+) -> c_int {
+    core::ptr::write(pshared, (*attr.cast::<BarrierAttr>()).pshared);
+    0
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -484,5 +716,13 @@ mod tests {
         check_size!(pthread_attr_t, InnerPthreadAttr);
         check_align!(pthread_condattr_t, CondAttr);
         check_size!(pthread_condattr_t, CondAttr);
+        check_align!(pthread_rwlockattr_t, RwlockAttr);
+        check_size!(pthread_rwlockattr_t, RwlockAttr);
+        check_align!(pthread_rwlock_t, RsRwLock);
+        check_size!(pthread_rwlock_t, RsRwLock);
+        check_align!(pthread_barrierattr_t, BarrierAttr);
+        check_size!(pthread_barrierattr_t, BarrierAttr);
+        check_align!(pthread_barrier_t, Barrier);
+        check_size!(pthread_barrier_t, Barrier);
     }
 }

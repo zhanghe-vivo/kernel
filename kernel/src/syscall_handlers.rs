@@ -1,13 +1,13 @@
 mod platform;
 use crate::{
     c_str,
-    clock::tick_from_millisecond,
+    clock::{tick_from_millisecond, tick_get_millisecond},
     cpu::Cpu,
     sync::futex,
     thread::{ThreadBuilder, THREAD_DEFAULT_TICK},
 };
 use bluekernel_header::{syscalls::NR, thread::CloneArgs};
-use libc::timespec;
+use libc::{clock_t, clockid_t, timespec};
 
 #[repr(C)]
 #[derive(Default)]
@@ -128,6 +128,23 @@ atomic_wake(addr: usize, count: *mut usize) -> c_long {
     })
 });
 
+// Only for posix testsuite, we need to implement a stub for clock_gettime
+define_syscall_handler!(
+    clock_gettime(clk_id: clockid_t, tp: *mut timespec) -> c_long {
+        let mut time = timespec {
+            tv_sec: 0,
+            tv_nsec: 0,
+        };
+        // Don't care about clk_id for now
+        let t: i64 = (tick_get_millisecond()  as i64) * 1000 * 1000;
+        time.tv_sec = (t / (1000 * 1000 * 1000)) as i32 ;
+        time.tv_nsec = (t % (1000 * 1000 * 1000)) as i32;
+
+        unsafe { *tp = time };
+
+        0
+});
+
 syscall_table! {
 
 (Echo, echo),
@@ -137,6 +154,8 @@ syscall_table! {
 (ExitThread, exit_thread),
 (AtomicWake, atomic_wake),
 (AtomicWait, atomic_wait),
+// For test only
+(ClockGetTime, clock_gettime),
 
 }
 

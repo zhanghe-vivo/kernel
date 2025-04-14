@@ -16,6 +16,7 @@
 #![feature(thread_local)]
 #![feature(box_as_ptr)]
 #![feature(atomic_from_mut)]
+#![feature(c_variadic)]
 
 extern crate alloc;
 // TODO: Move to mman. We use them to allocate tls object.
@@ -34,8 +35,14 @@ pub mod pthread;
 pub mod stdlib;
 pub mod string;
 pub mod sync;
+pub mod time;
 pub mod tls;
 pub mod types;
+
+// TODO: remove this when we have a proper libc implementation.
+#[cfg(feature = "posixtestsuite")]
+#[path = "../tests/posixtestsuite/utils.rs"]
+pub mod utils;
 
 #[cfg(target_arch = "arm")]
 #[no_mangle]

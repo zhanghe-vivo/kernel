@@ -15,7 +15,8 @@ pub mod syscalls {
         ExitThread,
         AtomicWait,
         AtomicWake,
-        Exit,
+        // For test only
+        ClockGetTime,
         LastNR,
     }
 }
