@@ -1,27 +1,42 @@
+#[cfg(feature = "debugging_scheduler")]
+use crate::println;
 use crate::{
     arch::Arch,
     bluekernel_kconfig::THREAD_PRIORITY_MAX,
     cpu::Cpu,
     thread::{Thread, ThreadState},
 };
-use bluekernel_infra::list::doubly_linked_list::ListHead;
-
 #[cfg(feature = "smp")]
 use crate::{
     cpu::{Cpus, CPUS_NR, CPUS_NUMBER},
     sync::RawSpin,
 };
-
-#[cfg(feature = "debugging_scheduler")]
-use crate::println;
-
+use bluekernel_infra::list::doubly_linked_list::ListHead;
 use core::{
-    intrinsics::likely,
+    intrinsics::{likely, unlikely},
     pin::Pin,
     ptr::{self, NonNull},
-    sync::atomic::{AtomicPtr, AtomicU32, Ordering},
+    sync::atomic::{AtomicBool, AtomicPtr, AtomicU32, Ordering},
 };
 use pinned_init::{pin_data, pin_init, pin_init_array_from_fn, PinInit};
+
+struct DisableInterruptGuard {
+    level: usize,
+}
+
+impl DisableInterruptGuard {
+    pub fn new() -> Self {
+        Self {
+            level: Arch::disable_interrupts(),
+        }
+    }
+}
+
+impl Drop for DisableInterruptGuard {
+    fn drop(&mut self) {
+        Arch::enable_interrupts(self.level);
+    }
+}
 
 #[cfg(feature = "smp")]
 const CPU_MASK: usize = (1 << CPUS_NR) - 1;
@@ -43,20 +58,17 @@ pub struct PriorityTableManager {
     priority_group: u32,
 }
 
-// #[repr(C)]
 #[pin_data]
 pub struct Scheduler {
+    id: u8,
     pub(crate) current_thread: AtomicPtr<Thread>,
     // Scheduler lock as local irq, not need spin_lock
     ///priority list headers
     #[pin]
     priority_manager: PriorityTableManager,
-
-    scheduler_lock_nest: AtomicU32,
-    id: u8,
     current_priority: u8,
-    irq_switch_flag: u8,
-    critical_switch_flag: u8,
+    preempt_count: AtomicU32,
+    need_resched: AtomicBool,
     sched_lock_flag: u8,
 }
 
@@ -113,7 +125,7 @@ impl PriorityTableManager {
         }
         self.priority_group |= thread.priority.get_number_mask();
 
-        /* there is no time slices left(YIELD), inserting thread before ready list*/
+        // There is no time slices left(YIELD), inserting thread before ready list.
         if thread.stat.is_yield() {
             unsafe {
                 Pin::new_unchecked(
@@ -156,11 +168,10 @@ impl Scheduler {
         pin_init!(Self {
             current_thread: AtomicPtr::new(ptr::null_mut()),
             priority_manager <- PriorityTableManager::new(),
-            scheduler_lock_nest: AtomicU32::new(0),
+            preempt_count: AtomicU32::new(0),
             id: index,
             current_priority: (THREAD_PRIORITY_MAX - 1) as u8,
-            irq_switch_flag: 0,
-            critical_switch_flag: 0,
+            need_resched: AtomicBool::new(false),
             sched_lock_flag: 0,
         })
     }
@@ -187,29 +198,47 @@ impl Scheduler {
     }
 
     #[inline]
-    pub fn preempt_disable(&self) {
-        if likely(self.is_scheduled()) {
-            self.scheduler_lock_nest.fetch_add(1, Ordering::AcqRel);
-        }
+    pub fn need_reschedule(&self) -> bool {
+        self.need_resched.load(Ordering::Acquire)
     }
 
     #[inline]
-    pub fn preempt_enable(&mut self) {
-        if likely(self.is_scheduled()) {
-            debug_assert!(self.scheduler_lock_nest.load(Ordering::Acquire) > 0);
-            let level = Arch::disable_interrupts();
-            if self.scheduler_lock_nest.fetch_sub(1, Ordering::AcqRel) == 1 {
-                if self.critical_switch_flag == 1 {
-                    self.do_task_schedule();
-                }
+    pub fn set_need_reschedule(&mut self, val: bool) {
+        self.need_resched.store(val, Ordering::Release)
+    }
+
+    #[inline]
+    pub fn preemptable(&self) -> bool {
+        self.preempt_count.load(Ordering::Acquire) == 0
+    }
+
+    #[inline]
+    pub fn preempt_disable(&self) -> bool {
+        return self.preempt_count.fetch_add(1, Ordering::AcqRel) == 0;
+    }
+
+    #[inline]
+    pub fn preempt_enable(&mut self) -> bool {
+        // FIXME: Why do we need to disable interrupt here?
+        let _ = DisableInterruptGuard::new();
+        if self.preempt_enable_no_resched() {
+            if self.need_reschedule() {
+                self.do_task_schedule();
             }
-            Arch::enable_interrupts(level);
+            return true;
         }
+        return false;
+    }
+
+    #[inline]
+    pub fn preempt_enable_no_resched(&mut self) -> bool {
+        debug_assert!(!self.preemptable());
+        self.preempt_count.fetch_sub(1, Ordering::AcqRel) == 1
     }
 
     #[cfg(feature = "smp")]
     #[inline]
-    fn sched_lock_mp(&mut self) {
+    fn sched_lock_smp(&mut self) {
         debug_assert!(self.sched_lock_flag == 0);
         Cpus::lock_sched_fast();
         self.sched_lock_flag = 1;
@@ -217,7 +246,7 @@ impl Scheduler {
 
     #[cfg(feature = "smp")]
     #[inline]
-    fn sched_unlock_mp(&mut self) {
+    fn sched_unlock_smp(&mut self) {
         debug_assert!(self.sched_lock_flag == 1);
         self.sched_lock_flag = 0;
         Cpus::unlock_sched_fast();
@@ -270,14 +299,6 @@ impl Scheduler {
             return;
         }
 
-        // #[cfg(not(feature = "smp"))]
-        // if thread.is_current_runnung_thread() {
-        //     // only YIELD -> READY, SUSPEND -> READY is allowed by this API. However,
-        //     // this is a RUNNING thread. So here we reset it's status and let it go.
-        //     thread.stat.set_base_state(ThreadState::RUNNING);
-        //     return;
-        // }
-
         thread.stat.set_base_state(ThreadState::READY);
 
         #[cfg(not(feature = "smp"))]
@@ -289,11 +310,6 @@ impl Scheduler {
             let bind_cpu = thread.get_bind_cpu();
             if bind_cpu == CPUS_NUMBER as u8 {
                 Cpus::insert_thread_to_global(thread);
-                let cpu_mask = CPU_MASK ^ (1 << cpu_id);
-                unsafe {
-                    //TODO: call from libcpu
-                    // rt_bindings::rt_hw_ipi_send(rt_bindings::RT_SCHEDULE_IPI as i32, cpu_mask)
-                };
             } else {
                 if bind_cpu == cpu_id {
                     self.priority_manager.insert_thread(thread);
@@ -301,11 +317,6 @@ impl Scheduler {
                     Cpu::get_scheduler_by_id(bind_cpu)
                         .priority_manager
                         .insert_thread(thread);
-                    let cpu_mask = CPU_MASK ^ (1 << cpu_id);
-                    unsafe {
-                        // //TODO: call from libcpu
-                        // rt_bindings::rt_hw_ipi_send(rt_bindings::RT_SCHEDULE_IPI as i32, cpu_mask)
-                    };
                 }
             }
         }
@@ -359,7 +370,7 @@ impl Scheduler {
         &mut self,
         cur_th: Option<NonNull<Thread>>,
     ) -> Option<NonNull<Thread>> {
-        /* quickly check if any other ready threads queuing */
+        // Quickly check if any other ready threads queuing.
         if self.has_ready_thread() {
             let to_thread = self.get_highest_priority_thread_locked();
             match to_thread {
@@ -369,7 +380,7 @@ impl Scheduler {
                         let cpu_id = self.get_current_id();
 
                         let cur_th = unsafe { cur_th.as_mut() };
-                        /* check if current thread can be running on current core again */
+                        // Check if current thread can be running on current core again.
                         if cur_th.stat.is_running() {
                             let switch_current = cur_th.priority.get_current()
                                 < highest_ready_priority as u8
@@ -382,7 +393,7 @@ impl Scheduler {
                             let switch_current = some_cpu && switch_current;
 
                             if switch_current {
-                                // run current thread again.
+                                // Run current thread again.
                                 cur_th.stat.clear_yield();
                                 return None;
                             }
@@ -393,7 +404,7 @@ impl Scheduler {
                             }
 
                             self.insert_thread_locked(cur_th);
-                            /* consume the yield flags after scheduling */
+                            // Consume the yield flags after scheduling.
                             cur_th.stat.clear_yield();
                         }
                     }
@@ -418,7 +429,7 @@ impl Scheduler {
 
     #[cfg(hardware_schedule)]
     pub fn start(&mut self) {
-        self.irq_switch_flag = 1;
+        self.set_need_reschedule(true);
         Arch::start_switch();
     }
 
@@ -460,11 +471,11 @@ impl Scheduler {
     pub fn sched_lock(&mut self) -> usize {
         // lock local first
         let level = Arch::disable_interrupts();
-        self.scheduler_lock_nest.fetch_add(1, Ordering::Release);
+        self.preempt_disable();
 
         // lock scheduler
         #[cfg(feature = "smp")]
-        self.sched_lock_mp();
+        self.sched_lock_smp();
 
         level
     }
@@ -472,10 +483,10 @@ impl Scheduler {
     #[inline]
     pub fn sched_unlock(&mut self, level: usize) {
         #[cfg(feature = "smp")]
-        self.sched_unlock_mp();
+        self.sched_unlock_smp();
 
-        debug_assert!(self.scheduler_lock_nest.load(Ordering::Acquire) > 0);
-        self.scheduler_lock_nest.fetch_sub(1, Ordering::Release);
+        debug_assert!(!self.preemptable());
+        self.preempt_enable_no_resched();
         Arch::enable_interrupts(level);
     }
 
@@ -484,16 +495,15 @@ impl Scheduler {
         debug_assert!(!Arch::is_interrupts_active());
 
         #[cfg(feature = "smp")]
-        self.sched_unlock_mp();
+        self.sched_unlock_smp();
 
-        let lock_nest = self.scheduler_lock_nest.fetch_sub(1, Ordering::Release);
-        debug_assert!(lock_nest >= 1);
+        self.preempt_enable_no_resched();
     }
 
     #[cfg(hardware_schedule)]
     pub fn sched_unlock_with_sched(&mut self, level: usize) {
-        if self.scheduler_lock_nest.fetch_sub(1, Ordering::AcqRel) == 1 {
-            self.irq_switch_flag = 1;
+        if self.preempt_enable_no_resched() {
+            self.set_need_reschedule(true);
             if likely(self.is_scheduled()) {
                 Arch::trigger_switch();
             }
@@ -505,9 +515,9 @@ impl Scheduler {
     pub fn sched_unlock_with_sched(&mut self, level: usize) {
         if likely(self.is_scheduled()) {
             if Cpu::is_in_interrupt() {
-                self.irq_switch_flag = 1;
+                self.set_need_reschedule(true);
                 self.ctx_switch_unlock();
-            } else if self.scheduler_lock_nest.load(Ordering::Acquire) > 1 {
+            } else if !self.preemptable() {
                 self.ctx_switch_unlock();
             } else {
                 let cur_thread = self.get_current_thread();
@@ -541,59 +551,50 @@ impl Scheduler {
 
     #[inline]
     pub fn is_sched_locked(&self) -> bool {
-        return self.scheduler_lock_nest.load(Ordering::Acquire) > 0;
+        return !self.preemptable();
     }
 
     #[inline]
     pub fn get_sched_lock_level(&self) -> u32 {
-        self.scheduler_lock_nest.load(Ordering::Acquire)
+        self.preempt_count.load(Ordering::Acquire)
     }
 
     #[cfg(hardware_schedule)]
     pub fn do_task_schedule(&mut self) {
-        let level = Arch::disable_interrupts();
-
-        let lock_nest = self.scheduler_lock_nest.load(Ordering::Acquire);
-        if lock_nest > 0 {
-            self.critical_switch_flag = 1;
-        } else {
-            self.irq_switch_flag = 1;
-
+        if !self.is_scheduled() {
+            return;
+        }
+        let _ = DisableInterruptGuard::new();
+        self.set_need_reschedule(true);
+        if self.preemptable() {
             #[cfg(feature = "debugging_scheduler")]
             println!("Scheduler is triggering context switch...");
-
             Arch::trigger_switch();
         }
-        Arch::enable_interrupts(level);
     }
 
     #[cfg(not(hardware_schedule))]
     pub fn do_task_schedule(&mut self) {
-        let level = Arch::disable_interrupts();
-
-        if Cpu::is_in_interrupt() {
-            self.irq_switch_flag = 1;
-            Arch::enable_interrupts(level);
+        if !self.is_scheduled() {
             return;
         }
-
-        let lock_nest = self.scheduler_lock_nest.fetch_add(1, Ordering::Release);
-        // TODO: add Signal preprocess.
-
-        if lock_nest > 0 {
-            self.critical_switch_flag = 1;
-            self.scheduler_lock_nest.fetch_sub(1, Ordering::Release);
+        let _ = DisableInterruptGuard::new();
+        if Cpu::is_in_interrupt() {
+            self.set_need_reschedule(true);
+            return;
+        }
+        let changed = self.preempt_disable();
+        if !changed {
+            self.set_need_reschedule(true);
+            self.preempt_enable_no_resched();
         } else {
-            self.irq_switch_flag = 0;
-            self.critical_switch_flag = 0;
-
-            /* take the context lock before we do the real scheduling works */
+            self.set_need_reschedule(false);
+            // Take the context lock before we do the real scheduling works.
             #[cfg(feature = "smp")]
-            self.sched_lock_mp();
-            /* pick the highest runnable thread, and pass the control to it */
+            self.sched_lock_smp();
+            // Pick the highest runnable thread, and pass the control to it.
             let cur_thread = self.get_current_thread();
             if let Some(to_thread) = self.prepare_context_switch_locked(cur_thread) {
-                // sched_unlock_mp will call in rt_cpus_lock_status_restore
                 unsafe {
                     #[cfg(feature = "debugging_scheduler")]
                     println!(
@@ -613,33 +614,24 @@ impl Scheduler {
             }
         }
 
-        Arch::enable_interrupts(level);
-
         // TODO: add Signal process.
     }
 
     #[no_mangle]
     pub extern "C" fn switch_context_in_irq(stack_ptr: *mut usize) -> *mut usize {
+        let _ = DisableInterruptGuard::new();
         let scheduler = Cpu::get_current_scheduler();
-        let level = Arch::disable_interrupts();
-
         // TODO: add Signal preprocess.
-
-        if scheduler.irq_switch_flag == 1 {
-            let lock_nest = scheduler
-                .scheduler_lock_nest
-                .fetch_add(1, Ordering::Release);
-            if lock_nest > 0 {
-                scheduler.critical_switch_flag = 1;
-                scheduler
-                    .scheduler_lock_nest
-                    .fetch_sub(1, Ordering::Release);
+        if scheduler.need_reschedule() {
+            let changed = scheduler.preempt_disable();
+            if !changed {
+                scheduler.set_need_reschedule(true);
+                scheduler.preempt_enable_no_resched();
             } else if !Cpu::is_in_interrupt() {
-                scheduler.irq_switch_flag = 0;
-                scheduler.critical_switch_flag = 0;
+                scheduler.set_need_reschedule(false);
 
                 #[cfg(feature = "smp")]
-                scheduler.sched_lock_mp();
+                scheduler.sched_lock_smp();
 
                 // Pick the highest runnable thread, and pass the control to it.
                 let cur_thread = scheduler.get_current_thread();
@@ -687,31 +679,26 @@ impl Scheduler {
                     scheduler.ctx_switch_unlock();
                 }
             } else {
-                debug_assert!(scheduler.scheduler_lock_nest.load(Ordering::Acquire) > 0);
-                scheduler
-                    .scheduler_lock_nest
-                    .fetch_sub(1, Ordering::Release);
+                debug_assert!(!scheduler.preemptable());
+                scheduler.preempt_enable_no_resched();
             }
         }
 
-        Arch::enable_interrupts(level);
-
-        // not need switch, just pop.
+        // No need to switch, just pop.
         stack_ptr
     }
 
     pub(crate) fn insert_ready_locked(&mut self, thread: &mut Thread) -> bool {
         debug_assert!(self.is_sched_locked());
         debug_assert!(thread.list_node.is_empty());
-
-        if thread.stat.is_suspended() {
-            // stop thread timer anyway
-            thread.timer_stop();
-            // insert to schedule ready list and remove from susp list
-            self.insert_thread_locked(thread);
-            return true;
+        if !thread.stat.is_suspended() {
+            return false;
         }
-        false
+        // Stop thread timer anyway.
+        thread.timer_stop();
+        // Insert to schedule ready list and remove from susp list.
+        self.insert_thread_locked(thread);
+        return true;
     }
 
     pub(crate) fn handle_tick_increase(&mut self) {
@@ -732,7 +719,6 @@ impl Scheduler {
         let level = self.sched_lock();
         let thread = unsafe { self.get_current_thread().unwrap_unchecked().as_mut() };
         thread.reset_to_yield();
-
         self.sched_unlock_with_sched(level);
     }
 }
