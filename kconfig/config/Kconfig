@@ -29,6 +29,14 @@ config THREAD_PRIORITY_MAX
     default 256
     int "The async output thread stack priority"
 
+config SERIAL_RX_FIFO_SIZE
+    default 512
+    int "The serial rx fifo size"
+
+config SERIAL_TX_FIFO_SIZE
+    default 512
+    int "The serial tx fifo size"
+
 config TLSF
     default y
     bool "Enable TLSF"

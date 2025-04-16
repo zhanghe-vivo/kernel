@@ -21,7 +21,7 @@ use core::{
     pin::Pin,
     ptr::{null_mut, NonNull},
 };
-use pinned_init::*;
+use pinned_init::{pin_data, pin_init, pin_init_from_closure, pinned_drop, InPlaceInit, PinInit};
 
 #[pin_data(PinnedDrop)]
 pub struct KMutex<T> {

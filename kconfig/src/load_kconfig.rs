@@ -20,6 +20,10 @@ pub const THREAD_PRIORITY_MAX: u32 = kint!(THREAD_PRIORITY_MAX) as u32;
 
 pub const IDLE_THREAD_STACK_SIZE: u32 = kint!(IDLE_THREAD_STACK_SIZE) as u32;
 
+pub const SERIAL_RX_FIFO_SIZE: usize = kint!(SERIAL_RX_FIFO_SIZE) as usize;
+
+pub const SERIAL_TX_FIFO_SIZE: usize = kint!(SERIAL_TX_FIFO_SIZE) as usize;
+
 pub const CPUS_NR: u32 = get_cpus_nr();
 
 const fn get_cpus_nr() -> u32 {

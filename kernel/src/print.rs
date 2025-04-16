@@ -1,5 +1,14 @@
 #![allow(dead_code)]
+use crate::drivers::serial::Serial;
+use alloc::sync::Arc;
 use core::{cmp, fmt, str};
+use spin::Once;
+
+static CONSOLE: Once<Arc<Serial>> = Once::new();
+
+pub fn init_console(serial: Arc<Serial>) {
+    CONSOLE.call_once(|| serial);
+}
 
 pub struct Console;
 /// A struct representing a writer that appends formatted data to a byte buffer.
@@ -25,8 +34,9 @@ macro_rules! println {
 impl fmt::Write for Console {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
         #[cfg(not(feature = "os_adapter"))]
-        unsafe {
-            crate::bsp::uart::UART0.write_str(s)
+        {
+            let _ = CONSOLE.get().unwrap().uart_ops.lock().write_str(s);
+            Ok(())
         }
         #[cfg(feature = "os_adapter")]
         {

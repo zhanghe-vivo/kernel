@@ -40,18 +40,13 @@ build_rust("librs_unittest_image") {
   deps = [
     "//external/spin/v0.9.8:spin",
     "//kernel/header:bluekernel_header",
-    "//kernel/kernel:bluekernel_test",
+    "//kernel/kernel:bluekernel",
     "//kernel/scal:bluekernel_scal_test",
     "//libc:libc",
   ]
   proc_macro_deps = [ "//kernel/test_harness:bluekernel_test_macro" ]
   inputs = [ "//kernel/kernel/src/bsp/$bsp/link.x" ]
-  rustflags = [
-    "--test",
-    "-C",
-    "link-arg=-T" + rebase_path("//kernel/kernel/src/bsp/$bsp/link.x"),
-  ]
-  rustflags += test_image_rustflags
+  rustflags = test_image_rustflags
   rustflags += common_crate_rustflags
 }
 

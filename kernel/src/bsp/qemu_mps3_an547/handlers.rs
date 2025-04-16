@@ -11,6 +11,7 @@ macro_rules! default_irq_handler {
     };
 }
 
+use crate::bsp::{UARTRX0_Handler, UARTTX0_Handler};
 default_irq_handler!(NONSEC_WATCHDOG_RESET_REQ_Handler);
 default_irq_handler!(NONSEC_WATCHDOG_Handler);
 default_irq_handler!(SLOWCLK_Timer_Handler);
@@ -29,15 +30,7 @@ default_irq_handler!(TIMER3_AON_Handler);
 default_irq_handler!(CPU0_CTI_0_Handler);
 default_irq_handler!(CPU0_CTI_1_Handler);
 default_irq_handler!(System_Timestamp_Counter_Handler);
-#[cfg(feature = "enable_uart0")]
-use crate::bsp::UARTRX0_Handler;
-#[cfg(not(feature = "enable_uart0"))]
-default_irq_handler!(UARTRX0_Handler);
-#[cfg(feature = "enable_uart1")]
-use crate::bsp::UARTRX1_Handler;
-#[cfg(not(feature = "enable_uart1"))]
 default_irq_handler!(UARTRX1_Handler);
-default_irq_handler!(UARTTX0_Handler);
 default_irq_handler!(UARTTX1_Handler);
 default_irq_handler!(UARTRX2_Handler);
 default_irq_handler!(UARTTX2_Handler);

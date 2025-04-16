@@ -2,29 +2,6 @@ import("//build/templates/build_template.gni")
 import("//build/toolchain/bluekernel.gni")
 import("//kernel/common_crate_rustflags.gni")
 
-shared_rust_test_flags = [
-  # unstable rust custom test framework
-  "--test",
-
-  # custom link script
-  "-C",
-  "link-arg=-T" + rebase_path("//kernel/kernel/src/bsp/$bsp/link.x"),
-
-  # use lld to link
-  # # Tell rustc to use the LLVM linker. This avoids needing GCC as a dependency
-  # # to build the kernel.
-  # "-C", "linker=rust-lld",
-  # # Use the LLVM lld executable with the `-flavor gnu` flag.
-  # "-C", "linker-flavor=ld.lld",
-  # Enable link-time-optimization
-  "-C",
-  "lto",
-
-  # Have rustc generate stack sizes for analyzing the size of stack frames.
-  "-Z",
-  "emit-stack-sizes",
-]
-
 build_rust("kernel_integration_test") {
   testonly = true
   crate_type = "bin"
@@ -32,18 +9,18 @@ build_rust("kernel_integration_test") {
   edition = "2021"
   proc_macro_deps = [ "//kernel/test_harness:bluekernel_test_macro" ]
   deps = [
-    ":bluekernel_test",
+    ":bluekernel",
     "//kernel/scal:bluekernel_scal_test",
     "//libc:libc",
   ]
 
   inputs = [ "//kernel/kernel/src/bsp/$bsp/link.x" ]
-  rustflags = shared_rust_test_flags
-  rustflags += test_image_rustflags
+  rustflags = test_image_rustflags
   rustflags += common_crate_rustflags
 }
 
-share_deps = [
+shares_deps = [
+  "//external/bitflags/v2.9.0:bitflags",
   "//external/cfg-if/v1.0.0:cfg_if",
   "//external/const-default/v1.0.0:const_default",
   "//external/cortex-m:cortex_m",
@@ -76,6 +53,7 @@ share_features = [
   "condvar",
   "thread_priority_max",
   "schedule_with_time_slice",
+  "stack_highwater_check",
 ]
 
 share_rust_build_flags = []
@@ -105,27 +83,15 @@ build_rust("kernel_unit_test") {
   edition = "2021"
   proc_macro_deps = [
     "//external/paste/v1.0.15:paste",
+    "//external/rust-delegate/v0.13.3:delegate",
     "//kernel/test_harness:bluekernel_test_macro",
   ]
-  deps = share_deps + [ "//kernel/kernel:bluekernel_test" ]
+  deps = shares_deps
   features = share_features
 
+  inputs = [ "//kernel/kernel/src/bsp/$bsp/link.x" ]
   rustflags = share_rust_build_flags
-  rustflags += shared_rust_test_flags
   rustflags += test_image_rustflags
-  rustflags += common_crate_rustflags
-}
-
-build_rust("bluekernel_test") {
-  testonly = true
-  crate_name = "bluekernel"
-  crate_type = "rlib"
-  sources = [ "src/lib.rs" ]
-  edition = "2021"
-  proc_macro_deps = [ "//external/paste/v1.0.15:paste" ]
-  deps = share_deps
-  features = share_features
-  rustflags = share_rust_build_flags
   rustflags += common_crate_rustflags
 }
 
@@ -133,34 +99,18 @@ build_rust("bluekernel") {
   crate_type = "rlib"
   sources = [ "src/lib.rs" ]
   edition = "2021"
-  deps = share_deps + [ "//kernel/bindings:os_bindings" ]
-  features = [
-    "tlsf",
-    "overflow_check",
-    "idle_hook",
-    "heap",
-    "heap_isr",
-    "debugging_init",
-    "event",
-    "messagequeue",
-    "mailbox",
-    "mutex",
-    "semaphore",
-    "rwlock",
-    "condvar",
-    "thread_priority_max",
-    "schedule_with_time_slice",
-    "os_adapter",
-    "enable_uart0",
-    "enable_uart1",
+  proc_macro_deps = [
+    "//external/paste/v1.0.15:paste",
+    "//external/rust-delegate/v0.13.3:delegate",
   ]
+  deps = shares_deps
+  features = share_features
 
   rustflags = share_rust_build_flags
   rustflags += common_crate_rustflags
 }
 
 cbindgen("rust_wrapper") {
-  # deps = [ ":bluekernel" ]
   sources = [ "cbindgen.toml" ]
   args = [
            "--quiet",
@@ -193,32 +143,4 @@ run_qemu_check("run_unit_test") {
   testonly = true
   runner = ":unit_test_runner"
   checker = "src/lib.rs"
-}
-
-executable("bluekernel_image") {
-  deps = [
-    "//kernel/adapter:adapter",
-    "//kernel/scal:bluekernel_scal",
-    "//rt-dev:rtt",
-  ]
-
-  inputs = [ "//kernel/kernel/src/bsp/$bsp/link.x" ]
-  ldflags = [
-    "-T",
-    rebase_path("//kernel/kernel/src/bsp/$bsp/link.x"),
-    "-Wl,-cref,-u,Reset_Handler",
-  ]
-}
-
-gen_qemu_runner("bluekernel_image_test") {
-  testonly = true
-  img = ":bluekernel_image"
-  qemu = "$qemu_exe"
-  board = "$bsp"
-}
-
-run_qemu_check("check_bluekernel") {
-  testonly = true
-  runner = ":bluekernel_image_test"
-  checker = "//rt-dev/bsp/$bsp/applications/main.c"
 }

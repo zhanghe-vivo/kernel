@@ -1,7 +1,4 @@
-use bluekernel::{
-    println,
-    sync::{semaphore::*, wait_list::*},
-};
+use bluekernel::sync::{semaphore::*, wait_list::*};
 use bluekernel_test_macro::test;
 
 #[test]

@@ -15,7 +15,7 @@ build_rust("librs_for_posix_testsuite") {
   deps = [
     "//external/spin/v0.9.8:spin",
     "//kernel/header:bluekernel_header",
-    "//kernel/kernel:bluekernel_test",
+    "//kernel/kernel:bluekernel",
     "//kernel/scal:bluekernel_scal_test",
     "//libc:libc",
   ]

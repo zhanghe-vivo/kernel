@@ -115,7 +115,7 @@ exit_thread() -> c_long {
 define_syscall_handler!(
 atomic_wait(addr: usize, val: usize, timeout: Option<&timespec>) -> c_long {
     let timeout = timeout.map_or(-1, |t| t.tv_sec * 1000 + t.tv_nsec / 1000000);
-    let timeout = tick_from_millisecond(timeout) as i32;
+    let timeout = tick_from_millisecond(timeout);
     futex::atomic_wait(addr, val, timeout).map_or_else(|e|e as c_long, |_| 0)
 });
 

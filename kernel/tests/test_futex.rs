@@ -1,6 +1,6 @@
-use crate::println;
 use alloc::sync::Arc;
 use bluekernel::{
+    clock,
     sync::futex::*,
     thread::{Thread, ThreadBuilder},
 };
@@ -13,7 +13,7 @@ fn test_futex_timeout() {
     // Create a stack variable to use as futex address
     let futex_addr = AtomicUsize::new(0);
     let val = 0;
-    let timeout = 1000;
+    let timeout = clock::tick_from_millisecond(1000);
 
     // Use the address of the atomic variable
     let addr = &futex_addr as *const AtomicUsize as usize;
@@ -46,9 +46,10 @@ fn test_futex_thread_wait() {
     extern "C" fn thread_entry(arg: *mut core::ffi::c_void) {
         let futex = unsafe { Arc::from_raw(arg as *const AtomicUsize) };
         let addr = &*futex as *const AtomicUsize as usize;
+        let timeout = clock::tick_from_millisecond(2000);
 
         // Wait for futex signal
-        let res = atomic_wait(addr, 0, 2000); // 2 second timeout
+        let res = atomic_wait(addr, 0, timeout);
         assert!(res.is_ok());
     }
 
@@ -66,7 +67,7 @@ fn test_futex_thread_wait() {
     unsafe { (&mut *thread.as_ptr()).start() };
 
     // Sleep a bit to ensure thread starts
-    let _ = Thread::msleep(100);
+    let _ = Thread::msleep(1000);
 
     // Wake up the waiting thread
     let addr = &*futex as *const AtomicUsize as usize;

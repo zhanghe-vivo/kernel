@@ -14,17 +14,13 @@ build_rust("librs_integration_test_image") {
     "//external/semihosting/v0.1.20:semihosting",
     "//external/spin/v0.9.8:spin",
     "//kernel/header:bluekernel_header",
-    "//kernel/kernel:bluekernel_test",
+    "//kernel/kernel:bluekernel",
     "//kernel/librs:librs_test",
     "//kernel/scal:bluekernel_scal_test",
     "//libc:libc",
   ]
   inputs = [ "//kernel/kernel/src/bsp/$bsp/link.x" ]
-  rustflags = [
-    "--test",
-    "-Clink-arg=-T" + rebase_path("//kernel/kernel/src/bsp/$bsp/link.x"),
-  ]
-  rustflags += test_image_rustflags
+  rustflags = test_image_rustflags
   rustflags += common_crate_rustflags
 }
 

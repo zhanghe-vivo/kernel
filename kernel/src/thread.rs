@@ -59,6 +59,18 @@ macro_rules! current_thread_ptr {
 }
 pub use current_thread_ptr;
 
+/// Returns the currently running thread.
+#[macro_export]
+macro_rules! current_thread_mut {
+    () => {
+        &mut *$crate::cpu::Cpu::get_current_scheduler()
+            .get_current_thread()
+            .unwrap()
+            .as_mut()
+    };
+}
+pub use current_thread_mut;
+
 #[macro_export]
 macro_rules! thread_list_node_entry {
     ($node:expr) => {

@@ -2,8 +2,12 @@
 //! C API for VFS operations  
 
 use crate::{
+    drivers::device::DeviceManager,
     error::{code, Error},
-    vfs::{vfs_log::*, vfs_manager::*, vfs_mnt::*, vfs_mode::*, vfs_node::*, vfs_posix, vfs_tmpfs},
+    vfs::{
+        vfs_devfs, vfs_log::*, vfs_manager::*, vfs_mnt::*, vfs_mode::*, vfs_node::*, vfs_posix,
+        vfs_tmpfs,
+    },
 };
 use alloc::{slice, string::String, sync::Arc};
 use core::ffi::{c_char, c_int, c_ulong, c_void, CStr};
@@ -61,24 +65,24 @@ pub fn vfs_init() -> Result<(), Error> {
         return Err(code::EAGAIN);
     }
 
-    // // Register devfs filesystem
-    // let devfs = Arc::new(vfs_devfs::DevFileSystem::new());
-    // vfs_manager.register_fs("devfs", devfs.clone())?;
+    // Register devfs filesystem
+    let devfs = Arc::new(vfs_devfs::DevFileSystem::new(DeviceManager::get()));
+    vfs_manager.register_fs("devfs", devfs.clone())?;
 
-    // // Mount devfs to /dev
-    // if vfs_posix::mount(None, "/dev", "devfs", 0, None) != 0 {
-    //     vfslog!("Failed to mount devfs");
-    //     return Err(code::EAGAIN);
-    // }
-    // vfslog!("Mounted devfs at '/dev'");
+    // Mount devfs to /dev
+    if vfs_posix::mount(None, "/dev", "devfs", 0, None) != 0 {
+        vfslog!("Failed to mount devfs");
+        return Err(code::EAGAIN);
+    }
+    vfslog!("Mounted devfs at '/dev'");
 
-    // // Verify mount success
-    // if let Some(_) = find_filesystem("/dev") {
-    //     vfslog!("devfs mount verified");
-    // } else {
-    //     vfslog!("Failed to verify devfs mount");
-    //     return Err(code::EAGAIN);
-    // }
+    // Verify mount success
+    if let Some(_) = find_filesystem("/dev") {
+        vfslog!("devfs mount verified");
+    } else {
+        vfslog!("Failed to verify devfs mount");
+        return Err(code::EAGAIN);
+    }
 
     vfslog!("VFS initialized successfully");
     Ok(())

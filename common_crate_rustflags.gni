@@ -20,9 +20,7 @@ if (bsp == "qemu_mps2_an385") {
   ]
 }
 
-test_image_rustflags = [
-  "-Z",
-  "panic-abort-tests",
+common_image_rustflags = [
   "-C",
   "panic=abort",
   "-C",
@@ -33,4 +31,32 @@ test_image_rustflags = [
   "link-arg=-Wl,--no-wchar-size-warning",
   "-C",
   "link-arg=-lgcc",
+
+  # # use lld to link
+  # # Tell rustc to use the LLVM linker. This avoids needing GCC as a dependency
+  # # to build the kernel.
+  # "-C",
+  # "linker=rust-lld",
+  # # Use the LLVM lld executable with the `-flavor gnu` flag.
+  # "-C",
+  # "linker-flavor=ld.lld",
+  # Enable link-time-optimization
+  "-C",
+  "lto",
+
+  # Have rustc generate stack sizes for analyzing the size of stack frames.
+  "-Z",
+  "emit-stack-sizes",
+
+  # custom link script
+  "-C",
+  "link-arg=-T" + rebase_path("//kernel/kernel/src/bsp/$bsp/link.x"),
 ]
+
+test_image_rustflags = [
+  # unstable rust custom test framework
+  "--test",
+  "-Z",
+  "panic-abort-tests",
+]
+test_image_rustflags += common_image_rustflags

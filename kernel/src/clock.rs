@@ -27,8 +27,19 @@ pub fn tick_from_millisecond(ms: i32) -> u32 {
     if ms < 0 {
         WAITING_FOREVER
     } else {
-        let tick = TICK_PER_SECOND * (ms as u32 / 1000);
-        tick + (TICK_PER_SECOND * (ms as u32 % 1000) + 999) / 1000
+        // use fp
+        #[cfg(has_fpu)]
+        {
+            let tick = TICK_PER_SECOND * (ms as u32 / 1000);
+            tick + (TICK_PER_SECOND * (ms as u32 % 1000) + 999) / 1000
+        }
+        // use 1024 as 1000 to aviod use math library
+        #[cfg(not(has_fpu))]
+        {
+            let tick = TICK_PER_SECOND.wrapping_mul(ms as u32 >> 10);
+            let remainder = ms as u32 & 0x3FF;
+            tick.wrapping_add((TICK_PER_SECOND.wrapping_mul(remainder) + 1023) >> 10)
+        }
     }
 }
 

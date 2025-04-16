@@ -41,8 +41,8 @@ __ROM_SIZE = 0x00080000;
     <o1> RAM Size (in Bytes) <0x0-0xFFFFFFFF:8>
   </h>
  -----------------------------------------------------------------------------*/
-__RAM_BASE = 0x20000000;
-__RAM_SIZE = 0x00040000;
+__RAM_BASE = 0x21000000;
+__RAM_SIZE = 0x00200000;
 
 /*--------------------- Stack / Heap Configuration ----------------------------
   <h> Stack / Heap Configuration
@@ -129,10 +129,10 @@ SECTIONS
     KEEP(*(.vector_table.interrupts)); /* this is the `__INTERRUPTS` symbol */
   } > FLASH
 
-  PROVIDE(_stext = ADDR(.vector_table) + SIZEOF(.vector_table));
-
   .text :
   {
+    . = ALIGN(4);
+    _stext = .;
     *(.text*)
 
     /* section information for utest */
@@ -220,11 +220,11 @@ SECTIONS
   {
     . = ALIGN(4);
     __copy_table_start__ = .;
-
+/*
     LONG (__etext)
     LONG (__data_start__)
     LONG ((__data_end__ - __data_start__) / 4)
-
+*/
     /* Add each additional data section here */
 /*
     LONG (__etext2)
@@ -239,10 +239,8 @@ SECTIONS
     . = ALIGN(4);
     __zero_table_start__ = .;
     /* Add each additional bss section here */
-/*
-    LONG (__bss2_start__)
-    LONG ((__bss2_end__ - __bss2_start__) / 4)
-*/
+    LONG (__bss_start__)
+    LONG ((__bss_end__ - __bss_start__) / 4)
     __zero_table_end__ = .;
   } > FLASH
 
@@ -253,9 +251,10 @@ SECTIONS
    */
   __etext = ALIGN (4);
 
-  .data : AT (__etext)
+  .data :
   {
     __data_start__ = .;
+    . = ALIGN(4);
     *(vtable)
     *(.data)
     *(.data.*)

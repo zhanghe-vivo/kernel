@@ -373,7 +373,7 @@ mod tests {
     fn test_memset() {
         let mut array: [u8; 4] = [0; 4];
         unsafe {
-            memset(array.as_mut_ptr(), b'a', 2);
+            memset(array.as_mut_ptr() as *mut c_void, b'a' as i32, 2);
         }
         assert_eq!(array, [b'a', b'a', 0, 0]);
     }

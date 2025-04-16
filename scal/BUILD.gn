@@ -30,6 +30,6 @@ build_rust("bluekernel_scal_test") {
       "--cfg",
       "direct_syscall_handler",
     ]
-    deps += [ "//kernel/kernel:bluekernel_test" ]
+    deps += [ "//kernel/kernel:bluekernel" ]
   }
 }

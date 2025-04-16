@@ -21,6 +21,9 @@ pub const TIMER3_AON_IRQn: IrqNumber = IrqNumber::new(27); // TIMER 3 AON Interr
 pub const CPU0_CTI_0_IRQn: IrqNumber = IrqNumber::new(28); // CPU0 CTI IRQ 0
 pub const CPU0_CTI_1_IRQn: IrqNumber = IrqNumber::new(29); // CPU0 CTI IRQ 1
 pub const System_Timestamp_Counter_IRQn: IrqNumber = IrqNumber::new(32); // System timestamp counter Interrupt
+
+// In the new version of QEMU (9.20), the UART RX interrupt and TX interrupt have been swapped.
+// For details, see `fix RX/TX interrupts order <https://github.com/qemu/qemu/commit/5a558be93ad628e5bed6e0ee062870f49251725c>`_
 pub const UARTTX0_IRQn: IrqNumber = IrqNumber::new(33); // UART 0 TX Interrupt
 pub const UARTRX0_IRQn: IrqNumber = IrqNumber::new(34); // UART 0 RX Interrupt
 pub const UARTRX1_IRQn: IrqNumber = IrqNumber::new(35); // UART 1 RX Interrupt

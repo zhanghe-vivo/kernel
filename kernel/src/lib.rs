@@ -27,8 +27,10 @@ pub use libc;
 pub use os_bindings;
 
 pub mod allocator;
+mod bsp;
 pub mod clock;
 pub mod cpu;
+pub mod drivers;
 pub mod error;
 mod ext_types;
 pub mod idle;
@@ -39,20 +41,17 @@ pub mod print;
 pub mod process;
 pub mod scheduler;
 mod stack;
-pub mod startup;
-pub mod static_init;
+mod startup;
+mod static_init;
 pub mod sync;
-pub mod thread;
-pub mod timer;
-pub mod vfs;
-mod zombie;
-#[allow(unused_imports)]
-use core::sync::atomic::{self, Ordering};
-mod bsp;
 #[cfg(not(direct_syscall_handler))]
 mod syscall_handlers;
 #[cfg(direct_syscall_handler)]
 pub mod syscall_handlers;
+pub mod thread;
+pub mod timer;
+pub mod vfs;
+mod zombie;
 
 // #[link_section] is only usable from the root crate.
 // See https://github.com/rust-lang/rust/issues/67209.
@@ -72,6 +71,7 @@ fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
 
     #[cfg(debug_assertions)]
     loop {
+        use core::sync::atomic::{self, Ordering};
         atomic::compiler_fence(Ordering::SeqCst);
     }
     #[cfg(not(debug_assertions))]
@@ -89,11 +89,10 @@ macro_rules! debug_not_in_interrupt {
 
         let level = arch::Arch::disable_interrupts();
         if cpu::Cpu::interrupt_nest_load() != 0 {
-            crate::kprintf!(
-                b"Function[%s] shall not be used in ISR\n",
-                crate::function!() as *const _ as *const i8,
+            unreachable!(
+                "Function[{}] shall not be used in ISR",
+                crate::function_name!()
             );
-            assert!(false);
         }
         arch::Arch::enable_interrupts(level);
     };
@@ -108,7 +107,7 @@ macro_rules! debug_in_thread_context {
     () => {
         let level = arch::Arch::disable_interrupts();
         if cpu::Cpu::get_current_thread().is_none() {
-            assert!(false);
+            unreachable!("current_thread is none!");
         }
         kernel::debug_not_in_interrupt!();
         arch::Arch::enable_interrupts(level);
@@ -130,19 +129,16 @@ macro_rules! debug_scheduler_available {
             let interrupt_disabled = !arch::Arch::is_interrupts_active();
             let level = arch::Arch::disable_interrupts();
             if cpu::Cpu::get_current_scheduler().get_sched_lock_level() != 0 {
-                crate::kprintf!(
-                    b"Function[%s]: scheduler is not available\n",
-                    crate::function!() as *const _ as *const i8,
+                unreachable!(
+                    "Function[{}] scheduler is not available",
+                    crate::function_name!()
                 );
-                assert!(false);
             }
             if interrupt_disabled {
-                crate::kprintf!(
-                    b"Function[%s]: interrupt is disabled\n",
-                    crate::function!() as *const _ as *const i8,
+                unreachable!(
+                    "Function[{}] interrupt is disabled",
+                    crate::function_name!()
                 );
-
-                assert!(false);
             }
             kernel::debug_in_thread_context!();
             arch::Arch::enable_interrupts(level);

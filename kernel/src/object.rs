@@ -139,8 +139,6 @@ pub enum ObjectClassType {
     //< The object is a memory pool.
     #[cfg(feature = "mempool")]
     ObjectClassMemPool,
-    //< The object is a device.
-    ObjectClassDevice,
     //< The object is a timer.
     ObjectClassTimer,
     //< The object is memory.
@@ -259,7 +257,6 @@ impl ObjectClassType {
             x if x == Self::ObjectClassMemHeap as u8 => Self::ObjectClassMemHeap,
             #[cfg(feature = "mempool")]
             x if x == Self::ObjectClassMemPool as u8 => Self::ObjectClassMemPool,
-            x if x == Self::ObjectClassDevice as u8 => Self::ObjectClassDevice,
             x if x == Self::ObjectClassTimer as u8 => Self::ObjectClassTimer,
             #[cfg(feature = "heap")]
             x if x == Self::ObjectClassMemory as u8 => Self::ObjectClassMemory,
@@ -305,7 +302,6 @@ impl ObjectClassType {
             Self::ObjectClassMemHeap => mem::size_of::<Memheap>(),
             #[cfg(feature = "mempool")]
             Self::ObjectClassMemPool => mem::size_of::<Mempool>(),
-            Self::ObjectClassDevice => mem::size_of::<Device>(),
             Self::ObjectClassTimer => mem::size_of::<Timer>(),
             #[cfg(feature = "heap")]
             Self::ObjectClassMemory => mem::size_of::<Memory>(),
@@ -383,56 +379,6 @@ pub struct Memory {
     pub used: usize,
     #[doc = "< maximum usage"]
     pub max: usize,
-}
-
-//TODO: add device
-#[repr(C)]
-pub struct Device {
-    #[doc = "< inherit from rt_object"]
-    pub parent: KObjectBase,
-    #[doc = "< device type"]
-    pub type_: isize,
-    #[doc = "< device flag"]
-    pub flag: u16,
-    #[doc = "< device open flag"]
-    pub open_flag: u16,
-    #[doc = "< reference count"]
-    pub ref_count: u8,
-    #[doc = "< 0 - 255"]
-    pub device_id: u8,
-    pub rx_indicate:
-        ::core::option::Option<unsafe extern "C" fn(dev: *mut Device, size: usize) -> usize>,
-    pub tx_complete: ::core::option::Option<
-        unsafe extern "C" fn(dev: *mut Device, buffer: *mut core::ffi::c_void) -> usize,
-    >,
-    pub init: ::core::option::Option<unsafe extern "C" fn(dev: *mut Device) -> usize>,
-    pub open: ::core::option::Option<unsafe extern "C" fn(dev: *mut Device, oflag: u16) -> usize>,
-    pub close: ::core::option::Option<unsafe extern "C" fn(dev: *mut Device) -> usize>,
-    pub read: ::core::option::Option<
-        unsafe extern "C" fn(
-            dev: *mut Device,
-            pos: usize,
-            buffer: *mut core::ffi::c_void,
-            size: usize,
-        ) -> usize,
-    >,
-    pub write: ::core::option::Option<
-        unsafe extern "C" fn(
-            dev: *mut Device,
-            pos: usize,
-            buffer: *const core::ffi::c_void,
-            size: usize,
-        ) -> usize,
-    >,
-    pub control: ::core::option::Option<
-        unsafe extern "C" fn(
-            dev: *mut Device,
-            cmd: core::ffi::c_int,
-            args: *mut core::ffi::c_void,
-        ) -> usize,
-    >,
-    #[doc = "< device private data"]
-    pub user_data: *mut core::ffi::c_void,
 }
 
 /// bindgen for ObjectClassType

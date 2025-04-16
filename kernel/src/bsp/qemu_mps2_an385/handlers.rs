@@ -11,16 +11,8 @@ macro_rules! default_irq_handler {
     };
 }
 
-#[cfg(feature = "enable_uart0")]
-use crate::bsp::UART0RX_Handler;
-#[cfg(not(feature = "enable_uart0"))]
-default_irq_handler!(UART0RX_Handler);
-#[cfg(feature = "enable_uart1")]
-use crate::bsp::UART1RX_Handler;
-#[cfg(not(feature = "enable_uart1"))]
+use crate::bsp::uart::{UART0RX_Handler, UART0TX_Handler};
 default_irq_handler!(UART1RX_Handler);
-
-default_irq_handler!(UART0TX_Handler);
 default_irq_handler!(UART1TX_Handler);
 default_irq_handler!(UART2RX_Handler);
 default_irq_handler!(UART2TX_Handler);

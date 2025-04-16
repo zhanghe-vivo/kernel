@@ -84,7 +84,7 @@ pub struct Inode {
     pub attr: RwLock<InodeAttr>,
 
     /// Parent filesystem
-    pub fs: Arc<dyn VfsOperations>,
+    pub fs_ops: Arc<dyn VfsOperations>,
 
     /// Reference count
     ref_count: RwLock<usize>,
@@ -92,10 +92,10 @@ pub struct Inode {
 
 impl Inode {
     /// Create new inode
-    pub fn new(attr: InodeAttr, fs: Arc<dyn VfsOperations>) -> Self {
+    pub fn new(attr: InodeAttr, fs_ops: Arc<dyn VfsOperations>) -> Self {
         Self {
             attr: RwLock::new(attr),
-            fs,
+            fs_ops,
             ref_count: RwLock::new(1),
         }
     }
@@ -190,7 +190,7 @@ impl DNode {
         let inode_count = self.inode.dec_ref();
         // If inode reference count is 0, notify filesystem to free inode
         if inode_count == 0 {
-            let _ = self.inode.fs.free_inode(self.inode.inode_no());
+            let _ = self.inode.fs_ops.free_inode(self.inode.inode_no());
         }
         *count
     }
@@ -292,7 +292,11 @@ impl Bucket {
 fn cal_hash(s: &str) -> u32 {
     let mut hash: u32 = 5381;
     for c in s.bytes() {
-        hash = ((hash << 5) + hash) + (c as u32); // hash * 33 + c
+        // hash = ((hash << 5) + hash) + c
+        hash = hash
+            .wrapping_shl(5)
+            .wrapping_add(hash)
+            .wrapping_add(c as u32);
     }
     hash
 }

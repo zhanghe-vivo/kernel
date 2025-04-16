@@ -1,5 +1,5 @@
 use super::{sys_config, systick::Systick, uart};
-use crate::{allocator, arch::Arch, idle::IDLE_HOOK_LIST};
+use crate::{allocator, arch::Arch, idle::IDLE_HOOK_LIST, print};
 use core::ptr::addr_of;
 
 extern "C" {
@@ -20,7 +20,9 @@ pub fn board_init() {
     );
     /* initialize hardware interrupt */
     let _ = Systick::init(sys_config::TICK_PER_SECOND);
-    uart::uart_init();
+
+    let _ = uart::uart_init();
+    let _ = print::init_console(uart::get_serial0().clone());
 
     #[cfg(feature = "os_adapter")]
     {

@@ -67,8 +67,6 @@ pub(crate) struct Kprocess {
     #[pin]
     mempool: ListHead,
     #[pin]
-    device: ListHead,
-    #[pin]
     timer: ListHead,
     #[cfg(feature = "heap")]
     #[pin]
@@ -109,7 +107,6 @@ impl Kprocess {
             let _ = ListHead::new().__pinned_init(&mut cur_ref.memheap as *mut ListHead);
             #[cfg(feature = "mempool")]
             let _ = ListHead::new().__pinned_init(&mut cur_ref.mempool as *mut ListHead);
-            let _ = ListHead::new().__pinned_init(&mut cur_ref.device as *mut ListHead);
             let _ = ListHead::new().__pinned_init(&mut cur_ref.timer as *mut ListHead);
             #[cfg(feature = "heap")]
             let _ = ListHead::new().__pinned_init(&mut cur_ref.memory as *mut ListHead);
@@ -144,7 +141,6 @@ impl Kprocess {
             ObjectClassType::ObjectClassMemHeap => &mut process.memheap,
             #[cfg(feature = "mempool")]
             ObjectClassType::ObjectClassMemPool => &mut process.mempool,
-            ObjectClassType::ObjectClassDevice => &mut process.device,
             ObjectClassType::ObjectClassTimer => &mut process.timer,
             #[cfg(feature = "heap")]
             ObjectClassType::ObjectClassMemory => &mut process.memory,
@@ -176,7 +172,6 @@ impl Kprocess {
             ObjectClassType::ObjectClassMemHeap => &process.memheap,
             #[cfg(feature = "mempool")]
             ObjectClassType::ObjectClassMemPool => &process.mempool,
-            ObjectClassType::ObjectClassDevice => &process.device,
             ObjectClassType::ObjectClassTimer => &process.timer,
             #[cfg(feature = "heap")]
             ObjectClassType::ObjectClassMemory => &process.memory,

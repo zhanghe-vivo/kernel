@@ -21,6 +21,8 @@ pub trait FileOperationTrait: Send + Sync {
     /// - File system must be mounted
     fn open(&self, path: &str, flags: i32) -> Result<InodeNo, Error>;
 
+    fn close(&self, inode_no: InodeNo) -> Result<(), Error>;
+
     fn read(&self, inode_no: InodeNo, buf: &mut [u8], offset: &mut usize) -> Result<usize, Error>;
 
     fn write(&self, inode_no: InodeNo, buf: &[u8], offset: &mut usize) -> Result<usize, Error>;
@@ -113,6 +115,10 @@ pub(crate) struct FileOpsWrapper(Arc<dyn VfsOperations>);
 impl FileOperationTrait for FileOpsWrapper {
     fn open(&self, path: &str, flags: i32) -> Result<InodeNo, Error> {
         self.0.open(path, flags)
+    }
+
+    fn close(&self, inode_no: InodeNo) -> Result<(), Error> {
+        self.0.close(inode_no)
     }
 
     fn read(&self, inode_no: InodeNo, buf: &mut [u8], offset: &mut usize) -> Result<usize, Error> {

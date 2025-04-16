@@ -16,10 +16,7 @@ use core::{
     ffi::{c_char, c_int, c_void},
     slice,
 };
-use libc::{
-    O_ACCMODE, O_APPEND, O_CLOEXEC, O_CREAT, O_DIRECTORY, O_EXCL, O_NOFOLLOW, O_NONBLOCK, O_RDONLY,
-    O_RDWR, O_SYNC, O_TRUNC, O_WRONLY, S_IFDIR,
-};
+use libc::{O_ACCMODE, O_CREAT, O_DIRECTORY, O_EXCL, O_RDONLY, O_RDWR, O_TRUNC, O_WRONLY, S_IFDIR};
 use spin::RwLock as SpinRwLock;
 
 /// Mount a filesystem
@@ -133,7 +130,6 @@ pub fn open(file: *const c_char, flags: c_int, _mode: mode_t) -> i32 {
         return code::EINVAL.to_errno();
     }
 
-    // Convert path string
     let file_path = match unsafe { core::ffi::CStr::from_ptr(file).to_str() } {
         Ok(s) => s,
         Err(_) => return code::EINVAL.to_errno(),
@@ -198,7 +194,7 @@ pub fn open(file: *const c_char, flags: c_int, _mode: mode_t) -> i32 {
         }
 
         // Get filesystem operations object
-        let fs = dnode.get_inode().fs.clone();
+        let fs = dnode.get_inode().fs_ops.clone();
 
         // Get relative path
         let relative_path = match vfs_mnt::find_filesystem(file_path) {
@@ -320,6 +316,16 @@ pub fn close(fd: c_int) -> c_int {
     vfslog!("[posix] close: fd = {}", fd);
 
     let fd_manager = get_fd_manager_mut();
+    let fd_entry = match fd_manager.get_fd_mut(fd) {
+        Some(entry) => entry,
+        None => return code::EBADF.to_errno(),
+    };
+
+    if let Err(err) = fd_entry.file.close(fd_entry.inode_no) {
+        vfslog!("[posix] close: Failed to close file: {}", err);
+    }
+
+    // Always free the fd
     fd_manager
         .free_fd(fd)
         .map_or_else(|e| e.to_errno(), |_| code::EOK.to_errno())
@@ -681,7 +687,6 @@ pub fn closedir(dir: Arc<Dir>) -> i32 {
         return code::ENOTDIR.to_errno();
     }
 
-    // Release file descriptor
     fd_manager
         .free_fd(dir.fd)
         .map_or_else(|e| e.to_errno(), |_| code::EOK.to_errno())

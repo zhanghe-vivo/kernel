@@ -15,7 +15,7 @@ pub mod wait_list;
 
 pub use lock::{
     heaplock::{new_heaplock, HeapLock},
-    spinlock::{new_spinlock, RawSpin, SpinLock, SpinMutex},
+    spinlock::{new_spinlock, IrqSpinLock, RawSpin, SpinLock},
 };
 
 /// Returns the given string, if one is provided, otherwise generates one based on the source code

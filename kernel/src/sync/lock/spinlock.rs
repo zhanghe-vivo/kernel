@@ -87,12 +87,11 @@ impl RawSpin {
             let _guard = irq_lock.lock();
             let thread = unsafe { thread.as_mut() };
             if thread.check_deadlock(self) {
-                println!(
+                unreachable!(
                     "deadlocked, thread {} acquire lock, but is hold by thread {}",
                     thread.get_name(),
                     unsafe { self.owner.get().unwrap().as_ref().get_name() }
                 );
-                assert!(false);
             }
             thread.set_wait(self);
         }
@@ -184,7 +183,7 @@ impl Drop for RawSpinGuard<'_> {
     }
 }
 
-pub struct SpinMutex<T: ?Sized> {
+pub struct IrqSpinLock<T: ?Sized> {
     lock: RawSpin,
     data: UnsafeCell<T>,
 }
@@ -192,16 +191,17 @@ pub struct SpinMutex<T: ?Sized> {
 /// A guard that protects some data.
 ///
 /// When the guard is dropped, the next ticket will be processed.
-pub struct SpinMutexGuard<'a, T: ?Sized + 'a> {
+pub struct IrqSpinGuard<'a, T: ?Sized + 'a> {
     lock: &'a RawSpin,
+    irq_save: usize,
     data: &'a mut T,
 }
 
-unsafe impl<T: ?Sized + Send> Sync for SpinMutex<T> {}
-unsafe impl<T: ?Sized + Send> Send for SpinMutex<T> {}
+unsafe impl<T: ?Sized + Send> Sync for IrqSpinLock<T> {}
+unsafe impl<T: ?Sized + Send> Send for IrqSpinLock<T> {}
 
-impl<T> SpinMutex<T> {
-    /// Creates a new [`SpinMutex`] wrapping the supplied data.
+impl<T> IrqSpinLock<T> {
+    /// Creates a new [`IrqSpinLock`] wrapping the supplied data.
     #[inline(always)]
     pub const fn new(data: T) -> Self {
         Self {
@@ -210,12 +210,12 @@ impl<T> SpinMutex<T> {
         }
     }
 
-    /// Consumes this [`SpinMutex`] and unwraps the underlying data.
+    /// Consumes this [`IrqSpinLock`] and unwraps the underlying data.
     ///
     /// # Example
     ///
     /// ```
-    /// let lock = SpinMutex::<_>::new(42);
+    /// let lock = IrqSpinLock::<_>::new(42);
     /// assert_eq!(42, lock.into_inner());
     /// ```
     #[inline(always)]
@@ -229,7 +229,7 @@ impl<T> SpinMutex<T> {
     ///
     /// # Example
     /// ```
-    /// let lock = SpinMutex::<_>::new(42);
+    /// let lock = IrqSpinLock::<_>::new(42);
     ///
     /// unsafe {
     ///     core::mem::forget(lock.lock());
@@ -249,14 +249,14 @@ impl<T> SpinMutex<T> {
     }
 }
 
-impl<T: ?Sized> SpinMutex<T> {
-    /// Locks the [`SpinMutex`] and returns a guard that permits access to the inner data.
+impl<T: ?Sized> IrqSpinLock<T> {
+    /// Locks the [`IrqSpinLock`] and returns a guard that permits access to the inner data.
     ///
     /// The returned data may be dereferenced for data access
     /// and the lock will be dropped when the guard falls out of scope.
     ///
     /// ```
-    /// let lock = SpinMutex::<_>::new(0);
+    /// let lock = IrqSpinLock::<_>::new(0);
     /// {
     ///     let mut data = lock.lock();
     ///     // The lock is now locked and the data can be accessed
@@ -265,11 +265,12 @@ impl<T: ?Sized> SpinMutex<T> {
     /// }
     /// ```
     #[inline(always)]
-    pub fn lock(&self) -> SpinMutexGuard<T> {
-        self.lock.lock();
+    pub fn lock(&self) -> IrqSpinGuard<T> {
+        let irq_save = self.lock.lock_irqsave();
 
-        SpinMutexGuard {
+        IrqSpinGuard {
             lock: &self.lock,
+            irq_save: irq_save,
             // Safety
             // We know that we are the next ticket to be served,
             // so there's no other thread accessing the data.
@@ -281,19 +282,7 @@ impl<T: ?Sized> SpinMutex<T> {
     }
 }
 
-impl<T: ?Sized> SpinMutex<T> {
-    /// Force unlock this [`SpinMutex`], by serving the next ticket.
-    ///
-    /// # Safety
-    ///
-    /// This is *extremely* unsafe if the lock is not held by the current
-    /// thread. However, this can be useful in some instances for exposing the
-    /// lock to FFI that doesn't know how to deal with RAII.
-    #[inline(always)]
-    pub unsafe fn force_unlock(&self) {
-        self.lock.unlock();
-    }
-
+impl<T: ?Sized> IrqSpinLock<T> {
     /// Returns a mutable reference to the underlying data.
     #[inline(always)]
     pub fn get_mut(&mut self) -> &mut T {
@@ -304,27 +293,27 @@ impl<T: ?Sized> SpinMutex<T> {
     }
 }
 
-impl<T: ?Sized + Default> Default for SpinMutex<T> {
+impl<T: ?Sized + Default> Default for IrqSpinLock<T> {
     fn default() -> Self {
         Self::new(Default::default())
     }
 }
 
-impl<T> From<T> for SpinMutex<T> {
+impl<T> From<T> for IrqSpinLock<T> {
     fn from(data: T) -> Self {
         Self::new(data)
     }
 }
 
-impl<'a, T: ?Sized> SpinMutexGuard<'a, T> {
+impl<'a, T: ?Sized> IrqSpinGuard<'a, T> {
     /// Leak the lock guard, yielding a mutable reference to the underlying data.
     ///
-    /// Note that this function will permanently lock the original [`RawSpin`].
+    /// Note that this function will permanently lock the original [`IrqSpinLock`].
     ///
     /// ```
-    /// let mylock = spin::mutex::RawSpin::<_>::new(0);
+    /// let mylock = IrqSpinLock::<_>::new(0);
     ///
-    /// let data: &mut i32 = spin::mutex::SpinMutexGuard::leak(mylock.lock());
+    /// let data: &mut i32 = IrqSpinGuard::leak(mylock.lock());
     ///
     /// *data = 1;
     /// assert_eq!(*data, 1);
@@ -337,34 +326,34 @@ impl<'a, T: ?Sized> SpinMutexGuard<'a, T> {
     }
 }
 
-impl<'a, T: ?Sized + fmt::Debug> fmt::Debug for SpinMutexGuard<'a, T> {
+impl<'a, T: ?Sized + fmt::Debug> fmt::Debug for IrqSpinGuard<'a, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         fmt::Debug::fmt(&**self, f)
     }
 }
 
-impl<'a, T: ?Sized + fmt::Display> fmt::Display for SpinMutexGuard<'a, T> {
+impl<'a, T: ?Sized + fmt::Display> fmt::Display for IrqSpinGuard<'a, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         fmt::Display::fmt(&**self, f)
     }
 }
 
-impl<'a, T: ?Sized> Deref for SpinMutexGuard<'a, T> {
+impl<'a, T: ?Sized> Deref for IrqSpinGuard<'a, T> {
     type Target = T;
     fn deref(&self) -> &T {
         self.data
     }
 }
 
-impl<'a, T: ?Sized> DerefMut for SpinMutexGuard<'a, T> {
+impl<'a, T: ?Sized> DerefMut for IrqSpinGuard<'a, T> {
     fn deref_mut(&mut self) -> &mut T {
         self.data
     }
 }
 
-impl<'a, T: ?Sized> Drop for SpinMutexGuard<'a, T> {
+impl<'a, T: ?Sized> Drop for IrqSpinGuard<'a, T> {
     fn drop(&mut self) {
-        self.lock.unlock();
+        self.lock.unlock_irqrestore(self.irq_save);
     }
 }
 

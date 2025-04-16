@@ -1,4 +1,4 @@
-use core::{fmt, hint::spin_loop};
+use core::hint::spin_loop;
 use embedded_io::{ErrorKind, ErrorType, Read, ReadReady, Write, WriteReady};
 
 use tock_registers::{
@@ -131,7 +131,7 @@ register_bitfields! [
     ],
 ];
 
-/// PL011 UART Registers, see https://developer.arm.com/documentation/ddi0183/g/programmers-model/summary-of-registers?lang=en
+// PL011 UART Registers, see https://developer.arm.com/documentation/ddi0183/g/programmers-model/summary-of-registers?lang=en
 register_structs! {
     #[allow(non_snake_case)]
     Registers {
@@ -299,15 +299,6 @@ impl Uart {
     }
 }
 
-impl fmt::Write for Uart {
-    fn write_str(&mut self, s: &str) -> fmt::Result {
-        for c in s.as_bytes() {
-            self.write_byte(*c);
-        }
-        Ok(())
-    }
-}
-
 // SAFETY: `Uart` just contains a pointer to device memory, which can be accessed from any context.
 unsafe impl Send for Uart {}
 
@@ -349,12 +340,12 @@ impl Read for Uart {
             return Ok(0);
         }
 
-        loop {
-            if let Some(byte) = self.read_byte()? {
-                buf[0] = byte;
-                return Ok(1);
-            }
+        if let Some(byte) = self.read_byte()? {
+            buf[0] = byte;
+            return Ok(1);
         }
+
+        Ok(0)
     }
 }
 

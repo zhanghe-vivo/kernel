@@ -34,6 +34,7 @@ impl TryFrom<u32> for WaitMode {
 }
 
 /// WaitList for pending threads
+#[derive(Debug)]
 #[repr(C)]
 #[pin_data]
 pub(crate) struct WaitList {
@@ -151,7 +152,7 @@ impl WaitList {
         let mut ret = false;
         while let Some(node) = unsafe { Pin::new_unchecked(&mut self.wait_list).pop_front() } {
             let thread = unsafe { &mut *crate::thread_list_node_entry!(node.as_ptr()) };
-            thread.error = code::ERROR;
+            thread.error = code::EOK;
             let _ = thread.resume();
             ret = true;
         }

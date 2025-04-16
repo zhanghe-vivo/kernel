@@ -6,7 +6,10 @@ use alloc::{
     string::{String, ToString},
     vec::Vec,
 };
-use core::cmp::min;
+use core::{
+    cmp::min,
+    sync::atomic::{AtomicBool, Ordering},
+};
 use spin::RwLock as SpinRwLock;
 
 use crate::{
@@ -20,10 +23,7 @@ use crate::{
         vfs_traits::{FileOperationTrait, FileSystemTrait},
     },
 };
-use libc::{
-    O_ACCMODE, O_APPEND, O_CREAT, O_DIRECTORY, O_EXCL, O_RDWR, O_TRUNC, O_WRONLY, S_IFDIR, S_IFLNK,
-    S_IFMT, S_IFREG,
-};
+use libc::{O_APPEND, O_DIRECTORY, O_RDWR, O_TRUNC, O_WRONLY, S_IFDIR, S_IFLNK, S_IFMT, S_IFREG};
 
 // File access permissions
 const R_OK: u32 = 4; // Read permission
@@ -40,7 +40,7 @@ struct TmpInode {
 /// Temporary filesystem implementation
 #[cfg_attr(feature = "cbindgen", no_mangle)]
 pub struct TmpFileSystem {
-    mounted: SpinRwLock<bool>,
+    mounted: AtomicBool,
     mount_point: SpinRwLock<String>,
     // Inode table
     inodes: SpinRwLock<BTreeMap<InodeNo, TmpInode>>,
@@ -55,7 +55,7 @@ impl TmpFileSystem {
         vfslog!("[tmpfs] Creating new tmpfs instance");
 
         TmpFileSystem {
-            mounted: SpinRwLock::new(false),
+            mounted: AtomicBool::new(false),
             mount_point: SpinRwLock::new(String::new()),
             inodes: SpinRwLock::new(BTreeMap::new()),
             dentries: SpinRwLock::new(BTreeMap::new()),
@@ -64,7 +64,7 @@ impl TmpFileSystem {
     }
 
     fn check_mounted(&self) -> Result<(), Error> {
-        if !*self.mounted.read() {
+        if !self.mounted.load(Ordering::Relaxed) {
             return Err(code::EAGAIN);
         }
         Ok(())
@@ -262,6 +262,18 @@ impl FileOperationTrait for TmpFileSystem {
             inode_no
         );
         Ok(inode_no) // Return inode number
+    }
+
+    fn close(&self, inode_no: InodeNo) -> Result<(), Error> {
+        self.check_mounted()?;
+        let mut inodes = self.inodes.write();
+        match inodes.get_mut(&inode_no) {
+            Some(inode) => inode,
+            None => return Err(code::ENOENT),
+        };
+
+        vfslog!("[tmpfs] close: inode_no = {}", inode_no);
+        Ok(())
     }
 
     fn read(&self, inode_no: InodeNo, buf: &mut [u8], offset: &mut usize) -> Result<usize, Error> {
@@ -497,7 +509,7 @@ impl FileSystemTrait for TmpFileSystem {
         vfslog!("[tmpfs] mount: target = {}", target);
 
         // Check if already mounted
-        if *self.mounted.read() {
+        if self.mounted.load(Ordering::Relaxed) {
             vfslog!("[tmpfs] Already mounted");
             return Err(code::EEXIST);
         }
@@ -559,14 +571,14 @@ impl FileSystemTrait for TmpFileSystem {
         // Set mount point and state
         let mount_path = normalized_target.clone(); // Clone for log output
         *self.mount_point.write() = normalized_target;
-        *self.mounted.write() = true;
+        self.mounted.store(true, Ordering::Relaxed);
 
         vfslog!("[tmpfs] Successfully mounted at {}", mount_path);
         Ok(())
     }
 
     fn unmount(&self, target: &str) -> Result<(), Error> {
-        if !*self.mounted.read() {
+        if !self.mounted.load(Ordering::Relaxed) {
             return Err(code::EAGAIN);
         }
 
@@ -574,7 +586,7 @@ impl FileSystemTrait for TmpFileSystem {
             return Err(code::EINVAL);
         }
 
-        *self.mounted.write() = false;
+        self.mounted.store(false, Ordering::Relaxed);
         self.mount_point.write().clear();
         self.inodes.write().clear();
         self.dentries.write().clear();
