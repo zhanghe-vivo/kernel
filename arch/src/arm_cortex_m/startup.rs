@@ -46,17 +46,17 @@ pub unsafe fn reset_handler_inner() -> ! {
     }
 
     // copy and zero datas
-    let mut p_table = &__copy_table_start__ as *const CopyTable;
-    while p_table < &__copy_table_end__ as *const CopyTable {
-        let table = &(*p_table);
-        for i in 0..table.wlen {
-            ptr::write(
-                table.dest.add(i as usize),
-                ptr::read(table.src.add(i as usize)),
-            );
-        }
-        p_table = p_table.add(1);
-    }
+    // let mut p_table = &__copy_table_start__ as *const CopyTable;
+    // while p_table < &__copy_table_end__ as *const CopyTable {
+    //     let table = &(*p_table);
+    //     for i in 0..table.wlen {
+    //         ptr::write(
+    //             table.dest.add(i as usize),
+    //             ptr::read(table.src.add(i as usize)),
+    //         );
+    //     }
+    //     p_table = p_table.add(1);
+    // }
 
     let mut p_table = &__zero_table_start__ as *const ZeroTable;
     while p_table < &__zero_table_end__ as *const ZeroTable {

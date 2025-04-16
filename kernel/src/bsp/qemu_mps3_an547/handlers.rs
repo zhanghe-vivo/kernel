@@ -11,7 +11,7 @@ macro_rules! default_irq_handler {
     };
 }
 
-use crate::bsp::{UARTRX0_Handler, UARTTX0_Handler};
+use crate::bsp::uart::{UARTRX0_Handler, UARTTX0_Handler};
 default_irq_handler!(NONSEC_WATCHDOG_RESET_REQ_Handler);
 default_irq_handler!(NONSEC_WATCHDOG_Handler);
 default_irq_handler!(SLOWCLK_Timer_Handler);
