@@ -5,6 +5,7 @@ group("run_librs_posix_testsuite") {
   testonly = true
   deps = [
     ":run_librs_posix_pthread_create_1_1",
+    ":run_librs_posix_pthread_spin_lock_1_2",
     ":run_librs_posix_sem_destroy_3_1",
   ]
 }
@@ -28,4 +29,7 @@ build_rust("librs_for_posix_testsuite") {
 posix_testsuite_case("pthread_create_1_1") {
 }
 posix_testsuite_case("sem_destroy_3_1") {
+}
+
+posix_testsuite_case("pthread_spin_lock_1_2") {
 }

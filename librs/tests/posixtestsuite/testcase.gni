@@ -36,11 +36,32 @@ template("posix_testsuite_case") {
   }
   source_set(case_name) {
     name_components = string_split(case_name, "_")
+    count = 0
+    foreach(i, name_components) {
+      count += 1
+    }
+    if (count < 4) {
+      error(
+          "The test case name should be in the format of x_x_1_1 or x_x_x_1_1")
+    }
 
-    # filename format error, should be failed
-    dir_name = name_components[0] + "_" + name_components[1]
-    file_name = name_components[2] + "-" + name_components[3] + ".c"
+    # for filename
+    file_name =
+        name_components[count - 2] + "-" + name_components[count - 1] + ".c"
 
+    # directory name
+    count2 = 0
+    dir_name = ""
+    foreach(cpn, name_components) {
+      if (count2 < count - 2) {
+        if (count2 == count - 3) {
+          dir_name += cpn
+        } else {
+          dir_name += cpn + "_"
+        }
+      }
+      count2 += 1
+    }
     sources = [ "//external/posixtestsuite/conformance/interfaces/${dir_name}/${file_name}" ]
 
     include_dirs = [ "//kernel/librs/newlib/include" ]

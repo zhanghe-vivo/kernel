@@ -68,3 +68,10 @@ pub unsafe extern "C" fn start_posix_testsuite() -> i32 {
     pthread_join(t, core::ptr::null_mut());
     0
 }
+
+#[no_mangle]
+pub unsafe extern "C" fn exit(status: c_int) -> ! {
+    use crate::pthread::pthread_exit;
+    // exit will terminate whole process, now we just call pthread_exit instead
+    pthread_exit(0 as *mut core::ffi::c_void);
+}

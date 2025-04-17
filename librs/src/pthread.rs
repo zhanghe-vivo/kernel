@@ -19,12 +19,13 @@ use core::{
     ffi::{c_int, c_size_t, c_uint, c_void},
     intrinsics::transmute,
     num::NonZeroU32,
-    sync::atomic::{AtomicI8, AtomicUsize, Ordering},
+    sync::atomic::{AtomicI32, AtomicI8, AtomicUsize, Ordering},
 };
 use libc::{
     clockid_t, pthread_attr_t, pthread_barrier_t, pthread_barrierattr_t, pthread_cond_t,
     pthread_condattr_t, pthread_key_t, pthread_mutex_t, pthread_mutexattr_t, pthread_rwlock_t,
-    pthread_rwlockattr_t, pthread_t, sched_param, sem_t, timespec, EDEADLK, EINVAL, ESRCH,
+    pthread_rwlockattr_t, pthread_spinlock_t, pthread_t, sched_param, sem_t, timespec, EBUSY,
+    EDEADLK, EINVAL, ESRCH,
 };
 
 pub const PTHREAD_BARRIER_SERIAL_THREAD: c_int = -1;
@@ -685,6 +686,74 @@ pub unsafe extern "C" fn pthread_barrierattr_getpshared(
     0
 }
 
+// FIXME: Move to a separate file
+const UNLOCKED: c_int = 0;
+const LOCKED: c_int = 1;
+
+#[no_mangle]
+pub unsafe extern "C" fn pthread_spin_destroy(spinlock: *mut pthread_spinlock_t) -> c_int {
+    let _spinlock = &mut *spinlock.cast::<RsSpinlock>();
+
+    // No-op
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn pthread_spin_init(
+    spinlock: *mut pthread_spinlock_t,
+    _pshared: c_int,
+) -> c_int {
+    spinlock.cast::<RsSpinlock>().write(RsSpinlock {
+        inner: AtomicI32::new(UNLOCKED),
+    });
+
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn pthread_spin_lock(spinlock: *mut pthread_spinlock_t) -> c_int {
+    let spinlock = &*spinlock.cast::<RsSpinlock>();
+
+    loop {
+        match spinlock.inner.compare_exchange_weak(
+            UNLOCKED,
+            LOCKED,
+            Ordering::Acquire,
+            Ordering::Relaxed,
+        ) {
+            Ok(_) => break,
+            Err(_) => core::hint::spin_loop(),
+        }
+    }
+
+    0
+}
+#[no_mangle]
+pub unsafe extern "C" fn pthread_spin_trylock(spinlock: *mut pthread_spinlock_t) -> c_int {
+    let spinlock = &*spinlock.cast::<RsSpinlock>();
+
+    match spinlock
+        .inner
+        .compare_exchange(UNLOCKED, LOCKED, Ordering::Acquire, Ordering::Relaxed)
+    {
+        Ok(_) => (),
+        Err(_) => return EBUSY,
+    }
+
+    0
+}
+#[no_mangle]
+pub unsafe extern "C" fn pthread_spin_unlock(spinlock: *mut pthread_spinlock_t) -> c_int {
+    let spinlock = &*spinlock.cast::<RsSpinlock>();
+
+    spinlock.inner.store(UNLOCKED, Ordering::Release);
+
+    0
+}
+pub(crate) struct RsSpinlock {
+    pub inner: AtomicI32,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -727,5 +796,7 @@ mod tests {
         check_size!(pthread_barrier_t, Barrier);
         check_align!(sem_t, RsSemaphore);
         check_size!(sem_t, RsSemaphore);
+        check_align!(pthread_spinlock_t, RsSpinlock);
+        check_size!(pthread_spinlock_t, RsSpinlock);
     }
 }
