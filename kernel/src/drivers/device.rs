@@ -152,9 +152,11 @@ pub trait Device: Send + Sync {
     fn id(&self) -> DeviceId;
     fn read(&self, pos: usize, buf: &mut [u8]) -> Result<usize, ErrorKind>;
     fn write(&self, pos: usize, buf: &[u8]) -> Result<usize, ErrorKind>;
-    fn ioctl(&self, request: u32, arg: usize) -> Result<(), ErrorKind>;
     fn open(&self, oflag: i32) -> Result<(), ErrorKind>;
     fn close(&self) -> Result<(), ErrorKind>;
+    fn ioctl(&self, _request: u32, _arg: usize) -> Result<(), ErrorKind> {
+        Err(ErrorKind::Unsupported)
+    }
 }
 
 static DEVICE_MANAGER: Once<DeviceManager> = Once::new();

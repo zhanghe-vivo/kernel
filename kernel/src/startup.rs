@@ -1,6 +1,4 @@
-use crate::{
-    arch::Arch, bsp, c_str, cpu, drivers::null::Null, idle, println, thread::ThreadBuilder, timer,
-};
+use crate::{arch::Arch, bsp, c_str, cpu, drivers, idle, println, thread::ThreadBuilder, timer};
 use bluekernel_kconfig::{MAIN_THREAD_PRIORITY, MAIN_THREAD_STACK_SIZE};
 use core::{intrinsics::unlikely, ptr};
 
@@ -97,10 +95,12 @@ pub extern "C" fn _startup() -> ! {
     unsafe { timer::TIMER_WHEEL.init_once() };
     idle::IdleTheads::init_once();
     bsp::init::board_init();
-    match Null::register() {
+
+    match drivers::init() {
         Ok(_) => (),
-        Err(e) => println!("Failed to register null device: {:?}", e),
+        Err(e) => println!("Failed to init drivers: {:?}", e),
     }
+
     timer::system_timer_thread_init();
     application_init();
 

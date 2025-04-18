@@ -1,4 +1,12 @@
 pub mod device;
 mod error;
-pub mod null;
+mod null;
 pub mod serial;
+mod zero;
+
+use embedded_io::ErrorKind;
+pub fn init() -> Result<(), ErrorKind> {
+    null::Null::register()?;
+    zero::Zero::register()?;
+    Ok(())
+}
