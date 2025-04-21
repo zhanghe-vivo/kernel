@@ -5,11 +5,12 @@ use super::{
 use crate::{
     arch::{Arch, IrqNumber},
     drivers::{
-        device::{DeviceFlags, DeviceManager, DeviceRequest},
+        device::{DeviceManager, DeviceRequest},
         serial::{cmsdk_uart::Uart, config::SerialConfig, Serial, SerialError, UartOps},
     },
     irq::Irq,
     sync::lock::spinlock::IrqSpinLock,
+    vfs::vfs_mode::AccessMode,
 };
 use alloc::sync::Arc;
 use core::hint::spin_loop;
@@ -176,14 +177,23 @@ impl UartOps for UartDriver {
     }
 }
 
+static UART0: Once<Arc<IrqSpinLock<dyn UartOps>>> = Once::new();
 static SERIAL0: Once<Arc<Serial>> = Once::new();
+
+pub fn get_uart0() -> &'static Arc<IrqSpinLock<dyn UartOps>> {
+    UART0.call_once(|| Arc::new(IrqSpinLock::new(UartDriver::new(UART0_BASE_S))))
+}
+
+pub fn get_early_uart() -> &'static Arc<IrqSpinLock<dyn UartOps>> {
+    get_uart0()
+}
 
 pub fn get_serial0() -> &'static Arc<Serial> {
     SERIAL0.call_once(|| {
-        let uart = Arc::new(IrqSpinLock::new(UartDriver::new(UART0_BASE_S)));
+        let uart = get_uart0().clone();
         Arc::new(Serial::new(
             "ttyS0",
-            DeviceFlags::RDWR | DeviceFlags::STREAM,
+            AccessMode::O_RDWR,
             SerialConfig::default(),
             uart,
         ))

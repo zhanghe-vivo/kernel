@@ -83,6 +83,7 @@ unsafe impl<T: Sync, I> Sync for StaticInit<T, I> {}
 unsafe impl<T: Send, I> Send for StaticInit<T, I> {}
 
 impl<T, I: PinInit<T>> StaticInit<T, I> {
+    #[allow(dead_code)]
     pub const fn new(init: I) -> Self {
         Self {
             inner: UnsafeStaticInit::new(init),

@@ -1,11 +1,12 @@
 use super::config::SerialConfig;
 use crate::{
     clock::WAITING_FOREVER,
-    drivers::device::{Device, DeviceBase, DeviceClass, DeviceFlags, DeviceId, DeviceRequest},
+    drivers::device::{Device, DeviceBase, DeviceClass, DeviceId, DeviceRequest},
     sync::{
         futex::{atomic_wait, atomic_wake},
         lock::spinlock::IrqSpinLock,
     },
+    vfs::vfs_mode::AccessMode,
 };
 use alloc::sync::Arc;
 use bluekernel_infra::ringbuffer::BoxedRingBuffer;
@@ -125,12 +126,12 @@ pub struct Serial {
 impl Serial {
     pub fn new(
         name: &'static str,
-        device_flags: DeviceFlags,
+        access_mode: AccessMode,
         config: SerialConfig,
         uart_ops: Arc<IrqSpinLock<dyn UartOps>>,
     ) -> Self {
         Self {
-            base: DeviceBase::new(name, DeviceClass::Char, device_flags),
+            base: DeviceBase::new(name, DeviceClass::Char, access_mode),
             config,
             rx_fifo: SerialRxFifo::new(SERIAL_RX_FIFO_SIZE.max(SERIAL_RX_FIFO_MIN_SIZE)),
             tx_fifo: SerialTxFifo::new(SERIAL_TX_FIFO_SIZE.max(SERIAL_TX_FIFO_MIN_SIZE)),
@@ -140,32 +141,24 @@ impl Serial {
 
     delegate! {
         to self.base {
-            fn flags(&self) -> DeviceFlags;
-            fn check_flags(&self, oflag: i32) -> Result<(), ErrorKind>;
-            fn set_oflag(&self, oflag: i32);
-            fn oflag(&self) -> i32;
-            fn is_blocking(&self) -> bool;
+            fn check_permission(&self, oflag: i32) -> Result<(), ErrorKind>;
             fn inc_open_count(&self) -> u32;
             fn dec_open_count(&self) -> u32;
             fn is_opened(&self) -> bool;
         }
     }
 
-    fn rx_disable(&self, is_blocking: bool) -> Result<(), SerialError> {
-        if is_blocking {
-            let _ = atomic_wake(&self.rx_fifo.futex as *const AtomicUsize as usize, 1);
-        }
+    fn rx_disable(&self) -> Result<(), SerialError> {
+        let _ = atomic_wake(&self.rx_fifo.futex as *const AtomicUsize as usize, 1);
         self.uart_ops.lock().set_rx_interrupt(false);
         Ok(())
     }
 
-    fn tx_disable(&self, is_blocking: bool) -> Result<(), SerialError> {
-        if is_blocking {
-            let _ = atomic_wake(&self.tx_fifo.futex as *const AtomicUsize as usize, 1);
-        }
+    fn tx_disable(&self) -> Result<(), SerialError> {
+        let _ = atomic_wake(&self.tx_fifo.futex as *const AtomicUsize as usize, 1);
         self.uart_ops.lock().set_tx_interrupt(false);
-        // TODO: send all data in tx fifo
-
+        // send all data in tx fifo
+        self.uart_xmitchars()?;
         Ok(())
     }
 
@@ -276,8 +269,8 @@ impl Serial {
             }
         }
 
-        // TODO: add notify for poll/select
-        if nbytes > 0 && self.base.is_blocking() {
+        if nbytes > 0 {
+            // TODO: add notify for poll/select
             let _ = atomic_wake(&self.tx_fifo.futex as *const AtomicUsize as usize, 1);
         }
 
@@ -320,6 +313,7 @@ impl Device for Serial {
         to self.base {
             fn name(&self) -> &'static str;
             fn class(&self) -> DeviceClass;
+            fn access_mode(&self) -> AccessMode;
         }
     }
 
@@ -333,14 +327,9 @@ impl Device for Serial {
 
     fn open(&self, oflag: i32) -> Result<(), ErrorKind> {
         // Check flags first
-        self.check_flags(oflag)?;
+        self.check_permission(oflag)?;
 
-        // serial device can only be opened once
-        if self.is_opened() {
-            return Err(ErrorKind::AlreadyExists);
-        }
-
-        {
+        if !self.is_opened() {
             let mut uart_ops = self.uart_ops.lock();
             uart_ops.setup(&self.config)?;
             //uart_ops.set_tx_interrupt(true);
@@ -349,8 +338,6 @@ impl Device for Serial {
 
         // Update device state
         self.inc_open_count();
-        self.set_oflag(oflag);
-
         Ok(())
     }
 
@@ -360,24 +347,22 @@ impl Device for Serial {
         }
 
         if self.dec_open_count() == 0 {
-            let is_blocking = self.is_blocking();
-            self.rx_disable(is_blocking)?;
-            self.tx_disable(is_blocking)?;
+            self.rx_disable()?;
+            self.tx_disable()?;
 
             let mut uart_ops = self.uart_ops.lock();
             uart_ops.ioctl(DeviceRequest::Close as u32, 0)?;
-            self.set_oflag(0);
         }
 
         Ok(())
     }
 
-    fn read(&self, _pos: usize, buf: &mut [u8]) -> Result<usize, ErrorKind> {
-        self.fifo_rx(buf, self.is_blocking()).map_err(|e| e.into())
+    fn read(&self, _pos: usize, buf: &mut [u8], is_blocking: bool) -> Result<usize, ErrorKind> {
+        self.fifo_rx(buf, is_blocking).map_err(|e| e.into())
     }
 
-    fn write(&self, _pos: usize, buf: &[u8]) -> Result<usize, ErrorKind> {
-        self.fifo_tx(buf, self.is_blocking()).map_err(|e| e.into())
+    fn write(&self, _pos: usize, buf: &[u8], is_blocking: bool) -> Result<usize, ErrorKind> {
+        self.fifo_tx(buf, is_blocking).map_err(|e| e.into())
     }
 
     fn ioctl(&self, request: u32, arg: usize) -> Result<(), ErrorKind> {

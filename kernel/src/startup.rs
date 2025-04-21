@@ -13,7 +13,10 @@ static mut MAIN_THREAD: Thread = Thread {};
 /// The system main thread. In this thread will call the components_init().
 #[no_mangle]
 pub extern "C" fn main_thread_entry(_parameter: *mut core::ffi::c_void) {
-    let _ = crate::vfs::vfs_api::vfs_init();
+    match crate::vfs::vfs_api::vfs_init() {
+        Ok(_) => (),
+        Err(e) => println!("Failed to init vfs: {}", e),
+    }
 
     #[cfg(feature = "os_adapter")]
     {
@@ -92,7 +95,7 @@ fn application_init() {
 pub extern "C" fn _startup() -> ! {
     Arch::disable_interrupts();
     cpu::init_cpus();
-    unsafe { timer::TIMER_WHEEL.init_once() };
+    timer::system_timer_init();
     idle::IdleTheads::init_once();
     bsp::init::board_init();
 

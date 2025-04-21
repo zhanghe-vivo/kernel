@@ -1,11 +1,12 @@
+use crate::vfs::vfs_mode::AccessMode;
 use alloc::{collections::BTreeMap, sync::Arc};
-use bitflags::bitflags;
-use core::sync::atomic::{AtomicI32, AtomicU32, Ordering};
+use core::sync::atomic::{AtomicU32, Ordering};
 use embedded_io::ErrorKind;
 use libc::*;
 use spin::{Once, RwLock as SpinRwLock};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
 pub enum DeviceClass {
     Char,
     Block,
@@ -58,17 +59,6 @@ impl From<u32> for DeviceRequest {
 /// Mask for control commands
 pub const DEVICE_GENERAL_REQUEST_MASK: u32 = 0x1f;
 
-// Device Flags
-bitflags! {
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub struct DeviceFlags: u32 {
-        const RDONLY = O_RDONLY as u32;
-        const WRONLY = O_WRONLY as u32;
-        const RDWR = O_RDWR as u32;
-        const STREAM = 0x1000;
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DeviceId {
     pub major: u32,
@@ -78,47 +68,32 @@ pub struct DeviceId {
 #[derive(Debug)]
 pub struct DeviceBase {
     pub name: &'static str,
-    pub class: DeviceClass,
-    pub flags: DeviceFlags,
-    pub oflag: AtomicI32,
     pub open_count: AtomicU32,
+    pub class: DeviceClass,
+    pub access_mode: AccessMode,
 }
 
 impl DeviceBase {
-    pub fn new(name: &'static str, device_class: DeviceClass, device_flags: DeviceFlags) -> Self {
+    pub fn new(name: &'static str, device_class: DeviceClass, access_mode: AccessMode) -> Self {
         Self {
             name,
-            class: device_class,
-            flags: device_flags,
-            oflag: AtomicI32::new(0),
             open_count: AtomicU32::new(0),
+            class: device_class,
+            access_mode,
         }
     }
 
-    pub fn check_flags(&self, oflag: i32) -> Result<(), ErrorKind> {
-        let flags = DeviceFlags::from_bits_truncate(oflag as u32);
+    pub fn check_permission(&self, oflag: i32) -> Result<(), ErrorKind> {
+        let access_mode = AccessMode::from(oflag);
 
-        // Check if requested flags are compatible with device flags
-        if flags.contains(DeviceFlags::RDONLY) && !self.flags.contains(DeviceFlags::RDONLY) {
-            return Err(ErrorKind::PermissionDenied);
+        // Check if requested access mode is compatible with device's access mode
+        match (access_mode, self.access_mode) {
+            (AccessMode::O_RDONLY, AccessMode::O_WRONLY)
+            | (AccessMode::O_WRONLY, AccessMode::O_RDONLY)
+            | (AccessMode::O_RDWR, AccessMode::O_WRONLY)
+            | (AccessMode::O_RDWR, AccessMode::O_RDONLY) => Err(ErrorKind::PermissionDenied),
+            _ => Ok(()),
         }
-        if flags.contains(DeviceFlags::WRONLY) && !self.flags.contains(DeviceFlags::WRONLY) {
-            return Err(ErrorKind::PermissionDenied);
-        }
-
-        Ok(())
-    }
-
-    pub fn set_oflag(&self, oflag: i32) {
-        self.oflag.store(oflag, Ordering::Relaxed);
-    }
-
-    pub fn oflag(&self) -> i32 {
-        self.oflag.load(Ordering::Relaxed)
-    }
-
-    pub fn is_blocking(&self) -> bool {
-        (self.oflag() & O_NONBLOCK) == 0
     }
 
     pub fn inc_open_count(&self) -> u32 {
@@ -141,17 +116,18 @@ impl DeviceBase {
         self.class
     }
 
-    pub fn flags(&self) -> DeviceFlags {
-        self.flags
+    pub fn access_mode(&self) -> AccessMode {
+        self.access_mode
     }
 }
 
 pub trait Device: Send + Sync {
     fn name(&self) -> &'static str;
     fn class(&self) -> DeviceClass;
+    fn access_mode(&self) -> AccessMode;
     fn id(&self) -> DeviceId;
-    fn read(&self, pos: usize, buf: &mut [u8]) -> Result<usize, ErrorKind>;
-    fn write(&self, pos: usize, buf: &[u8]) -> Result<usize, ErrorKind>;
+    fn read(&self, pos: usize, buf: &mut [u8], is_blocking: bool) -> Result<usize, ErrorKind>;
+    fn write(&self, pos: usize, buf: &[u8], is_blocking: bool) -> Result<usize, ErrorKind>;
     fn open(&self, oflag: i32) -> Result<(), ErrorKind>;
     fn close(&self) -> Result<(), ErrorKind>;
     fn ioctl(&self, _request: u32, _arg: usize) -> Result<(), ErrorKind> {

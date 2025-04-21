@@ -1,4 +1,7 @@
-use crate::drivers::device::{Device, DeviceBase, DeviceClass, DeviceFlags, DeviceId};
+use crate::{
+    drivers::device::{Device, DeviceBase, DeviceClass, DeviceId},
+    vfs::vfs_mode::AccessMode,
+};
 use alloc::sync::Arc;
 use delegate::delegate;
 use embedded_io::ErrorKind;
@@ -10,7 +13,7 @@ pub struct Null {
 impl Null {
     pub fn new() -> Self {
         Self {
-            base: DeviceBase::new("null", DeviceClass::Char, DeviceFlags::RDWR),
+            base: DeviceBase::new("null", DeviceClass::Char, AccessMode::O_RDWR),
         }
     }
 
@@ -21,11 +24,7 @@ impl Null {
 
     delegate! {
         to self.base {
-            fn flags(&self) -> DeviceFlags;
-            fn check_flags(&self, oflag: i32) -> Result<(), ErrorKind>;
-            fn set_oflag(&self, oflag: i32);
-            fn oflag(&self) -> i32;
-            fn is_blocking(&self) -> bool;
+            fn check_permission(&self, oflag: i32) -> Result<(), ErrorKind>;
             fn inc_open_count(&self) -> u32;
             fn dec_open_count(&self) -> u32;
             fn is_opened(&self) -> bool;
@@ -38,6 +37,7 @@ impl Device for Null {
         to self.base {
             fn name(&self) -> &'static str;
             fn class(&self) -> DeviceClass;
+            fn access_mode(&self) -> AccessMode;
         }
     }
 
@@ -48,18 +48,18 @@ impl Device for Null {
         }
     }
 
-    fn read(&self, _pos: usize, _buf: &mut [u8]) -> Result<usize, ErrorKind> {
+    fn read(&self, _pos: usize, _buf: &mut [u8], _is_blocking: bool) -> Result<usize, ErrorKind> {
         // Always return EOF (0 bytes read)
         Ok(0)
     }
 
-    fn write(&self, _pos: usize, buf: &[u8]) -> Result<usize, ErrorKind> {
+    fn write(&self, _pos: usize, buf: &[u8], _is_blocking: bool) -> Result<usize, ErrorKind> {
         // Always succeed, but discard the data
         Ok(buf.len())
     }
 
     fn open(&self, oflag: i32) -> Result<(), ErrorKind> {
-        self.check_flags(oflag)?;
+        self.check_permission(oflag)?;
         self.inc_open_count();
         Ok(())
     }
@@ -82,7 +82,7 @@ mod tests {
         let mut buffer = [0u8; 10];
 
         // Read should always return 0 bytes (EOF)
-        let result = null.read(0, &mut buffer);
+        let result = null.read(0, &mut buffer, true);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), 0);
     }
@@ -93,7 +93,7 @@ mod tests {
         let buffer = [1u8, 2, 3, 4, 5];
 
         // Write should always succeed and return the buffer length
-        let result = null.write(0, &buffer);
+        let result = null.write(0, &buffer, true);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), buffer.len());
     }
@@ -103,7 +103,7 @@ mod tests {
         let null = Null::new();
 
         // Test opening with valid flags
-        let result = null.open(0);
+        let result = null.open(libc::O_RDWR);
         assert!(result.is_ok());
         assert!(null.is_opened());
 

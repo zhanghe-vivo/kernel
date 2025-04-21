@@ -1,3 +1,4 @@
+pub mod console;
 pub mod device;
 mod error;
 mod null;

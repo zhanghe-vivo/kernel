@@ -22,21 +22,12 @@ use crate::{
     },
 };
 
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub enum DevType {
-    Char = 0,
-    Block = 1,
-    Other = 255,
-}
-
 struct DevNode {
     attr: InodeAttr,
     offset: usize,
     dev: Arc<dyn Device>,
 }
 
-#[cfg_attr(feature = "cbindgen", no_mangle)]
 pub struct DevFileSystem {
     mounted: AtomicBool,
     mount_point: SpinRwLock<String>,
@@ -76,6 +67,7 @@ impl DevFileSystem {
     fn scan_devices(&self) -> Result<(), Error> {
         self.manager
             .foreach(|dev| {
+                vfslog!("[devfs] Adding device: {}", dev.name());
                 self.add_device(dev);
             })
             .map_err(|e| Error::from_errno(e as i32))
@@ -95,7 +87,7 @@ impl DevFileSystem {
                 DeviceClass::Char => FileType::CharDevice,
                 DeviceClass::Block => FileType::BlockDevice,
             },
-            mode: 0o666 | S_IFCHR,
+            mode: u32::from(dev.access_mode()) | S_IFCHR,
             nlinks: 1,
             uid: 0,
             gid: 0,
@@ -156,8 +148,9 @@ impl FileOperationTrait for DevFileSystem {
 
         let nodes = self.dev_nodes.read();
         let node = nodes.get(&inode_no).ok_or(code::ENOENT)?;
+        let is_blocking = node.attr.mode & libc::O_NONBLOCK as u32 == 0;
 
-        match node.dev.read(*offset, buf) {
+        match node.dev.read(*offset, buf, is_blocking) {
             Ok(count) => {
                 *offset += count;
                 Ok(count)
@@ -178,8 +171,9 @@ impl FileOperationTrait for DevFileSystem {
 
         let nodes = self.dev_nodes.read();
         let node = nodes.get(&inode_no).ok_or(code::ENOENT)?;
+        let is_blocking = node.attr.mode & libc::O_NONBLOCK as u32 == 0;
 
-        match node.dev.write(*offset, buf) {
+        match node.dev.write(*offset, buf, is_blocking) {
             Ok(count) => {
                 *offset += count;
                 Ok(count)

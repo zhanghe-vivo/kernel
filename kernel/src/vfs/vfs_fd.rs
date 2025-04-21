@@ -3,11 +3,11 @@
 
 use crate::{
     error::{code, Error},
-    vfs::{vfs_log::*, vfs_node::InodeNo, vfs_traits::*},
+    vfs::{vfs_log::*, vfs_mnt, vfs_node::InodeNo, vfs_traits::*},
 };
 use alloc::{sync::Arc, vec::Vec};
 use core::ffi::c_int;
-use spin::Lazy;
+use spin::{Mutex as SpinLock, Once};
 
 /// Standard file descriptors
 pub const STDIN_FILENO: c_int = 0;
@@ -50,32 +50,44 @@ impl FdManager {
 
         // Reserve standard file descriptors
         manager.fds.resize(FIRST_FD as usize, None);
-
-        // manager.fds[STDIN_FILENO as usize] = Some(FileDescriptor {
-        //     fd: STDIN_FILENO,
-        //     flags: O_RDONLY,
-        //     offset: 0,
-        //     file: console.clone(),
-        //     inode_no: InodeNo::new(0),
-        // });
-
-        // manager.fds[STDOUT_FILENO as usize] = Some(FileDescriptor {
-        //     fd: STDOUT_FILENO,
-        //     flags: O_WRONLY,
-        //     offset: 0,
-        //     file: console.clone(),
-        //     inode_no: InodeNo::new(1),
-        // });
-
-        // manager.fds[STDERR_FILENO as usize] = Some(FileDescriptor {
-        //     fd: STDERR_FILENO,
-        //     flags: O_WRONLY,
-        //     offset: 0,
-        //     file: console,
-        //     inode_no: InodeNo::new(2),
-        // });
-
         manager
+    }
+
+    pub fn init_stdio(&mut self) -> Result<(), Error> {
+        let Some((fs, _)) = vfs_mnt::find_filesystem("/dev/console") else {
+            vfslog!("[fd] init_stdio: Failed to find filesystem for /dev/console");
+            return Err(code::ENOENT);
+        };
+        let stdin_inode = fs.open("console", libc::O_RDONLY)?;
+        let stdout_inode = fs.open("console", libc::O_WRONLY)?;
+        let stderr_inode = fs.open("console", libc::O_WRONLY)?;
+        let file_ops = as_file_ops(fs);
+
+        self.fds[STDIN_FILENO as usize] = Some(FileDescriptor {
+            fd: STDIN_FILENO,
+            flags: libc::O_RDONLY,
+            offset: 0,
+            file: file_ops.clone(),
+            inode_no: stdin_inode,
+        });
+
+        self.fds[STDOUT_FILENO as usize] = Some(FileDescriptor {
+            fd: STDOUT_FILENO,
+            flags: libc::O_WRONLY,
+            offset: 0,
+            file: file_ops.clone(),
+            inode_no: stdout_inode,
+        });
+
+        self.fds[STDERR_FILENO as usize] = Some(FileDescriptor {
+            fd: STDERR_FILENO,
+            flags: libc::O_WRONLY,
+            offset: 0,
+            file: file_ops.clone(),
+            inode_no: stderr_inode,
+        });
+
+        Ok(())
     }
 
     /// Allocate new file descriptor
@@ -181,15 +193,9 @@ impl FdManager {
 }
 
 // Global file descriptor manager instance
-static FD_MANAGER: Lazy<FdManager> = Lazy::new(|| FdManager::new());
+static FD_MANAGER: Once<Arc<SpinLock<FdManager>>> = Once::new();
 
 /// Get file descriptor manager instance
-pub(crate) fn get_fd_manager() -> &'static FdManager {
-    &FD_MANAGER
-}
-
-/// Get mutable file descriptor manager instance
-#[inline(always)]
-pub(crate) fn get_fd_manager_mut() -> &'static mut FdManager {
-    unsafe { &mut *FD_MANAGER.as_mut_ptr() }
+pub(crate) fn get_fd_manager() -> &'static Arc<SpinLock<FdManager>> {
+    FD_MANAGER.call_once(|| Arc::new(SpinLock::new(FdManager::new())))
 }

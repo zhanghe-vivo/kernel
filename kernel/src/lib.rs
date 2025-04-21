@@ -29,6 +29,7 @@ pub use os_bindings;
 pub mod allocator;
 mod bsp;
 pub mod clock;
+pub mod console;
 pub mod cpu;
 pub mod drivers;
 pub mod error;
@@ -37,7 +38,6 @@ pub mod idle;
 pub mod irq;
 mod macros;
 pub mod object;
-pub mod print;
 pub mod process;
 pub mod scheduler;
 mod stack;
@@ -65,9 +65,9 @@ fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
     if cpu::Cpus::is_inited() {
         cpu::Cpus::lock_cpus();
     }
-    println!("{}", info);
+    early_println!("{}", info);
 
-    println!("Backtrace in Panic: {}", arch::Arch::backtrace());
+    early_println!("Backtrace in Panic: {}", arch::Arch::backtrace());
 
     #[cfg(debug_assertions)]
     loop {

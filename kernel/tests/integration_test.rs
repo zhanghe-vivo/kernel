@@ -9,7 +9,6 @@
 
 extern crate alloc;
 use bluekernel::{allocator, println, thread::Thread};
-use core::ffi::c_char;
 
 mod test_futex;
 /// Unstable rust custom test framework test file hierarchy.
@@ -41,6 +40,6 @@ fn main() -> i32 {
     kernel_test_main();
 
     loop {
-        Thread::sleep(1000);
+        let _ = Thread::sleep(1000);
     }
 }

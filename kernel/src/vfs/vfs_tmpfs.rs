@@ -418,12 +418,12 @@ impl FileOperationTrait for TmpFileSystem {
         dirents: &mut Vec<Dirent>,
         count: usize,
     ) -> Result<usize, Error> {
-        // vfslog!(
-        //     "[tmpfs] getdents: start - inode_no={}, offset={}, count={}",
-        //     inode_no,
-        //     offset,
-        //     count
-        // );
+        vfslog!(
+            "[tmpfs] getdents: start - inode_no={}, offset={}, count={}",
+            inode_no,
+            offset,
+            count
+        );
 
         // Check if filesystem is mounted
         self.check_mounted()?;
@@ -479,6 +479,9 @@ impl FileOperationTrait for TmpFileSystem {
 
         // Get entries to return
         let entries_to_write = min(count, all_entries.len() - skip_entries);
+        if entries_to_write == 0 {
+            return Err(code::ENOTDIR);
+        }
 
         // Clear input Vec and extend new entries
         dirents.clear();

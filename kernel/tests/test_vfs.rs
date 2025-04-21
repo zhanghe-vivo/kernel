@@ -1,14 +1,10 @@
-//! vfs_test.rs  
-
-use alloc::slice;
 use bluekernel::{
     println,
-    thread::Thread,
     vfs::{vfs_api::*, vfs_mode::*, vfs_posix},
 };
 use bluekernel_test_macro::test;
 use core::ffi::{c_char, c_int, CStr};
-use libc::{ENOSYS, O_CREAT, O_NONBLOCK, O_RDWR, SEEK_SET};
+use libc::{ENOSYS, O_CREAT, O_RDWR, SEEK_SET};
 
 #[test]
 fn vfs_test_uart() {
@@ -251,10 +247,41 @@ unsafe fn verify_directory(path: *const c_char) -> Result<(), c_int> {
 
     // Print return value of each readdir call
     while let Ok(entry) = vfs_posix::readdir(&dir) {
-        println!("[VFS Test DirctoryTree]: Found entry: {:?}", entry);
+        if entry.d_type == libc::DT_DIR {
+            println!("[VFS Test DirctoryTree]: Found directory: {:?}", entry);
+        } else {
+            println!("[VFS Test DirctoryTree]: Found file: {:?}", entry);
+        }
     }
 
     // Close directory
     vfs_posix::closedir(dir);
     Ok(())
+}
+
+#[test]
+fn vfs_test_std_fds() {
+    // Test writing to stdout (fd 1)
+    let test_data = b"Hello, this is a test message to stdout!\n";
+    let write_size = vfs_write(1, test_data.as_ptr(), test_data.len());
+    if write_size != test_data.len() as isize {
+        println!(
+            "[VFS Test STD FDs]: Write to stdout failed, expected {} bytes, wrote {}",
+            test_data.len(),
+            write_size
+        );
+        assert!(false);
+    }
+
+    // Test writing to stderr (fd 2)
+    let error_data = b"This is an error message to stderr!\n";
+    let write_size = vfs_write(2, error_data.as_ptr(), error_data.len());
+    if write_size != error_data.len() as isize {
+        println!(
+            "[VFS Test STD FDs]: Write to stderr failed, expected {} bytes, wrote {}",
+            error_data.len(),
+            write_size
+        );
+        assert!(false);
+    }
 }

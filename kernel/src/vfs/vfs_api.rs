@@ -5,8 +5,8 @@ use crate::{
     drivers::device::DeviceManager,
     error::{code, Error},
     vfs::{
-        vfs_devfs, vfs_log::*, vfs_manager::*, vfs_mnt::*, vfs_mode::*, vfs_node::*, vfs_posix,
-        vfs_tmpfs,
+        vfs_devfs, vfs_fd, vfs_log::*, vfs_manager::*, vfs_mnt::*, vfs_mode::*, vfs_node::*,
+        vfs_posix, vfs_tmpfs,
     },
 };
 use alloc::{slice, string::String, sync::Arc};
@@ -83,6 +83,10 @@ pub fn vfs_init() -> Result<(), Error> {
         vfslog!("Failed to verify devfs mount");
         return Err(code::EAGAIN);
     }
+
+    vfslog!("init stdio");
+    let mut fd_manager = vfs_fd::get_fd_manager().lock();
+    fd_manager.init_stdio()?;
 
     vfslog!("VFS initialized successfully");
     Ok(())

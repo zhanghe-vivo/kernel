@@ -1,5 +1,3 @@
-//! vfs_posix.rs
-
 use crate::{
     error::{code, Error},
     vfs::{
@@ -169,7 +167,7 @@ pub fn open(file: *const c_char, flags: c_int, _mode: mode_t) -> i32 {
             Err(err) => return err.to_errno(),
         };
 
-        let fd_manager = get_fd_manager_mut();
+        let mut fd_manager = get_fd_manager().lock();
         let file_ops = as_file_ops(fs);
         return fd_manager.alloc_fd(flags, file_ops, inode_no);
     }
@@ -224,7 +222,7 @@ pub fn open(file: *const c_char, flags: c_int, _mode: mode_t) -> i32 {
         };
 
         // Allocate file descriptor
-        let fd_manager = get_fd_manager_mut();
+        let mut fd_manager = get_fd_manager().lock();
         let file_ops = as_file_ops(fs);
         return fd_manager.alloc_fd(flags, file_ops, inode_no);
     }
@@ -306,7 +304,7 @@ pub fn open(file: *const c_char, flags: c_int, _mode: mode_t) -> i32 {
         }
     };
 
-    let fd_manager = get_fd_manager_mut();
+    let mut fd_manager = get_fd_manager().lock();
     let file_ops = as_file_ops(fs);
     fd_manager.alloc_fd(flags, file_ops, inode_no)
 }
@@ -315,7 +313,7 @@ pub fn open(file: *const c_char, flags: c_int, _mode: mode_t) -> i32 {
 pub fn close(fd: c_int) -> c_int {
     vfslog!("[posix] close: fd = {}", fd);
 
-    let fd_manager = get_fd_manager_mut();
+    let mut fd_manager = get_fd_manager().lock();
     let fd_entry = match fd_manager.get_fd_mut(fd) {
         Some(entry) => entry,
         None => return code::EBADF.to_errno(),
@@ -337,7 +335,7 @@ pub fn read(fd: c_int, buf: *mut c_void, len: usize) -> isize {
         return code::EINVAL.to_errno() as isize;
     }
 
-    let fd_manager = get_fd_manager_mut();
+    let mut fd_manager = get_fd_manager().lock();
     let fd_entry = match fd_manager.get_fd_mut(fd) {
         Some(entry) => entry,
         None => return code::EBADF.to_errno() as isize,
@@ -362,7 +360,7 @@ pub fn read(fd: c_int, buf: *mut c_void, len: usize) -> isize {
 pub fn write(fd: i32, buf: &[u8], count: usize) -> isize {
     vfslog!("write: fd = {}, count = {}", fd, count);
 
-    let fd_manager = get_fd_manager_mut();
+    let mut fd_manager = get_fd_manager().lock();
 
     let fd_entry = match fd_manager.get_fd_mut(fd) {
         Some(entry) => entry,
@@ -393,7 +391,7 @@ pub fn lseek(fd: c_int, offset: i64, whence: c_int) -> i64 {
         whence
     );
 
-    let fd_manager = get_fd_manager_mut();
+    let mut fd_manager = get_fd_manager().lock();
 
     let fd_entry = match fd_manager.get_fd_mut(fd) {
         Some(entry) => entry,
@@ -433,7 +431,6 @@ pub fn lseek(fd: c_int, offset: i64, whence: c_int) -> i64 {
 }
 
 /// Create a directory
-#[allow(dead_code)]
 pub fn mkdir(path: &str, mode: mode_t) -> i32 {
     vfslog!("[posix] mkdir: path = {}, mode = {:o}", path, mode);
 
@@ -508,7 +505,6 @@ pub fn mkdir(path: &str, mode: mode_t) -> i32 {
 }
 
 /// Remove a directory
-#[allow(dead_code)]
 pub fn rmdir(path: &str) -> i32 {
     vfslog!("[posix] rmdir: path = {}", path);
 
@@ -588,7 +584,6 @@ pub fn rmdir(path: &str) -> i32 {
 }
 
 /// Open directory
-#[allow(dead_code)]
 pub fn opendir(path: &str) -> Result<Arc<Dir>, Error> {
     vfslog!("[posix] opendir: path = {}", path);
 
@@ -612,7 +607,7 @@ pub fn opendir(path: &str) -> Result<Arc<Dir>, Error> {
     };
 
     let inode_no = fs.open(&relative_path, O_RDONLY | O_DIRECTORY)?;
-    let fd_manager = get_fd_manager_mut();
+    let mut fd_manager = get_fd_manager().lock();
     let file_ops = as_file_ops(fs);
     let fd = fd_manager.alloc_fd(O_RDONLY | O_DIRECTORY, file_ops, inode_no);
 
@@ -628,7 +623,6 @@ pub fn opendir(path: &str) -> Result<Arc<Dir>, Error> {
 }
 
 /// Read directory entry
-#[allow(dead_code)]
 pub fn readdir(dir: &Arc<Dir>) -> Result<Dirent, Error> {
     vfslog!(
         "[posix] readdir: fd = {}, current offset = {}",
@@ -637,7 +631,7 @@ pub fn readdir(dir: &Arc<Dir>) -> Result<Dirent, Error> {
     );
 
     // Get file descriptor manager and file descriptor
-    let fd_manager = get_fd_manager();
+    let fd_manager = get_fd_manager().lock();
     let fd_entry = fd_manager.get_fd(dir.fd).ok_or(code::EBADF)?;
 
     // Check if it's a directory
@@ -669,11 +663,10 @@ pub fn readdir(dir: &Arc<Dir>) -> Result<Dirent, Error> {
 }
 
 /// Close directory
-#[allow(dead_code)]
 pub fn closedir(dir: Arc<Dir>) -> i32 {
     vfslog!("[posix] closedir: fd = {}", dir.fd);
 
-    let fd_manager = get_fd_manager_mut();
+    let mut fd_manager = get_fd_manager().lock();
 
     // Check if file descriptor is valid
     let fd_entry = match fd_manager.get_fd(dir.fd) {

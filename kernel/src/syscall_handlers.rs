@@ -7,7 +7,7 @@ use crate::{
     thread::{ThreadBuilder, THREAD_DEFAULT_TICK},
 };
 use bluekernel_header::{syscalls::NR, thread::CloneArgs};
-use libc::{clock_t, clockid_t, timespec};
+use libc::{clockid_t, timespec};
 
 #[repr(C)]
 #[derive(Default)]
@@ -130,7 +130,7 @@ atomic_wake(addr: usize, count: *mut usize) -> c_long {
 
 // Only for posix testsuite, we need to implement a stub for clock_gettime
 define_syscall_handler!(
-    clock_gettime(clk_id: clockid_t, tp: *mut timespec) -> c_long {
+    clock_gettime(_clk_id: clockid_t, tp: *mut timespec) -> c_long {
         let mut time = timespec {
             tv_sec: 0,
             tv_nsec: 0,
