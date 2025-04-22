@@ -3,7 +3,7 @@ use crate::kernel::{
     object::{KObjectBase, KernelObject, ObjectClassType},
     process,
 };
-use bluekernel_infra::klibc;
+use bluekernel_infra::string;
 use core::{ffi, slice};
 
 /// This function will return the length of object list in object container.
@@ -201,7 +201,7 @@ pub extern "C" fn rt_object_get_name(
     let mut result: i32 = code::EINVAL.to_errno();
     if !object.is_null() && !name.is_null() && name_size != 0 {
         let obj_name = (unsafe { &mut *object }).name;
-        unsafe { klibc::strncpy(name as *mut _, obj_name.as_ptr(), name_size as usize) };
+        unsafe { string::strncpy(name as *mut _, obj_name.as_ptr(), name_size as usize) };
         result = code::EOK.to_errno();
     }
 

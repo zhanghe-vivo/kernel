@@ -11,7 +11,6 @@ pub mod rt_event;
 #[cfg(feature = "idle_hook")]
 pub mod rt_idle;
 pub mod rt_irq;
-pub mod rt_klibc;
 pub mod rt_list;
 #[cfg(feature = "mailbox")]
 pub mod rt_mailbox;

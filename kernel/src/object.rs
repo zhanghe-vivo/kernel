@@ -12,10 +12,8 @@ use crate::{
     thread::Thread,
     timer::Timer,
 };
-use bluekernel_infra::{
-    klibc,
-    list::doubly_linked_list::{LinkedListNode, ListHead},
-};
+use alloc::boxed::Box;
+use bluekernel_infra::list::doubly_linked_list::{LinkedListNode, ListHead};
 use core::{ffi::c_void, fmt::Debug, mem, pin::Pin, ptr};
 use pinned_init::{pin_data, pin_init, PinInit};
 
@@ -45,7 +43,12 @@ impl KObjectBase {
     pub(crate) fn init_internal(&mut self, type_: ObjectClassType, name: *const i8) {
         self.type_ = type_;
         unsafe {
-            klibc::strncpy(self.name.as_mut_ptr(), name, (NAME_MAX - 1) as usize);
+            let len = core::cmp::min(
+                NAME_MAX - 1,
+                core::ffi::CStr::from_ptr(name).to_bytes().len(),
+            );
+            core::ptr::copy_nonoverlapping(name, self.name.as_mut_ptr(), len);
+            self.name[len] = 0;
             Pin::new_unchecked(&mut self.list).reset();
         }
 
@@ -74,19 +77,14 @@ impl KObjectBase {
     /// This new function called by c
     pub fn new_raw(type_: ObjectClassType, name: *const i8) -> *mut KObjectBase {
         let object_size = ObjectClassType::get_object_size(type_);
-
         crate::debug_not_in_interrupt!();
 
-        let object = malloc(object_size) as *mut KObjectBase;
-        if object.is_null() {
-            return ptr::null_mut();
+        let mut object = Box::<[u8]>::new_zeroed_slice(object_size);
+        let object_mut = Box::leak(object).as_mut_ptr().cast::<KObjectBase>();
+        unsafe {
+            (*object_mut).init_internal(type_, name);
         }
-
-        unsafe { klibc::memset(object as *mut c_void, 0x0, object_size) };
-
-        let obj_ref = unsafe { &mut *object };
-        obj_ref.init_internal(type_, name);
-        object
+        object_mut
     }
 
     pub fn detach(&mut self) {
@@ -189,7 +187,12 @@ impl KernelObject for KObjectBase {
     fn set_name(&mut self, name: *const i8) {
         assert!(!name.is_null());
         unsafe {
-            klibc::strncpy(self.name.as_mut_ptr(), name, (NAME_MAX - 1) as usize);
+            let len = core::cmp::min(
+                NAME_MAX - 1,
+                core::ffi::CStr::from_ptr(name).to_bytes().len(),
+            );
+            core::ptr::copy_nonoverlapping(name, self.name.as_mut_ptr(), len);
+            self.name[len] = 0;
         }
     }
 

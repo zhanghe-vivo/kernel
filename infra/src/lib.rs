@@ -10,6 +10,6 @@
 #![feature(core_intrinsics)]
 #![allow(internal_features)]
 
-pub mod klibc;
 pub mod list;
 pub mod ringbuffer;
+pub mod string;

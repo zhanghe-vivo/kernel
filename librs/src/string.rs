@@ -96,10 +96,6 @@ pub unsafe extern "C" fn memchr(
 #[no_mangle]
 pub unsafe extern "C" fn memcpy(s1: *mut c_void, s2: *const c_void, n: c_size_t) -> *mut c_void {
     let mut i = 0;
-    while i + 7 < n {
-        *(s1.add(i) as *mut u64) = *(s2.add(i) as *const u64);
-        i += 8;
-    }
     while i < n {
         *(s1 as *mut u8).add(i) = *(s2 as *const u8).add(i);
         i += 1;
@@ -121,27 +117,9 @@ pub unsafe extern "C" fn memset(s: *mut c_void, c: c_int, n: c_size_t) -> *mut c
 #[linkage = "weak"]
 #[no_mangle]
 pub unsafe extern "C" fn memcmp(s1: *const c_void, s2: *const c_void, n: c_size_t) -> c_int {
-    let (div, rem) = (n / mem::size_of::<usize>(), n % mem::size_of::<usize>());
-    let mut a = s1 as *const usize;
-    let mut b = s2 as *const usize;
-    for _ in 0..div {
-        if *a != *b {
-            for i in 0..mem::size_of::<usize>() {
-                let c = *(a as *const u8).add(i);
-                let d = *(b as *const u8).add(i);
-                if c != d {
-                    return c as c_int - d as c_int;
-                }
-            }
-            unreachable!()
-        }
-        a = a.offset(1);
-        b = b.offset(1);
-    }
-
-    let mut a = a as *const u8;
-    let mut b = b as *const u8;
-    for _ in 0..rem {
+    let mut a = s1 as *const u8;
+    let mut b = s2 as *const u8;
+    for _ in 0..n {
         if *a != *b {
             return *a as c_int - *b as c_int;
         }

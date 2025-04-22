@@ -4,17 +4,12 @@ build_rust("bluekernel_arch") {
   sources = [ "src/lib.rs" ]
   edition = "2021"
 
-  if (current_cpu == "arm") {
+  rustflags = []
+  if (bsp == "qemu_mps2_an385") {
     deps = [
       "//external/cortex-m:cortex_m",
       "//external/tock-registers/v0.9.0:tock_registers",
     ]
-  } else if (current_cpu == "aarch64") {
-    #TODO:add aarch64-cpu
-    deps = []
-  }
-  rustflags = []
-  if (bsp == "qemu_mps2_an385") {
     rustflags += [
       "--cfg",
       "cortex_m",
@@ -22,6 +17,10 @@ build_rust("bluekernel_arch") {
       "armv7m",
     ]
   } else if (bsp == "qemu_mps3_an547") {
+    deps = [
+      "//external/cortex-m:cortex_m",
+      "//external/tock-registers/v0.9.0:tock_registers",
+    ]
     rustflags += [
       "--cfg",
       "cortex_m",

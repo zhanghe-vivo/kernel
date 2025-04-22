@@ -6,7 +6,7 @@ use crate::kernel::{
     process,
     thread::{SuspendFlag, Thread, ThreadBuilder, ThreadCleanupFn, ThreadEntryFn},
 };
-use bluekernel_infra::klibc;
+use bluekernel_infra::string;
 use core::{
     ffi,
     ptr::{self, NonNull},
@@ -200,7 +200,7 @@ pub extern "C" fn rt_thread_get_name(
         code::EINVAL.to_errno()
     } else {
         let th = unsafe { &mut *thread };
-        unsafe { klibc::strncpy(name as *mut _, th.parent.name.as_ptr(), name_size as usize) };
+        unsafe { string::strncpy(name as *mut _, th.parent.name.as_ptr(), name_size as usize) };
         code::EOK.to_errno()
     };
 }

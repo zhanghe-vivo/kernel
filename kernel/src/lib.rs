@@ -14,6 +14,7 @@
 #![feature(naked_functions)]
 #![feature(macro_metavar_expr)]
 #![feature(pointer_is_aligned_to)]
+#![feature(new_zeroed_alloc)]
 #![no_main]
 #![feature(custom_test_frameworks)]
 #![test_runner(kernel_utest_runner)]

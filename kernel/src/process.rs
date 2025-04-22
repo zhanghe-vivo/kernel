@@ -4,10 +4,7 @@ use crate::{
     static_init::UnsafeStaticInit,
     sync::RawSpin,
 };
-use bluekernel_infra::{
-    klibc,
-    list::doubly_linked_list::{LinkedListNode, ListHead},
-};
+use bluekernel_infra::list::doubly_linked_list::{LinkedListNode, ListHead};
 
 use core::{
     ffi,
@@ -237,12 +234,9 @@ pub fn find_object(object_type: ObjectClassType, name: *const i8) -> *const KObj
     crate::doubly_linked_list_for_each!(node, list, {
         unsafe {
             let object = crate::list_head_entry!(node.as_ptr(), KObjectBase, list);
-            if klibc::strncmp(
-                (*object).name.as_ptr() as *const ffi::c_char,
-                name,
-                NAME_MAX,
-            ) == 0
-            {
+            let object_name = ffi::CStr::from_ptr((*object).name.as_ptr() as *const ffi::c_char);
+            let target_name = ffi::CStr::from_ptr(name);
+            if object_name.cmp(target_name) == core::cmp::Ordering::Equal {
                 /* leave critical */
                 Cpu::get_current_scheduler().preempt_enable();
                 return object;
