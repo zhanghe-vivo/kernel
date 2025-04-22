@@ -14,7 +14,6 @@ use core::{
     mem, ptr, slice,
 };
 use libc::{ENOMEM, ERANGE};
-
 pub struct StringWriter(pub *mut u8, pub usize);
 
 impl StringWriter {
@@ -123,8 +122,8 @@ pub unsafe extern "C" fn memcmp(s1: *const c_void, s2: *const c_void, n: c_size_
         if *a != *b {
             return *a as c_int - *b as c_int;
         }
-        a = a.offset(1);
-        b = b.offset(1);
+        a = a.add(1);
+        b = b.add(1);
     }
     0
 }
@@ -559,5 +558,34 @@ mod tests {
         let c = b'l' as c_int;
         let p = unsafe { strrchr(s.as_ptr() as *const c_char, c) };
         assert_eq!(p, unsafe { s.as_ptr().add(9) } as *mut c_char);
+    }
+
+    #[test]
+    fn check_memcpy() {
+        // check the failed case source is 32 byte array
+        let src = b"hellowor".repeat(4);
+        let mut dst = [0u8; 32];
+        unsafe {
+            memcpy(
+                dst.as_mut_ptr() as *mut c_void,
+                src.as_ptr() as *const c_void,
+                32,
+            )
+        };
+        assert_eq!(dst, *src);
+    }
+    #[test]
+    fn check_memcpy2() {
+        // check the not aligned case
+        let src = b"helloworld\0";
+        let mut dst = [0u8; 11];
+        unsafe {
+            memcpy(
+                dst.as_mut_ptr() as *mut c_void,
+                src.as_ptr() as *const c_void,
+                11,
+            )
+        };
+        assert_eq!(dst, *src);
     }
 }
