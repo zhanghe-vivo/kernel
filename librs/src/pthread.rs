@@ -279,6 +279,11 @@ pub extern "C" fn pthread_exit(retval: *mut c_void) -> ! {
         drop_my_tcb();
     }
     bk_syscall!(ExitThread);
+    // FIXME: On cortex-m, BlueKernel currently is unable to switch context during SVC ISR.
+    // So loop infinitely here to wait for PendSV triggered.
+    #[cfg(cortex_m)]
+    loop {}
+    #[cfg(not(cortex_m))]
     unreachable!("We have called system call to exit this thread, so should not reach here");
 }
 

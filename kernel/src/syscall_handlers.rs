@@ -21,11 +21,12 @@ pub struct Context {
 /// bk_syscall! macro should be used by external libraries if syscall is invoked via function call.
 macro_rules! syscall_table {
     ($(($nr:tt, $mod:ident),)*) => {
-				#[inline]
+        #[inline]
         pub(crate) extern "C" fn dispatch_syscall(ctx: &Context) -> usize {
             match ctx.nr {
-                $(val if val == NR::$nr as usize => unsafe { $crate::syscall_handlers::$mod::handle_context(ctx) })*
-                _ => usize::MAX
+                $(val if val == NR::$nr as usize =>
+                    return $crate::syscall_handlers::$mod::handle_context(ctx) as usize,)*
+                _ => return usize::MAX,
             }
         }
 
@@ -39,7 +40,7 @@ macro_rules! syscall_table {
 macro_rules! map_args {
     ($args:expr, $idx:expr) => {};
     ($args:expr, $idx:expr, $arg:ident, $argty:ty $(, $tailarg:ident, $tailargty:ty)*) => {
-        let $arg = core::mem::transmute::<usize, $argty>($args[$idx]);
+        let $arg = unsafe { core::mem::transmute::<usize, $argty>($args[$idx]) };
         map_args!($args, $idx+1 $(, $tailarg, $tailargty)*);
     };
 }
@@ -53,22 +54,23 @@ macro_rules! define_syscall_handler {
             use super::*;
             use core::ffi::c_long;
 
-						#[cfg(direct_syscall_handler)]
-						#[inline]
+            #[cfg(direct_syscall_handler)]
+            #[inline]
             // This must be `pub` since this is the entry of direct invoking of syscall handler.
-            pub extern "C" fn handle($($arg: $argty),*) -> $ret {
+            pub fn handle($($arg: $argty),*) -> $ret {
                 $body
             }
 
-						// FIXME: Rustc miscompiles it if #[inline] here.
-						#[cfg(not(direct_syscall_handler))]
-            pub extern "C" fn handle($($arg: $argty),*) -> $ret {
+            #[cfg(not(direct_syscall_handler))]
+            // FIXME: Rustc miscompiles if inlined.
+            #[inline(never)]
+            pub fn handle($($arg: $argty),*) -> $ret {
                 $body
             }
 
             #[inline]
-            pub unsafe extern "C" fn handle_context(_ctx: &Context) -> usize {
-                map_args!(_ctx.args, 0 $(, $arg, $argty)*);
+            pub fn handle_context(ctx: &Context) -> usize {
+                map_args!(ctx.args, 0 $(, $arg, $argty)*);
                 handle($($arg),*) as usize
             }
         }
@@ -106,14 +108,12 @@ create_thread(clone_args_ptr: *const CloneArgs) -> c_long {
 });
 
 define_syscall_handler!(
-exit_thread() -> c_long {
-    unsafe { crate::thread::Thread::exit() };
-    // If control reaches here, definitely error occurs, return -1 to indicate that.
-    return -1;
-});
-
-define_syscall_handler!(
-atomic_wait(addr: usize, val: usize, timeout: Option<&timespec>) -> c_long {
+atomic_wait(addr: usize, val: usize, timeout: *const timespec) -> c_long {
+    let timeout = if timeout.is_null() {
+        None
+    } else {
+        unsafe { Some(&*timeout) }
+    };
     let timeout = timeout.map_or(-1, |t| t.tv_sec * 1000 + t.tv_nsec / 1000000);
     let timeout = tick_from_millisecond(timeout);
     futex::atomic_wait(addr, val, timeout).map_or_else(|e|e as c_long, |_| 0)
@@ -146,19 +146,18 @@ define_syscall_handler!(
 });
 
 syscall_table! {
-
-(Echo, echo),
-(Nop, nop),
-(GetTid, get_tid),
-(CreateThread, create_thread),
-(ExitThread, exit_thread),
-(AtomicWake, atomic_wake),
-(AtomicWait, atomic_wait),
-// For test only
-(ClockGetTime, clock_gettime),
-
+    (Echo, echo),
+    (Nop, nop),
+    (GetTid, get_tid),
+    (CreateThread, create_thread),
+    (ExitThread, exit_thread),
+    (AtomicWake, atomic_wake),
+    (AtomicWait, atomic_wait),
+    // For test only
+    (ClockGetTime, clock_gettime),
 }
 
 // Begin syscall modules.
 pub mod echo;
+pub mod exit_thread;
 // End syscall modules.

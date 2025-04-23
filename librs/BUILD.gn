@@ -63,20 +63,11 @@ run_qemu_check("run_librs_unittest") {
   checker = "src/lib.rs"
 }
 
-if (direct_syscall_handler) {
-  group("check_librs") {
-    testonly = true
-    deps = [
-      ":run_librs_unittest",
-      "tests/integration_test:run_librs_integration_test",
-      "tests/posixtestsuite:run_librs_posix_testsuite",
-    ]
-  }
-} else {
-  # FIXME: When in SWI mode, we have trouble handling ExitThread syscall.
-  # ExitThread's handler never returns and is in SVC context, current kernel
-  # fails to switch to another thread due to lower priority of PendSV
-  group("check_librs") {
-    testonly = true
-  }
+group("check_librs") {
+  testonly = true
+  deps = [
+    ":run_librs_unittest",
+    "tests/integration_test:run_librs_integration_test",
+    "tests/posixtestsuite:run_librs_posix_testsuite",
+  ]
 }
