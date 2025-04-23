@@ -7,7 +7,7 @@ use crate::{
     thread::{ThreadBuilder, THREAD_DEFAULT_TICK},
 };
 use bluekernel_header::{syscalls::NR, thread::CloneArgs};
-use libc::{clockid_t, timespec};
+use libc::{c_void, clockid_t, timespec};
 
 #[repr(C)]
 #[derive(Default)]
@@ -145,6 +145,31 @@ define_syscall_handler!(
         0
 });
 
+define_syscall_handler!(
+alloc_mem(ptr: *mut *mut c_void, size: usize, align: usize) -> c_long {
+    let addr = crate::allocator::malloc_align(size, align);
+    if addr.is_null() {
+        return -1;
+    }
+    unsafe { ptr.write(addr as *mut c_void) };
+    return 0;
+});
+
+define_syscall_handler!(
+free_mem(ptr: *mut c_void) -> c_long {
+    crate::allocator::free(ptr as *mut u8);
+    return 0;
+});
+
+define_syscall_handler!(
+write(fd: i32, buf: *mut u8, size: usize) -> c_long {
+    unsafe {
+        crate::vfs::vfs_posix::write(
+        fd,
+        core::slice::from_raw_parts(buf as *const u8, size), size) as c_long
+    }
+});
+
 syscall_table! {
     (Echo, echo),
     (Nop, nop),
@@ -155,6 +180,9 @@ syscall_table! {
     (AtomicWait, atomic_wait),
     // For test only
     (ClockGetTime, clock_gettime),
+    (AllocMem, alloc_mem),
+    (FreeMem, free_mem),
+    (Write, write),
 }
 
 // Begin syscall modules.

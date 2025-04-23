@@ -17,6 +17,9 @@ pub mod syscalls {
         AtomicWake,
         // For test only
         ClockGetTime,
+        AllocMem,
+        FreeMem,
+        Write,
         LastNR,
     }
 }

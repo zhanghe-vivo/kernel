@@ -2,10 +2,19 @@ import("//build/templates/rust.gni")
 import("//build/toolchain/bluekernel.gni")
 import("//kernel/common_crate_rustflags.gni")
 
+group("run_examples") {
+  deps = [ ":tty_loopback_runner($kernel_toolchain)" ]
+
+  # rust-std is large, the size might exceed FLASH limit in debug build.
+  if (build_type == "release") {
+    deps += [ ":run_std_thread_demo($libc_toolchain)" ]
+  }
+}
+
 build_rust("tty_loopback") {
   crate_name = "tty_loopback"
   crate_type = "bin"
-  sources = [ "src/tty_loopback.rs" ]
+  sources = [ "tty_loopback/src/main.rs" ]
   edition = "2021"
   proc_macro_deps = [ "//external/paste/v1.0.15:paste" ]
   deps = [
@@ -22,4 +31,74 @@ gen_qemu_runner("tty_loopback_runner") {
   img = ":tty_loopback"
   qemu = "$qemu_exe"
   board = "$bsp"
+}
+
+if (direct_syscall_handler) {
+  executable("std_thread_demo") {
+    crate_name = "std_thread_demo"
+    crate_type = "bin"
+
+    sources = [ "std_thread/src/main.rs" ]
+    deps = [ "//kernel/librs:librs_static" ]
+    librs_out_dir = string_join(
+            "/",
+            [
+              get_label_info("//kernel/librs:librs_static", "target_out_dir"),
+              get_label_info("//kernel/librs:librs_static", "name"),
+            ])
+    inputs = [ "//kernel/kernel/src/bsp/$bsp/link.x" ]
+    lib_dirs = [ rebase_path(librs_out_dir) ]
+    libs = [ "librs" ]
+    rustflags = []
+    rustflags += common_image_rustflags
+    rustflags += common_crate_rustflags
+  }
+} else {
+  # In SWI mode, neither librs nor this demo relies on the kernel directly, however
+  # we still need to link against the kernel.
+  executable("std_thread_demo") {
+    crate_name = "std_thread_demo"
+    crate_type = "bin"
+
+    sources = [ "std_thread/src/main.rs" ]
+    deps = [
+      "//kernel/kernel:bluekernel_std_static",
+      "//kernel/librs:librs",
+    ]
+    librs_out_dir =
+        string_join("/",
+                    [
+                      get_label_info("//kernel/librs:librs", "target_out_dir"),
+                      get_label_info("//kernel/librs:librs", "name"),
+                    ])
+    bluekernel_out_dir = string_join(
+            "/",
+            [
+              get_label_info("//kernel/kernel:bluekernel_std_static",
+                             "target_out_dir"),
+              get_label_info("//kernel/bluekernel:bluekernel_std_static",
+                             "name"),
+            ])
+    inputs = [ "//kernel/kernel/src/bsp/$bsp/link.x" ]
+    lib_dirs = [
+      rebase_path(librs_out_dir),
+      rebase_path(bluekernel_out_dir),
+    ]
+    libs = [ "bluekernel" ]
+    rustflags = []
+    rustflags += [ "-Clink-arg=-l:liblibrs.rlib" ]
+    rustflags += common_image_rustflags
+    rustflags += common_crate_rustflags
+  }
+}
+
+gen_qemu_runner("std_thread_demo_runner") {
+  img = ":std_thread_demo"
+  qemu = "$qemu_exe"
+  board = "$bsp"
+}
+
+run_qemu_check("run_std_thread_demo") {
+  runner = ":std_thread_demo_runner"
+  checker = "std_thread/src/main.rs"
 }

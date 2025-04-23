@@ -14,8 +14,8 @@ use libc::{
     pthread_mutexattr_t, pthread_t, EDEADLK, EINVAL, ESRCH,
 };
 use librs::{
-    free, posix_memalign,
     pthread::*,
+    stdlib::malloc::{free, posix_memalign},
     sync::{
         cond::{Cond, CondAttr},
         mutex::{Mutex, MutexAttr},

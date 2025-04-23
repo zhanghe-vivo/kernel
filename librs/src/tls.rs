@@ -8,8 +8,8 @@
 //===----------------------------------------------------------------------===//
 
 use crate::{
-    free, posix_memalign,
     pthread::{pthread_getspecific, pthread_key_create, pthread_setspecific},
+    stdlib::malloc::{free, posix_memalign},
     string::{memcpy, memset},
 };
 use alloc::{boxed::Box, vec::Vec};
@@ -47,7 +47,7 @@ extern "C" fn emutls_key_destructor(arg: *mut c_void) {
     let array_ptr = arg as *mut EmutlsAddressArray;
     let mut boxed_array = unsafe { Box::from_raw(array_ptr) };
     while let Some(data) = boxed_array.data.pop() {
-        unsafe { free(data) };
+        unsafe { free(data as *mut libc::c_void) };
     }
     drop(boxed_array);
 }
@@ -111,7 +111,11 @@ fn allocate_object(ctrl: &EmutlsControl) -> *mut u8 {
     let mut base: *mut u8 = core::ptr::null_mut();
     unsafe {
         // We'll deallocate it via `free()`.
-        let rc = posix_memalign(&mut base as *mut *mut u8, align, size);
+        let rc = posix_memalign(
+            &mut base as *mut *mut u8 as *mut *mut libc::c_void,
+            align,
+            size,
+        );
         assert_eq!(rc, 0);
         assert!(!base.is_null());
         if ctrl.value.is_null() {

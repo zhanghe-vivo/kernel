@@ -1,10 +1,17 @@
 // ffi CStr is unstable yet,
+pub mod malloc;
 use crate::{c_str::CStr, ctype, errno::ERRNO, types::c_int};
 use core::{
     ffi::{c_char, c_double, c_float, c_long, c_longlong, c_uint, c_ulong, c_ulonglong},
     ptr,
 };
 use libc::{EINVAL, ERANGE};
+
+#[linkage = "weak"]
+#[no_mangle]
+pub unsafe extern "C" fn getenv(key: *const i8) -> *mut i8 {
+    core::ptr::null_mut()
+}
 
 #[macro_export]
 macro_rules! strto_float_impl {

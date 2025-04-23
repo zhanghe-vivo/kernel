@@ -19,7 +19,7 @@ build_rust("kernel_integration_test") {
   rustflags += common_crate_rustflags
 }
 
-shares_deps = [
+shared_deps = [
   "//external/bitflags/v2.9.0:bitflags",
   "//external/cfg-if/v1.0.0:cfg_if",
   "//external/const-default/v1.0.0:const_default",
@@ -37,7 +37,7 @@ shares_deps = [
   "//libc:libc",
 ]
 
-share_features = [
+shared_features = [
   "tlsf",
   "overflow_check",
   "idle_hook",
@@ -56,21 +56,21 @@ share_features = [
   "stack_highwater_check",
 ]
 
-share_rust_build_flags = []
+shared_rust_build_flags = []
 if (direct_syscall_handler) {
-  share_rust_build_flags += [
+  shared_rust_build_flags += [
     "--cfg",
     "direct_syscall_handler",
   ]
 }
 if (bsp == "qemu_mps2_an385" || bsp == "qemu_mps3_an547") {
-  share_rust_build_flags += [
+  shared_rust_build_flags += [
     "--cfg",
     "hardware_schedule",
   ]
 }
 
-share_rust_build_flags += [
+shared_rust_build_flags += [
   "--cfg",
   "target_board=\"$bsp\"",
 ]
@@ -86,11 +86,11 @@ build_rust("kernel_unit_test") {
     "//external/rust-delegate/v0.13.3:delegate",
     "//kernel/test_harness:bluekernel_test_macro",
   ]
-  deps = shares_deps
-  features = share_features
+  deps = shared_deps
+  features = shared_features
 
   inputs = [ "//kernel/kernel/src/bsp/$bsp/link.x" ]
-  rustflags = share_rust_build_flags
+  rustflags = shared_rust_build_flags
   rustflags += test_image_rustflags
   rustflags += common_crate_rustflags
 }
@@ -103,10 +103,42 @@ build_rust("bluekernel") {
     "//external/paste/v1.0.15:paste",
     "//external/rust-delegate/v0.13.3:delegate",
   ]
-  deps = shares_deps
-  features = share_features
+  deps = shared_deps
+  features = shared_features
 
-  rustflags = share_rust_build_flags
+  rustflags = shared_rust_build_flags
+  rustflags += common_crate_rustflags
+}
+
+build_rust("bluekernel_std_static") {
+  crate_name = "bluekernel"
+  crate_type = "staticlib"
+  sources = [ "src/lib.rs" ]
+  edition = "2021"
+  proc_macro_deps = [
+    "//external/paste/v1.0.15:paste",
+    "//external/rust-delegate/v0.13.3:delegate",
+  ]
+  deps = shared_deps
+  features = shared_features
+  features += [ "std" ]
+  rustflags = shared_rust_build_flags
+  rustflags += common_crate_rustflags
+}
+
+build_rust("bluekernel_std") {
+  crate_name = "bluekernel"
+  crate_type = "rlib"
+  sources = [ "src/lib.rs" ]
+  edition = "2021"
+  proc_macro_deps = [
+    "//external/paste/v1.0.15:paste",
+    "//external/rust-delegate/v0.13.3:delegate",
+  ]
+  deps = shared_deps
+  features = shared_features
+  features += [ "std" ]
+  rustflags = shared_rust_build_flags
   rustflags += common_crate_rustflags
 }
 
@@ -120,10 +152,10 @@ build_rust("bluekernel_posixtestsuite") {
     "//external/paste/v1.0.15:paste",
     "//external/rust-delegate/v0.13.3:delegate",
   ]
-  deps = shares_deps
-  features = share_features
+  deps = shared_deps
+  features = shared_features
   features += [ "posixtestsuite" ]
-  rustflags = share_rust_build_flags
+  rustflags = shared_rust_build_flags
   rustflags += common_crate_rustflags
 }
 

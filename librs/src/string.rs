@@ -5,7 +5,7 @@
 use crate::{
     errno::{ERRNO, STR_ERROR},
     iter::{NullTerminated, NullTerminatedInclusive, SrcDstPtrIter},
-    malloc,
+    stdlib::malloc::malloc,
 };
 use core::{
     ffi::{c_char, c_int, c_long, c_longlong, c_size_t, c_uchar, c_void},

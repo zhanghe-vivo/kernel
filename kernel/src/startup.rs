@@ -42,12 +42,21 @@ pub extern "C" fn main_thread_entry(_parameter: *mut core::ffi::c_void) {
         unsafe { start_posix_testsuite() };
     }
 
+    #[cfg(feature = "std")]
+    {
+        extern "C" {
+            fn start_blueos_posix();
+        }
+        unsafe { start_blueos_posix() };
+    }
+
     // The user's main
-    #[cfg(not(any(test, feature = "posixtestsuite")))]
+    #[cfg(not(any(test, feature = "posixtestsuite", feature = "std")))]
     extern "C" {
         fn main() -> i32;
     }
-    #[cfg(not(any(test, feature = "posixtestsuite")))]
+
+    #[cfg(not(any(test, feature = "posixtestsuite", feature = "std")))]
     unsafe {
         main()
     };

@@ -1,6 +1,6 @@
 use crate::{
-    free, posix_memalign,
     semaphore::RsSemaphore,
+    stdlib::malloc::{free, posix_memalign},
     sync::{
         barrier::{Barrier, BarrierAttr, WaitResult},
         cond::{Cond, CondAttr},
@@ -192,7 +192,13 @@ pub extern "C" fn pthread_create(
     // We'll put PosixRoutineInfo on stack.
     let size = stack_size + core::mem::size_of::<PosixRoutineInfo>();
     let mut stack_start: *mut u8 = core::ptr::null_mut();
-    unsafe { posix_memalign(&mut stack_start as *mut *mut u8, STACK_ALIGN, size) };
+    unsafe {
+        posix_memalign(
+            &mut stack_start as *mut *mut u8 as *mut *mut libc::c_void,
+            STACK_ALIGN,
+            size,
+        )
+    };
     assert!(!stack_start.is_null());
     let posix_routine_info_ptr = unsafe { stack_start.offset(stack_size as isize) as *mut c_void };
     assert_eq!(
@@ -211,7 +217,7 @@ pub extern "C" fn pthread_create(
     };
     let tid = bk_syscall!(CreateThread, &clone_args as *const CloneArgs) as c_int;
     if tid == -1 {
-        unsafe { free(stack_start) };
+        unsafe { free(stack_start as *mut libc::c_void) };
         return -1;
     }
     unsafe { *thread = tid as pthread_t };
@@ -272,7 +278,9 @@ pub extern "C" fn pthread_exit(retval: *mut c_void) -> ! {
         }
     }
     unsafe {
-        free(transmute::<usize, *mut u8>(tcb.read().stack_start));
+        free(transmute::<usize, *mut libc::c_void>(
+            tcb.read().stack_start,
+        ));
     }
     // pthread_join should drop the tcb otherwise.
     if detached == 1 {

@@ -19,13 +19,6 @@
 #![feature(c_variadic)]
 
 extern crate alloc;
-// TODO: Move to mman. We use them to allocate tls object.
-extern "C" {
-    pub fn malloc(size: usize) -> *mut core::ffi::c_void;
-    pub fn posix_memalign(memptr: *mut *mut u8, align: usize, size: usize) -> core::ffi::c_int;
-    pub fn free(ptr: *mut u8);
-}
-
 // We don't expose any interfaces or types externally, rust-lang/libc is doing that.
 pub mod c_str;
 pub mod ctype;
@@ -39,6 +32,34 @@ pub mod sync;
 pub mod time;
 pub mod tls;
 pub mod types;
+pub mod unistd;
+
+extern "C" fn start_blueos_posix_main(arg: *mut core::ffi::c_void) -> *mut core::ffi::c_void {
+    // TODO: Pass argc, argv and envp?
+    // TODO: Before exit, we have to check owned threads' status and recycle them.
+    extern "C" {
+        fn main() -> i32;
+    }
+    unsafe {
+        main();
+    }
+    core::ptr::null_mut()
+}
+
+#[no_mangle]
+pub extern "C" fn start_blueos_posix() {
+    let mut init_thread: libc::pthread_t = 0;
+    let rc = crate::pthread::pthread_create(
+        &mut init_thread as *mut libc::pthread_t,
+        core::ptr::null(),
+        start_blueos_posix_main,
+        core::ptr::null_mut(),
+    );
+    assert_eq!(rc, 0);
+    // TODO: check rc to take failure action.
+    crate::pthread::pthread_join(init_thread, core::ptr::null_mut());
+}
+
 // FIXME: Remove this when we have a proper libc implementation.
 #[cfg(feature = "posixtestsuite")]
 #[path = "../tests/posixtestsuite/utils.rs"]
