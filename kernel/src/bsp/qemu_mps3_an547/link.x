@@ -26,6 +26,10 @@
  *-------- <<< Use Configuration Wizard in Context Menu >>> -------------------
  */
 
+/*
+ * https://developer.arm.com/-/media/Arm%20Developer%20Community/PDF/DAI0547B_SSE300_PLUS_U55_FPGA_for_mps3.pdf
+ */
+
 /*---------------------- Flash Configuration ----------------------------------
   <h> Flash Configuration
     <o0> Flash Base Address <0x0-0xFFFFFFFF:8>
@@ -33,7 +37,7 @@
   </h>
   -----------------------------------------------------------------------------*/
 __ROM_BASE = 0x00000000;
-__ROM_SIZE = 0x00080000;
+__ROM_SIZE = 0x00400000;
 
 /*--------------------- Embedded RAM Configuration ----------------------------
   <h> RAM Configuration
@@ -42,7 +46,7 @@ __ROM_SIZE = 0x00080000;
   </h>
  -----------------------------------------------------------------------------*/
 __RAM_BASE = 0x21000000;
-__RAM_SIZE = 0x00200000;
+__RAM_SIZE = 0x00400000;
 
 /*--------------------- Stack / Heap Configuration ----------------------------
   <h> Stack / Heap Configuration

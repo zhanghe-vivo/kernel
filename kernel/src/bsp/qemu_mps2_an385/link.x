@@ -7,6 +7,10 @@
 ; -------- <<< Use Configuration Wizard in Context Menu >>> -------------------
  */
 
+/*
+ * https://documentation-service.arm.com/static/5ed107a5ca06a95ce53f89e3?token=
+ */
+
 /*---------------------- Flash Configuration ----------------------------------
 ; <h> Flash Configuration
 ;   <o0> Flash Base Address <0x0-0xFFFFFFFF:8>
@@ -14,7 +18,7 @@
 ; </h>
   -----------------------------------------------------------------------------*/
 __ROM_BASE = 0x00000000;
-__ROM_SIZE = 0x00080000;
+__ROM_SIZE = 0x00400000;
 
 /*--------------------- Embedded RAM Configuration ----------------------------
 ; <h> RAM Configuration
@@ -23,7 +27,7 @@ __ROM_SIZE = 0x00080000;
 ; </h>
  -----------------------------------------------------------------------------*/
 __RAM_BASE = 0x21000000;
-__RAM_SIZE = 0x00100000;
+__RAM_SIZE = 0x01000000;
 
 /*--------------------- Stack / Heap Configuration ----------------------------
 ; <h> Stack / Heap Configuration
