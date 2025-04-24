@@ -28,7 +28,7 @@ pub use libc;
 pub use os_bindings;
 
 pub mod allocator;
-mod bsp;
+mod boards;
 pub mod clock;
 pub mod console;
 pub mod cpu;
@@ -57,9 +57,9 @@ mod zombie;
 // #[link_section] is only usable from the root crate.
 // See https://github.com/rust-lang/rust/issues/67209.
 #[cfg(target_board = "qemu_mps2_an385")]
-include!("bsp/qemu_mps2_an385/handlers.rs");
+include!("boards/qemu_mps2_an385/handlers.rs");
 #[cfg(target_board = "qemu_mps3_an547")]
-include!("bsp/qemu_mps3_an547/handlers.rs");
+include!("boards/qemu_mps3_an547/handlers.rs");
 
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo<'_>) -> ! {

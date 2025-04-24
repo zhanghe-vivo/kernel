@@ -1,4 +1,4 @@
-use crate::{arch::Arch, bsp, c_str, cpu, drivers, idle, println, thread::ThreadBuilder, timer};
+use crate::{arch::Arch, boards, c_str, cpu, drivers, idle, println, thread::ThreadBuilder, timer};
 use bluekernel_kconfig::{MAIN_THREAD_PRIORITY, MAIN_THREAD_STACK_SIZE};
 use core::{intrinsics::unlikely, ptr};
 
@@ -106,7 +106,7 @@ pub extern "C" fn _startup() -> ! {
     cpu::init_cpus();
     timer::system_timer_init();
     idle::IdleTheads::init_once();
-    bsp::init::board_init();
+    boards::init::board_init();
 
     match drivers::init() {
         Ok(_) => (),

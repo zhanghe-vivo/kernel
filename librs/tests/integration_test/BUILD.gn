@@ -19,7 +19,7 @@ build_rust("librs_integration_test_image") {
     "//kernel/scal:bluekernel_scal_test",
     "//libc:libc",
   ]
-  inputs = [ "//kernel/kernel/src/bsp/$bsp/link.x" ]
+  inputs = [ "//kernel/kernel/src/boards/$bsp/link.x" ]
   rustflags = test_image_rustflags
   rustflags += common_crate_rustflags
 }

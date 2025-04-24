@@ -11,7 +11,7 @@ macro_rules! default_irq_handler {
     };
 }
 
-use crate::bsp::uart::{UART0RX_Handler, UART0TX_Handler};
+use crate::boards::uart::{UART0RX_Handler, UART0TX_Handler};
 default_irq_handler!(UART1RX_Handler);
 default_irq_handler!(UART1TX_Handler);
 default_irq_handler!(UART2RX_Handler);

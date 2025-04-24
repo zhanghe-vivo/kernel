@@ -22,7 +22,7 @@ build_rust("tty_loopback") {
     "//libc:libc",
   ]
 
-  inputs = [ "//kernel/kernel/src/bsp/$bsp/link.x" ]
+  inputs = [ "//kernel/kernel/src/boards/$bsp/link.x" ]
   rustflags = common_image_rustflags
   rustflags += common_crate_rustflags
 }
@@ -46,7 +46,7 @@ if (direct_syscall_handler) {
               get_label_info("//kernel/librs:librs_static", "target_out_dir"),
               get_label_info("//kernel/librs:librs_static", "name"),
             ])
-    inputs = [ "//kernel/kernel/src/bsp/$bsp/link.x" ]
+    inputs = [ "//kernel/kernel/src/boards/$bsp/link.x" ]
     lib_dirs = [ rebase_path(librs_out_dir) ]
     libs = [ "librs" ]
     rustflags = []
@@ -79,7 +79,7 @@ if (direct_syscall_handler) {
               get_label_info("//kernel/bluekernel:bluekernel_std_static",
                              "name"),
             ])
-    inputs = [ "//kernel/kernel/src/bsp/$bsp/link.x" ]
+    inputs = [ "//kernel/kernel/src/boards/$bsp/link.x" ]
     lib_dirs = [
       rebase_path(librs_out_dir),
       rebase_path(bluekernel_out_dir),

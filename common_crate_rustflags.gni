@@ -50,7 +50,7 @@ common_image_rustflags = [
 
   # custom link script
   "-C",
-  "link-arg=-T" + rebase_path("//kernel/kernel/src/bsp/$bsp/link.x"),
+  "link-arg=-T" + rebase_path("//kernel/kernel/src/boards/$bsp/link.x"),
 ]
 
 test_image_rustflags = [

@@ -13,10 +13,10 @@ template("posix_testsuite_case") {
       "//kernel/librs/tests/posixtestsuite:${case_name}",
       "//kernel/librs/tests/posixtestsuite:librs_for_posix_testsuite",
     ]
-    inputs = [ "//kernel/kernel/src/bsp/$bsp/link.x" ]
+    inputs = [ "//kernel/kernel/src/boards/$bsp/link.x" ]
     ldflags = [
       "-T",
-      rebase_path("//kernel/kernel/src/bsp/$bsp/link.x"),
+      rebase_path("//kernel/kernel/src/boards/$bsp/link.x"),
       "-Wl,-cref,-u,Reset_Handler",
       "-nostartfiles",
       "-lgcc",

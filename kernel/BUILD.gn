@@ -14,7 +14,7 @@ build_rust("kernel_integration_test") {
     "//libc:libc",
   ]
 
-  inputs = [ "//kernel/kernel/src/bsp/$bsp/link.x" ]
+  inputs = [ "//kernel/kernel/src/boards/$bsp/link.x" ]
   rustflags = test_image_rustflags
   rustflags += common_crate_rustflags
 }
@@ -89,7 +89,7 @@ build_rust("kernel_unit_test") {
   deps = shared_deps
   features = shared_features
 
-  inputs = [ "//kernel/kernel/src/bsp/$bsp/link.x" ]
+  inputs = [ "//kernel/kernel/src/boards/$bsp/link.x" ]
   rustflags = shared_rust_build_flags
   rustflags += test_image_rustflags
   rustflags += common_crate_rustflags
