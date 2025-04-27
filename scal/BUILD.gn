@@ -66,3 +66,12 @@ build_rust("bluekernel_scal_std") {
     deps += [ "//kernel/kernel:bluekernel_std" ]
   }
 }
+
+build_rust("bluekernel_scal_swi") {
+  crate_name = "bluekernel_scal"
+  crate_type = "rlib"
+  sources = [ "src/lib.rs" ]
+  edition = "2021"
+  deps = [ "//kernel/header:bluekernel_header" ]
+  rustflags = common_crate_rustflags
+}

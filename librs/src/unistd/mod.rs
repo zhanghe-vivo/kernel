@@ -1,5 +1,7 @@
 pub mod io;
 pub mod sysconf;
+pub use io::*;
+pub use sysconf::*;
 
 #[no_mangle]
 #[linkage = "weak"]

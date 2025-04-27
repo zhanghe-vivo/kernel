@@ -21,8 +21,7 @@ pub struct Context {
 /// bk_syscall! macro should be used by external libraries if syscall is invoked via function call.
 macro_rules! syscall_table {
     ($(($nr:tt, $mod:ident),)*) => {
-        #[inline]
-        pub(crate) extern "C" fn dispatch_syscall(ctx: &Context) -> usize {
+        pub(crate) fn dispatch_syscall(ctx: &Context) -> usize {
             match ctx.nr {
                 $(val if val == NR::$nr as usize =>
                     return $crate::syscall_handlers::$mod::handle_context(ctx) as usize,)*
@@ -54,21 +53,12 @@ macro_rules! define_syscall_handler {
             use super::*;
             use core::ffi::c_long;
 
-            #[cfg(direct_syscall_handler)]
-            #[inline]
-            // This must be `pub` since this is the entry of direct invoking of syscall handler.
-            pub fn handle($($arg: $argty),*) -> $ret {
-                $body
-            }
-
-            #[cfg(not(direct_syscall_handler))]
             // FIXME: Rustc miscompiles if inlined.
             #[inline(never)]
             pub fn handle($($arg: $argty),*) -> $ret {
                 $body
             }
 
-            #[inline]
             pub fn handle_context(ctx: &Context) -> usize {
                 map_args!(ctx.args, 0 $(, $arg, $argty)*);
                 handle($($arg),*) as usize
@@ -162,11 +152,11 @@ free_mem(ptr: *mut c_void) -> c_long {
 });
 
 define_syscall_handler!(
-write(fd: i32, buf: *mut u8, size: usize) -> c_long {
+write(fd: i32, buf: *const u8, size: usize) -> c_long {
     unsafe {
         crate::vfs::vfs_posix::write(
         fd,
-        core::slice::from_raw_parts(buf as *const u8, size), size) as c_long
+        core::slice::from_raw_parts(buf, size), size) as c_long
     }
 });
 

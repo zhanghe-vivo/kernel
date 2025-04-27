@@ -1,6 +1,11 @@
 import("//build/templates/build_template.gni")
 import("//build/toolchain/bluekernel.gni")
 
+group("check_infra") {
+  testonly = true
+  deps = [ ":run_infra_unittest" ]
+}
+
 shared_deps = [
   "//external/cfg-if/v1.0.0:cfg_if",
   "//external/memchr/v2.7.4:memchr",

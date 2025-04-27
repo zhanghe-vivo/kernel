@@ -1,5 +1,5 @@
 // This file is Rust impl of LLVM's emutls.c.
-//===---------- emutls.c - Implements __emutls_get_address ---------------===//
+//===---------- emutls.c - Implements __emutls_get_address ----------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.

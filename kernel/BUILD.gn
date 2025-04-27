@@ -2,6 +2,14 @@ import("//build/templates/build_template.gni")
 import("//build/toolchain/bluekernel.gni")
 import("//kernel/common_crate_rustflags.gni")
 
+group("check_kernel") {
+  testonly = true
+  deps = [
+    ":run_integration_test",
+    ":run_unittest",
+  ]
+}
+
 build_rust("kernel_integration_test") {
   testonly = true
   crate_type = "bin"
@@ -75,9 +83,9 @@ shared_rust_build_flags += [
   "target_board=\"$bsp\"",
 ]
 
-build_rust("kernel_unit_test") {
+build_rust("kernel_unittest") {
   testonly = true
-  crate_name = "kernel_unit_test"
+  crate_name = "kernel_unittest"
   crate_type = "bin"
   sources = [ "src/lib.rs" ]
   edition = "2021"
@@ -181,15 +189,15 @@ run_qemu_check("run_integration_test") {
   checker = "tests/integration_test.rs"
 }
 
-gen_qemu_runner("unit_test_runner") {
+gen_qemu_runner("unittest_runner") {
   testonly = true
-  img = ":kernel_unit_test"
+  img = ":kernel_unittest"
   qemu = "$qemu_exe"
   board = "$bsp"
 }
 
-run_qemu_check("run_unit_test") {
+run_qemu_check("run_unittest") {
   testonly = true
-  runner = ":unit_test_runner"
+  runner = ":unittest_runner"
   checker = "src/lib.rs"
 }

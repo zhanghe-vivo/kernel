@@ -16,6 +16,20 @@ build_rust("librs") {
   rustflags = common_crate_rustflags
 }
 
+build_rust("librs_swi") {
+  crate_type = "rlib"
+  crate_name = "librs"
+  sources = [ "src/lib.rs" ]
+  deps = [
+    "//external/spin/v0.9.8:spin",
+    "//kernel/header:bluekernel_header",
+    "//kernel/scal:bluekernel_scal_swi",
+    "//libc:libc",
+  ]
+
+  rustflags = common_crate_rustflags
+}
+
 build_rust("librs_static") {
   crate_type = "staticlib"
   crate_name = "librs"

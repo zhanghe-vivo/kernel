@@ -26,6 +26,7 @@ pub mod errno;
 pub mod iter;
 pub mod pthread;
 pub mod semaphore;
+pub mod stdio;
 pub mod stdlib;
 pub mod string;
 pub mod sync;
@@ -46,6 +47,7 @@ extern "C" fn start_blueos_posix_main(arg: *mut core::ffi::c_void) -> *mut core:
     core::ptr::null_mut()
 }
 
+// TODO: Implement crt*.o.
 #[no_mangle]
 pub extern "C" fn start_blueos_posix() {
     let mut init_thread: libc::pthread_t = 0;

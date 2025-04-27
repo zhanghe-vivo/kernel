@@ -1,0 +1,22 @@
+import("//build/templates/rust.gni")
+import("//build/toolchain/bluekernel.gni")
+import("//kernel/common_crate_rustflags.gni")
+
+group("check_loader") {
+  testonly = true
+  deps = [ "tests:run_integration_test" ]
+}
+
+group("inputs") {
+  testonly = true
+  deps = [ "tests/inputs:inputs" ]
+}
+
+build_rust("bluekernel_loader") {
+  crate_type = "rlib"
+  sources = [ "src/lib.rs" ]
+  deps = [
+    "//external/goblin/v0.9.3:goblin",
+    "//kernel/librs:librs",
+  ]
+}

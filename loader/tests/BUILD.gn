@@ -1,0 +1,4 @@
+group("run_integration_test") {
+  testonly = true
+  deps = [ "integration_test:run_integration_test" ]
+}

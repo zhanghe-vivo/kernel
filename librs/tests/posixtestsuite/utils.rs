@@ -25,12 +25,6 @@ pub unsafe extern "C" fn perror(s: *const c_char) {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn puts(s: *const c_char) -> c_int {
-    perror(s);
-    0
-}
-
-#[no_mangle]
 pub extern "C" fn sleep(seconds: c_uint) -> c_uint {
     const TICK_PER_SECOND: u32 = 100;
     Thread::sleep(seconds * TICK_PER_SECOND);

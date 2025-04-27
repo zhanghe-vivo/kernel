@@ -1,0 +1,36 @@
+import("//build/templates/rust.gni")
+import("//build/toolchain/bluekernel.gni")
+import("//kernel/common_crate_rustflags.gni")
+
+build_rust("loader_integration_test") {
+  testonly = true
+  crate_type = "bin"
+  edition = "2021"
+  sources = [ "src/test.rs" ]
+  deps = [
+    "//external/semihosting/v0.1.20:semihosting",
+    "//kernel/kernel:bluekernel",
+    "//kernel/librs:librs",
+    "//kernel/loader:bluekernel_loader",
+    "//kernel/loader/tests/inputs",
+    "//libc:libc",
+  ]
+  proc_macro_deps = [ "//kernel/test_harness:bluekernel_test_macro" ]
+  inputs = [ "//kernel/kernel/src/boards/$bsp/link.x" ]
+  rustflags = test_image_rustflags
+  rustflags += common_crate_rustflags
+}
+
+gen_qemu_runner("loader_integration_test_runner") {
+  testonly = true
+  img = ":loader_integration_test"
+  qemu = "$qemu_exe"
+  board = "$bsp"
+  semihosting = true
+}
+
+run_qemu_check("run_integration_test") {
+  testonly = true
+  runner = ":loader_integration_test_runner"
+  checker = "src/test.rs"
+}

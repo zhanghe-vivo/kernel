@@ -1,0 +1,4 @@
+group("inputs") {
+  testonly = true
+  deps = [ "no_std_app:everything_elf_path" ]
+}

@@ -17,7 +17,10 @@ pub unsafe extern "C" fn SVCall() {
         "movs r1, r4",
         "movs r2, r5",
         "movs r3, r7",
-        "b SVCall0",
+        "push {{lr}}",
+        "bl SVCall0",
+        "pop {{lr}}",
+        "bx lr",
     )
 }
 

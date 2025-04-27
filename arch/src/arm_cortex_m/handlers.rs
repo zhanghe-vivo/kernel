@@ -252,11 +252,13 @@ pub unsafe extern "C" fn SecureFault_Handler() {
 pub unsafe extern "C" fn SVCall_Handler() {
     unsafe {
         naked_asm!(
-            "tst   lr, #4", // Check mode
-            "ite   eq",
-            "mrseq r0, msp",
-            "mrsne r0, psp",
-            "b     SVCall",
+            "cpsid I", // FIXME: SVC might be interrupted by hardware interrupt.
+            "mrs r0, psp",
+            "push {{lr}}",
+            "bl     SVCall",
+            "pop {{lr}}",
+            "cpsie I",
+            "bx lr",
         )
     }
 }

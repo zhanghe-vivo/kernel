@@ -1,0 +1,67 @@
+#![no_std]
+#![feature(c_size_t)]
+
+mod memory_mapper;
+use goblin::elf::Elf;
+use librs::string::memcpy;
+pub use memory_mapper::MemoryMapper;
+
+pub type Result = core::result::Result<(), &'static str>;
+
+fn build_memory_layout(binary: &Elf, mapper: &mut MemoryMapper) -> Result {
+    for ph in &binary.program_headers {
+        match ph.p_type {
+            goblin::elf::program_header::PT_LOAD => {
+                // We're assuming loadable segments are compact.
+                mapper
+                    .update_start(ph.p_vaddr as usize)
+                    .update_end((ph.p_vaddr + ph.p_memsz) as usize);
+            }
+            _ => continue,
+        }
+    }
+    mapper.set_entry(binary.entry as usize);
+    Ok(())
+}
+
+fn allocate_memory_for_segments(binary: &Elf, mapper: &mut MemoryMapper) -> Result {
+    mapper.allocate_memory();
+    Ok(())
+}
+
+fn copy_content_to_memory(buffer: &[u8], binary: &Elf, mapper: &mut MemoryMapper) -> Result {
+    // FIXME: We are assuming if filesize < memsize, (memsize -
+    // filesize) bits are .bss. I need to read more about ELF spec to
+    // find out exceptions. Currently, it just works.
+    let base = mapper.real_start_mut().unwrap();
+    let mut offset = 0isize;
+    for ph in &binary.program_headers {
+        match ph.p_type {
+            goblin::elf::program_header::PT_LOAD => {
+                let src =
+                    buffer[ph.p_offset as usize..(ph.p_offset + ph.p_filesz) as usize].as_ptr();
+                let dst = unsafe { base.offset(offset) };
+                unsafe {
+                    memcpy(
+                        dst as *mut core::ffi::c_void,
+                        src as *const core::ffi::c_void,
+                        ph.p_filesz as core::ffi::c_size_t,
+                    )
+                };
+                offset += ph.p_memsz as isize;
+            }
+            _ => continue,
+        }
+    }
+    Ok(())
+}
+
+// FIXME: We should use lseek to parse ELF files to achieve low footprint.
+pub fn load_elf(buffer: &[u8], mapper: &mut MemoryMapper) -> Result {
+    let Ok(binary) = goblin::elf::Elf::parse(buffer) else {
+        return Err("Unable to parse the buffer");
+    };
+    let _ = build_memory_layout(&binary, mapper)?;
+    allocate_memory_for_segments(&binary, mapper)?;
+    copy_content_to_memory(buffer, &binary, mapper)
+}
