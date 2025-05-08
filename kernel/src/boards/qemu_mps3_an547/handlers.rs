@@ -114,11 +114,12 @@ static __INTERRUPTS: InterruptTable = {
     };
     // In the new version of QEMU (9.20), the UART RX interrupt and TX interrupt have been swapped.
     // For details, see `fix RX/TX interrupts order <https://github.com/qemu/qemu/commit/5a558be93ad628e5bed6e0ee062870f49251725c>`_
+    // default set as new version of QEMU
     arr[33] = Vector {
-        handler: UARTTX0_Handler,
+        handler: UARTRX0_Handler,
     };
     arr[34] = Vector {
-        handler: UARTRX0_Handler,
+        handler: UARTTX0_Handler,
     };
     arr[35] = Vector {
         handler: UARTRX1_Handler,
