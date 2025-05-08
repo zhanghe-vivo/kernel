@@ -60,6 +60,9 @@ pub unsafe extern "C" fn start_posix_testsuite() -> i32 {
     );
     assert_eq!(rc, 0);
     pthread_join(t, core::ptr::null_mut());
+
+    #[cfg(coverage)]
+    crate::cov::write_coverage_data();
     0
 }
 

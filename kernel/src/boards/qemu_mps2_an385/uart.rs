@@ -206,6 +206,7 @@ pub fn uart_init() -> Result<(), ErrorKind> {
 }
 
 #[link_section = ".text.vector_handlers"]
+#[coverage(off)]
 #[no_mangle]
 pub unsafe extern "C" fn UART0RX_Handler() {
     Irq::enter();
@@ -219,6 +220,7 @@ pub unsafe extern "C" fn UART0RX_Handler() {
 }
 
 #[link_section = ".text.vector_handlers"]
+#[coverage(off)]
 #[no_mangle]
 pub unsafe extern "C" fn UART0TX_Handler() {
     Irq::enter();

@@ -1,13 +1,32 @@
 common_crate_rustflags = []
 
-if (bsp == "qemu_mps2_an385") {
+# we use minicov in qemu
+if (coverage) {
+  common_crate_rustflags += [
+    "-Z",
+    "no-profiler-runtime",
+    "--cfg",
+    "coverage",
+  ]
+}
+
+if (profile) {
+  common_crate_rustflags += [
+    "-Z",
+    "no-profiler-runtime",
+    "--cfg",
+    "profile",
+  ]
+}
+
+if (board == "qemu_mps2_an385") {
   common_crate_rustflags += [
     "--cfg",
     "cortex_m",
     "--cfg",
     "armv7m",
   ]
-} else if (bsp == "qemu_mps3_an547") {
+} else if (board == "qemu_mps3_an547") {
   common_crate_rustflags += [
     "--cfg",
     "cortex_m",
@@ -20,26 +39,37 @@ if (bsp == "qemu_mps2_an385") {
   ]
 }
 
+common_gcc_rustflags = [
+  "-C",
+  "link-arg=-nostartfiles",
+  "-C",
+  "link-arg=-lgcc",
+  "-C",
+  "linker=arm-none-eabi-ld",
+  "-C",
+  "link-arg=-Wl,--gc-sections",
+]
+
+common_lld_rustflags = [
+  # # use lld to link
+  # # Tell rustc to use the LLVM linker. This avoids needing GCC as a dependency
+  # # to build the kernel.
+  "-C",
+  "linker=rust-lld",
+
+  # # Use the LLVM lld executable with the `-flavor gnu` flag.
+  # "-C",
+  # "linker-flavor=ld.lld",
+  "-C",
+  "link-arg=--gc-sections",
+]
+
 common_image_rustflags = [
   "-C",
   "panic=abort",
   "-C",
-  "link-arg=-nostartfiles",
-  "-C",
   "link-arg=--enable-non-contiguous-regions",
-  "-C",
-  "link-arg=-Wl,--no-wchar-size-warning",
-  "-C",
-  "link-arg=-lgcc",
 
-  # # use lld to link
-  # # Tell rustc to use the LLVM linker. This avoids needing GCC as a dependency
-  # # to build the kernel.
-  # "-C",
-  # "linker=rust-lld",
-  # # Use the LLVM lld executable with the `-flavor gnu` flag.
-  # "-C",
-  # "linker-flavor=ld.lld",
   # Enable link-time-optimization
   "-C",
   "lto",
@@ -50,8 +80,10 @@ common_image_rustflags = [
 
   # custom link script
   "-C",
-  "link-arg=-T" + rebase_path("//kernel/kernel/src/boards/$bsp/link.x"),
+  "link-arg=-T" + rebase_path("//kernel/kernel/src/boards/$board/link.x"),
 ]
+
+common_image_rustflags += common_crate_rustflags + common_gcc_rustflags
 
 test_image_rustflags = [
   # unstable rust custom test framework

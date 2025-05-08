@@ -36,7 +36,7 @@ __RAM_SIZE = 0x01000000;
 ; </h>
   -----------------------------------------------------------------------------*/
 __STACK_SIZE = 0x00002000;
-__HEAP_SIZE  = 0x00020000;
+__HEAP_SIZE  = 0x00100000;
 
 /*
 ; -------------------- <<< end of configuration section >>> -------------------
@@ -150,6 +150,7 @@ SECTIONS
     __rt_init_end = .;
   } > FLASH
 
+  . = ALIGN(4);
   __rodata_start = .;
   .rodata : { *(.rodata*) } > FLASH
   __rodata_end = .;

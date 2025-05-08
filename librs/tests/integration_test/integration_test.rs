@@ -45,5 +45,8 @@ fn main() -> i32 {
     );
     assert_eq!(rc, 0);
     pthread_join(t, core::ptr::null_mut());
+
+    #[cfg(coverage)]
+    bluekernel::cov::write_coverage_data();
     0
 }

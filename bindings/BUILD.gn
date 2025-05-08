@@ -14,7 +14,7 @@ bindgen("bindings") {
     "//kernel/adapter/rt_thread/include",
     "//rt-dev/include/",
     "//rt-dev/components/finsh",
-    "//rt-dev/bsp/$bsp",
+    "//rt-dev/bsp/$board",
   ]
   inputs = [
     "//rt-dev/include/rtdef.h",

@@ -15,6 +15,7 @@
 #![feature(macro_metavar_expr)]
 #![feature(pointer_is_aligned_to)]
 #![feature(new_zeroed_alloc)]
+#![feature(coverage_attribute)]
 #![no_main]
 #![feature(custom_test_frameworks)]
 #![test_runner(kernel_utest_runner)]
@@ -53,6 +54,11 @@ pub mod thread;
 pub mod timer;
 pub mod vfs;
 mod zombie;
+
+#[cfg(coverage)]
+pub mod cov;
+#[cfg(coverage)]
+pub use minicov;
 
 // #[link_section] is only usable from the root crate.
 // See https://github.com/rust-lang/rust/issues/67209.
@@ -167,6 +173,9 @@ macro_rules! debug_scheduler_available {
 pub fn utest_main() {
     #[cfg(test)]
     kernel_utest_main();
+
+    #[cfg(coverage)]
+    crate::cov::write_coverage_data();
 }
 
 #[cfg(test)]

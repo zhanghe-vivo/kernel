@@ -15,6 +15,13 @@ build_rust("everyting") {
     "-Cpanic=abort",
     "-Clink-arg=-lgcc",
   ]
+  if (coverage) {
+    deps += [ "//kernel/loader:common_cov" ]
+    rustflags += [
+      "--cfg",
+      "coverage",
+    ]
+  }
 }
 
 postlink_action("gen_everyting_elf_path_symbol") {

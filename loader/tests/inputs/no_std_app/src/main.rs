@@ -13,6 +13,9 @@ use core::{
 };
 use libc::c_void;
 
+#[cfg(coverage)]
+use common_cov;
+
 #[thread_local]
 static mut ID: i32 = 42;
 
@@ -65,13 +68,17 @@ pub extern "C" fn _start() {
 #[no_mangle]
 #[inline(never)]
 extern "C" fn main(argc: i32) -> i32 {
+    // FIXME: Current librs::stdio::puts impl makes this program hangs forever.
     unsafe {
-        // FIXME: Current librs::stdio::puts impl makes this program hangs forever.
         let b = Box::new(ID);
         let mut v = Vec::new();
         v.extend_from_slice(&[ID; 128]);
         LARGE_ARRAY[argc as usize] = ID as u8;
         assert_eq!(*b as u8, LARGE_ARRAY[argc as usize]);
+
+        #[cfg(coverage)]
+        common_cov::write_coverage_data();
+
         return LARGE_ARRAY[argc as usize] as i32;
     }
 }

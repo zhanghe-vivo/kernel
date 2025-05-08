@@ -71,7 +71,7 @@ int pthread_detach(pthread_t pthread);
 
 int pthread_equal(pthread_t pthread1, pthread_t pthread2);
 
-void pthread_exit(void *retval) __noreturn;
+__noreturn void pthread_exit(void *retval);
 
 int pthread_getconcurrency(void);
 

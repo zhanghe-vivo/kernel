@@ -1,4 +1,4 @@
-group("run_integration_test") {
+group("run_loader_integration_test") {
   testonly = true
-  deps = [ "integration_test:run_integration_test" ]
+  deps = [ "integration_test:run_loader_integration_test" ]
 }

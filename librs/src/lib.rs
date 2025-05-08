@@ -100,6 +100,9 @@ pub fn librs_test_runner(tests: &[&dyn Fn()]) {
         test();
     }
     println!("Librs unittest ended");
+
+    #[cfg(coverage)]
+    bluekernel::cov::write_coverage_data();
 }
 
 #[cfg(test)]

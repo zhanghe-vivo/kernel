@@ -2,6 +2,7 @@ use super::sys_config;
 use crate::{clock, cpu, error};
 use cortex_m::{peripheral::syst::SystClkSource, Peripherals};
 
+#[coverage(off)]
 #[no_mangle]
 pub extern "C" fn SysTick_Handler() {
     cpu::Cpu::interrupt_nest_inc();

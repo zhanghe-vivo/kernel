@@ -60,6 +60,7 @@ impl<T, I: PinInit<T>> UnsafeStaticInit<T, I> {
 
 impl<T, I: PinInit<T>> ops::Deref for UnsafeStaticInit<T, I> {
     type Target = T;
+    #[inline(always)]
     fn deref(&self) -> &Self::Target {
         debug_assert!(self.is_inited());
         unsafe { (*self.cell.get()).assume_init_ref() }
@@ -67,6 +68,7 @@ impl<T, I: PinInit<T>> ops::Deref for UnsafeStaticInit<T, I> {
 }
 
 impl<T, I: PinInit<T>> ops::DerefMut for UnsafeStaticInit<T, I> {
+    #[inline(always)]
     fn deref_mut(&mut self) -> &mut T {
         debug_assert!(self.is_inited());
         unsafe { (*self.cell.get()).assume_init_mut() }

@@ -10,23 +10,6 @@ group("check_kernel") {
   ]
 }
 
-build_rust("kernel_integration_test") {
-  testonly = true
-  crate_type = "bin"
-  sources = [ "tests/integration_test.rs" ]
-  edition = "2021"
-  proc_macro_deps = [ "//kernel/test_harness:bluekernel_test_macro" ]
-  deps = [
-    ":bluekernel",
-    "//kernel/scal:bluekernel_scal_test",
-    "//libc:libc",
-  ]
-
-  inputs = [ "//kernel/kernel/src/boards/$bsp/link.x" ]
-  rustflags = test_image_rustflags
-  rustflags += common_crate_rustflags
-}
-
 shared_deps = [
   "//external/bitflags/v2.9.0:bitflags",
   "//external/cfg-if/v1.0.0:cfg_if",
@@ -44,6 +27,12 @@ shared_deps = [
   "//kernel/kconfig:bluekernel_kconfig",
   "//libc:libc",
 ]
+if (coverage || profile) {
+  shared_deps += [
+    "//external/minicov/v0.3.7:minicov",
+    "//external/semihosting/v0.1.20:semihosting",
+  ]
+}
 
 shared_features = [
   "tlsf",
@@ -71,7 +60,8 @@ if (direct_syscall_handler) {
     "direct_syscall_handler",
   ]
 }
-if (bsp == "qemu_mps2_an385" || bsp == "qemu_mps3_an547") {
+
+if (board == "qemu_mps2_an385" || board == "qemu_mps3_an547") {
   shared_rust_build_flags += [
     "--cfg",
     "hardware_schedule",
@@ -80,7 +70,7 @@ if (bsp == "qemu_mps2_an385" || bsp == "qemu_mps3_an547") {
 
 shared_rust_build_flags += [
   "--cfg",
-  "target_board=\"$bsp\"",
+  "target_board=\"$board\"",
 ]
 
 build_rust("kernel_unittest") {
@@ -97,10 +87,31 @@ build_rust("kernel_unittest") {
   deps = shared_deps
   features = shared_features
 
-  inputs = [ "//kernel/kernel/src/boards/$bsp/link.x" ]
+  inputs = [ "//kernel/kernel/src/boards/$board/link.x" ]
   rustflags = shared_rust_build_flags
   rustflags += test_image_rustflags
-  rustflags += common_crate_rustflags
+}
+
+build_rust("kernel_integration_test") {
+  testonly = true
+  crate_type = "bin"
+  sources = [ "tests/integration_test.rs" ]
+  edition = "2021"
+  proc_macro_deps = [ "//kernel/test_harness:bluekernel_test_macro" ]
+  deps = [
+    ":bluekernel",
+    "//kernel/scal:bluekernel_scal_test",
+    "//libc:libc",
+  ]
+  if (coverage || profile) {
+    deps += [
+      "//external/minicov/v0.3.7:minicov",
+      "//external/semihosting/v0.1.20:semihosting",
+    ]
+  }
+
+  inputs = [ "//kernel/kernel/src/boards/$board/link.x" ]
+  rustflags = test_image_rustflags
 }
 
 build_rust("bluekernel") {
@@ -180,24 +191,34 @@ gen_qemu_runner("integration_test_runner") {
   testonly = true
   img = ":kernel_integration_test"
   qemu = "$qemu_exe"
-  board = "$bsp"
+  board = "$board"
 }
 
 run_qemu_check("run_integration_test") {
   testonly = true
   runner = ":integration_test_runner"
-  checker = "tests/integration_test.rs"
+  if (coverage) {
+    img = ":kernel_integration_test"
+    checker = "src/cov.rs"
+  } else {
+    checker = "tests/integration_test.rs"
+  }
 }
 
 gen_qemu_runner("unittest_runner") {
   testonly = true
   img = ":kernel_unittest"
   qemu = "$qemu_exe"
-  board = "$bsp"
+  board = "$board"
 }
 
 run_qemu_check("run_unittest") {
   testonly = true
   runner = ":unittest_runner"
-  checker = "src/lib.rs"
+  if (coverage) {
+    img = ":kernel_unittest"
+    checker = "src/cov.rs"
+  } else {
+    checker = "src/lib.rs"
+  }
 }

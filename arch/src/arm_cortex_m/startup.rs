@@ -26,6 +26,8 @@ pub unsafe fn reset_handler_inner() -> ! {
         static __copy_table_end__: CopyTable;
         static __zero_table_start__: ZeroTable;
         static __zero_table_end__: ZeroTable;
+        static __ctors_start__: u32;
+        static __ctors_end__: u32;
 
         fn _startup() -> !;
     }
@@ -46,17 +48,17 @@ pub unsafe fn reset_handler_inner() -> ! {
     }
 
     // copy and zero datas
-    // let mut p_table = &__copy_table_start__ as *const CopyTable;
-    // while p_table < &__copy_table_end__ as *const CopyTable {
-    //     let table = &(*p_table);
-    //     for i in 0..table.wlen {
-    //         ptr::write(
-    //             table.dest.add(i as usize),
-    //             ptr::read(table.src.add(i as usize)),
-    //         );
-    //     }
-    //     p_table = p_table.add(1);
-    // }
+    let mut p_table = &__copy_table_start__ as *const CopyTable;
+    while p_table < &__copy_table_end__ as *const CopyTable {
+        let table = &(*p_table);
+        for i in 0..table.wlen {
+            ptr::write(
+                table.dest.add(i as usize),
+                ptr::read(table.src.add(i as usize)),
+            );
+        }
+        p_table = p_table.add(1);
+    }
 
     let mut p_table = &__zero_table_start__ as *const ZeroTable;
     while p_table < &__zero_table_end__ as *const ZeroTable {
@@ -65,6 +67,14 @@ pub unsafe fn reset_handler_inner() -> ! {
             ptr::write(table.dest.add(i as usize), 0);
         }
         p_table = p_table.add(1);
+    }
+
+    // run ctor
+    let mut p_ctor = &__ctors_start__ as *const u32;
+    while p_ctor < &__ctors_end__ as *const u32 {
+        let ctor_fn = unsafe { core::mem::transmute::<u32, fn()>(*p_ctor) };
+        ctor_fn();
+        p_ctor = p_ctor.add(1);
     }
 
     // call the kernel's entry point

@@ -5,7 +5,7 @@ build_rust("bluekernel_arch") {
   edition = "2021"
 
   rustflags = []
-  if (bsp == "qemu_mps2_an385") {
+  if (board == "qemu_mps2_an385") {
     deps = [
       "//external/cortex-m:cortex_m",
       "//external/tock-registers/v0.9.0:tock_registers",
@@ -16,7 +16,7 @@ build_rust("bluekernel_arch") {
       "--cfg",
       "armv7m",
     ]
-  } else if (bsp == "qemu_mps3_an547") {
+  } else if (board == "qemu_mps3_an547") {
     deps = [
       "//external/cortex-m:cortex_m",
       "//external/tock-registers/v0.9.0:tock_registers",

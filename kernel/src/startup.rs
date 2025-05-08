@@ -52,14 +52,12 @@ pub extern "C" fn main_thread_entry(_parameter: *mut core::ffi::c_void) {
 
     // The user's main
     #[cfg(not(any(test, feature = "posixtestsuite", feature = "std")))]
-    extern "C" {
-        fn main() -> i32;
+    {
+        extern "C" {
+            fn main() -> i32;
+        }
+        unsafe { main() };
     }
-
-    #[cfg(not(any(test, feature = "posixtestsuite", feature = "std")))]
-    unsafe {
-        main()
-    };
 }
 
 /// This function will create and start the main thread.

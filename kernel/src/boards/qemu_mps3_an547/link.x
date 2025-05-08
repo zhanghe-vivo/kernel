@@ -37,7 +37,7 @@
   </h>
   -----------------------------------------------------------------------------*/
 __ROM_BASE = 0x00000000;
-__ROM_SIZE = 0x00400000;
+__ROM_SIZE = 0x00080000;
 
 /*--------------------- Embedded RAM Configuration ----------------------------
   <h> RAM Configuration
@@ -55,7 +55,7 @@ __RAM_SIZE = 0x00400000;
   </h>
   -----------------------------------------------------------------------------*/
 __STACK_SIZE = 0x00001000;
-__HEAP_SIZE  = 0x00020000;
+__HEAP_SIZE  = 0x00100000;
 
 /*
  *-------------------- <<< end of configuration section >>> -------------------
@@ -174,8 +174,9 @@ SECTIONS
     __rt_init_end = .;
   } > FLASH
 
+  . = ALIGN(4);
   __rodata_start = .;
-  .rodata : { *(.rodata*) } > FLASH
+  .rodata : { *(.rodata*) } > RAM
   __rodata_end = .;
 
   . = ALIGN(4);
@@ -186,7 +187,7 @@ SECTIONS
       KEEP(*(SORT(.init_array.*)))
       KEEP(*(.init_array))
       PROVIDE(__ctors_end__ = .);
-  } > FLASH
+  } > RAM
 
   .dtors :
   {
@@ -194,7 +195,7 @@ SECTIONS
       KEEP(*(SORT(.fini_array.*)))
       KEEP(*(.fini_array))
       PROVIDE(__dtors_end__ = .);
-  } > FLASH
+  } > RAM
 
   /*
    * SG veneers:
@@ -206,18 +207,18 @@ SECTIONS
   .gnu.sgstubs :
   {
     . = ALIGN(32);
-  } > FLASH
+  } > RAM
 */
   .ARM.extab :
   {
     *(.ARM.extab* .gnu.linkonce.armextab.*)
-  } > FLASH
+  } > RAM
 
   __exidx_start = .;
   .ARM.exidx :
   {
     *(.ARM.exidx* .gnu.linkonce.armexidx.*)
-  } > FLASH
+  } > RAM
   __exidx_end = .;
 
   .copy.table :
@@ -236,7 +237,7 @@ SECTIONS
     LONG ((__data2_end__ - __data2_start__) / 4)
 */
     __copy_table_end__ = .;
-  } > FLASH
+  } > RAM
 
   .zero.table :
   {
@@ -246,7 +247,7 @@ SECTIONS
     LONG (__bss_start__)
     LONG ((__bss_end__ - __bss_start__) / 4)
     __zero_table_end__ = .;
-  } > FLASH
+  } > RAM
 
   /**
    * Location counter can end up 2byte aligned with narrow Thumb code but

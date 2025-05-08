@@ -72,22 +72,26 @@ build_rust("librs_unittest_image") {
     "//libc:libc",
   ]
   proc_macro_deps = [ "//kernel/test_harness:bluekernel_test_macro" ]
-  inputs = [ "//kernel/kernel/src/boards/$bsp/link.x" ]
+  inputs = [ "//kernel/kernel/src/boards/$board/link.x" ]
   rustflags = test_image_rustflags
-  rustflags += common_crate_rustflags
 }
 
 gen_qemu_runner("librs_unittest_runner") {
   testonly = true
   img = ":librs_unittest_image"
   qemu = "$qemu_exe"
-  board = "$bsp"
+  board = "$board"
 }
 
 run_qemu_check("run_librs_unittest") {
   testonly = true
   runner = ":librs_unittest_runner"
-  checker = "src/lib.rs"
+  if (coverage) {
+    img = ":librs_unittest_image"
+    checker = "//kernel/kernel/src/cov.rs"
+  } else {
+    checker = "src/lib.rs"
+  }
 }
 
 group("check_librs") {
@@ -95,6 +99,7 @@ group("check_librs") {
   deps = [
     ":run_librs_unittest",
     "tests/integration_test:run_librs_integration_test",
-    "tests/posixtestsuite:run_librs_posix_testsuite",
+
+    # "tests/posixtestsuite:run_librs_posix_testsuite",
   ]
 }

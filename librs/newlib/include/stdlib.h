@@ -70,7 +70,7 @@ extern const uintptr_t __stack_chk_guard;
 /**
  * See <https://pubs.opengroup.org/onlinepubs/9799919799/functions/_Exit.html>.
  */
-void _Exit(int status) __noreturn;
+__noreturn void _Exit(int status);
 
 /**
  * See <https://pubs.opengroup.org/onlinepubs/9799919799/functions/a64l.html>.
@@ -80,9 +80,9 @@ long a64l(const char *s);
 /**
  * See <https://pubs.opengroup.org/onlinepubs/9799919799/functions/abort.html>.
  */
-void abort(void) __noreturn;
+__noreturn void abort(void);
 
-void __stack_chk_fail(void) __noreturn;
+__noreturn void __stack_chk_fail(void);
 
 /**
  * See <https://pubs.opengroup.org/onlinepubs/9799919799/functions/abs.html>.
@@ -168,7 +168,7 @@ double erand48(unsigned short *xsubi);
 /**
  * See <https://pubs.opengroup.org/onlinepubs/9799919799/functions/exit.html>.
  */
-void exit(int status) __noreturn;
+__noreturn void exit(int status);
 
 /**
  * See <https://pubs.opengroup.org/onlinepubs/9799919799/functions/free.html>.

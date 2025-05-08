@@ -166,7 +166,6 @@ impl Cpus {
 
 impl Cpu {
     #[cfg(not(feature = "smp"))]
-    #[inline]
     pub(crate) fn new(cpu: u8) -> impl PinInit<Self> {
         pin_init!(Self {
             scheduler <- Scheduler::new(cpu),
@@ -177,7 +176,6 @@ impl Cpu {
     }
 
     #[cfg(feature = "smp")]
-    #[inline]
     pub(crate) fn new(cpu: u8) -> impl PinInit<Self> {
         pin_init!(Self {
             scheduler <- Scheduler::new(cpu),
@@ -188,94 +186,94 @@ impl Cpu {
         })
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn get_current() -> &'static Cpu {
         unsafe { &CPUS.inner[Arch::core_id::<usize>()] }
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn get_by_id(cpu_id: u8) -> &'static Cpu {
         unsafe { &CPUS.inner[cpu_id as usize] }
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn get_current_mut() -> &'static mut Cpu {
         unsafe { &mut CPUS.inner[Arch::core_id::<usize>()] }
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn get_by_id_mut(cpu_id: u8) -> &'static mut Cpu {
         unsafe { &mut CPUS.inner[cpu_id as usize] }
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn get_current_scheduler() -> &'static mut Scheduler {
         &mut Self::get_current_mut().scheduler
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn get_scheduler_by_id(cpu_id: u8) -> &'static mut Scheduler {
         debug_assert!(cpu_id < CPUS_NUMBER as u8);
         &mut Self::get_by_id_mut(cpu_id).scheduler
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn get_current_thread() -> Option<NonNull<thread::Thread>> {
         Self::get_current_scheduler().get_current_thread()
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn set_current_thread(th: NonNull<thread::Thread>) {
         Self::get_current_scheduler().set_current_thread(th);
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn is_scheduled() -> bool {
         Self::get_current_scheduler().is_scheduled()
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn tick_store(&self, tick: u32) {
         self.tick.store(tick, Ordering::Relaxed)
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn tick_load(&self) -> u32 {
         // read tick on cpu 0 only.
         self.tick.load(Ordering::Relaxed)
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn tick_inc(&self) -> u32 {
         self.tick.fetch_add(1, Ordering::Relaxed)
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn is_in_interrupt() -> bool {
         Self::get_current().interrupt_nest.load(Ordering::Acquire) > 0
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn interrupt_nest_inc() -> u32 {
         Self::get_current()
             .interrupt_nest
             .fetch_add(1, Ordering::Release)
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn interrupt_nest_dec() -> u32 {
         Self::get_current()
             .interrupt_nest
             .fetch_sub(1, Ordering::Release)
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn interrupt_nest_load() -> u32 {
         Self::get_current().interrupt_nest.load(Ordering::Acquire)
     }
 
     #[cfg(feature = "smp")]
-    #[inline]
+    #[inline(always)]
     pub fn cpu_lock_nest_inc() -> u32 {
         Self::get_current()
             .cpu_lock_nest
@@ -283,7 +281,7 @@ impl Cpu {
     }
 
     #[cfg(feature = "smp")]
-    #[inline]
+    #[inline(always)]
     pub fn cpu_lock_nest_dec() -> u32 {
         Self::get_current()
             .cpu_lock_nest
@@ -291,7 +289,7 @@ impl Cpu {
     }
 
     #[cfg(feature = "smp")]
-    #[inline]
+    #[inline(always)]
     pub fn cpu_lock_nest_load() -> u32 {
         Self::get_current().cpu_lock_nest.load(Ordering::Acquire)
     }

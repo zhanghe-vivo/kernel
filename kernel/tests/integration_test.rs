@@ -8,7 +8,7 @@
 #![reexport_test_harness_main = "kernel_test_main"]
 
 extern crate alloc;
-use bluekernel::{allocator, println, thread::Thread};
+use bluekernel::{allocator, println};
 
 mod test_futex;
 /// Unstable rust custom test framework test file hierarchy.
@@ -39,7 +39,7 @@ fn main() -> i32 {
     // Unstable rust custom test framework tests entry.
     kernel_test_main();
 
-    loop {
-        let _ = Thread::sleep(1000);
-    }
+    #[cfg(coverage)]
+    bluekernel::cov::write_coverage_data();
+    0
 }

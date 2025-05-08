@@ -1,4 +1,6 @@
 import("//build/toolchain/bluekernel.gni")
+import("//kernel/common_crate_rustflags.gni")
+
 template("posix_testsuite_case") {
   # format: posixfunc_1_1
   forward_variables_from(invoker, "*")
@@ -6,34 +8,43 @@ template("posix_testsuite_case") {
   exe_name = "librs_posix_image_${case_name}"
   runner_name = "librs_posix_runner_${case_name}"
   checker_name = "run_librs_posix_${case_name}"
-  executable(exe_name) {
+
+  rust_library(exe_name) {
     testonly = true
 
+    # crate_type = "bin"
     deps = [
       "//kernel/librs/tests/posixtestsuite:${case_name}",
       "//kernel/librs/tests/posixtestsuite:librs_for_posix_testsuite",
     ]
-    inputs = [ "//kernel/kernel/src/boards/$bsp/link.x" ]
-    ldflags = [
-      "-T",
-      rebase_path("//kernel/kernel/src/boards/$bsp/link.x"),
-      "-Wl,-cref,-u,Reset_Handler",
-      "-nostartfiles",
-      "-lgcc",
-      "-nodefaultlibs",
-    ]
+    if (coverage || profile) {
+      deps += [
+        "//external/minicov/v0.3.7:minicov",
+        "//external/semihosting/v0.1.20:semihosting",
+      ]
+    }
+    inputs = [ "//kernel/kernel/src/boards/$board/link.x" ]
+    rustflags = test_image_rustflags
   }
+
   gen_qemu_runner(runner_name) {
     testonly = true
     img = ":${exe_name}"
     qemu = "$qemu_exe"
-    board = "$bsp"
+    board = "$board"
   }
+
   run_qemu_check(checker_name) {
     testonly = true
     runner = ":${runner_name}"
-    checker = "//kernel/librs/tests/posixtestsuite/common_checker.test"
+    if (coverage) {
+      img = ":${exe_name}"
+      checker = "//kernel/kernel/src/cov.rs"
+    } else {
+      checker = "//kernel/librs/tests/posixtestsuite/common_checker.test"
+    }
   }
+
   source_set(case_name) {
     name_components = string_split(case_name, "_")
     count = 0
@@ -64,7 +75,10 @@ template("posix_testsuite_case") {
     }
     sources = [ "//external/posixtestsuite/conformance/interfaces/${dir_name}/${file_name}" ]
 
-    include_dirs = [ "//kernel/librs/newlib/include" ]
+    include_dirs = [
+      "//kernel/librs/newlib/include",
+      "//kernel/librs/newlib/include/bits",
+    ]
     cflags = [
       "-std=gnu99",
       "-D_POSIX_C_SOURCE=200112L",

@@ -141,7 +141,7 @@ extern int optopt;
 /**
  * See <https://pubs.opengroup.org/onlinepubs/9799919799/functions/_Exit.html>.
  */
-void _exit(int status) __noreturn;
+__noreturn void _exit(int status);
 
 /**
  * See <https://pubs.opengroup.org/onlinepubs/9799919799/functions/access.html>.

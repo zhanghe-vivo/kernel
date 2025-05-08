@@ -30,6 +30,5 @@ posix_testsuite_case("pthread_create_1_1") {
 }
 posix_testsuite_case("sem_destroy_3_1") {
 }
-
 posix_testsuite_case("pthread_spin_lock_1_2") {
 }
