@@ -1,3 +1,4 @@
+import("//build/templates/rust.gni")
 import("//build/toolchain/bluekernel.gni")
 import("//kernel/common_crate_rustflags.gni")
 
@@ -9,13 +10,20 @@ template("posix_testsuite_case") {
   runner_name = "librs_posix_runner_${case_name}"
   checker_name = "run_librs_posix_${case_name}"
 
-  rust_library(exe_name) {
+  executable(exe_name) {
     testonly = true
-
-    # crate_type = "bin"
     deps = [
       "//kernel/librs/tests/posixtestsuite:${case_name}",
       "//kernel/librs/tests/posixtestsuite:librs_for_posix_testsuite",
+    ]
+    inputs = [ "//kernel/kernel/src/boards/$board/link.x" ]
+    ldflags = [
+      "-T",
+      rebase_path("//kernel/kernel/src/boards/$board/link.x"),
+      "-Wl,-cref,-u,Reset_Handler",
+      "-nostartfiles",
+      "-lgcc",
+      "-nodefaultlibs",
     ]
     if (coverage || profile) {
       deps += [
@@ -23,8 +31,6 @@ template("posix_testsuite_case") {
         "//external/semihosting/v0.1.20:semihosting",
       ]
     }
-    inputs = [ "//kernel/kernel/src/boards/$board/link.x" ]
-    rustflags = test_image_rustflags
   }
 
   gen_qemu_runner(runner_name) {

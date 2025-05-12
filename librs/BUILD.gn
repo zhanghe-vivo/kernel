@@ -74,6 +74,7 @@ build_rust("librs_unittest_image") {
   proc_macro_deps = [ "//kernel/test_harness:bluekernel_test_macro" ]
   inputs = [ "//kernel/kernel/src/boards/$board/link.x" ]
   rustflags = test_image_rustflags
+  rustflags += common_crate_rustflags
 }
 
 gen_qemu_runner("librs_unittest_runner") {
@@ -99,7 +100,6 @@ group("check_librs") {
   deps = [
     ":run_librs_unittest",
     "tests/integration_test:run_librs_integration_test",
-
-    # "tests/posixtestsuite:run_librs_posix_testsuite",
+    "tests/posixtestsuite:run_librs_posix_testsuite",
   ]
 }

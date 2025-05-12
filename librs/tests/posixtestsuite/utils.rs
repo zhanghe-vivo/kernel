@@ -7,6 +7,7 @@ use libc::{c_char, c_int, c_uint, pthread_t};
 // [test] attribute do same things
 #[no_mangle]
 pub unsafe extern "C" fn printf(format: *const c_char, mut __valist: ...) -> c_int {
+    perror(format);
     0
 }
 
@@ -40,9 +41,7 @@ extern "C" fn posix_testsuite_main(_: *mut core::ffi::c_void) -> *mut core::ffi:
     extern "C" {
         fn main() -> i32;
     }
-    unsafe {
-        main();
-    }
+    unsafe { main() };
     core::ptr::null_mut()
 }
 
@@ -62,7 +61,10 @@ pub unsafe extern "C" fn start_posix_testsuite() -> i32 {
     pthread_join(t, core::ptr::null_mut());
 
     #[cfg(coverage)]
-    crate::cov::write_coverage_data();
+    {
+        use bluekernel::cov;
+        cov::write_coverage_data();
+    }
     0
 }
 
