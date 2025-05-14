@@ -39,7 +39,7 @@ macro_rules! syscall_table {
 macro_rules! map_args {
     ($args:expr, $idx:expr) => {};
     ($args:expr, $idx:expr, $arg:ident, $argty:ty $(, $tailarg:ident, $tailargty:ty)*) => {
-        let $arg = unsafe { core::mem::transmute::<usize, $argty>($args[$idx]) };
+        let $arg = unsafe { core::mem::transmute_copy::<usize, $argty>(&$args[$idx]) };
         map_args!($args, $idx+1 $(, $tailarg, $tailargty)*);
     };
 }
