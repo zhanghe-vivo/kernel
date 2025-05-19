@@ -13,7 +13,7 @@ use crate::{
 };
 use bluekernel_infra::list::doubly_linked_list::ListHead;
 use core::{
-    intrinsics::{likely, unlikely},
+    intrinsics::likely,
     pin::Pin,
     ptr::{self, NonNull},
     sync::atomic::{AtomicBool, AtomicPtr, AtomicU32, Ordering},

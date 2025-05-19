@@ -233,7 +233,7 @@ impl DNode {
         let mut current = Some(self);
 
         while let Some(node) = current {
-            if !node.name.is_empty() {
+            if node.name != "/" {
                 path = format!("/{}{}", node.name, path);
             }
             current = node.parent.as_ref().map(|p| p.as_ref());

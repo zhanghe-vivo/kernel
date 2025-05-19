@@ -1,5 +1,5 @@
 use crate::{
-    allocator::{free, malloc},
+    allocator::free,
     process::{foreach, insert, remove, Kprocess},
     sync::{
         condvar::CondVar,
@@ -14,7 +14,7 @@ use crate::{
 };
 use alloc::boxed::Box;
 use bluekernel_infra::list::doubly_linked_list::{LinkedListNode, ListHead};
-use core::{ffi::c_void, fmt::Debug, mem, pin::Pin, ptr};
+use core::{fmt::Debug, mem, pin::Pin};
 use pinned_init::{pin_data, pin_init, PinInit};
 
 /// Base kernel Object
@@ -79,7 +79,7 @@ impl KObjectBase {
         let object_size = ObjectClassType::get_object_size(type_);
         crate::debug_not_in_interrupt!();
 
-        let mut object = Box::<[u8]>::new_zeroed_slice(object_size);
+        let object = Box::<[u8]>::new_zeroed_slice(object_size);
         let object_mut = Box::leak(object).as_mut_ptr().cast::<KObjectBase>();
         unsafe {
             (*object_mut).init_internal(type_, name);

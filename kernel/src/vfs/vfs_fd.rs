@@ -16,14 +16,13 @@ pub const STDERR_FILENO: c_int = 2;
 /// First available file descriptor
 pub const FIRST_FD: c_int = 3;
 pub const MAX_FD_SIZE: c_int = 100;
-
 /// File descriptor structure
 #[derive(Clone)]
 pub struct FileDescriptor {
     /// File descriptor number
     pub fd: c_int,
     /// Open flags
-    pub flags: c_int,
+    pub open_flags: c_int,
     /// Current offset
     pub offset: usize,
     /// File operation object
@@ -65,7 +64,7 @@ impl FdManager {
 
         self.fds[STDIN_FILENO as usize] = Some(FileDescriptor {
             fd: STDIN_FILENO,
-            flags: libc::O_RDONLY,
+            open_flags: libc::O_RDONLY,
             offset: 0,
             file: file_ops.clone(),
             inode_no: stdin_inode,
@@ -73,7 +72,7 @@ impl FdManager {
 
         self.fds[STDOUT_FILENO as usize] = Some(FileDescriptor {
             fd: STDOUT_FILENO,
-            flags: libc::O_WRONLY,
+            open_flags: libc::O_WRONLY,
             offset: 0,
             file: file_ops.clone(),
             inode_no: stdout_inode,
@@ -81,7 +80,7 @@ impl FdManager {
 
         self.fds[STDERR_FILENO as usize] = Some(FileDescriptor {
             fd: STDERR_FILENO,
-            flags: libc::O_WRONLY,
+            open_flags: libc::O_WRONLY,
             offset: 0,
             file: file_ops.clone(),
             inode_no: stderr_inode,
@@ -93,7 +92,7 @@ impl FdManager {
     /// Allocate new file descriptor
     pub fn alloc_fd(
         &mut self,
-        flags: c_int,
+        open_flags: c_int,
         file: Arc<dyn FileOperationTrait>,
         inode_no: InodeNo,
     ) -> c_int {
@@ -105,18 +104,14 @@ impl FdManager {
 
         let file_desc = FileDescriptor {
             fd,
-            flags,
+            open_flags,
             offset: 0,
             file,
             inode_no,
         };
 
         self.fds[fd as usize] = Some(file_desc);
-        self.next_fd = fd + 1;
-        let fds_len = self.fds.len();
-        while (self.next_fd as usize) < fds_len && self.fds[self.next_fd as usize].is_some() {
-            self.next_fd += 1;
-        }
+        self.update_next_fd(fd);
 
         vfslog!(
             "[fd] alloc_fd: Allocated fd = {} with inode = {}",
@@ -124,6 +119,38 @@ impl FdManager {
             inode_no
         );
         fd
+    }
+
+    /// Duplicate file descriptor
+    pub fn dup_fd(&mut self, fd: c_int, minfd: c_int, close_on_exec: bool) -> Result<c_int, Error> {
+        let Some(fd_entry) = self.get_fd(fd) else {
+            return Err(code::EBADF);
+        };
+
+        // Clone fd_entry early to avoid borrow conflicts
+        let fd_entry = fd_entry.clone();
+
+        let mut new_fd = minfd as usize;
+        if minfd < FIRST_FD {
+            new_fd = FIRST_FD as usize;
+        }
+        while new_fd < self.fds.len() && self.fds[new_fd].is_some() {
+            new_fd += 1;
+        }
+        if new_fd >= self.fds.len() {
+            // add capacity by std Vec, so we just +1
+            self.fds.resize(new_fd + 1, None);
+        }
+
+        self.fds[new_fd] = Some(FileDescriptor {
+            fd: new_fd as c_int,
+            open_flags: fd_entry.open_flags | if close_on_exec { libc::O_CLOEXEC } else { 0 },
+            offset: fd_entry.offset,
+            file: fd_entry.file.clone(),
+            inode_no: fd_entry.inode_no,
+        });
+        self.update_next_fd(new_fd as c_int);
+        Ok(new_fd as c_int)
     }
 
     /// Free file descriptor
@@ -189,6 +216,31 @@ impl FdManager {
     /// Get current number of allocated file descriptors
     pub fn count(&self) -> usize {
         self.fds.iter().filter(|fd| fd.is_some()).count()
+    }
+
+    fn update_next_fd(&mut self, new_fd: c_int) {
+        // Ensure new_fd is valid
+        assert!(new_fd >= 0, "Invalid file descriptor");
+
+        let new_fd = new_fd as usize;
+        let fds_len = self.fds.len();
+
+        // First try: find free fd from new_fd+1 to end
+        let next_fd = (new_fd + 1..fds_len)
+            .find(|&fd| self.fds[fd].is_none())
+            .unwrap_or_else(|| {
+                // Second try: find free fd from start to new_fd
+                (FIRST_FD as usize..new_fd)
+                    .find(|&fd| self.fds[fd].is_none())
+                    .unwrap_or(fds_len) // If still not found, use fds_len
+            });
+
+        // Extend array if needed
+        if next_fd >= fds_len {
+            self.fds.resize(next_fd + 1, None);
+        }
+
+        self.next_fd = next_fd as c_int;
     }
 }
 

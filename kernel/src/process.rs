@@ -1,6 +1,6 @@
 use crate::{
     cpu::Cpu,
-    object::{KObjectBase, ObjectClassType, NAME_MAX},
+    object::{KObjectBase, ObjectClassType},
     static_init::UnsafeStaticInit,
     sync::RawSpin,
 };

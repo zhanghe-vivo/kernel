@@ -183,7 +183,10 @@ fn vfs_test_directory_tree() {
     let result = vfs_posix::mkdir(dir1_str, 0o755);
     if result < 0 {
         vfs_posix::rmdir(root_dir_str);
-        unreachable!("[VFS Test DirctoryTree]: Failed to create directory dir1");
+        unreachable!(
+            "[VFS Test DirctoryTree]: Failed to create directory dir1: {}",
+            result
+        );
     }
 
     // Create subdirectory dir2
@@ -195,7 +198,10 @@ fn vfs_test_directory_tree() {
     if result < 0 {
         vfs_posix::rmdir(dir1_str);
         vfs_posix::rmdir(root_dir_str);
-        unreachable!("[VFS Test DirctoryTree]: Failed to create directory dir2");
+        unreachable!(
+            "[VFS Test DirctoryTree]: Failed to create directory dir2: {}",
+            result
+        );
     }
 
     // Create subdirectory subdir1
@@ -208,21 +214,24 @@ fn vfs_test_directory_tree() {
         vfs_posix::rmdir(dir1_str);
         vfs_posix::rmdir(dir2_str);
         vfs_posix::rmdir(root_dir_str);
-        unreachable!("[VFS Test DirctoryTree]: Failed to create directory subdir1");
+        unreachable!(
+            "[VFS Test DirctoryTree]: Failed to create directory subdir1: {}",
+            result
+        );
     }
 
     // Create test file
-    let test_file = b"/test_dir/dir1/file1.txt\0";
-    let test_file_ptr = test_file.as_ptr() as *const c_char;
-    let fd = vfs_posix::open(test_file_ptr, O_CREAT | O_RDWR, 0o644);
+    let fd = vfs_posix::open("/test_dir/dir1/file1.txt", O_CREAT | O_RDWR, 0o755);
     if fd < 0 {
         vfs_posix::rmdir(subdir1_str);
         vfs_posix::rmdir(dir1_str);
         vfs_posix::rmdir(dir2_str);
         vfs_posix::rmdir(root_dir_str);
-        unreachable!("[VFS Test DirctoryTree]: Failed to create test file");
+        unreachable!(
+            "[VFS Test DirctoryTree]: Failed to create test file: {}",
+            fd
+        );
     }
-
     vfs_posix::close(fd);
 
     // Verify directory structure

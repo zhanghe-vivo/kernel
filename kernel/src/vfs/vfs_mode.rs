@@ -6,7 +6,7 @@ use alloc::vec::Vec;
 use core::ffi::c_int;
 
 #[allow(non_camel_case_types)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum AccessMode {
     /// read only

@@ -152,7 +152,15 @@ pub extern "C" fn vfs_unmount(path: *const c_char) -> c_int {
 /// Open a file
 #[no_mangle]
 pub extern "C" fn vfs_open(path: *const c_char, flags: c_int, mode: mode_t) -> c_int {
-    vfs_posix::open(path, flags, mode)
+    if path.is_null() {
+        return code::EINVAL.to_errno();
+    }
+
+    let file_path = match unsafe { core::ffi::CStr::from_ptr(path).to_str() } {
+        Ok(s) => s,
+        Err(_) => return code::EINVAL.to_errno(),
+    };
+    vfs_posix::open(file_path, flags, mode)
 }
 
 /// Close a file descriptor
@@ -187,4 +195,22 @@ pub extern "C" fn vfs_write(fd: i32, buf: *const u8, count: usize) -> isize {
 #[no_mangle]
 pub extern "C" fn vfs_lseek(fd: i32, offset: i64, whence: i32) -> i64 {
     vfs_posix::lseek(fd, offset, whence)
+}
+
+#[no_mangle]
+pub extern "C" fn vfs_fcntl(fd: i32, cmd: c_int, args: usize) -> c_int {
+    vfs_posix::fcntl(fd, cmd, args)
+}
+
+#[no_mangle]
+pub extern "C" fn vfs_unlink(path: *const c_char) -> c_int {
+    if path.is_null() {
+        return code::EINVAL.to_errno();
+    }
+
+    let file_path = match unsafe { core::ffi::CStr::from_ptr(path).to_str() } {
+        Ok(s) => s,
+        Err(_) => return code::EINVAL.to_errno(),
+    };
+    vfs_posix::unlink(file_path)
 }
