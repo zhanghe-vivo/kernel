@@ -55,7 +55,6 @@ __RAM_SIZE = 0x00400000;
   </h>
   -----------------------------------------------------------------------------*/
 __STACK_SIZE = 0x00001000;
-__HEAP_SIZE  = 0x00100000;
 
 /*
  *-------------------- <<< end of configuration section >>> -------------------
@@ -176,7 +175,7 @@ SECTIONS
 
   . = ALIGN(4);
   __rodata_start = .;
-  .rodata : { *(.rodata*) } > RAM
+  .rodata : { *(.rodata*) } > FLASH
   __rodata_end = .;
 
   . = ALIGN(4);
@@ -187,7 +186,7 @@ SECTIONS
       KEEP(*(SORT(.init_array.*)))
       KEEP(*(.init_array))
       PROVIDE(__ctors_end__ = .);
-  } > RAM
+  } > FLASH
 
   .dtors :
   {
@@ -195,37 +194,37 @@ SECTIONS
       KEEP(*(SORT(.fini_array.*)))
       KEEP(*(.fini_array))
       PROVIDE(__dtors_end__ = .);
-  } > RAM
+  } > FLASH
 
   /*
    * SG veneers:
    * All SG veneers are placed in the special output section .gnu.sgstubs. Its start address
-   * must be set, either with the command line option �--section-start� or in a linker script,
+   * must be set, either with the command line option '--section-start' or in a linker script,
    * to indicate where to place these veneers in memory.
    */
 /*
   .gnu.sgstubs :
   {
     . = ALIGN(32);
-  } > RAM
+  } > FLASH
 */
   .ARM.extab :
   {
     *(.ARM.extab* .gnu.linkonce.armextab.*)
-  } > RAM
+  } > FLASH
 
   __exidx_start = .;
   .ARM.exidx :
   {
     *(.ARM.exidx* .gnu.linkonce.armexidx.*)
-  } > RAM
+  } > FLASH
   __exidx_end = .;
 
   .copy.table :
   {
     . = ALIGN(4);
     __copy_table_start__ = .;
-/*
+/* not need to copy data when LMA is same as VMA.
     LONG (__etext)
     LONG (__data_start__)
     LONG ((__data_end__ - __data_start__) / 4)
@@ -237,7 +236,7 @@ SECTIONS
     LONG ((__data2_end__ - __data2_start__) / 4)
 */
     __copy_table_end__ = .;
-  } > RAM
+  } > FLASH
 
   .zero.table :
   {
@@ -247,7 +246,7 @@ SECTIONS
     LONG (__bss_start__)
     LONG ((__bss_end__ - __bss_start__) / 4)
     __zero_table_end__ = .;
-  } > RAM
+  } > FLASH
 
   /**
    * Location counter can end up 2byte aligned with narrow Thumb code but
@@ -256,7 +255,10 @@ SECTIONS
    */
   __etext = ALIGN (4);
 
-  .data :
+  /* mps3 qemu boot image can not bigger than 512K, we set LMA same as VMA,
+   * and boot with elf
+   */
+  .data : /* AT (__etext) */
   {
     __data_start__ = .;
     . = ALIGN(4);
@@ -348,7 +350,7 @@ SECTIONS
     . = ALIGN(8);
     __end__ = .;
     PROVIDE(end = .);
-    . = . + __HEAP_SIZE;
+    . = ORIGIN(RAM) + LENGTH(RAM) - __STACK_SIZE - __STACKSEAL_SIZE;
     . = ALIGN(8);
     __HeapLimit = .;
   } > RAM
