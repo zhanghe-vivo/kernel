@@ -1,15 +1,12 @@
-use crate::sync::{new_heaplock, HeapLock};
+use crate::sync::SpinLock;
 use core::{alloc::Layout, ptr::NonNull};
-use pinned_init::{pin_data, pin_init, pin_init_array_from_fn, pin_init_from_closure, PinInit};
-
 pub mod linked_list_heap;
 use linked_list_heap::Heap as LLHeap;
 
 /// A linked list first fit heap.
 #[pin_data]
 pub struct Heap {
-    #[pin]
-    heap: HeapLock<LLHeap>,
+    heap: SpinLock<LLHeap>,
 }
 
 impl Heap {
@@ -17,10 +14,10 @@ impl Heap {
     ///
     /// You must initialize this heap using the
     /// [`init`](Self::init) method before using the allocator.
-    pub fn new() -> impl PinInit<Self> {
-        pin_init!(Heap {
-            heap <- new_heaplock!(LLHeap::empty(), "heap"),
-        })
+    pub const fn new() -> Self {
+        Heap {
+            heap: SpinLock::new(LLHeap::empty()),
+        }
     }
 
     /// Initializes the heap
@@ -48,18 +45,18 @@ impl Heap {
     /// - This function must be called exactly ONCE.
     /// - `size > 0`
     pub unsafe fn init(&self, start_addr: usize, size: usize) {
-        let mut heap = self.heap.lock();
+        let mut heap = self.heap.lock_irqsave();
         (*heap).init(start_addr, size);
     }
 
     pub fn alloc(&self, layout: Layout) -> Option<NonNull<u8>> {
-        let mut heap = self.heap.lock();
+        let mut heap = self.heap.lock_irqsave();
         let ptr = (*heap).allocate_first_fit(&layout);
         ptr
     }
 
     pub unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        let mut heap = self.heap.lock();
+        let mut heap = self.heap.lock_irqsave();
         (*heap).deallocate(NonNull::new_unchecked(ptr), &layout);
     }
 
@@ -69,13 +66,13 @@ impl Heap {
         layout: Layout,
         new_size: usize,
     ) -> Option<NonNull<u8>> {
-        let mut heap = self.heap.lock();
+        let mut heap = self.heap.lock_irqsave();
         let new_ptr = (*heap).realloc(NonNull::new_unchecked(ptr), &layout, new_size);
         new_ptr
     }
 
     pub fn memory_info(&self) -> (usize, usize, usize) {
-        let heap = self.heap.lock();
+        let heap = self.heap.lock_irqsave();
         let x = ((*heap).total(), (*heap).allocated(), (*heap).maximum());
         x
     }

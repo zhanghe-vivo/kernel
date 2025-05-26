@@ -4,7 +4,7 @@ use crate::{
     drivers::device::{Device, DeviceBase, DeviceClass, DeviceId, DeviceRequest},
     sync::{
         futex::{atomic_wait, atomic_wake},
-        lock::spinlock::IrqSpinLock,
+        lock::spinlock::SpinLock,
     },
     vfs::vfs_mode::AccessMode,
 };
@@ -120,7 +120,7 @@ pub struct Serial {
     config: SerialConfig,
     rx_fifo: SerialRxFifo,
     tx_fifo: SerialTxFifo,
-    pub uart_ops: Arc<IrqSpinLock<dyn UartOps>>,
+    pub uart_ops: Arc<SpinLock<dyn UartOps>>,
 }
 
 impl Serial {
@@ -128,7 +128,7 @@ impl Serial {
         name: &'static str,
         access_mode: AccessMode,
         config: SerialConfig,
-        uart_ops: Arc<IrqSpinLock<dyn UartOps>>,
+        uart_ops: Arc<SpinLock<dyn UartOps>>,
     ) -> Self {
         Self {
             base: DeviceBase::new(name, DeviceClass::Char, access_mode),
@@ -150,13 +150,13 @@ impl Serial {
 
     fn rx_disable(&self) -> Result<(), SerialError> {
         let _ = atomic_wake(&self.rx_fifo.futex as *const AtomicUsize as usize, 1);
-        self.uart_ops.lock().set_rx_interrupt(false);
+        self.uart_ops.lock_irqsave().set_rx_interrupt(false);
         Ok(())
     }
 
     fn tx_disable(&self) -> Result<(), SerialError> {
         let _ = atomic_wake(&self.tx_fifo.futex as *const AtomicUsize as usize, 1);
-        self.uart_ops.lock().set_tx_interrupt(false);
+        self.uart_ops.lock_irqsave().set_tx_interrupt(false);
         // send all data in tx fifo
         self.uart_xmitchars()?;
         Ok(())
@@ -219,7 +219,7 @@ impl Serial {
             }
             if n > 0 {
                 writer.push_done(n);
-                self.uart_ops.lock().set_tx_interrupt(true);
+                self.uart_ops.lock_irqsave().set_tx_interrupt(true);
                 // write some data to uart to trigger interrupt
                 let _ = self.uart_xmitchars();
             }
@@ -233,7 +233,7 @@ impl Serial {
                         WAITING_FOREVER,
                     )
                     .map_err(|_| SerialError::TimedOut)?;
-                    self.uart_ops.lock().set_tx_interrupt(false);
+                    self.uart_ops.lock_irqsave().set_tx_interrupt(false);
                 } else if count >= len {
                     break;
                 }
@@ -251,7 +251,7 @@ impl Serial {
     pub fn uart_xmitchars(&self) -> Result<(), SerialError> {
         let mut nbytes = 0;
         {
-            let mut uart_ops = self.uart_ops.lock();
+            let mut uart_ops = self.uart_ops.lock_irqsave();
             // Safety: tx_fifo reader is only accessed in the UART interrupt handler
             let mut reader = unsafe { self.tx_fifo.rb.reader() };
             while !reader.is_empty() && uart_ops.write_ready()? {
@@ -284,7 +284,7 @@ impl Serial {
         let mut nbytes = 0;
 
         {
-            let mut uart_ops = self.uart_ops.lock();
+            let mut uart_ops = self.uart_ops.lock_irqsave();
             // Safety: rx_fifo writer is only accessed in the UART interrupt handler
             let mut writer = unsafe { self.rx_fifo.rb.writer() };
             while !writer.is_full() && uart_ops.read_ready()? {
@@ -330,7 +330,7 @@ impl Device for Serial {
         self.check_permission(oflag)?;
 
         if !self.is_opened() {
-            let mut uart_ops = self.uart_ops.lock();
+            let mut uart_ops = self.uart_ops.lock_irqsave();
             uart_ops.setup(&self.config)?;
             //uart_ops.set_tx_interrupt(true);
             uart_ops.set_rx_interrupt(true);
@@ -350,7 +350,7 @@ impl Device for Serial {
             self.rx_disable()?;
             self.tx_disable()?;
 
-            let mut uart_ops = self.uart_ops.lock();
+            let mut uart_ops = self.uart_ops.lock_irqsave();
             uart_ops.ioctl(DeviceRequest::Close as u32, 0)?;
         }
 
@@ -366,7 +366,7 @@ impl Device for Serial {
     }
 
     fn ioctl(&self, request: u32, arg: usize) -> Result<(), ErrorKind> {
-        let mut uart_ops = self.uart_ops.lock();
+        let mut uart_ops = self.uart_ops.lock_irqsave();
         uart_ops.ioctl(request, arg).map_err(|e| e.into())
     }
 }

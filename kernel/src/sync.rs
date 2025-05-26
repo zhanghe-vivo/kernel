@@ -13,10 +13,7 @@ pub mod message_queue;
 pub mod semaphore;
 pub mod wait_list;
 
-pub use lock::{
-    heaplock::{new_heaplock, HeapLock},
-    spinlock::{new_spinlock, IrqSpinLock, RawSpin, SpinLock},
-};
+pub use lock::spinlock::{RawSpin, SpinLock};
 
 /// Returns the given string, if one is provided, otherwise generates one based on the source code
 /// location.

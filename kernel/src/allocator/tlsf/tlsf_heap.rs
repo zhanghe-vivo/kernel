@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 //! The TLSF allocator core
+use const_default::ConstDefault;
 use core::{
     alloc::Layout,
     debug_assert, debug_assert_eq, fmt,
@@ -9,7 +10,6 @@ use core::{
     num::NonZeroUsize,
     ptr::NonNull,
 };
-use pinned_init::{init, zeroed, Init, Zeroable};
 
 use crate::allocator::{
     block_hdr::*,
@@ -104,28 +104,38 @@ struct FreeBlockHdr {
     prev_free: Option<NonNull<FreeBlockHdr>>,
 }
 
-impl<
-        'pool,
-        FLBitmap: BinInteger,
-        SLBitmap: BinInteger + Zeroable,
-        const FLLEN: usize,
-        const SLLEN: usize,
-    > Tlsf<'pool, FLBitmap, SLBitmap, FLLEN, SLLEN>
+impl<FLBitmap: BinInteger, SLBitmap: BinInteger, const FLLEN: usize, const SLLEN: usize> Default
+    for Tlsf<'_, FLBitmap, SLBitmap, FLLEN, SLLEN>
 {
-    /// Creates a new instance of `Tlsf`.
-    pub fn new() -> impl Init<Self> {
-        init!(Self {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<FLBitmap: BinInteger, SLBitmap: BinInteger, const FLLEN: usize, const SLLEN: usize>
+    ConstDefault for Tlsf<'_, FLBitmap, SLBitmap, FLLEN, SLLEN>
+{
+    const DEFAULT: Self = Self::new();
+}
+
+impl<'pool, FLBitmap: BinInteger, SLBitmap: BinInteger, const FLLEN: usize, const SLLEN: usize>
+    Tlsf<'pool, FLBitmap, SLBitmap, FLLEN, SLLEN>
+{
+    /// Construct an empty pool.
+    #[inline]
+    pub const fn new() -> Self {
+        Self {
             fl_bitmap: FLBitmap::ZERO,
-            sl_bitmap <- zeroed(),
-            first_free <- zeroed(),
-            total: 0,
-            allocated: 0,
-            maximum: 0,
+            sl_bitmap: [SLBitmap::ZERO; FLLEN],
+            first_free: [[None; SLLEN]; FLLEN],
             _phantom: {
                 let () = Self::VALID;
                 PhantomData
             },
-        })
+            allocated: 0,
+            maximum: 0,
+            total: 0,
+        }
     }
 
     // For testing

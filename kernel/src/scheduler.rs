@@ -69,7 +69,6 @@ pub struct Scheduler {
     current_priority: u8,
     preempt_count: AtomicU32,
     need_resched: AtomicBool,
-    sched_lock_flag: u8,
 }
 
 impl PriorityTableManager {
@@ -172,7 +171,6 @@ impl Scheduler {
             id: index,
             current_priority: (THREAD_PRIORITY_MAX - 1) as u8,
             need_resched: AtomicBool::new(false),
-            sched_lock_flag: 0,
         })
     }
 
@@ -232,23 +230,19 @@ impl Scheduler {
 
     #[inline]
     pub fn preempt_enable_no_resched(&mut self) -> bool {
-        debug_assert!(!self.preemptable());
+        debug_assert!(self.preempt_count.load(Ordering::Acquire) > 0);
         self.preempt_count.fetch_sub(1, Ordering::AcqRel) == 1
     }
 
     #[cfg(feature = "smp")]
     #[inline]
     fn sched_lock_smp(&mut self) {
-        debug_assert!(self.sched_lock_flag == 0);
         Cpus::lock_sched_fast();
-        self.sched_lock_flag = 1;
     }
 
     #[cfg(feature = "smp")]
     #[inline]
     fn sched_unlock_smp(&mut self) {
-        debug_assert!(self.sched_lock_flag == 1);
-        self.sched_lock_flag = 0;
         Cpus::unlock_sched_fast();
     }
 

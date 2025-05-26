@@ -103,15 +103,14 @@ pub extern "C" fn _startup() -> ! {
     Arch::disable_interrupts();
     cpu::init_cpus();
     timer::system_timer_init();
-    idle::IdleTheads::init_once();
     boards::init::board_init();
-
     match drivers::init() {
         Ok(_) => (),
         Err(e) => println!("Failed to init drivers: {:?}", e),
     }
 
     timer::system_timer_thread_init();
+    idle::IdleTheads::init_once();
     application_init();
 
     #[cfg(feature = "smp")]

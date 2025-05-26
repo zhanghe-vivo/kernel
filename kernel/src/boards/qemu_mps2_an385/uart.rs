@@ -9,7 +9,7 @@ use crate::{
         serial::{cmsdk_uart::Uart, config::SerialConfig, Serial, SerialError, UartOps},
     },
     irq::Irq,
-    sync::lock::spinlock::IrqSpinLock,
+    sync::SpinLock,
     vfs::vfs_mode::AccessMode,
 };
 use alloc::sync::Arc;
@@ -177,14 +177,14 @@ impl UartOps for UartDriver {
     }
 }
 
-static UART0: Once<Arc<IrqSpinLock<dyn UartOps>>> = Once::new();
+static UART0: Once<Arc<SpinLock<dyn UartOps>>> = Once::new();
 static SERIAL0: Once<Arc<Serial>> = Once::new();
 
-pub fn get_uart0() -> &'static Arc<IrqSpinLock<dyn UartOps>> {
-    UART0.call_once(|| Arc::new(IrqSpinLock::new(UartDriver::new(UART0_BASE))))
+pub fn get_uart0() -> &'static Arc<SpinLock<dyn UartOps>> {
+    UART0.call_once(|| Arc::new(SpinLock::new(UartDriver::new(UART0_BASE))))
 }
 
-pub fn get_early_uart() -> &'static Arc<IrqSpinLock<dyn UartOps>> {
+pub fn get_early_uart() -> &'static Arc<SpinLock<dyn UartOps>> {
     get_uart0()
 }
 
@@ -211,7 +211,7 @@ pub fn uart_init() -> Result<(), ErrorKind> {
 pub unsafe extern "C" fn UART0RX_Handler() {
     Irq::enter();
     let uart = get_serial0();
-    uart.uart_ops.lock().clear_rx_interrupt();
+    uart.uart_ops.lock_irqsave().clear_rx_interrupt();
 
     if let Err(_e) = uart.uart_recvchars() {
         // println!("UART RX error: {:?}", e);
@@ -225,7 +225,7 @@ pub unsafe extern "C" fn UART0RX_Handler() {
 pub unsafe extern "C" fn UART0TX_Handler() {
     Irq::enter();
     let uart = get_serial0();
-    uart.uart_ops.lock().clear_tx_interrupt();
+    uart.uart_ops.lock_irqsave().clear_tx_interrupt();
 
     if let Err(_e) = uart.uart_xmitchars() {
         // println!("UART TX error: {:?}", e);

@@ -161,7 +161,8 @@ impl IdleTheads {
             unsafe {
                 (&raw const zombie::ZOMBIE_MANAGER
                     as *const UnsafeStaticInit<zombie::ZombieManager, _>)
-                    .as_ref()
+                    .cast_mut()
+                    .as_mut()
                     .unwrap_unchecked()
                     .reclaim()
             };

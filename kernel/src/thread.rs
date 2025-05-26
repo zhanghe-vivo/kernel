@@ -17,7 +17,7 @@ use crate::{
 };
 use bluekernel_infra::list::doubly_linked_list::{LinkedListNode, ListHead};
 use core::{
-    cell::{Cell, UnsafeCell},
+    cell::UnsafeCell,
     ffi,
     marker::PhantomPinned,
     mem,
@@ -26,8 +26,7 @@ use core::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 use pinned_init::{
-    init, pin_data, pin_init, pin_init_array_from_fn, pin_init_from_closure, pinned_drop, zeroed,
-    Init, PinInit,
+    init, pin_data, pin_init, pin_init_from_closure, pinned_drop, zeroed, Init, PinInit,
 };
 
 // compatible with C
@@ -80,29 +79,8 @@ macro_rules! thread_list_node_entry {
 pub use thread_list_node_entry;
 
 const MAX_THREAD_SIZE: usize = 1024;
-pub(crate) static mut TIDS: UnsafeStaticInit<Tid, TidInit> = UnsafeStaticInit::new(TidInit);
-
-pub(crate) struct TidInit;
-unsafe impl PinInit<Tid> for TidInit {
-    unsafe fn __pinned_init(self, slot: *mut Tid) -> Result<(), core::convert::Infallible> {
-        let init = Tid::new();
-        unsafe { init.__pinned_init(slot) }
-    }
-}
-
-#[pin_data]
-pub(crate) struct Tid {
-    #[pin]
-    id: SpinLock<[Cell<Option<NonNull<Thread>>>; MAX_THREAD_SIZE]>,
-}
-
-impl Tid {
-    fn new() -> impl PinInit<Self> {
-        pin_init!(Self {
-            id <- crate::new_spinlock!(pin_init_array_from_fn(|_| Cell::new(None))),
-        })
-    }
-}
+pub(crate) static TIDS: SpinLock<[Option<usize>; MAX_THREAD_SIZE]> =
+    SpinLock::new([const { None }; MAX_THREAD_SIZE]);
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SuspendFlag {
@@ -560,20 +538,14 @@ impl Thread {
         unsafe { Pin::new_unchecked(&mut self.list_node).remove_from_list() };
     }
 
-    #[inline]
-    pub(crate) fn new_tid() -> usize {
+    pub(crate) fn new_tid(thread_ptr: usize) -> usize {
         static TID: AtomicUsize = AtomicUsize::new(0);
         let id = TID.fetch_add(1, Ordering::SeqCst);
-        let tids = unsafe {
-            (&raw const TIDS as *const UnsafeStaticInit<Tid, TidInit>)
-                .as_ref()
-                .unwrap_unchecked()
-                .id
-                .lock()
-        };
-        if id >= MAX_THREAD_SIZE || !tids[id].get().is_none() {
+        let mut tids = TIDS.lock();
+        if id >= MAX_THREAD_SIZE || !tids[id].is_none() {
             for i in 0..MAX_THREAD_SIZE {
-                if tids[i].get().is_none() {
+                if tids[i].is_none() {
+                    tids[i] = Some(thread_ptr);
                     TID.store(0, Ordering::SeqCst);
                     return i;
                 }
@@ -752,14 +724,7 @@ impl Thread {
         // may be detached from scheduler.
         let scheduler = Cpu::get_current_scheduler();
         scheduler.preempt_disable();
-        unsafe {
-            (&raw const TIDS as *const UnsafeStaticInit<Tid, TidInit>)
-                .as_ref()
-                .unwrap_unchecked()
-                .id
-                .lock()[self.tid as usize]
-                .set(None);
-        }
+        TIDS.lock()[self.tid as usize] = None;
         #[cfg(feature = "debugging_scheduler")]
         println!("Thread {:?} is detaching...", self as *const Self);
 
@@ -1132,15 +1097,7 @@ impl ThreadBuilder {
         unsafe {
             let _ = init.__pinned_init(&mut thread.thread_timer as *mut Timer);
         }
-        thread.tid = Thread::new_tid();
-        unsafe {
-            (&raw const TIDS as *const UnsafeStaticInit<Tid, TidInit>)
-                .as_ref()
-                .unwrap_unchecked()
-                .id
-                .lock()[thread.tid as usize]
-                .set(Some(NonNull::new_unchecked(ptr)));
-        }
+        thread.tid = Thread::new_tid(ptr as usize);
         thread.spinlock = RawSpin::new();
         thread.error = code::EOK;
 

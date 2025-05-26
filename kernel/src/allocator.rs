@@ -6,7 +6,6 @@ use core::{
     alloc::{GlobalAlloc, Layout},
     ptr,
 };
-use pinned_init::PinInit;
 
 #[cfg(feature = "slab")]
 pub mod buddy;
@@ -33,17 +32,7 @@ mod int;
 mod utils;
 
 struct KernelAllocator;
-
-struct HeapInit;
-
-unsafe impl PinInit<Heap> for HeapInit {
-    unsafe fn __pinned_init(self, slot: *mut Heap) -> Result<(), core::convert::Infallible> {
-        let init = Heap::new();
-        unsafe { init.__pinned_init(slot) }
-    }
-}
-
-static HEAP: UnsafeStaticInit<Heap, HeapInit> = UnsafeStaticInit::new(HeapInit);
+static HEAP: Heap = Heap::new();
 
 #[global_allocator]
 static ALLOCATOR: KernelAllocator = KernelAllocator;
@@ -149,7 +138,6 @@ pub fn system_heap_init(begin_addr: usize, end_addr: usize) {
     assert!(end_addr > begin_addr);
     let heap_size = end_addr - begin_addr;
     unsafe {
-        HEAP.init_once();
         HEAP.init(begin_addr, heap_size);
     }
 }

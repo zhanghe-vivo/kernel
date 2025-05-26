@@ -1,7 +1,5 @@
-use crate::sync::{new_heaplock, HeapLock};
+use crate::sync::SpinLock;
 use core::{alloc::Layout, ptr::NonNull};
-use pinned_init::{pin_data, pin_init, pin_init_array_from_fn, pin_init_from_closure, PinInit};
-
 pub mod slab_heap;
 use slab_heap::Heap as SlabHeap;
 
@@ -11,10 +9,8 @@ pub const MIN_SLAB_SIZE: usize = PAGE_SIZE;
 pub const MIN_HEAP_SIZE: usize = NUM_OF_SLABS * MIN_SLAB_SIZE;
 
 /// A slab heap.
-#[pin_data]
 pub struct Heap {
-    #[pin]
-    heap: HeapLock<SlabHeap>,
+    heap: SpinLock<SlabHeap>,
 }
 
 impl Heap {
@@ -22,10 +18,10 @@ impl Heap {
     ///
     /// You must initialize this heap using the
     /// [`init`](Self::init) method before using the allocator.
-    pub fn new() -> impl PinInit<Self> {
-        pin_init!(Heap{
-            heap <- new_heaplock!(SlabHeap::empty(), "heap")
-        })
+    pub const fn new() -> Self {
+        Heap {
+            heap: SpinLock::new(SlabHeap::empty()),
+        }
     }
 
     /// Initializes the heap
@@ -57,18 +53,18 @@ impl Heap {
             size >= MIN_HEAP_SIZE,
             "Heap size should be greater or equal to minimum heap size"
         );
-        let mut heap = self.heap.lock();
+        let mut heap = self.heap.lock_irqsave();
         (*heap).init(start_addr, size);
     }
 
     pub fn alloc(&self, layout: Layout) -> Option<NonNull<u8>> {
-        let mut heap = self.heap.lock();
+        let mut heap = self.heap.lock_irqsave();
         let ptr = (*heap).allocate(&layout);
         ptr
     }
 
     pub unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        let mut heap = self.heap.lock();
+        let mut heap = self.heap.lock_irqsave();
         (*heap).deallocate(NonNull::new_unchecked(ptr), &layout);
     }
 
@@ -79,13 +75,13 @@ impl Heap {
         new_size: usize,
     ) -> Option<NonNull<u8>> {
         let new_layout = Layout::from_size_align_unchecked(new_size, layout.align());
-        let mut heap = self.heap.lock();
+        let mut heap = self.heap.lock_irqsave();
         let new_ptr = (*heap).reallocate(NonNull::new_unchecked(ptr), &new_layout);
         new_ptr
     }
 
     pub fn memory_info(&self) -> (usize, usize, usize) {
-        let heap = self.heap.lock();
+        let heap = self.heap.lock_irqsave();
         let x = ((*heap).total(), (*heap).allocated(), (*heap).maximum());
         x
     }

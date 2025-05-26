@@ -183,24 +183,29 @@ impl Drop for RawSpinGuard<'_> {
     }
 }
 
-pub struct IrqSpinLock<T: ?Sized> {
+pub struct SpinLock<T: ?Sized> {
     lock: RawSpin,
     data: UnsafeCell<T>,
+}
+
+pub struct SpinLockGuard<'a, T: ?Sized + 'a> {
+    lock: &'a RawSpin,
+    data: &'a mut T,
 }
 
 /// A guard that protects some data.
 ///
 /// When the guard is dropped, the next ticket will be processed.
 pub struct IrqSpinGuard<'a, T: ?Sized + 'a> {
-    lock: &'a RawSpin,
     irq_save: usize,
+    lock: &'a RawSpin,
     data: &'a mut T,
 }
 
-unsafe impl<T: ?Sized + Send> Sync for IrqSpinLock<T> {}
-unsafe impl<T: ?Sized + Send> Send for IrqSpinLock<T> {}
+unsafe impl<T: ?Sized + Send> Sync for SpinLock<T> {}
+unsafe impl<T: ?Sized + Send> Send for SpinLock<T> {}
 
-impl<T> IrqSpinLock<T> {
+impl<T> SpinLock<T> {
     /// Creates a new [`IrqSpinLock`] wrapping the supplied data.
     #[inline(always)]
     pub const fn new(data: T) -> Self {
@@ -210,62 +215,35 @@ impl<T> IrqSpinLock<T> {
         }
     }
 
-    /// Consumes this [`IrqSpinLock`] and unwraps the underlying data.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// let lock = IrqSpinLock::<_>::new(42);
-    /// assert_eq!(42, lock.into_inner());
-    /// ```
     #[inline(always)]
     pub fn into_inner(self) -> T {
         self.data.into_inner()
     }
-    /// Returns a mutable pointer to the underying data.
-    ///
-    /// This is mostly meant to be used for applications which require manual unlocking, but where
-    /// storing both the lock and the pointer to the inner data gets inefficient.
-    ///
-    /// # Example
-    /// ```
-    /// let lock = IrqSpinLock::<_>::new(42);
-    ///
-    /// unsafe {
-    ///     core::mem::forget(lock.lock());
-    ///
-    ///     assert_eq!(lock.as_mut_ptr().read(), 42);
-    ///     lock.as_mut_ptr().write(58);
-    ///
-    ///     lock.force_unlock();
-    /// }
-    ///
-    /// assert_eq!(*lock.lock(), 58);
-    ///
-    /// ```
+
     #[inline(always)]
     pub fn as_mut_ptr(&self) -> *mut T {
         self.data.get()
     }
 }
 
-impl<T: ?Sized> IrqSpinLock<T> {
-    /// Locks the [`IrqSpinLock`] and returns a guard that permits access to the inner data.
-    ///
-    /// The returned data may be dereferenced for data access
-    /// and the lock will be dropped when the guard falls out of scope.
-    ///
-    /// ```
-    /// let lock = IrqSpinLock::<_>::new(0);
-    /// {
-    ///     let mut data = lock.lock();
-    ///     // The lock is now locked and the data can be accessed
-    ///     *data += 1;
-    ///     // The lock is implicitly dropped at the end of the scope
-    /// }
-    /// ```
+impl<T: ?Sized> SpinLock<T> {
     #[inline(always)]
-    pub fn lock(&self) -> IrqSpinGuard<T> {
+    pub fn lock(&self) -> SpinLockGuard<T> {
+        self.lock.lock();
+        SpinLockGuard {
+            lock: &self.lock,
+            // Safety
+            // We know that we are the next ticket to be served,
+            // so there's no other thread accessing the data.
+            //
+            // Every other thread has another ticket number so it's
+            // definitely stuck in the spin loop above.
+            data: unsafe { &mut *self.data.get() },
+        }
+    }
+
+    #[inline(always)]
+    pub fn lock_irqsave(&self) -> IrqSpinGuard<T> {
         let irq_save = self.lock.lock_irqsave();
 
         IrqSpinGuard {
@@ -282,7 +260,7 @@ impl<T: ?Sized> IrqSpinLock<T> {
     }
 }
 
-impl<T: ?Sized> IrqSpinLock<T> {
+impl<T: ?Sized> SpinLock<T> {
     /// Returns a mutable reference to the underlying data.
     #[inline(always)]
     pub fn get_mut(&mut self) -> &mut T {
@@ -293,34 +271,62 @@ impl<T: ?Sized> IrqSpinLock<T> {
     }
 }
 
-impl<T: ?Sized + Default> Default for IrqSpinLock<T> {
+impl<T: ?Sized + Default> Default for SpinLock<T> {
     fn default() -> Self {
         Self::new(Default::default())
     }
 }
 
-impl<T> From<T> for IrqSpinLock<T> {
+impl<T> From<T> for SpinLock<T> {
     fn from(data: T) -> Self {
         Self::new(data)
     }
 }
 
-impl<'a, T: ?Sized> IrqSpinGuard<'a, T> {
-    /// Leak the lock guard, yielding a mutable reference to the underlying data.
-    ///
-    /// Note that this function will permanently lock the original [`IrqSpinLock`].
-    ///
-    /// ```
-    /// let mylock = IrqSpinLock::<_>::new(0);
-    ///
-    /// let data: &mut i32 = IrqSpinGuard::leak(mylock.lock());
-    ///
-    /// *data = 1;
-    /// assert_eq!(*data, 1);
-    /// ```
+impl<'a, T: ?Sized> SpinLockGuard<'a, T> {
     #[inline(always)]
     pub fn leak(this: Self) -> &'a mut T {
         let data = this.data as *mut _; // Keep it in pointer form temporarily to avoid double-aliasing
+        core::mem::forget(this);
+        unsafe { &mut *data }
+    }
+}
+
+impl<'a, T: ?Sized + fmt::Debug> fmt::Debug for SpinLockGuard<'a, T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Debug::fmt(&**self, f)
+    }
+}
+
+impl<'a, T: ?Sized + fmt::Display> fmt::Display for SpinLockGuard<'a, T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(&**self, f)
+    }
+}
+
+impl<'a, T: ?Sized> Deref for SpinLockGuard<'a, T> {
+    type Target = T;
+    fn deref(&self) -> &T {
+        self.data
+    }
+}
+
+impl<'a, T: ?Sized> DerefMut for SpinLockGuard<'a, T> {
+    fn deref_mut(&mut self) -> &mut T {
+        self.data
+    }
+}
+
+impl<'a, T: ?Sized> Drop for SpinLockGuard<'a, T> {
+    fn drop(&mut self) {
+        self.lock.unlock();
+    }
+}
+
+impl<'a, T: ?Sized> IrqSpinGuard<'a, T> {
+    #[inline(always)]
+    pub fn leak(this: Self) -> &'a mut T {
+        let data = this.data as *mut _;
         core::mem::forget(this);
         unsafe { &mut *data }
     }
@@ -354,43 +360,5 @@ impl<'a, T: ?Sized> DerefMut for IrqSpinGuard<'a, T> {
 impl<'a, T: ?Sized> Drop for IrqSpinGuard<'a, T> {
     fn drop(&mut self) {
         self.lock.unlock_irqrestore(self.irq_save);
-    }
-}
-
-#[macro_export]
-macro_rules! new_spinlock {
-    ($inner:expr $(, $name:literal)? $(,)?) => {
-        $crate::sync::SpinLock::new(
-            $inner, $crate::optional_name!($($name)?))
-    };
-}
-pub use new_spinlock;
-
-pub type SpinLock<T> = super::Lock<T, SpinLockBackend>;
-
-pub struct SpinLockBackend;
-
-// SAFETY: The underlying kernel `spinlock_t` object ensures mutual exclusion. `relock` uses the
-// default implementation that always calls the same locking method.
-unsafe impl super::Backend for SpinLockBackend {
-    type State = RawSpin;
-    type GuardState = ();
-
-    unsafe fn init(ptr: *mut Self::State, _name: *const core::ffi::c_char) {
-        unsafe {
-            (*ptr).lock = Cell::new(0);
-        }
-    }
-
-    unsafe fn lock(ptr: *mut Self::State) -> Self::GuardState {
-        unsafe {
-            (*ptr).lock.set((*ptr).lock_irqsave());
-        }
-    }
-
-    unsafe fn unlock(ptr: *mut Self::State, _guard_state: &Self::GuardState) {
-        unsafe {
-            (*ptr).unlock_irqrestore((*ptr).lock.get());
-        }
     }
 }

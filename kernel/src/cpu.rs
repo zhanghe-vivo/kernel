@@ -302,10 +302,7 @@ pub extern "C" fn init_cpus() {
         let process = &*(&raw const process::KPROCESS
             as *const UnsafeStaticInit<process::Kprocess, process::KprocessInit>);
         let cpus = &*(&raw const CPUS as *const UnsafeStaticInit<Cpus, CpusInit>);
-        let tid =
-            &*(&raw const thread::TIDS as *const UnsafeStaticInit<thread::Tid, thread::TidInit>);
         process.init_once();
         cpus.init_once();
-        tid.init_once();
     }
 }
