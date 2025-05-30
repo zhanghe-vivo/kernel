@@ -4,7 +4,6 @@ pub mod linked_list_heap;
 use linked_list_heap::Heap as LLHeap;
 
 /// A linked list first fit heap.
-#[pin_data]
 pub struct Heap {
     heap: SpinLock<LLHeap>,
 }
@@ -60,6 +59,11 @@ impl Heap {
         (*heap).deallocate(NonNull::new_unchecked(ptr), &layout);
     }
 
+    pub unsafe fn deallocate_unknown_align(&self, ptr: *mut u8) {
+        let mut heap = self.heap.lock_irqsave();
+        (*heap).deallocate_unknown_align(NonNull::new_unchecked(ptr));
+    }
+
     pub unsafe fn realloc(
         &self,
         ptr: *mut u8,
@@ -68,6 +72,16 @@ impl Heap {
     ) -> Option<NonNull<u8>> {
         let mut heap = self.heap.lock_irqsave();
         let new_ptr = (*heap).realloc(NonNull::new_unchecked(ptr), &layout, new_size);
+        new_ptr
+    }
+
+    pub unsafe fn realloc_unknown_align(
+        &self,
+        ptr: *mut u8,
+        new_size: usize,
+    ) -> Option<NonNull<u8>> {
+        let mut heap = self.heap.lock_irqsave();
+        let new_ptr = (*heap).realloc_unknown_align(NonNull::new_unchecked(ptr), new_size);
         new_ptr
     }
 

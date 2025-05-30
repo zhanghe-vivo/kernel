@@ -2,7 +2,7 @@
 use core::{alloc::Layout, cmp, fmt, mem, ptr::NonNull};
 
 use crate::allocator::block_hdr::*;
-use bluekernel_infra::list::doubly_linked_list::SinglyLinkedList;
+use bluekernel_infra::list::singly_linked_list::SinglyLinkedList;
 /// A heap that uses buddy system with configurable order.
 ///
 /// # Usage
@@ -146,47 +146,49 @@ impl<const ORDER: usize> Heap<ORDER> {
         None
     }
 
-    pub unsafe fn get_block_size(&mut self, ptr: NonNull<u8>, align: usize) -> usize {
-        let old_block = used_block_hdr_for_allocation(ptr, align).cast::<BlockHdr>();
-        old_block.as_ref().size & !SIZE_USED
-    }
-
     /// Dealloc a range of memory from the heap
     pub unsafe fn deallocate(&mut self, ptr: NonNull<u8>, layout: &Layout) {
         // Safety: `ptr` is a previously allocated memory block with the same
         //         alignment as `align`. This is upheld by the caller.
-        let old_block = used_block_hdr_for_allocation(ptr, layout.align()).cast::<BlockHdr>();
-        let size = old_block.as_ref().size & !SIZE_USED;
+        let old_block = used_block_hdr_for_allocation(ptr, layout.align()).cast::<UsedBlockHdr>();
+        self.deallocate_block(old_block);
+    }
+
+    pub unsafe fn deallocate_unknown_align(&mut self, ptr: NonNull<u8>) {
+        let old_block = used_block_hdr_for_allocation_unknown_align(ptr).cast::<UsedBlockHdr>();
+        self.deallocate_block(old_block);
+    }
+
+    unsafe fn deallocate_block(&mut self, block: NonNull<UsedBlockHdr>) {
+        let size = block.as_ref().common.size & !SIZE_USED;
         let class = size.trailing_zeros() as usize;
 
-        unsafe {
-            // Put back into free list
-            self.free_list[class].push(old_block.as_ptr() as *mut usize);
+        // Put back into free list
+        self.free_list[class].push(block.as_ptr() as *mut usize);
 
-            // Merge free buddy lists
-            let mut current_ptr = old_block.as_ptr() as usize;
-            let mut current_class = class;
+        // Merge free buddy lists
+        let mut current_ptr = block.as_ptr() as usize;
+        let mut current_class = class;
 
-            while current_class < self.free_list.len() - 1 {
-                let buddy = current_ptr ^ (1 << current_class);
-                let mut flag = false;
-                for block in self.free_list[current_class].iter_mut() {
-                    if block.value() as usize == buddy {
-                        block.pop();
-                        flag = true;
-                        break;
-                    }
-                }
-
-                // Free buddy found
-                if flag {
-                    self.free_list[current_class].pop();
-                    current_ptr = cmp::min(current_ptr, buddy);
-                    current_class += 1;
-                    self.free_list[current_class].push(current_ptr as *mut usize);
-                } else {
+        while current_class < self.free_list.len() - 1 {
+            let buddy = current_ptr ^ (1 << current_class);
+            let mut flag = false;
+            for block in self.free_list[current_class].iter_mut() {
+                if block.value() as usize == buddy {
+                    block.pop();
+                    flag = true;
                     break;
                 }
+            }
+
+            // Free buddy found
+            if flag {
+                self.free_list[current_class].pop();
+                current_ptr = cmp::min(current_ptr, buddy);
+                current_class += 1;
+                self.free_list[current_class].push(current_ptr as *mut usize);
+            } else {
+                break;
             }
         }
 
@@ -200,17 +202,11 @@ impl<const ORDER: usize> Heap<ORDER> {
     ) -> Option<NonNull<u8>> {
         // Safety: `ptr` is a previously allocated memory block with the same
         //         alignment as `align`. This is upheld by the caller.
-        let block = used_block_hdr_for_allocation(ptr, new_layout.align());
-        let overhead = ptr.as_ptr() as usize - block.as_ptr() as usize;
-        let new_size = overhead.checked_add(new_layout.size())?;
-        let new_size = new_size.checked_add(GRANULARITY - 1)? & !(GRANULARITY - 1);
-        let old_size = block.as_ref().common.size - SIZE_USED;
+        let old_size = size_of_allocation(ptr, new_layout.align());
 
-        if new_size <= old_size {
+        if new_layout.size() <= old_size {
             return Some(ptr);
         }
-
-        let old_size = old_size - overhead;
 
         // Allocate a whole new memory block
         let new_ptr = self.allocate(new_layout)?;
@@ -220,7 +216,35 @@ impl<const ORDER: usize> Heap<ORDER> {
         core::ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_ptr(), old_size);
 
         // Deallocate the old memory block.
-        self.deallocate(ptr, new_layout);
+        let old_layout = Layout::from_size_align_unchecked(old_size, new_layout.align());
+        self.deallocate(ptr, &old_layout);
+
+        Some(new_ptr)
+    }
+
+    pub unsafe fn reallocate_unknown_align(
+        &mut self,
+        ptr: NonNull<u8>,
+        new_size: usize,
+    ) -> Option<NonNull<u8>> {
+        // Safety: `ptr` is a previously allocated memory block with the same
+        //         alignment as `align`. This is upheld by the caller.
+        let old_size = size_of_allocation_unknown_align(ptr);
+
+        if new_size <= old_size {
+            return Some(ptr);
+        }
+
+        let new_layout = Layout::from_size_align_unchecked(new_size, mem::size_of::<usize>());
+        // Allocate a whole new memory block
+        let new_ptr = self.allocate(&new_layout)?;
+
+        // Move the existing data into the new location
+        debug_assert!(new_layout.size() >= old_size);
+        core::ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_ptr(), old_size);
+
+        // Deallocate the old memory block.
+        self.deallocate_unknown_align(ptr);
 
         Some(new_ptr)
     }

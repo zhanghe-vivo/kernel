@@ -65,6 +65,11 @@ impl Heap {
         (*heap).deallocate(NonNull::new_unchecked(ptr), layout.align());
     }
 
+    pub unsafe fn deallocate_unknown_align(&self, ptr: *mut u8) {
+        let mut heap = self.heap.lock_irqsave();
+        (*heap).deallocate_unknown_align(NonNull::new_unchecked(ptr));
+    }
+
     /// reallocate memory with the given size and layout
     pub unsafe fn realloc(
         &self,
@@ -75,6 +80,17 @@ impl Heap {
         let new_layout = Layout::from_size_align_unchecked(new_size, layout.align());
         let mut heap = self.heap.lock_irqsave();
         let new_ptr = (*heap).reallocate(NonNull::new_unchecked(ptr), &new_layout);
+        new_ptr
+    }
+
+    /// reallocate memory with the given size but with out align
+    pub unsafe fn realloc_unknown_align(
+        &self,
+        ptr: *mut u8,
+        new_size: usize,
+    ) -> Option<NonNull<u8>> {
+        let mut heap = self.heap.lock_irqsave();
+        let new_ptr = (*heap).reallocate_unknown_align(NonNull::new_unchecked(ptr), new_size);
         new_ptr
     }
 

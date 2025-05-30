@@ -267,7 +267,7 @@ impl HoleList {
         if let Some(cursor) = self.cursor() {
             let mut cursor = cursor;
             loop {
-                println!(
+                crate::println!(
                     "prev: {:?}[{}], hole: {:?}[{}]",
                     cursor.previous() as *const Hole,
                     cursor.previous().size,
@@ -277,12 +277,12 @@ impl HoleList {
                 if let Some(c) = cursor.next() {
                     cursor = c;
                 } else {
-                    println!("Done!");
+                    crate::println!("Done!");
                     return;
                 }
             }
         } else {
-            println!("No holes");
+            crate::println!("No holes");
         }
     }
 
@@ -402,16 +402,20 @@ impl HoleList {
     pub unsafe fn deallocate(&mut self, ptr: NonNull<u8>, layout: &Layout) -> usize {
         // Safety: `ptr` is a previously allocated memory block with the same
         //         alignment as `align`. This is upheld by the caller.
-        let old_block = used_block_hdr_for_allocation(ptr, layout.align()).cast::<BlockHdr>();
+        let old_block = used_block_hdr_for_allocation(ptr, layout.align()).cast::<UsedBlockHdr>();
         let hole_addr_u8 = old_block.as_ptr() as *mut u8;
-        let hole_size = old_block.as_ref().size & !SIZE_USED;
+        let hole_size = old_block.as_ref().common.size - SIZE_USED;
 
-        debug_assert!(ptr.as_ptr() > hole_addr_u8, "hole ptr is bigger than ptr");
+        deallocate(self, hole_addr_u8, hole_size);
+        hole_size
+    }
 
-        debug_assert!(
-            (hole_size - ptr.as_ptr().offset_from(hole_addr_u8) as usize) >= layout.size(),
-            "hole required_size is small than layout size"
-        );
+    pub unsafe fn deallocate_unknown_align(&mut self, ptr: NonNull<u8>) -> usize {
+        // Safety: `ptr` is a previously allocated memory block with the same
+        //         alignment as `align`. This is upheld by the caller.
+        let old_block = used_block_hdr_for_allocation_unknown_align(ptr).cast::<UsedBlockHdr>();
+        let hole_addr_u8 = old_block.as_ptr() as *mut u8;
+        let hole_size = old_block.as_ref().common.size - SIZE_USED;
 
         deallocate(self, hole_addr_u8, hole_size);
         hole_size

@@ -430,10 +430,7 @@ impl<'pool, FLBitmap: BinInteger, SLBitmap: BinInteger, const FLLEN: usize, cons
             let mut block = NonNull::new_unchecked(cursor as *mut FreeBlockHdr);
 
             // Initialize the new free block
-            block.as_mut().common = BlockHdr {
-                size: chunk_size - GRANULARITY,
-                prev_phys_block: None,
-            };
+            block.as_mut().common = BlockHdr::new(chunk_size - GRANULARITY, None);
 
             // Cap the end with a sentinel block (a permanently-used block)
             let mut sentinel_block = block
@@ -442,10 +439,8 @@ impl<'pool, FLBitmap: BinInteger, SLBitmap: BinInteger, const FLLEN: usize, cons
                 .next_phys_block()
                 .cast::<UsedBlockHdr>();
 
-            sentinel_block.as_mut().common = BlockHdr {
-                size: GRANULARITY | SIZE_USED | SIZE_SENTINEL,
-                prev_phys_block: Some(block.cast()),
-            };
+            sentinel_block.as_mut().common =
+                BlockHdr::new(GRANULARITY | SIZE_USED | SIZE_SENTINEL, Some(block.cast()));
 
             // Link the free block to the corresponding free list
             self.link_free_block(block, chunk_size - GRANULARITY);
@@ -702,6 +697,7 @@ impl<'pool, FLBitmap: BinInteger, SLBitmap: BinInteger, const FLLEN: usize, cons
                 // Safety: It's unreachable
                 unreachable_unchecked()
             });
+
             let mut next_phys_block = block.as_ref().common.next_phys_block();
             let size_and_flags = block.as_ref().common.size;
             let size = size_and_flags /* size_and_flags & SIZE_SIZE_MASK */;
@@ -765,10 +761,8 @@ impl<'pool, FLBitmap: BinInteger, SLBitmap: BinInteger, const FLLEN: usize, cons
                     next_phys_block.as_mut().prev_phys_block = Some(new_free_block.cast());
 
                     // Create the new free block header
-                    new_free_block.as_mut().common = BlockHdr {
-                        size: new_free_block_size,
-                        prev_phys_block: Some(block.cast()),
-                    };
+                    new_free_block.as_mut().common =
+                        BlockHdr::new(new_free_block_size, Some(block.cast()));
                     self.link_free_block(new_free_block, new_free_block_size);
                     new_size
                 } else {
@@ -941,19 +935,6 @@ impl<'pool, FLBitmap: BinInteger, SLBitmap: BinInteger, const FLLEN: usize, cons
         new_next_phys_block.as_mut().prev_phys_block = Some(block.cast());
     }
 
-    /// Get the actual usable size of a previously allocated memory block.
-    ///
-    /// # Safety
-    ///
-    ///  - `ptr` must denote a memory block previously allocated via some
-    ///    instance of `Self`.
-    ///  - The call must happen-before the deallocation or reallocation of the
-    ///    memory block.
-    ///
-    pub unsafe fn allocation_usable_size(ptr: NonNull<u8>) -> usize {
-        size_of_allocation_unknown_align(ptr)
-    }
-
     // TODO: `reallocate_no_move` (constant-time reallocation)
 
     /// Shrink or grow a previously allocated memory block.
@@ -983,7 +964,7 @@ impl<'pool, FLBitmap: BinInteger, SLBitmap: BinInteger, const FLLEN: usize, cons
 
         // Do this early so that the compiler can de-duplicate common
         // subexpressions such as `block.as_ref().common.size - SIZE_USED`
-        let old_size = size_of_allocation(ptr, new_layout.align());
+        let old_size = size_of_allocation_in_block(ptr, block);
 
         // First try to shrink or grow the block in-place (i.e., without
         // allocating a whole new memory block).
@@ -993,6 +974,39 @@ impl<'pool, FLBitmap: BinInteger, SLBitmap: BinInteger, const FLLEN: usize, cons
 
         // Allocate a whole new memory block
         let new_ptr = self.allocate(new_layout)?;
+
+        // Move the existing data into the new location
+        debug_assert!(new_layout.size() >= old_size);
+        core::ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_ptr(), old_size);
+
+        // Deallocate the old memory block.
+        self.deallocate(ptr, new_layout.align());
+
+        Some(new_ptr)
+    }
+
+    pub unsafe fn reallocate_unknown_align(
+        &mut self,
+        ptr: NonNull<u8>,
+        new_size: usize,
+    ) -> Option<NonNull<u8>> {
+        // Safety: `ptr` is a previously allocated memory block with the same
+        //         alignment as `align`. This is upheld by the caller.
+        let block = used_block_hdr_for_allocation_unknown_align(ptr);
+
+        // Do this early so that the compiler can de-duplicate common
+        // subexpressions such as `block.as_ref().common.size - SIZE_USED`
+        let old_size = size_of_allocation_in_block(ptr, block);
+
+        let new_layout = Layout::from_size_align_unchecked(new_size, mem::size_of::<usize>());
+        // First try to shrink or grow the block in-place (i.e., without
+        // allocating a whole new memory block).
+        if let Some(x) = self.reallocate_inplace(ptr, block, &new_layout) {
+            return Some(x);
+        }
+
+        // Allocate a whole new memory block
+        let new_ptr = self.allocate(&new_layout)?;
 
         // Move the existing data into the new location
         debug_assert!(new_layout.size() >= old_size);
@@ -1065,10 +1079,8 @@ impl<'pool, FLBitmap: BinInteger, SLBitmap: BinInteger, const FLLEN: usize, cons
                     next_phys_block.as_mut().prev_phys_block = Some(new_free_block.cast());
                 }
 
-                new_free_block.as_mut().common = BlockHdr {
-                    size: new_free_block_size,
-                    prev_phys_block: Some(block.cast()),
-                };
+                new_free_block.as_mut().common =
+                    BlockHdr::new(new_free_block_size, Some(block.cast()));
                 self.link_free_block(new_free_block, new_free_block_size);
 
                 block.as_mut().common.size = new_size | SIZE_USED;
@@ -1127,10 +1139,8 @@ impl<'pool, FLBitmap: BinInteger, SLBitmap: BinInteger, const FLLEN: usize, cons
 
                 next_phys_block =
                     NonNull::new_unchecked(block.cast::<u8>().as_ptr().add(new_size)).cast();
-                next_phys_block.as_mut().common = BlockHdr {
-                    size: next_phys_block_size,
-                    prev_phys_block: Some(block.cast()),
-                };
+                next_phys_block.as_mut().common =
+                    BlockHdr::new(next_phys_block_size, Some(block.cast()));
                 self.link_free_block(next_phys_block, next_phys_block_size);
 
                 // Update `next_next_phys_block.prev_phys_block` accordingly
@@ -1245,10 +1255,8 @@ impl<'pool, FLBitmap: BinInteger, SLBitmap: BinInteger, const FLLEN: usize, cons
                 moving_clearance_end.as_mut().prev_phys_block = Some(new_free_block.cast());
             }
 
-            new_free_block.as_mut().common = BlockHdr {
-                size: new_free_block_size,
-                prev_phys_block: Some(new_block.cast()),
-            };
+            new_free_block.as_mut().common =
+                BlockHdr::new(new_free_block_size, Some(new_block.cast()));
             self.link_free_block(new_free_block, new_free_block_size);
         }
 

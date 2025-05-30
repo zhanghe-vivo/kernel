@@ -174,6 +174,11 @@ impl Heap {
         self.allocated -= free_size;
     }
 
+    pub unsafe fn deallocate_unknown_align(&mut self, ptr: NonNull<u8>) {
+        let free_size = self.holes.deallocate_unknown_align(ptr);
+        self.allocated -= free_size;
+    }
+
     pub unsafe fn realloc(
         &mut self,
         ptr: NonNull<u8>,
@@ -182,26 +187,44 @@ impl Heap {
     ) -> Option<NonNull<u8>> {
         // Safety: `ptr` is a previously allocated memory block with the same
         //         alignment as `align`. This is upheld by the caller.
-        let block = used_block_hdr_for_allocation(ptr, layout.align());
-        let overhead = ptr.as_ptr() as usize - block.as_ptr() as usize;
-        let size = overhead.checked_add(new_size)?;
-        let size = size.checked_add(GRANULARITY - 1)? & !(GRANULARITY - 1);
-        let hole_size = block.as_ref().common.size - SIZE_USED;
+        let old_size = size_of_allocation(ptr, layout.align());
 
-        if size <= hole_size {
+        if new_size <= old_size {
             return Some(ptr);
         }
 
-        let new_layout = Layout::from_size_align(new_size, layout.align()).unwrap();
+        let new_layout = Layout::from_size_align_unchecked(new_size, layout.align());
         // Allocate a whole new memory block
         let new_ptr = self.allocate_first_fit(&new_layout)?;
-        let old_size = hole_size - overhead;
         // Move the existing data into the new location
-        debug_assert!(new_size >= old_size);
         core::ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_ptr(), old_size);
 
         // Deallocate the old memory block.
         self.deallocate(ptr, layout);
+
+        Some(new_ptr)
+    }
+
+    pub unsafe fn realloc_unknown_align(
+        &mut self,
+        ptr: NonNull<u8>,
+        new_size: usize,
+    ) -> Option<NonNull<u8>> {
+        // Safety: `ptr` is a previously allocated memory block with the same
+        //         alignment as `align`. This is upheld by the caller.
+        let old_size = size_of_allocation_unknown_align(ptr);
+        if new_size <= old_size {
+            return Some(ptr);
+        }
+
+        let new_layout = Layout::from_size_align_unchecked(new_size, mem::size_of::<usize>());
+        // Allocate a whole new memory block
+        let new_ptr = self.allocate_first_fit(&new_layout)?;
+        // Move the existing data into the new location
+        core::ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_ptr(), old_size);
+
+        // Deallocate the old memory block.
+        self.deallocate_unknown_align(ptr);
 
         Some(new_ptr)
     }

@@ -48,6 +48,14 @@ pub(crate) const SIZE_SENTINEL: usize = 2;
 pub(crate) const SIZE_SIZE_MASK: usize = !((1 << GRANULARITY_LOG2) - 1);
 
 impl BlockHdr {
+    #[inline]
+    pub(crate) fn new(size: usize, prev_phys_block: Option<NonNull<BlockHdr>>) -> Self {
+        Self {
+            size,
+            prev_phys_block,
+        }
+    }
+
     /// Get the next block, assuming it exists.
     ///
     /// # Safety
@@ -129,12 +137,21 @@ pub(crate) unsafe fn used_block_hdr_for_allocation(
     ptr: NonNull<u8>,
     align: usize,
 ) -> NonNull<UsedBlockHdr> {
-    if align >= GRANULARITY {
+    let block_hdr = if align >= GRANULARITY {
         // Read the header pointer
         (*UsedBlockPad::get_for_allocation(ptr)).block_hdr
     } else {
         NonNull::new_unchecked(ptr.as_ptr().sub(GRANULARITY / 2)).cast()
-    }
+    };
+
+    debug_assert_eq!(block_hdr.as_ref().common.size & SIZE_USED, SIZE_USED);
+    debug_assert_eq!(block_hdr.as_ref().common.size & SIZE_SENTINEL, 0);
+    debug_assert_ne!(block_hdr.as_ref().common.size & SIZE_SIZE_MASK, 0);
+
+    let block_hdr2 = used_block_hdr_for_allocation_unknown_align(ptr);
+    debug_assert_eq!(block_hdr, block_hdr2);
+
+    block_hdr
 }
 
 /// Find the `UsedBlockHdr` for an allocation (any `NonNull<u8>` returned by
@@ -169,7 +186,7 @@ pub(crate) unsafe fn used_block_hdr_for_allocation_unknown_align(
     );
 
     // Read it as `Option<NonNull<BlockHdr>>`.
-    if let Some(block_ptr) = *c2_prev_phys_block_ptr {
+    let block_hdr = if let Some(block_ptr) = *c2_prev_phys_block_ptr {
         // Where does the block represented by `block_ptr` end?
         // (Note: `block_ptr.size` might include `SIZE_USED`.)
         let block_end = block_ptr.as_ptr() as usize + block_ptr.as_ref().size;
@@ -187,7 +204,29 @@ pub(crate) unsafe fn used_block_hdr_for_allocation_unknown_align(
     } else {
         // It's non-nullable in Case 1, so we can rule out Case 1.
         NonNull::new_unchecked(c2_block_hdr)
-    }
+    };
+
+    debug_assert_eq!(block_hdr.as_ref().common.size & SIZE_USED, SIZE_USED);
+    debug_assert_eq!(block_hdr.as_ref().common.size & SIZE_SENTINEL, 0);
+    debug_assert_ne!(block_hdr.as_ref().common.size & SIZE_SIZE_MASK, 0);
+
+    block_hdr
+}
+
+#[inline]
+pub(crate) unsafe fn size_of_allocation_in_block(
+    ptr: NonNull<u8>,
+    block: NonNull<UsedBlockHdr>,
+) -> usize {
+    let size = block.as_ref().common.size - SIZE_USED;
+    debug_assert_eq!(size, block.as_ref().common.size & SIZE_SIZE_MASK);
+    debug_assert!(size > 0);
+
+    let block_end = block.as_ptr() as usize + size;
+    let payload_start = ptr.as_ptr() as usize;
+
+    debug_assert!(block_end > payload_start);
+    block_end - payload_start
 }
 
 /// Get the payload size of the allocation. The returned size might be
@@ -201,16 +240,8 @@ pub(crate) unsafe fn used_block_hdr_for_allocation_unknown_align(
 ///
 #[inline]
 pub(crate) unsafe fn size_of_allocation(ptr: NonNull<u8>, align: usize) -> usize {
-    // Safety: `ptr` is a previously allocated memory block with the same
-    //         alignment as `align`. This is upheld by the caller.
     let block = used_block_hdr_for_allocation(ptr, align);
-
-    let size = block.as_ref().common.size - SIZE_USED;
-    debug_assert_eq!(size, block.as_ref().common.size & SIZE_SIZE_MASK);
-
-    let block_end = block.as_ptr() as usize + size;
-    let payload_start = ptr.as_ptr() as usize;
-    block_end - payload_start
+    size_of_allocation_in_block(ptr, block)
 }
 
 /// Get the payload size of the allocation with an unknown alignment. The
@@ -226,11 +257,17 @@ pub(crate) unsafe fn size_of_allocation_unknown_align(ptr: NonNull<u8>) -> usize
     // Safety: `ptr` is a previously allocated memory block.
     //         This is upheld by the caller.
     let block = used_block_hdr_for_allocation_unknown_align(ptr);
+    size_of_allocation_in_block(ptr, block)
+}
 
-    let size = block.as_ref().common.size - SIZE_USED;
-    debug_assert_eq!(size, block.as_ref().common.size & SIZE_SIZE_MASK);
+#[inline]
+pub(crate) unsafe fn size_of_used(ptr: NonNull<u8>, align: usize) -> usize {
+    let block = used_block_hdr_for_allocation(ptr, align);
+    block.as_ref().common.size - SIZE_USED
+}
 
-    let block_end = block.as_ptr() as usize + size;
-    let payload_start = ptr.as_ptr() as usize;
-    block_end - payload_start
+#[inline]
+pub(crate) unsafe fn size_of_used_unknown_align(ptr: NonNull<u8>) -> usize {
+    let block = used_block_hdr_for_allocation_unknown_align(ptr);
+    block.as_ref().common.size - SIZE_USED
 }

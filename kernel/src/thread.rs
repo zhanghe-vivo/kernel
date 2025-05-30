@@ -2,7 +2,6 @@
 #[cfg(feature = "smp")]
 use crate::cpu::CPU_DETACHED;
 use crate::{
-    allocator::malloc,
     arch::Arch,
     clock,
     cpu::Cpu,
@@ -14,6 +13,10 @@ use crate::{
     sync::{lock::mutex::*, RawSpin, SpinLock},
     timer::{Timer, TimerState},
     zombie,
+};
+use alloc::{
+    alloc::{alloc, Layout},
+    boxed::Box,
 };
 use bluekernel_infra::list::doubly_linked_list::{LinkedListNode, ListHead};
 use core::{
@@ -1071,7 +1074,12 @@ impl ThreadBuilder {
         thread.priority = ThreadPriority::new(self.priority);
         // If user doesn't specify an existing stack, we'll allocate one.
         let stack_start = self.stack_start.unwrap_or_else(|| {
-            let stack_start = malloc(self.stack_size);
+            let stack_start = unsafe {
+                alloc(Layout::from_size_align_unchecked(
+                    self.stack_size,
+                    bluekernel_kconfig::ALIGN_SIZE as usize,
+                ))
+            };
             thread.set_should_free_stack(true);
             unsafe { NonNull::new_unchecked(stack_start) }
         });
@@ -1149,15 +1157,13 @@ impl ThreadBuilder {
 
     #[cfg(feature = "heap")]
     pub fn build_from_heap(self) -> Option<NonNull<Thread>> {
-        let ptr = KObjectBase::new_raw(
-            ObjectClassType::ObjectClassThread,
-            (&self).name.as_ref().unwrap().as_ptr(),
-        );
+        let thread = Box::<[u8]>::new_zeroed_slice(mem::size_of::<Thread>());
+        let ptr = Box::leak(thread).as_mut_ptr().cast::<Thread>();
         let pinned_init = self.build_pinned_init();
         unsafe {
-            let _ = pinned_init.__pinned_init(ptr as *mut Thread);
+            let _ = pinned_init.__pinned_init(ptr);
         }
-        NonNull::new(ptr as *mut Thread)
+        NonNull::new(ptr)
     }
 
     pub fn build_from_static_allocation(self) -> Result<(), &'static str> {

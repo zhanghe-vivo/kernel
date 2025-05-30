@@ -42,7 +42,7 @@ unsafe impl GlobalAlloc for KernelAllocator {
     /// try to allocate memory with the given layout
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         HEAP.alloc(layout)
-            .map_or(ptr::null_mut(), |allocation| allocation.as_ptr())
+            .map_or(ptr::null_mut(), |ptr| ptr.as_ptr())
     }
 
     /// deallocate the memory pointed by ptr with the given layout
@@ -53,7 +53,7 @@ unsafe impl GlobalAlloc for KernelAllocator {
     /// reallocate memory with the given size and layout
     unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
         HEAP.realloc(ptr, layout, new_size)
-            .map_or(ptr::null_mut(), |allocation| allocation.as_ptr())
+            .map_or(ptr::null_mut(), |ptr| ptr.as_ptr())
     }
 }
 
@@ -164,8 +164,7 @@ pub fn free(ptr: *mut u8) {
     if core::intrinsics::unlikely(ptr.is_null()) {
         return;
     }
-    let layout = Layout::from_size_align(0, ALIGN_SIZE).unwrap();
-    unsafe { HEAP.dealloc(ptr, layout) };
+    unsafe { HEAP.deallocate_unknown_align(ptr) };
 }
 
 /// Reallocate memory pointed by ptr to have a new size.
@@ -182,10 +181,9 @@ pub fn realloc(ptr: *mut u8, newsize: usize) -> *mut u8 {
     if ptr.is_null() {
         return malloc(newsize);
     }
-    let layout = Layout::from_size_align(0, ALIGN_SIZE).unwrap();
     let ptr = unsafe {
-        HEAP.realloc(ptr, layout, newsize)
-            .map_or(ptr::null_mut(), |allocation| allocation.as_ptr())
+        HEAP.realloc_unknown_align(ptr, newsize)
+            .map_or(ptr::null_mut(), |ptr| ptr.as_ptr())
     };
     ptr
 }
@@ -230,9 +228,14 @@ pub fn malloc_align(size: usize, align: usize) -> *mut u8 {
 /// # Arguments
 ///
 /// * `ptr` - Pointer to the memory region to deallocate.
-pub fn free_align(ptr: *mut u8) {
-    let layout = Layout::from_size_align(0, ALIGN_SIZE).unwrap();
-    unsafe { HEAP.dealloc(ptr, layout) };
+pub fn free_align(ptr: *mut u8, align: usize) {
+    if ptr.is_null() {
+        return;
+    }
+    unsafe {
+        let layout = Layout::from_size_align_unchecked(0, align);
+        HEAP.dealloc(ptr, layout);
+    }
 }
 
 /// Retrieves various statistics about the current state of the heap's memory usage.

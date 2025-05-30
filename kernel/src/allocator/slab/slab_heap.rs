@@ -1,7 +1,11 @@
-use core::{alloc::Layout, ptr::NonNull};
+use core::{alloc::Layout, mem, ptr::NonNull};
 
-use crate::allocator::{align_down_size, align_up_size, buddy::buddy_system_heap};
-use bluekernel_infra::list::doubly_linked_list::SinglyLinkedList;
+use crate::allocator::{
+    align_down_size, align_up_size,
+    block_hdr::{size_of_used, size_of_used_unknown_align},
+    buddy::buddy_system_heap,
+};
+use bluekernel_infra::list::singly_linked_list::SinglyLinkedList;
 
 pub struct Slab {
     block_size: usize,
@@ -228,13 +232,22 @@ impl Heap {
                 self.allocated -= 4096;
             }
             HeapAllocator::BuddySystemAllocator => {
-                let size = self
-                    .buddy_system_allocator
-                    .get_block_size(ptr, layout.align());
-                self.buddy_system_allocator.deallocate(ptr, layout);
+                if layout.size() == 0 {
+                    size = size_of_used_unknown_align(ptr);
+                    self.buddy_system_allocator.deallocate_unknown_align(ptr);
+                } else {
+                    size = size_of_used(ptr, layout.align());
+                    self.buddy_system_allocator.deallocate(ptr, layout);
+                }
+
                 self.allocated -= size;
             }
         }
+    }
+
+    pub unsafe fn deallocate_unknown_align(&mut self, ptr: NonNull<u8>) {
+        let layout = Layout::from_size_align_unchecked(0, mem::size_of::<usize>());
+        self.deallocate(ptr, &layout);
     }
 
     pub unsafe fn reallocate(
@@ -261,6 +274,36 @@ impl Heap {
             return Some(new_ptr);
         } else {
             return self.buddy_system_allocator.reallocate(ptr, new_layout);
+        }
+    }
+
+    pub unsafe fn reallocate_unknown_align(
+        &mut self,
+        ptr: NonNull<u8>,
+        new_size: usize,
+    ) -> Option<NonNull<u8>> {
+        let slab_index = (ptr.as_ptr() as usize - self.begin_addr) / self.slab_size;
+        let size = 64 * (slab_index + 1);
+        if size <= 4096 {
+            // can use old block
+            if new_size <= size {
+                return Some(ptr);
+            }
+
+            let new_layout = Layout::from_size_align_unchecked(new_size, mem::size_of::<usize>());
+            // Allocate a whole new memory block
+            let new_ptr = self.allocate(&new_layout)?;
+            // Move the existing data into the new location
+            core::ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_ptr(), size);
+            // Deallocate the old memory block.
+            let layout = Layout::from_size_align_unchecked(0, mem::size_of::<usize>());
+            self.deallocate(ptr, &layout);
+
+            return Some(new_ptr);
+        } else {
+            return self
+                .buddy_system_allocator
+                .reallocate_unknown_align(ptr, new_size);
         }
     }
 
