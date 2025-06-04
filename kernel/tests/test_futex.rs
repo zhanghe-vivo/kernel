@@ -58,7 +58,7 @@ fn test_futex_thread_wait() {
         .name(unsafe { core::ffi::CStr::from_bytes_with_nul_unchecked(b"futex_test\0") })
         .entry_fn(thread_entry)
         .arg(Arc::into_raw(futex_clone) as *mut core::ffi::c_void)
-        .stack_size(4096) // 4KB stack
+        .stack_size(65536) // 4KB stack
         .priority(1)
         .tick(50)
         .build_from_heap()

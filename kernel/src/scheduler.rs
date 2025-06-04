@@ -20,6 +20,14 @@ use core::{
 };
 use pinned_init::{pin_data, pin_init, pin_init_array_from_fn, PinInit};
 
+#[cfg(all(target_arch = "aarch64", feature = "smp"))]
+use crate::arch::{asm::DsbOptions, gic::send_sgi};
+
+#[cfg(target_arch = "aarch64")]
+use crate::arch::interrupt::{IrqHandler, SGI_SCHED};
+#[cfg(target_arch = "aarch64")]
+use {alloc::boxed::Box, bluekernel_kconfig::CPUS_NR};
+
 struct DisableInterruptGuard {
     level: usize,
 }
@@ -304,6 +312,12 @@ impl Scheduler {
             let bind_cpu = thread.get_bind_cpu();
             if bind_cpu == CPUS_NUMBER as u8 {
                 Cpus::insert_thread_to_global(thread);
+                let cpu_mask = CPU_MASK ^ (1 << cpu_id);
+                #[cfg(target_arch = "aarch64")]
+                {
+                    Arch::dsb(DsbOptions::NonShareable);
+                    send_sgi(SGI_SCHED, cpu_mask);
+                }
             } else {
                 if bind_cpu == cpu_id {
                     self.priority_manager.insert_thread(thread);
@@ -311,6 +325,12 @@ impl Scheduler {
                     Cpu::get_scheduler_by_id(bind_cpu)
                         .priority_manager
                         .insert_thread(thread);
+                    let cpu_mask = 1 << bind_cpu;
+                    #[cfg(target_arch = "aarch64")]
+                    {
+                        Arch::dsb(DsbOptions::NonShareable);
+                        send_sgi(SGI_SCHED, cpu_mask);
+                    }
                 }
             }
         }
@@ -446,16 +466,12 @@ impl Scheduler {
                 to_th.stat.set_base_state(ThreadState::RUNNING);
 
                 #[cfg(feature = "debugging_scheduler")]
-                println!(
-                    "Switching to {:?}, usage of stack: {:?}",
-                    (to_th as *const Thread),
-                    to_th.stack.usage()
-                );
+                println!("Switching to {}", to_th);
 
                 self.set_current_thread(thread);
                 self.ctx_switch_unlock();
                 // enable interrupt in context_switch_to
-                Arch::context_switch_to(to_th.stack().sp());
+                Arch::context_switch_to(to_th.stack().sp_ptr());
             }
             None => panic!("!!! no thread !!!"),
         }
@@ -511,7 +527,7 @@ impl Scheduler {
             if Cpu::is_in_interrupt() {
                 self.set_need_reschedule(true);
                 self.ctx_switch_unlock();
-            } else if !self.preemptable() {
+            } else if self.get_sched_lock_level() > 1 {
                 self.ctx_switch_unlock();
             } else {
                 let cur_thread = self.get_current_thread();
@@ -519,16 +535,20 @@ impl Scheduler {
                     unsafe {
                         #[cfg(feature = "debugging_scheduler")]
                         println!(
-                            "cpu #{} switches from {:?} (stack usage: {}) to {:?} (stack usage: {})",
+                            "cpu #{} switches from {} to {} ",
                             self.id,
-                            cur_thread.unwrap().as_ptr(),
-                            cur_thread.unwrap().as_ref().stack.usage(),
-                            to_thread.as_ptr(),
-                            to_thread.as_ref().stack.usage(),
+                            cur_thread.unwrap().as_ref(),
+                            to_thread.as_ref(),
                         );
 
                         #[cfg(feature = "overflow_check")]
-                        assert!(!cur_thread.as_ref().stack.check_overflow());
+                        assert!(!cur_thread.unwrap().as_ref().stack.check_overflow());
+
+                        self.set_current_thread(to_thread);
+                        Arch::context_switch(
+                            cur_thread.unwrap().as_ref().stack().sp_ptr(),
+                            to_thread.as_ref().stack().sp_ptr(),
+                        );
                     }
                 } else {
                     self.ctx_switch_unlock();
@@ -569,12 +589,14 @@ impl Scheduler {
 
     #[cfg(not(hardware_schedule))]
     pub fn do_task_schedule(&mut self) {
+        use crate::{println, scheduler};
         if !self.is_scheduled() {
             return;
         }
-        let _ = DisableInterruptGuard::new();
+        let level = Arch::disable_interrupts();
         if Cpu::is_in_interrupt() {
             self.set_need_reschedule(true);
+            Arch::enable_interrupts(level);
             return;
         }
         let changed = self.preempt_disable();
@@ -592,28 +614,31 @@ impl Scheduler {
                 unsafe {
                     #[cfg(feature = "debugging_scheduler")]
                     println!(
-                        "cpu #{} switches from {:?} (stack usage: {}) to {:?} (stack usage: {})",
+                        "cpu #{} switches from {} to {}",
                         self.id,
-                        cur_thread.unwrap().as_ptr(),
-                        cur_thread.unwrap().as_ref().stack.usage(),
-                        to_thread.as_ptr(),
-                        to_thread.as_ref().stack.usage(),
+                        cur_thread.unwrap().as_ref(),
+                        to_thread.as_ref(),
                     );
 
                     #[cfg(feature = "overflow_check")]
-                    assert!(!cur_thread.as_ref().stack.check_overflow());
+                    assert!(!cur_thread.unwrap().as_ref().stack.check_overflow());
+                    self.set_current_thread(to_thread);
+                    Arch::context_switch(
+                        cur_thread.unwrap().as_ref().stack().sp_ptr(),
+                        to_thread.as_ref().stack().sp_ptr(),
+                    );
                 }
             } else {
                 self.ctx_switch_unlock();
             }
         }
-
+        Arch::enable_interrupts(level);
         // TODO: add Signal process.
     }
 
     #[no_mangle]
     pub extern "C" fn switch_context_in_irq(stack_ptr: *mut usize) -> *mut usize {
-        let _ = DisableInterruptGuard::new();
+        let level = Arch::disable_interrupts();
         let scheduler = Cpu::get_current_scheduler();
         // TODO: add Signal preprocess.
         if scheduler.need_reschedule() {
@@ -623,7 +648,6 @@ impl Scheduler {
                 scheduler.preempt_enable_no_resched();
             } else if !Cpu::is_in_interrupt() {
                 scheduler.set_need_reschedule(false);
-
                 #[cfg(feature = "smp")]
                 scheduler.sched_lock_smp();
 
@@ -634,12 +658,10 @@ impl Scheduler {
                         #[cfg(feature = "debugging_scheduler")]
                         unsafe {
                             println!(
-																"cpu #{} switches from {:?} (stack usage: {}) to {:?} (stack usage: {})",
+                                "cpu #{} switches from {} to {}",
                                 scheduler.id,
-                                cur_th.as_ptr(),
-                                cur_th.as_ref().stack().usage(),
-                                to_thread.as_ptr(),
-                                to_thread.as_ref().stack().usage(),
+                                cur_th.as_ref(),
+                                to_thread.as_ref(),
                             );
                         }
                         #[cfg(feature = "overflow_check")]
@@ -658,16 +680,12 @@ impl Scheduler {
                     } else {
                         #[cfg(feature = "debugging_scheduler")]
                         unsafe {
-                            println!(
-                                "cpu #{} switches to {:?} (stack usage: {})",
-                                scheduler.id,
-                                to_thread.as_ptr(),
-                                to_thread.as_ref().stack().usage(),
-                            );
+                            println!("cpu #{} switches to {}", scheduler.id, to_thread.as_ref(),);
                         }
                     }
                     scheduler.set_current_thread(to_thread);
                     scheduler.ctx_switch_unlock();
+                    Arch::enable_interrupts(level);
                     return unsafe { to_thread.as_ref().stack().sp() };
                 } else {
                     scheduler.ctx_switch_unlock();
@@ -677,7 +695,7 @@ impl Scheduler {
                 scheduler.preempt_enable_no_resched();
             }
         }
-
+        Arch::enable_interrupts(level);
         // No need to switch, just pop.
         stack_ptr
     }
@@ -714,5 +732,29 @@ impl Scheduler {
         let thread = unsafe { self.get_current_thread().unwrap_unchecked().as_mut() };
         thread.reset_to_yield();
         self.sched_unlock_with_sched(level);
+    }
+
+    #[no_mangle]
+    pub extern "C" fn unlock_in_ctx_switch() {
+        let scheduler = Cpu::get_current_scheduler();
+        scheduler.ctx_switch_unlock();
+    }
+}
+
+#[cfg(target_arch = "aarch64")]
+struct SchedulerIrq {}
+#[cfg(target_arch = "aarch64")]
+impl IrqHandler for SchedulerIrq {
+    fn handle(&mut self) -> Result<(), &'static str> {
+        Cpu::get_current_scheduler().do_task_schedule();
+        Ok(())
+    }
+}
+
+#[cfg(target_arch = "aarch64")]
+pub fn register_reschedule() {
+    Arch::register_handler(SGI_SCHED, Box::new(SchedulerIrq {}));
+    for i in 0..CPUS_NR {
+        Arch::enable_irq(SGI_SCHED, i as usize);
     }
 }

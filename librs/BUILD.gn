@@ -12,7 +12,9 @@ build_rust("librs") {
     "//kernel/scal:bluekernel_scal",
     "//libc:libc",
   ]
-
+  if (board == "qemu_virt64_aarch64") {
+    deps += [ "//external/semihosting/v0.1.20:semihosting" ]
+  }
   rustflags = common_crate_rustflags
 }
 
@@ -26,7 +28,9 @@ build_rust("librs_swi") {
     "//kernel/scal:bluekernel_scal_swi",
     "//libc:libc",
   ]
-
+  if (board == "qemu_virt64_aarch64") {
+    deps += [ "//external/semihosting/v0.1.20:semihosting" ]
+  }
   rustflags = common_crate_rustflags
 }
 
@@ -40,6 +44,9 @@ build_rust("librs_static") {
     "//kernel/scal:bluekernel_scal_std",
     "//libc:libc",
   ]
+  if (board == "qemu_virt64_aarch64") {
+    deps += [ "//external/semihosting/v0.1.20:semihosting" ]
+  }
   rustflags = common_crate_rustflags
 }
 
@@ -54,7 +61,9 @@ build_rust("librs_test") {
     "//kernel/scal:bluekernel_scal_test",
     "//libc:libc",
   ]
-
+  if (board == "qemu_virt64_aarch64") {
+    deps += [ "//external/semihosting/v0.1.20:semihosting" ]
+  }
   rustflags = common_crate_rustflags
 }
 
@@ -71,6 +80,9 @@ build_rust("librs_unittest_image") {
     "//kernel/scal:bluekernel_scal_test",
     "//libc:libc",
   ]
+  if (board == "qemu_virt64_aarch64") {
+    deps += [ "//external/semihosting/v0.1.20:semihosting" ]
+  }
   proc_macro_deps = [ "//kernel/test_harness:bluekernel_test_macro" ]
   inputs = [ "//kernel/kernel/src/boards/$board/link.x" ]
   rustflags = test_image_rustflags
@@ -81,7 +93,11 @@ gen_qemu_runner("librs_unittest_runner") {
   testonly = true
   img = ":librs_unittest_image"
   qemu = "$qemu_exe"
-  board = "$board"
+  machine = "$machine"
+  if ("$board" == "qemu_virt64_aarch64") {
+    semihosting = true
+    qemu_args = "-cpu cortex-a53 -net none -chardev stdio,id=con,mux=on -serial chardev:con -mon chardev=con,mode=readline"
+  }
 }
 
 run_qemu_check("run_librs_unittest") {
@@ -100,6 +116,8 @@ group("check_librs") {
   deps = [
     ":run_librs_unittest",
     "tests/integration_test:run_librs_integration_test",
-    "tests/posixtestsuite:run_librs_posix_testsuite",
+
+    # wait for virtio
+    # "tests/posixtestsuite:run_librs_posix_testsuite",
   ]
 }

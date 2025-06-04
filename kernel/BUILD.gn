@@ -14,7 +14,6 @@ shared_deps = [
   "//external/bitflags/v2.9.0:bitflags",
   "//external/cfg-if/v1.0.0:cfg_if",
   "//external/const-default/v1.0.0:const_default",
-  "//external/cortex-m:cortex_m",
   "//external/embedded-io/v0.6.1:embedded_io",
   "//external/log/v0.4.22:log",
   "//external/pinned-init/v0.0.8:pinned_init",
@@ -66,6 +65,12 @@ if (board == "qemu_mps2_an385" || board == "qemu_mps3_an547") {
     "--cfg",
     "hardware_schedule",
   ]
+  shared_deps += [ "//external/cortex-m:cortex_m" ]
+} else if (board == "qemu_virt64_aarch64") {
+  shared_deps += [
+    "//external/arm-gic/v0.4.0:arm_gic",
+    "//external/semihosting/v0.1.20:semihosting",
+  ]
 }
 
 shared_rust_build_flags += [
@@ -109,7 +114,9 @@ build_rust("kernel_integration_test") {
       "//external/semihosting/v0.1.20:semihosting",
     ]
   }
-
+  if (board == "qemu_virt64_aarch64") {
+    deps += [ "//external/semihosting/v0.1.20:semihosting" ]
+  }
   inputs = [ "//kernel/kernel/src/boards/$board/link.x" ]
   rustflags = test_image_rustflags
 }
@@ -191,7 +198,11 @@ gen_qemu_runner("integration_test_runner") {
   testonly = true
   img = ":kernel_integration_test"
   qemu = "$qemu_exe"
-  board = "$board"
+  machine = "$machine"
+  if ("$board" == "qemu_virt64_aarch64") {
+    semihosting = true
+    qemu_args = "-cpu cortex-a53 -net none -chardev stdio,id=con,mux=on -serial chardev:con -mon chardev=con,mode=readline"
+  }
 }
 
 run_qemu_check("run_integration_test") {
@@ -209,7 +220,11 @@ gen_qemu_runner("unittest_runner") {
   testonly = true
   img = ":kernel_unittest"
   qemu = "$qemu_exe"
-  board = "$board"
+  machine = "$machine"
+  if ("$board" == "qemu_virt64_aarch64") {
+    semihosting = true
+    qemu_args = "-cpu cortex-a53 -net none -chardev stdio,id=con,mux=on -serial chardev:con -mon chardev=con,mode=readline"
+  }
 }
 
 run_qemu_check("run_unittest") {

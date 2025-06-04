@@ -1,3 +1,4 @@
+#[cfg(not(cortex_a))]
 pub mod console;
 pub mod device;
 mod error;

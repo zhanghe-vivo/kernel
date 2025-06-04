@@ -31,5 +31,16 @@ build_rust("bluekernel_arch") {
       "--cfg",
       "has_fpu",
     ]
+  } else if (board == "qemu_virt64_aarch64") {
+    deps = [
+      "//external/arm-gic/v0.4.0:arm_gic",
+      "//external/spin/v0.9.8:spin",
+      "//external/tock-registers/v0.9.0:tock_registers",
+      "//kernel/kconfig:bluekernel_kconfig",
+    ]
+    rustflags += [
+      "--cfg",
+      "cortex_a",
+    ]
   }
 }

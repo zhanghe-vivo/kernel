@@ -20,7 +20,7 @@ const TIMER_THREAD_PRIO: u8 = 4;
 
 pub type TimeoutFn = extern "C" fn(*mut c_void);
 
-const TIMER_THREAD_STACK_SIZE: usize = 2048;
+const TIMER_THREAD_STACK_SIZE: usize = 65536;
 
 pub(crate) static mut TIMER_WHEEL: UnsafeStaticInit<TimerWheel, TimerWheelInit> =
     UnsafeStaticInit::new(TimerWheelInit);

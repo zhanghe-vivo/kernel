@@ -82,3 +82,16 @@ impl Stack {
         self.usage() == 0
     }
 }
+
+impl core::fmt::Display for Stack {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "Stack {{ sp: {:?}, bottom: {:?}, size: {:?}, usage: {:?} }}",
+            self.sp,
+            self.bottom,
+            self.size,
+            self.usage(),
+        )
+    }
+}

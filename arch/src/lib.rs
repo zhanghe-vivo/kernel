@@ -19,12 +19,13 @@ pub use crate::arm_cortex_m as arch;
 #[cfg(all(cortex_m))]
 include!("arm_cortex_m/handlers.rs");
 
-// #[cfg(all(armv7a, target_os = "none"))]
-// pub mod cortex_a;
-// #[cfg(all(armv7a, target_os = "none"))]
-// pub use crate::cortex_a as arch;
-
-// #[cfg(all(target_arch = "aarch64", target_os = "none"))]
-// pub mod aarch64;
-// #[cfg(all(target_arch = "aarch64", target_os = "none"))]
-// pub use crate::aarch64 as arch;
+#[cfg(cortex_a)]
+use core::arch::global_asm;
+#[cfg(cortex_a)]
+pub mod aarch64_cortex_a;
+#[cfg(cortex_a)]
+pub use crate::aarch64_cortex_a as arch;
+#[cfg(cortex_a)]
+include!("aarch64_cortex_a/exception.rs");
+// #[cfg(cortex_a)]
+// include!("aarch64_cortex_a/start.rs");

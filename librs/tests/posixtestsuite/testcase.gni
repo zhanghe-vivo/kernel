@@ -37,7 +37,11 @@ template("posix_testsuite_case") {
     testonly = true
     img = ":${exe_name}"
     qemu = "$qemu_exe"
-    board = "$board"
+    machine = "$machine"
+    if ("$board" == "qemu_virt64_aarch64") {
+      semihosting = true
+      qemu_args = "-cpu cortex-a53 -net none -chardev stdio,id=con,mux=on -serial chardev:con -mon chardev=con,mode=readline"
+    }
   }
 
   run_qemu_check(checker_name) {

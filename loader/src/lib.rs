@@ -40,7 +40,7 @@ fn copy_content_to_memory(buffer: &[u8], binary: &Elf, mapper: &mut MemoryMapper
             goblin::elf::program_header::PT_LOAD => {
                 let src =
                     buffer[ph.p_offset as usize..(ph.p_offset + ph.p_filesz) as usize].as_ptr();
-                let dst = unsafe { base.offset(offset) };
+                let dst = unsafe { base.offset((ph.p_vaddr as usize - mapper.start()) as isize) };
                 unsafe {
                     memcpy(
                         dst as *mut core::ffi::c_void,
@@ -48,7 +48,6 @@ fn copy_content_to_memory(buffer: &[u8], binary: &Elf, mapper: &mut MemoryMapper
                         ph.p_filesz as core::ffi::c_size_t,
                     )
                 };
-                offset += ph.p_memsz as isize;
             }
             _ => continue,
         }

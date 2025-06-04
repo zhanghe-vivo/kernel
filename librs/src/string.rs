@@ -102,6 +102,26 @@ pub unsafe extern "C" fn memcpy(s1: *mut c_void, s2: *const c_void, n: c_size_t)
     s1
 }
 
+/// See <https://pubs.opengroup.org/onlinepubs/9799919799/functions/memmove.html>.
+#[linkage = "weak"]
+#[no_mangle]
+pub unsafe extern "C" fn memmove(s1: *mut c_void, s2: *const c_void, n: c_size_t) -> *mut c_void {
+    let s1_bytes = s1 as *mut u8;
+    let s2_bytes = s2 as *mut u8;
+    if s1_bytes <= s2_bytes || s1_bytes >= s2_bytes.add(n) {
+        for i in 0..n {
+            *s1_bytes.add(i) = *s2_bytes.add(i);
+        }
+    } else {
+        let mut i = n;
+        while i > 0 {
+            i -= 1;
+            *s1_bytes.add(i) = *s2_bytes.add(i);
+        }
+    }
+    s1
+}
+
 /// See <https://pubs.opengroup.org/onlinepubs/9799919799/functions/memset.html>.
 #[linkage = "weak"]
 #[no_mangle]
@@ -574,6 +594,7 @@ mod tests {
         };
         assert_eq!(dst, *src);
     }
+
     #[test]
     fn check_memcpy2() {
         // check the not aligned case
@@ -587,5 +608,15 @@ mod tests {
             )
         };
         assert_eq!(dst, *src);
+    }
+
+    #[test]
+    fn check_memmove() {
+        let mut data = [1u8, 2, 3, 4, 5];
+        let ptr = data.as_mut_ptr();
+        unsafe {
+            memmove(ptr.add(1) as *mut c_void, ptr as *const c_void, 4);
+        }
+        assert_eq!(data, [1, 1, 2, 3, 4]);
     }
 }

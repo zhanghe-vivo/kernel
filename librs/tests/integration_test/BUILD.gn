@@ -25,6 +25,9 @@ build_rust("librs_integration_test_image") {
       "//external/semihosting/v0.1.20:semihosting",
     ]
   }
+  if (board == "qemu_virt64_aarch64") {
+    deps += [ "//external/semihosting/v0.1.20:semihosting" ]
+  }
   inputs = [ "//kernel/kernel/src/boards/$board/link.x" ]
   rustflags = test_image_rustflags
 }
@@ -33,8 +36,11 @@ gen_qemu_runner("librs_integration_test_runner") {
   testonly = true
   img = ":librs_integration_test_image"
   qemu = "$qemu_exe"
-  board = "$board"
+  machine = "$machine"
   semihosting = true
+  if ("$board" == "qemu_virt64_aarch64") {
+    qemu_args = "-cpu cortex-a53 -net none -chardev stdio,id=con,mux=on -serial chardev:con -mon chardev=con,mode=readline"
+  }
 }
 
 run_qemu_check("run_librs_integration_test") {

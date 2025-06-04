@@ -17,6 +17,9 @@ impl MemoryMapper {
             start: usize::MAX,
             end: 0,
             mem: None,
+            #[cfg(aarch64)]
+            align: 4096,
+            #[cfg(not(aarch64))]
             align: core::mem::size_of::<usize>(),
         }
     }
@@ -30,6 +33,11 @@ impl MemoryMapper {
     pub fn set_entry(&mut self, entry: usize) -> &mut Self {
         self.entry = entry;
         self
+    }
+
+    #[inline]
+    pub fn start(&self) -> usize {
+        self.start
     }
 
     #[inline]
@@ -82,7 +90,7 @@ impl MemoryMapper {
     pub fn real_entry(&self) -> Option<*const u8> {
         self.mem.as_ref().map(|mem| {
             let offset = (self.entry - self.start) as isize;
-            unsafe { mem.as_ptr().offset(offset) }
+            unsafe { self.real_start().unwrap().offset(offset) }
         })
     }
 

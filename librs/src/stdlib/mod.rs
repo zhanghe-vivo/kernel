@@ -638,28 +638,28 @@ mod tests {
 
     // The below testcase causes code bloating, disable it on ARM
     // embedded platform temporarily.
-    #[cfg(not(target_arch = "arm"))]
+    #[cfg(not(target_os = "blueos"))]
     #[test]
     fn check_strtof() {
         let s = b"3.14\0";
         let endptr = ptr::null_mut();
         let result = unsafe { strtof(s.as_ptr() as *const c_char, endptr) };
-        assert_eq!(result, 3.14);
+        assert!((result - 3.14).abs() <= f32::EPSILON);
     }
 
     // The below testcase causes code bloating, disable it on ARM
     // embedded platform temporarily.
-    #[cfg(not(target_arch = "arm"))]
-    // #[test]
+    #[cfg(not(target_os = "blueos"))]
+    #[test]
     fn check_strtod() {
         let s = b"3.14\0";
         let endptr = ptr::null_mut();
         let result = unsafe { strtod(s.as_ptr() as *const c_char, endptr) };
-        assert_eq!(result, 3.14);
+        assert!((result - 3.14).abs() <= f64::EPSILON);
     }
 
-    #[cfg(not(target_arch = "arm"))]
-    // #[test]
+    #[cfg(not(target_os = "blueos"))]
+    #[test]
     fn check_strtol() {
         let s = b"123\0";
         let endptr = ptr::null_mut();

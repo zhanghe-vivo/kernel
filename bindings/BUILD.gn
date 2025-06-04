@@ -20,6 +20,7 @@ bindgen("bindings") {
     "//rt-dev/include/rtdef.h",
     "//rt-dev/components/drivers/include/rtdevice.h",
     "//rt-dev/include/rtthread.h",
+    "//kernel/adapter/${adapter}/include/rt_thread_wrapper.inc",
   ]
   cflags = [
     "--target=$llvm_target",

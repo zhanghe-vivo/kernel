@@ -1,4 +1,6 @@
 #![allow(dead_code)]
+#[cfg(target_arch = "aarch64")]
+use crate::allocator::malloc_align;
 #[cfg(feature = "smp")]
 use crate::cpu::CPU_DETACHED;
 use crate::{
@@ -367,8 +369,8 @@ pub struct Thread {
     #[pin]
     pin: PhantomPinned,
 }
-
-#[repr(C, align(8))]
+#[cfg_attr(target_arch = "aarch64", repr(C, align(16)))]
+#[cfg_attr(not(target_arch = "aarch64"), repr(C, align(8)))]
 struct StackAlignedField<const STACK_SIZE: usize> {
     buf: [u8; STACK_SIZE],
 }
@@ -545,11 +547,17 @@ impl Thread {
         static TID: AtomicUsize = AtomicUsize::new(0);
         let id = TID.fetch_add(1, Ordering::SeqCst);
         let mut tids = TIDS.lock();
-        if id >= MAX_THREAD_SIZE || !tids[id].is_none() {
+        if id >= MAX_THREAD_SIZE {
+            TID.store(0, Ordering::SeqCst);
+        }
+        if !tids[id].is_none() {
+            for i in id..MAX_THREAD_SIZE {
+                if tids[i].is_none() {
+                    return i;
+                }
+            }
             for i in 0..MAX_THREAD_SIZE {
                 if tids[i].is_none() {
-                    tids[i] = Some(thread_ptr);
-                    TID.store(0, Ordering::SeqCst);
                     return i;
                 }
             }
@@ -690,9 +698,8 @@ impl Thread {
     pub fn start(&mut self) {
         let scheduler = Cpu::get_current_scheduler();
         let level = scheduler.sched_lock();
-
         #[cfg(feature = "debugging_scheduler")]
-        println!("Thread {:?} is starting...", self as *const Self);
+        println!("Thread {} is starting...", self);
 
         self.priority.update(self.priority.get_current());
         self.stat.set_suspended(SuspendFlag::Uninterruptible);
@@ -709,7 +716,7 @@ impl Thread {
         let level = scheduler.sched_lock();
 
         #[cfg(feature = "debugging_scheduler")]
-        println!("Thread {:?} is closing...", self as *const Self);
+        println!("Thread {} is closing...", self);
 
         if !self.stat.is_close() {
             if !self.stat.is_init() {
@@ -729,7 +736,7 @@ impl Thread {
         scheduler.preempt_disable();
         TIDS.lock()[self.tid as usize] = None;
         #[cfg(feature = "debugging_scheduler")]
-        println!("Thread {:?} is detaching...", self as *const Self);
+        println!("Thread {} is detaching...", self);
 
         self.close();
 
@@ -780,7 +787,7 @@ impl Thread {
         thread.error = code::EOK;
 
         #[cfg(feature = "debugging_scheduler")]
-        println!("Thread {:?} is sleeping...", thread as *const Thread);
+        println!("Thread {} is sleeping...", thread);
 
         if thread.suspend(SuspendFlag::Interruptible) {
             thread.thread_timer.restart(tick);
@@ -805,7 +812,7 @@ impl Thread {
         let level = scheduler.sched_lock();
 
         #[cfg(feature = "debugging_scheduler")]
-        println!("Thread {:?} is suspending...", self as *const Self);
+        println!("Thread {} is suspending...", self);
 
         if (!self.stat.is_ready()) && (!self.stat.is_running()) {
             println!("thread suspend: thread disorder, stat: {:?}", self.stat);
@@ -830,7 +837,7 @@ impl Thread {
 
         let level = scheduler.sched_lock();
         #[cfg(feature = "debugging_scheduler")]
-        println!("Thread {:?} is resuming...", self as *const Self);
+        println!("Thread {} is resuming...", self);
         self.remove_thread_list_node();
         let need_schedule = scheduler.insert_ready_locked(self);
         scheduler.sched_unlock(level);
@@ -875,8 +882,11 @@ impl Thread {
             if cpu != CPUS_NUMBER as u8 {
                 if cpu != current_cpu {
                     unsafe {
-                        // TODO: call from libcpu.
-                        // rt_bindings::rt_hw_ipi_send(rt_bindings::RT_SCHEDULE_IPI as i32, 1 << cpu)
+                        #[cfg(target_arch = "aarch64")]
+                        {
+                            Arch::dsb(DsbOptions::NonShareable);
+                            send_sgi(SGI_SCHED, 1 << cpu);
+                        }
                     };
                     // self cpu need reschedule
                     scheduler.sched_unlock_with_sched(level);
@@ -884,11 +894,11 @@ impl Thread {
             } else {
                 // Not running on self cpu, but destintation cpu can be itself.
                 unsafe {
-                    // TODO: call from libcpu.
-                    // rt_bindings::rt_hw_ipi_send(
-                    //     rt_bindings::RT_SCHEDULE_IPI as i32,
-                    //     1 << self.oncpu,
-                    // )
+                    #[cfg(target_arch = "aarch64")]
+                    {
+                        Arch::dsb(DsbOptions::NonShareable);
+                        send_sgi(SGI_SCHED, 1 << self.oncpu);
+                    }
                 };
                 scheduler.sched_unlock(level);
             }
@@ -938,13 +948,27 @@ impl PinnedDrop for Thread {
         let this_th = unsafe { Pin::get_unchecked_mut(self) };
 
         #[cfg(feature = "debugging_scheduler")]
-        println!("Dropping thread {:?}", this_th as *const Self);
+        println!("Dropping thread {}", this_th);
 
         this_th.detach();
     }
 }
 
 crate::impl_kobject!(Thread);
+
+impl core::fmt::Display for Thread {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "Thread {{ name: {:?}, tid: {}, state: {:?}, priority: {:?}, stack: ({}) }}",
+            self.get_name(),
+            self.tid,
+            self.stat,
+            self.priority,
+            self.stack
+        )
+    }
+}
 
 /// bindgen for Thread
 #[allow(improper_ctypes_definitions)]
@@ -1074,12 +1098,13 @@ impl ThreadBuilder {
         thread.priority = ThreadPriority::new(self.priority);
         // If user doesn't specify an existing stack, we'll allocate one.
         let stack_start = self.stack_start.unwrap_or_else(|| {
-            let stack_start = unsafe {
-                alloc(Layout::from_size_align_unchecked(
-                    self.stack_size,
-                    bluekernel_kconfig::ALIGN_SIZE as usize,
-                ))
+            let align = if cfg!(target_arch = "aarch64") {
+                16
+            } else {
+                bluekernel_kconfig::ALIGN_SIZE as usize
             };
+            let stack_start =
+                unsafe { alloc(Layout::from_size_align_unchecked(self.stack_size, align)) };
             thread.set_should_free_stack(true);
             unsafe { NonNull::new_unchecked(stack_start) }
         });

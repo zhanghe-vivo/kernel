@@ -86,6 +86,7 @@ pub fn vfs_init() -> Result<(), Error> {
 
     vfslog!("init stdio");
     let mut fd_manager = vfs_fd::get_fd_manager().lock();
+    #[cfg(not(cortex_a))]
     fd_manager.init_stdio()?;
 
     vfslog!("VFS initialized successfully");

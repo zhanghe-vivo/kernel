@@ -71,7 +71,7 @@ impl IdleHooks {
     }
 }
 
-const IDLE_STACK_SIZE: usize = 2048;
+const IDLE_STACK_SIZE: usize = 65536;
 #[pin_data]
 pub struct IdleTheads {
     #[pin]

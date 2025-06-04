@@ -18,6 +18,9 @@ build_rust("loader_integration_test") {
   if (coverage || profile) {
     deps += [ "//kernel/loader:common_cov" ]
   }
+  if (board == "qemu_virt64_aarch64") {
+    deps += [ "//external/semihosting/v0.1.20:semihosting" ]
+  }
   proc_macro_deps = [ "//kernel/test_harness:bluekernel_test_macro" ]
   inputs = [ "//kernel/kernel/src/boards/$board/link.x" ]
   rustflags = test_image_rustflags
@@ -27,8 +30,11 @@ gen_qemu_runner("loader_integration_test_runner") {
   testonly = true
   img = ":loader_integration_test"
   qemu = "$qemu_exe"
-  board = "$board"
+  machine = "$machine"
   semihosting = true
+  if ("$board" == "qemu_virt64_aarch64") {
+    qemu_args = "-cpu cortex-a53 -net none -chardev stdio,id=con,mux=on -serial chardev:con -mon chardev=con,mode=readline"
+  }
 }
 
 run_qemu_check("run_loader_integration_test") {
