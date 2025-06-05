@@ -25,8 +25,11 @@ build_rust("librs_for_posix_testsuite") {
   if (board == "qemu_virt64_aarch64") {
     deps += [ "//external/semihosting/v0.1.20:semihosting" ]
   }
-  features = [ "posixtestsuite" ]
   rustflags = common_crate_rustflags
+  rustflags += [
+    "--cfg",
+    "posixtestsuite",
+  ]
 }
 
 posix_testsuite_case("pthread_create_1_1") {

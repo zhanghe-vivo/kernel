@@ -1,15 +1,15 @@
-#[cfg(feature = "condvar")]
+#[cfg(condvar)]
 pub mod condvar;
-#[cfg(feature = "event")]
+#[cfg(event)]
 pub mod event;
 pub mod futex;
 pub mod ipc_common;
 pub mod lock;
-#[cfg(feature = "mailbox")]
+#[cfg(mailbox)]
 pub mod mailbox;
-#[cfg(feature = "messagequeue")]
+#[cfg(messagequeue)]
 pub mod message_queue;
-#[cfg(feature = "semaphore")]
+#[cfg(semaphore)]
 pub mod semaphore;
 pub mod wait_list;
 

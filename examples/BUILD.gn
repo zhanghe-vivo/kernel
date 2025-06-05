@@ -27,6 +27,7 @@ build_rust("tty_loopback") {
   edition = "2021"
   proc_macro_deps = [ "//external/paste/v1.0.15:paste" ]
   deps = [
+    "//external/log/v0.4.22:log",
     "//kernel/kernel:bluekernel",
     "//libc:libc",
   ]

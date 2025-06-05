@@ -111,36 +111,36 @@ pub enum ObjectClassType {
     //< The object is a thread.
     ObjectClassThread,
     //< The object is a semaphore.
-    #[cfg(feature = "semaphore")]
+    #[cfg(semaphore)]
     ObjectClassSemaphore,
     //< The object is a mutex.
-    #[cfg(feature = "mutex")]
+    #[cfg(mutex)]
     ObjectClassMutex,
     //< The object is a condition variable.
-    #[cfg(feature = "condvar")]
+    #[cfg(condvar)]
     ObjectClassCondVar,
     //< The object is a RwLock.
-    #[cfg(feature = "rwlock")]
+    #[cfg(rwlock)]
     ObjectClassRwLock,
     //< The object is an event.
-    #[cfg(feature = "event")]
+    #[cfg(event)]
     ObjectClassEvent,
     //< The object is a mailbox.
-    #[cfg(feature = "mailbox")]
+    #[cfg(mailbox)]
     ObjectClassMailBox,
     //< The object is a message queue.
-    #[cfg(feature = "messagequeue")]
+    #[cfg(messagequeue)]
     ObjectClassMessageQueue,
     //< The object is a memory heap.
-    #[cfg(feature = "memheap")]
+    #[cfg(memheap)]
     ObjectClassMemHeap,
     //< The object is a memory pool.
-    #[cfg(feature = "mempool")]
+    #[cfg(mempool)]
     ObjectClassMemPool,
     //< The object is a timer.
     ObjectClassTimer,
     //< The object is memory.
-    #[cfg(feature = "heap")]
+    #[cfg(heap)]
     ObjectClassMemory,
     ObjectClassUnknown,
 
@@ -242,26 +242,26 @@ impl ObjectClassType {
             x if x == Self::ObjectClassUninit as u8 => Self::ObjectClassUninit,
             x if x == Self::ObjectClassProcess as u8 => Self::ObjectClassProcess,
             x if x == Self::ObjectClassThread as u8 => Self::ObjectClassThread,
-            #[cfg(feature = "semaphore")]
+            #[cfg(semaphore)]
             x if x == Self::ObjectClassSemaphore as u8 => Self::ObjectClassSemaphore,
-            #[cfg(feature = "mutex")]
+            #[cfg(mutex)]
             x if x == Self::ObjectClassMutex as u8 => Self::ObjectClassMutex,
-            #[cfg(feature = "condvar")]
+            #[cfg(condvar)]
             x if x == Self::ObjectClassCondVar as u8 => Self::ObjectClassCondVar,
-            #[cfg(feature = "rwlock")]
+            #[cfg(rwlock)]
             x if x == Self::ObjectClassRwLock as u8 => Self::ObjectClassRwLock,
-            #[cfg(feature = "event")]
+            #[cfg(event)]
             x if x == Self::ObjectClassEvent as u8 => Self::ObjectClassEvent,
-            #[cfg(feature = "mailbox")]
+            #[cfg(mailbox)]
             x if x == Self::ObjectClassMailBox as u8 => Self::ObjectClassMailBox,
-            #[cfg(feature = "messagequeue")]
+            #[cfg(messagequeue)]
             x if x == Self::ObjectClassMessageQueue as u8 => Self::ObjectClassMessageQueue,
-            #[cfg(feature = "memheap")]
+            #[cfg(memheap)]
             x if x == Self::ObjectClassMemHeap as u8 => Self::ObjectClassMemHeap,
-            #[cfg(feature = "mempool")]
+            #[cfg(mempool)]
             x if x == Self::ObjectClassMemPool as u8 => Self::ObjectClassMemPool,
             x if x == Self::ObjectClassTimer as u8 => Self::ObjectClassTimer,
-            #[cfg(feature = "heap")]
+            #[cfg(heap)]
             x if x == Self::ObjectClassMemory as u8 => Self::ObjectClassMemory,
             _ => Self::ObjectClassUnknown,
         };
@@ -287,26 +287,26 @@ impl ObjectClassType {
         match obj_type.without_static() {
             Self::ObjectClassProcess => mem::size_of::<Kprocess>(),
             Self::ObjectClassThread => mem::size_of::<Thread>(),
-            #[cfg(feature = "semaphore")]
+            #[cfg(semaphore)]
             Self::ObjectClassSemaphore => mem::size_of::<Semaphore>(),
-            #[cfg(feature = "mutex")]
+            #[cfg(mutex)]
             Self::ObjectClassMutex => mem::size_of::<Mutex>(),
-            #[cfg(feature = "condvar")]
+            #[cfg(condvar)]
             Self::ObjectClassCondVar => mem::size_of::<CondVar>(),
-            #[cfg(feature = "rwlock")]
+            #[cfg(rwlock)]
             Self::ObjectClassRwLock => mem::size_of::<RwLock>(),
-            #[cfg(feature = "event")]
+            #[cfg(event)]
             Self::ObjectClassEvent => mem::size_of::<Event>(),
-            #[cfg(feature = "mailbox")]
+            #[cfg(mailbox)]
             Self::ObjectClassMailBox => mem::size_of::<Mailbox>(),
-            #[cfg(feature = "messagequeue")]
+            #[cfg(messagequeue)]
             Self::ObjectClassMessageQueue => mem::size_of::<MessageQueue>(),
-            #[cfg(feature = "memheap")]
+            #[cfg(memheap)]
             Self::ObjectClassMemHeap => mem::size_of::<Memheap>(),
-            #[cfg(feature = "mempool")]
+            #[cfg(mempool)]
             Self::ObjectClassMemPool => mem::size_of::<Mempool>(),
             Self::ObjectClassTimer => mem::size_of::<Timer>(),
-            #[cfg(feature = "heap")]
+            #[cfg(heap)]
             Self::ObjectClassMemory => mem::size_of::<Memory>(),
             _ => unreachable!("not a valid kobject type!"),
         }

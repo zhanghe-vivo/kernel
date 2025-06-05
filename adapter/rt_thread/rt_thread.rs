@@ -79,7 +79,7 @@ pub extern "C" fn rt_thread_detach(thread: *mut Thread) -> i32 {
     return code::EOK.to_errno();
 }
 
-// #[cfg(feature = "heap")]
+// #[cfg(heap)]
 #[no_mangle]
 pub extern "C" fn rt_thread_create(
     name: *const ffi::c_char,
@@ -101,7 +101,7 @@ pub extern "C" fn rt_thread_create(
     thread.map_or(ptr::null_mut(), |ptr| ptr.as_ptr())
 }
 
-#[cfg(feature = "heap")]
+#[cfg(heap)]
 #[no_mangle]
 pub extern "C" fn rt_thread_delete(thread: *mut Thread) -> i32 {
     assert!(!thread.is_null());
@@ -166,7 +166,7 @@ pub extern "C" fn rt_thread_control(thread: *mut Thread, cmd: u32, arg: *mut ffi
             // detach will trigger schedule
             th.detach();
         }
-        #[cfg(feature = "smp")]
+        #[cfg(smp)]
         val if val == ThreadControlAction::ThreadCtrlBindCpu as u32 => {
             let cpu_ptr = NonNull::new(arg as *mut u8);
             if let Some(ptr) = cpu_ptr {

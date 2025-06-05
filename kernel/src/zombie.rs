@@ -4,7 +4,7 @@ use bluekernel_infra::list::doubly_linked_list::ListHead;
 use core::{pin::Pin, ptr::NonNull};
 use pinned_init::{pin_data, pin_init, PinInit};
 
-#[cfg(feature = "smp")]
+#[cfg(smp)]
 use crate::{
     bluekernel_kconfig, c_str, clock,
     error::code,
@@ -13,9 +13,9 @@ use crate::{
     thread::{ThreadEntryFn, ThreadWithStack},
 };
 
-#[cfg(feature = "smp")]
+#[cfg(smp)]
 const ZOMBIE_THREAD_STACK_SIZE: usize = bluekernel_kconfig::IDLE_THREAD_STACK_SIZE as usize;
-#[cfg(feature = "smp")]
+#[cfg(smp)]
 const ZOMBIE_NAME: &'static core::ffi::CStr = crate::c_str!("zombie");
 
 pub(crate) static mut ZOMBIE_MANAGER: UnsafeStaticInit<ZombieManager, ZombieManagerInit> =
@@ -32,7 +32,7 @@ unsafe impl PinInit<ZombieManager> for ZombieManagerInit {
     }
 }
 
-#[cfg(not(feature = "smp"))]
+#[cfg(not(smp))]
 #[pin_data]
 pub(crate) struct ZombieManager {
     lock: RawSpin,
@@ -40,7 +40,7 @@ pub(crate) struct ZombieManager {
     zombies_list: ListHead,
 }
 
-#[cfg(feature = "smp")]
+#[cfg(smp)]
 #[pin_data]
 pub(crate) struct ZombieManager {
     lock: RawSpin,
@@ -53,7 +53,7 @@ pub(crate) struct ZombieManager {
 }
 
 impl ZombieManager {
-    #[cfg(not(feature = "smp"))]
+    #[cfg(not(smp))]
     pub(crate) fn new() -> impl PinInit<Self> {
         pin_init!(Self {
             lock: RawSpin::new(),
@@ -61,7 +61,7 @@ impl ZombieManager {
         })
     }
 
-    #[cfg(feature = "smp")]
+    #[cfg(smp)]
     pub(crate) fn new() -> impl PinInit<Self> {
         pin_init!(Self {
             lock: RawSpin::new(),
@@ -77,7 +77,7 @@ impl ZombieManager {
         })
     }
 
-    #[cfg(feature = "smp")]
+    #[cfg(smp)]
     extern "C" fn zombie_thread_entry(parameter: *mut core::ffi::c_void) {
         let _ = parameter;
 
@@ -90,7 +90,7 @@ impl ZombieManager {
         }
     }
 
-    #[cfg(feature = "smp")]
+    #[cfg(smp)]
     #[inline]
     pub(crate) fn start_up(&mut self) {
         self.thread.start();
@@ -99,7 +99,7 @@ impl ZombieManager {
     pub(crate) fn reclaim(&mut self) {
         while let Some(thread) = self.zombie_dequeue() {
             let th = thread.as_ptr();
-            #[cfg(feature = "signals")]
+            #[cfg(signals)]
             unsafe {
                 rt_bindings::rt_thread_free_sig(th);
             }
@@ -137,7 +137,7 @@ impl ZombieManager {
                     .push_back(Pin::new_unchecked(&mut thread.list_node))
             };
         }
-        #[cfg(feature = "smp")]
+        #[cfg(smp)]
         unsafe {
             ((&mut self.sem) as *mut _).release();
         }

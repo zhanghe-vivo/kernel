@@ -1,6 +1,6 @@
 use crate::kernel::{cpu::Cpu, error::code};
 
-#[cfg(feature = "smp")]
+#[cfg(smp)]
 #[no_mangle]
 pub extern "C" fn rt_scheduler_ipi_handler() {
     Cpu::get_current_scheduler().do_task_schedule();

@@ -2,7 +2,6 @@ pub mod vfs_api;
 mod vfs_devfs;
 mod vfs_dirent;
 mod vfs_fd;
-mod vfs_log;
 mod vfs_manager;
 mod vfs_mnt;
 pub mod vfs_mode;

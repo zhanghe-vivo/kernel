@@ -1,24 +1,18 @@
 #![allow(dead_code)]
-#[cfg(target_arch = "aarch64")]
-use crate::allocator::malloc_align;
-#[cfg(feature = "smp")]
+#[cfg(smp)]
 use crate::cpu::CPU_DETACHED;
 use crate::{
+    allocator::malloc,
     arch::Arch,
     clock,
     cpu::Cpu,
     error::{code, Error},
     object::{KObjectBase, KernelObject, ObjectClassType},
-    println,
     stack::Stack,
     static_init::UnsafeStaticInit,
     sync::{lock::mutex::*, RawSpin, SpinLock},
     timer::{Timer, TimerState},
     zombie,
-};
-use alloc::{
-    alloc::{alloc, Layout},
-    boxed::Box,
 };
 use bluekernel_infra::list::doubly_linked_list::{LinkedListNode, ListHead};
 use core::{
@@ -30,6 +24,7 @@ use core::{
     ptr::{self, NonNull},
     sync::atomic::{AtomicUsize, Ordering},
 };
+use log::debug;
 use pinned_init::{
     init, pin_data, pin_init, pin_init_from_closure, pinned_drop, zeroed, Init, PinInit,
 };
@@ -176,16 +171,16 @@ impl ThreadState {
 pub struct ThreadPriority {
     current: u8,
     initial: u8,
-    #[cfg(feature = "thread_priority_max")]
+    #[cfg(thread_priority)]
     number: u8,
-    #[cfg(feature = "thread_priority_max")]
+    #[cfg(thread_priority)]
     high_mask: u8,
     number_mask: u32,
 }
 
 impl ThreadPriority {
     pub fn new(priority: u8) -> Self {
-        #[cfg(feature = "thread_priority_max")]
+        #[cfg(thread_priority)]
         {
             let number = priority >> 3;
             let high_mask = 1 << (priority & 0x07);
@@ -198,7 +193,7 @@ impl ThreadPriority {
                 number_mask,
             }
         }
-        #[cfg(not(feature = "thread_priority_max"))]
+        #[cfg(not(thread_priority))]
         {
             Self {
                 current: priority,
@@ -210,13 +205,13 @@ impl ThreadPriority {
 
     pub fn update(&mut self, new_priority: u8) {
         self.current = new_priority;
-        #[cfg(feature = "thread_priority_max")]
+        #[cfg(thread_priority)]
         {
             self.number = new_priority >> 3;
             self.high_mask = 1 << (new_priority & 0x07);
             self.number_mask = 1 << self.number;
         }
-        #[cfg(not(feature = "thread_priority_max"))]
+        #[cfg(not(thread_priority))]
         {
             self.number_mask = 1 << new_priority;
         }
@@ -230,13 +225,13 @@ impl ThreadPriority {
         self.initial
     }
 
-    #[cfg(feature = "thread_priority_max")]
+    #[cfg(thread_priority)]
     #[inline]
     pub fn get_number(&self) -> u8 {
         self.number
     }
 
-    #[cfg(feature = "thread_priority_max")]
+    #[cfg(thread_priority)]
     #[inline]
     pub fn get_high_mask(&self) -> u8 {
         self.high_mask
@@ -248,7 +243,7 @@ impl ThreadPriority {
     }
 }
 
-#[cfg(feature = "schedule_with_time_slice")]
+#[cfg(schedule_with_time_slice)]
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 struct TimeSlice {
@@ -257,7 +252,7 @@ struct TimeSlice {
 }
 
 // NOTE: pin_data conflicts with cfg.
-#[cfg(feature = "mutex")]
+#[cfg(mutex)]
 #[repr(C)]
 #[pin_data]
 pub(crate) struct MutexInfo {
@@ -266,11 +261,11 @@ pub(crate) struct MutexInfo {
     pub(crate) pending_to: Option<NonNull<Mutex>>,
 }
 
-#[cfg(not(feature = "mutex"))]
+#[cfg(not(mutex))]
 #[repr(C)]
 pub(crate) struct MutexInfo {}
 
-#[cfg(feature = "mutex")]
+#[cfg(mutex)]
 impl MutexInfo {
     fn new() -> impl PinInit<Self> {
         pin_init!(Self {
@@ -283,29 +278,29 @@ impl MutexInfo {
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct EventInfo {
-    #[cfg(feature = "event")]
+    #[cfg(event)]
     pub(crate) set: u32,
-    #[cfg(feature = "event")]
+    #[cfg(event)]
     pub(crate) info: u8,
 }
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 struct CpuAffinity {
-    #[cfg(feature = "smp")]
+    #[cfg(smp)]
     pub bind_cpu: u8,
-    #[cfg(feature = "smp")]
+    #[cfg(smp)]
     pub oncpu: u8,
 }
 
 #[repr(C)]
 #[derive(Debug)]
 struct LockInfo {
-    #[cfg(feature = "debugging_spinlock")]
+    #[cfg(debugging_spinlock)]
     pub wait_lock: Option<NonNull<RawSpin>>,
-    #[cfg(feature = "debugging_spinlock")]
+    #[cfg(debugging_spinlock)]
     pub hold_locks: [Option<NonNull<RawSpin>>; 8],
-    #[cfg(feature = "debugging_spinlock")]
+    #[cfg(debugging_spinlock)]
     pub hold_count: usize,
 }
 
@@ -344,20 +339,20 @@ pub struct Thread {
     pub error: Error,
 
     /// time slice
-    #[cfg(feature = "schedule_with_time_slice")]
+    #[cfg(schedule_with_time_slice)]
     time_slice: TimeSlice,
 
-    #[cfg(feature = "mutex")]
+    #[cfg(mutex)]
     pub(crate) mutex_info: MutexInfo,
 
-    #[cfg(feature = "event")]
+    #[cfg(event)]
     pub(crate) event_info: EventInfo,
 
     /// cpu affinity
-    #[cfg(feature = "smp")]
+    #[cfg(smp)]
     cpu_affinity: CpuAffinity,
 
-    #[cfg(feature = "debugging_spinlock")]
+    #[cfg(debugging_spinlock)]
     lock_info: LockInfo,
 
     /// Indicate whether the stack should be free'ed when this thread
@@ -369,8 +364,8 @@ pub struct Thread {
     #[pin]
     pin: PhantomPinned,
 }
-#[cfg_attr(target_arch = "aarch64", repr(C, align(16)))]
-#[cfg_attr(not(target_arch = "aarch64"), repr(C, align(8)))]
+
+#[repr(C, align(8))]
 struct StackAlignedField<const STACK_SIZE: usize> {
     buf: [u8; STACK_SIZE],
 }
@@ -423,7 +418,7 @@ impl<const STACK_SIZE: usize> ThreadWithStack<STACK_SIZE> {
         })
     }
 
-    #[cfg(feature = "smp")]
+    #[cfg(smp)]
     #[inline]
     pub fn new_with_bind(
         name: &'static ffi::CStr,
@@ -486,33 +481,33 @@ impl Thread {
     pub fn reset_to_yield(&mut self) {
         debug_assert!(Cpu::get_current_scheduler().is_sched_locked());
 
-        #[cfg(feature = "schedule_with_time_slice")]
+        #[cfg(schedule_with_time_slice)]
         {
             self.time_slice.remaining = self.time_slice.init;
         }
         self.stat.add_yield();
     }
 
-    #[cfg(feature = "smp")]
+    #[cfg(smp)]
     #[inline]
     pub fn is_cpu_detached(&self) -> bool {
         self.oncpu == CPU_DETACHED as u8
     }
 
-    #[cfg(feature = "smp")]
+    #[cfg(smp)]
     #[inline]
     pub fn is_bind_cpu(&self) -> bool {
         self.bind_cpu != CPUS_NUMBER as u8
     }
 
-    #[cfg(feature = "smp")]
+    #[cfg(smp)]
     #[inline]
     pub fn set_bind_cpu(&mut self, cpu_id: u8) {
         debug_assert!(cpu_id < CPUS_NUMBER as u8);
         self.bind_cpu = cpu_id;
     }
 
-    #[cfg(feature = "smp")]
+    #[cfg(smp)]
     #[inline]
     pub fn get_bind_cpu(&self) -> u8 {
         self.bind_cpu
@@ -547,17 +542,11 @@ impl Thread {
         static TID: AtomicUsize = AtomicUsize::new(0);
         let id = TID.fetch_add(1, Ordering::SeqCst);
         let mut tids = TIDS.lock();
-        if id >= MAX_THREAD_SIZE {
-            TID.store(0, Ordering::SeqCst);
-        }
-        if !tids[id].is_none() {
-            for i in id..MAX_THREAD_SIZE {
-                if tids[i].is_none() {
-                    return i;
-                }
-            }
+        if id >= MAX_THREAD_SIZE || !tids[id].is_none() {
             for i in 0..MAX_THREAD_SIZE {
                 if tids[i].is_none() {
+                    tids[i] = Some(thread_ptr);
+                    TID.store(0, Ordering::SeqCst);
                     return i;
                 }
             }
@@ -698,8 +687,9 @@ impl Thread {
     pub fn start(&mut self) {
         let scheduler = Cpu::get_current_scheduler();
         let level = scheduler.sched_lock();
-        #[cfg(feature = "debugging_scheduler")]
-        println!("Thread {} is starting...", self);
+
+        #[cfg(debugging_scheduler)]
+        debug!("Thread {:?} is starting...", self as *const Self);
 
         self.priority.update(self.priority.get_current());
         self.stat.set_suspended(SuspendFlag::Uninterruptible);
@@ -715,8 +705,8 @@ impl Thread {
         let scheduler = Cpu::get_current_scheduler();
         let level = scheduler.sched_lock();
 
-        #[cfg(feature = "debugging_scheduler")]
-        println!("Thread {} is closing...", self);
+        #[cfg(debugging_scheduler)]
+        debug!("Thread {:?} is closing...", self as *const Self);
 
         if !self.stat.is_close() {
             if !self.stat.is_init() {
@@ -735,12 +725,12 @@ impl Thread {
         let scheduler = Cpu::get_current_scheduler();
         scheduler.preempt_disable();
         TIDS.lock()[self.tid as usize] = None;
-        #[cfg(feature = "debugging_scheduler")]
-        println!("Thread {} is detaching...", self);
+        #[cfg(debugging_scheduler)]
+        debug!("Thread {:?} is detaching...", self as *const Self);
 
         self.close();
 
-        #[cfg(feature = "mutex")]
+        #[cfg(mutex)]
         self.detach_from_mutex();
 
         unsafe {
@@ -786,8 +776,8 @@ impl Thread {
         // Reset thread error.
         thread.error = code::EOK;
 
-        #[cfg(feature = "debugging_scheduler")]
-        println!("Thread {} is sleeping...", thread);
+        #[cfg(debugging_scheduler)]
+        debug!("Thread {:?} is sleeping...", thread as *const Thread);
 
         if thread.suspend(SuspendFlag::Interruptible) {
             thread.thread_timer.restart(tick);
@@ -811,17 +801,17 @@ impl Thread {
 
         let level = scheduler.sched_lock();
 
-        #[cfg(feature = "debugging_scheduler")]
-        println!("Thread {} is suspending...", self);
+        #[cfg(debugging_scheduler)]
+        debug!("Thread {:?} is suspending...", self as *const Self);
 
         if (!self.stat.is_ready()) && (!self.stat.is_running()) {
-            println!("thread suspend: thread disorder, stat: {:?}", self.stat);
+            debug!("thread suspend: thread disorder, stat: {:?}", self.stat);
             scheduler.sched_unlock(level);
             return false;
         }
 
         scheduler.remove_thread_locked(self);
-        #[cfg(feature = "smp")]
+        #[cfg(smp)]
         {
             self.oncpu = CPU_DETACHED as u8;
         }
@@ -836,8 +826,8 @@ impl Thread {
         let scheduler = Cpu::get_current_scheduler();
 
         let level = scheduler.sched_lock();
-        #[cfg(feature = "debugging_scheduler")]
-        println!("Thread {} is resuming...", self);
+        #[cfg(debugging_scheduler)]
+        debug!("Thread {:?} is resuming...", self as *const Self);
         self.remove_thread_list_node();
         let need_schedule = scheduler.insert_ready_locked(self);
         scheduler.sched_unlock(level);
@@ -859,7 +849,7 @@ impl Thread {
         scheduler.sched_unlock(level);
     }
 
-    #[cfg(feature = "smp")]
+    #[cfg(smp)]
     pub fn bind_to_cpu(&mut self, cpu: u8) {
         let cpu: u8 = if cpu >= CPUS_NUMBER as u8 {
             CPUS_NUMBER as u8
@@ -882,11 +872,8 @@ impl Thread {
             if cpu != CPUS_NUMBER as u8 {
                 if cpu != current_cpu {
                     unsafe {
-                        #[cfg(target_arch = "aarch64")]
-                        {
-                            Arch::dsb(DsbOptions::NonShareable);
-                            send_sgi(SGI_SCHED, 1 << cpu);
-                        }
+                        // TODO: call from libcpu.
+                        // rt_bindings::rt_hw_ipi_send(rt_bindings::RT_SCHEDULE_IPI as i32, 1 << cpu)
                     };
                     // self cpu need reschedule
                     scheduler.sched_unlock_with_sched(level);
@@ -894,18 +881,18 @@ impl Thread {
             } else {
                 // Not running on self cpu, but destintation cpu can be itself.
                 unsafe {
-                    #[cfg(target_arch = "aarch64")]
-                    {
-                        Arch::dsb(DsbOptions::NonShareable);
-                        send_sgi(SGI_SCHED, 1 << self.oncpu);
-                    }
+                    // TODO: call from libcpu.
+                    // rt_bindings::rt_hw_ipi_send(
+                    //     rt_bindings::RT_SCHEDULE_IPI as i32,
+                    //     1 << self.oncpu,
+                    // )
                 };
                 scheduler.sched_unlock(level);
             }
         }
     }
 
-    #[cfg(feature = "debugging_spinlock")]
+    #[cfg(debugging_spinlock)]
     pub(crate) fn check_deadlock(&self, spin: &RawSpin) -> bool {
         let mut owner: Cell<Option<NonNull<Thread>>> = spin.owner.clone();
         while let Some(non_null) = owner.get() {
@@ -923,12 +910,12 @@ impl Thread {
         false
     }
 
-    #[cfg(feature = "debugging_spinlock")]
+    #[cfg(debugging_spinlock)]
     pub(crate) fn set_wait(&mut self, spin: &RawSpin) {
         self.wait_lock = Some(NonNull::new(spin as *const _ as *mut _));
     }
 
-    #[cfg(feature = "debugging_spinlock")]
+    #[cfg(debugging_spinlock)]
     pub(crate) fn clear_wait(&mut self) {
         self.lock_info.wait_lock = None;
     }
@@ -940,6 +927,10 @@ impl Thread {
     pub(crate) fn set_should_free_stack(&mut self, flag: bool) {
         self.should_free_stack = flag;
     }
+
+    pub(crate) fn tid(&self) -> usize {
+        self.tid
+    }
 }
 
 #[pinned_drop]
@@ -947,28 +938,14 @@ impl PinnedDrop for Thread {
     fn drop(self: Pin<&mut Self>) {
         let this_th = unsafe { Pin::get_unchecked_mut(self) };
 
-        #[cfg(feature = "debugging_scheduler")]
-        println!("Dropping thread {}", this_th);
+        #[cfg(debugging_scheduler)]
+        debug!("Dropping thread {:?}", this_th as *const Self);
 
         this_th.detach();
     }
 }
 
 crate::impl_kobject!(Thread);
-
-impl core::fmt::Display for Thread {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(
-            f,
-            "Thread {{ name: {:?}, tid: {}, state: {:?}, priority: {:?}, stack: ({}) }}",
-            self.get_name(),
-            self.tid,
-            self.stat,
-            self.priority,
-            self.stack
-        )
-    }
-}
 
 /// bindgen for Thread
 #[allow(improper_ctypes_definitions)]
@@ -1098,13 +1075,7 @@ impl ThreadBuilder {
         thread.priority = ThreadPriority::new(self.priority);
         // If user doesn't specify an existing stack, we'll allocate one.
         let stack_start = self.stack_start.unwrap_or_else(|| {
-            let align = if cfg!(target_arch = "aarch64") {
-                16
-            } else {
-                bluekernel_kconfig::ALIGN_SIZE as usize
-            };
-            let stack_start =
-                unsafe { alloc(Layout::from_size_align_unchecked(self.stack_size, align)) };
+            let stack_start = malloc(self.stack_size);
             thread.set_should_free_stack(true);
             unsafe { NonNull::new_unchecked(stack_start) }
         });
@@ -1134,7 +1105,7 @@ impl ThreadBuilder {
         thread.spinlock = RawSpin::new();
         thread.error = code::EOK;
 
-        #[cfg(feature = "schedule_with_time_slice")]
+        #[cfg(schedule_with_time_slice)]
         {
             thread.time_slice = TimeSlice {
                 init: self.tick,
@@ -1142,7 +1113,7 @@ impl ThreadBuilder {
             };
         }
 
-        #[cfg(feature = "smp")]
+        #[cfg(smp)]
         {
             thread.cpu_affinity = CpuAffinity {
                 bind_cpu: self.cpu,
@@ -1150,17 +1121,17 @@ impl ThreadBuilder {
             };
         }
 
-        #[cfg(feature = "mutex")]
+        #[cfg(mutex)]
         unsafe {
             let _ = MutexInfo::new().__pinned_init(&mut thread.mutex_info as *mut MutexInfo);
         }
 
-        #[cfg(feature = "event")]
+        #[cfg(event)]
         {
             thread.event_info = EventInfo { set: 0, info: 0 };
         }
 
-        #[cfg(feature = "debugging_spinlock")]
+        #[cfg(debugging_spinlock)]
         {
             thread.lock_info = LockInfo {
                 wait_lock: None,
@@ -1180,15 +1151,17 @@ impl ThreadBuilder {
         unsafe { pin_init_from_closure(init) }
     }
 
-    #[cfg(feature = "heap")]
+    #[cfg(heap)]
     pub fn build_from_heap(self) -> Option<NonNull<Thread>> {
-        let thread = Box::<[u8]>::new_zeroed_slice(mem::size_of::<Thread>());
-        let ptr = Box::leak(thread).as_mut_ptr().cast::<Thread>();
+        let ptr = KObjectBase::new_raw(
+            ObjectClassType::ObjectClassThread,
+            (&self).name.as_ref().unwrap().as_ptr(),
+        );
         let pinned_init = self.build_pinned_init();
         unsafe {
-            let _ = pinned_init.__pinned_init(ptr);
+            let _ = pinned_init.__pinned_init(ptr as *mut Thread);
         }
-        NonNull::new(ptr)
+        NonNull::new(ptr as *mut Thread)
     }
 
     pub fn build_from_static_allocation(self) -> Result<(), &'static str> {

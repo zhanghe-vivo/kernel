@@ -319,7 +319,7 @@ impl MessageQueue {
         }
 
         cfg_if::cfg_if! {
-            if #[cfg(feature = "messagequeue_priority")] {
+            if #[cfg(messagequeue_priority)] {
                 self.inner_queue.push_prio(buffer, size, prio);
             } else {
                 self.inner_queue.push_fifo(buffer, size);
@@ -382,7 +382,7 @@ impl MessageQueue {
         #[allow(unused_assignments)]
         let mut urgent_size = 0;
         cfg_if::cfg_if! {
-            if #[cfg(feature = "messagequeue_priority")] {
+            if #[cfg(messagequeue_priority)] {
                 urgent_size = self.inner_queue.urgent_prio(buffer, size);
             } else {
                 urgent_size = self.inner_queue.urgent_fifo(buffer, size);
@@ -478,7 +478,7 @@ impl MessageQueue {
         }
 
         cfg_if::cfg_if! {
-            if #[cfg(feature = "messagequeue_priority")] {
+            if #[cfg(messagequeue_priority)] {
                 self.inner_queue.pop_prio(buffer, size, prio);
             } else {
                 self.inner_queue.pop_fifo(buffer, size);
@@ -538,7 +538,7 @@ impl MessageQueue {
         self.inner_queue.enqueue_waiter.wake_all();
 
         cfg_if::cfg_if! {
-            if #[cfg(feature = "messagequeue_priority")] {
+            if #[cfg(messagequeue_priority)] {
                 while !self.inner_queue.head.is_none() {
                     let hdr = self.inner_queue.head.unwrap().as_ptr() as *mut SysQueueItemHeader;
                     let next_head = unsafe { (*hdr).next as *mut u8 };
@@ -577,7 +577,7 @@ impl MessageQueue {
         Ok(())
     }
 
-    #[cfg(feature = "messagequeue_priority")]
+    #[cfg(messagequeue_priority)]
     fn send_wait_prio(
         &mut self,
         buffer: *const u8,
@@ -589,7 +589,7 @@ impl MessageQueue {
         self.send_wait_internal(buffer, size, prio, timeout, suspend_flag)
     }
 
-    #[cfg(feature = "messagequeue_priority")]
+    #[cfg(messagequeue_priority)]
     fn receive_prio(
         &mut self,
         buffer: *mut u8,

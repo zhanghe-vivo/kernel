@@ -14,20 +14,20 @@ use pinned_init::{pin_data, pin_init, pin_init_array_from_fn, PinInit};
 
 const IDLE_NAME: &'static CStr = crate::c_str!("Idle");
 
-#[cfg(feature = "idle_hook")]
+#[cfg(idle_hook)]
 pub type IdleHookFn = unsafe extern "C" fn();
 
-#[cfg(feature = "idle_hook")]
+#[cfg(idle_hook)]
 pub static IDLE_HOOK_LIST: IdleHooks = IdleHooks::new();
-#[cfg(feature = "idle_hook")]
+#[cfg(idle_hook)]
 const IDLE_HOOK_LIST_SIZE: usize = 4;
 
-#[cfg(feature = "idle_hook")]
+#[cfg(idle_hook)]
 pub struct IdleHooks {
     hooks: [AtomicPtr<IdleHookFn>; IDLE_HOOK_LIST_SIZE],
 }
 
-#[cfg(feature = "idle_hook")]
+#[cfg(idle_hook)]
 impl IdleHooks {
     const ARRAY_REPEAT_VALUE: AtomicPtr<IdleHookFn> = AtomicPtr::new(ptr::null_mut());
     pub const fn new() -> Self {
@@ -103,7 +103,7 @@ impl IdleTheads {
                 .unwrap_unchecked()
                 .init_once();
 
-            #[cfg(feature = "smp")]
+            #[cfg(smp)]
             (&raw const zombie::ZOMBIE_MANAGER
                 as *const UnsafeStaticInit<zombie::ZombieManager, _>)
                 .cast_mut()
@@ -119,7 +119,7 @@ impl IdleTheads {
         }
     }
 
-    #[cfg(feature = "smp")]
+    #[cfg(smp)]
     #[inline]
     pub(crate) fn new() -> impl PinInit<Self> {
         pin_init!(Self {
@@ -129,7 +129,7 @@ impl IdleTheads {
     }
 
     // FIXME
-    #[cfg(not(feature = "smp"))]
+    #[cfg(not(smp))]
     #[inline]
     pub(crate) fn new() -> impl PinInit<Self> {
         pin_init!(Self {
@@ -146,7 +146,7 @@ impl IdleTheads {
     }
 
     extern "C" fn idle_thread_entry(_parameter: *mut ffi::c_void) {
-        #[cfg(feature = "smp")]
+        #[cfg(smp)]
         unsafe {
             if Arch::smp::core_id() != 0u8 {
                 loop {
@@ -157,7 +157,7 @@ impl IdleTheads {
         }
 
         loop {
-            #[cfg(not(feature = "smp"))]
+            #[cfg(not(smp))]
             unsafe {
                 (&raw const zombie::ZOMBIE_MANAGER
                     as *const UnsafeStaticInit<zombie::ZombieManager, _>)
@@ -167,7 +167,7 @@ impl IdleTheads {
                     .reclaim()
             };
 
-            #[cfg(feature = "idle_hook")]
+            #[cfg(idle_hook)]
             IDLE_HOOK_LIST.hook_execute();
 
             // TODO: add power manager

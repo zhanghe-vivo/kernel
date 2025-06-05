@@ -1,12 +1,10 @@
-#[cfg(feature = "debugging_scheduler")]
-use crate::println;
 use crate::{
     arch::Arch,
     bluekernel_kconfig::THREAD_PRIORITY_MAX,
     cpu::Cpu,
     thread::{Thread, ThreadState},
 };
-#[cfg(feature = "smp")]
+#[cfg(smp)]
 use crate::{
     cpu::{Cpus, CPUS_NR, CPUS_NUMBER},
     sync::RawSpin,
@@ -18,6 +16,8 @@ use core::{
     ptr::{self, NonNull},
     sync::atomic::{AtomicBool, AtomicPtr, AtomicU32, Ordering},
 };
+#[cfg(debugging_scheduler)]
+use log::debug;
 use pinned_init::{pin_data, pin_init, pin_init_array_from_fn, PinInit};
 
 #[cfg(all(target_arch = "aarch64", feature = "smp"))]
@@ -46,10 +46,10 @@ impl Drop for DisableInterruptGuard {
     }
 }
 
-#[cfg(feature = "smp")]
+#[cfg(smp)]
 const CPU_MASK: usize = (1 << CPUS_NR) - 1;
 
-#[cfg(feature = "thread_priority_max")]
+#[cfg(thread_priority)]
 #[pin_data]
 pub struct PriorityTableManager {
     #[pin]
@@ -58,7 +58,7 @@ pub struct PriorityTableManager {
     ready_table: [u8; 32],
 }
 
-#[cfg(not(feature = "thread_priority_max"))]
+#[cfg(not(thread_priority))]
 #[pin_data]
 pub struct PriorityTableManager {
     #[pin]
@@ -80,7 +80,7 @@ pub struct Scheduler {
 }
 
 impl PriorityTableManager {
-    #[cfg(feature = "thread_priority_max")]
+    #[cfg(thread_priority)]
     pub fn new() -> impl PinInit<Self> {
         pin_init!(Self {
             priority_table <- pin_init_array_from_fn(|_| ListHead::new()),
@@ -89,7 +89,7 @@ impl PriorityTableManager {
         })
     }
 
-    #[cfg(not(feature = "thread_priority_max"))]
+    #[cfg(not(thread_priority))]
     pub fn new() -> impl PinInit<Self> {
         pin_init!(Self {
             priority_table <- pin_init_array_from_fn(|_| ListHead::new()),
@@ -105,7 +105,7 @@ impl PriorityTableManager {
     #[inline]
     pub fn get_highest_ready_prio(&self) -> u32 {
         let num = self.priority_group.trailing_zeros();
-        #[cfg(feature = "thread_priority_max")]
+        #[cfg(thread_priority)]
         if num != u32::MAX {
             return (num << 3) + self.ready_table[num as usize].trailing_zeros();
         }
@@ -125,7 +125,7 @@ impl PriorityTableManager {
 
     pub fn insert_thread(&mut self, thread: &mut Thread) {
         debug_assert!(thread.list_node.is_empty());
-        #[cfg(feature = "thread_priority_max")]
+        #[cfg(thread_priority)]
         {
             self.ready_table[thread.priority.get_number() as usize] |=
                 thread.priority.get_high_mask() as u8;
@@ -154,7 +154,7 @@ impl PriorityTableManager {
         unsafe { Pin::new_unchecked(&mut thread.list_node).remove_from_list() };
 
         if self.priority_table[thread.priority.get_current() as usize].is_empty() {
-            #[cfg(feature = "thread_priority_max")]
+            #[cfg(thread_priority)]
             {
                 self.ready_table[thread.priority.get_number() as usize] &=
                     !thread.priority.get_high_mask();
@@ -162,7 +162,7 @@ impl PriorityTableManager {
                     self.priority_group &= !(thread.priority.get_number_mask());
                 }
             }
-            #[cfg(not(feature = "thread_priority_max"))]
+            #[cfg(not(thread_priority))]
             {
                 self.priority_group &= !(thread.priority.get_number_mask());
             }
@@ -242,13 +242,13 @@ impl Scheduler {
         self.preempt_count.fetch_sub(1, Ordering::AcqRel) == 1
     }
 
-    #[cfg(feature = "smp")]
+    #[cfg(smp)]
     #[inline]
     fn sched_lock_smp(&mut self) {
         Cpus::lock_sched_fast();
     }
 
-    #[cfg(feature = "smp")]
+    #[cfg(smp)]
     #[inline]
     fn sched_unlock_smp(&mut self) {
         Cpus::unlock_sched_fast();
@@ -259,7 +259,7 @@ impl Scheduler {
 
         let highest = self.priority_manager.get_highest_ready_prio();
 
-        #[cfg(feature = "smp")]
+        #[cfg(smp)]
         {
             let global_highest = Cpus::get_highest_priority_from_global();
             if global_highest < highest {
@@ -293,7 +293,7 @@ impl Scheduler {
             return;
         }
 
-        #[cfg(feature = "smp")]
+        #[cfg(smp)]
         if !thread.is_cpu_detached() {
             // only YIELD -> READY, SUSPEND -> READY is allowed by this API. However,
             // this is a RUNNING thread. So here we reset it's status and let it go.
@@ -303,10 +303,10 @@ impl Scheduler {
 
         thread.stat.set_base_state(ThreadState::READY);
 
-        #[cfg(not(feature = "smp"))]
+        #[cfg(not(smp))]
         self.priority_manager.insert_thread(thread);
 
-        #[cfg(feature = "smp")]
+        #[cfg(smp)]
         {
             let cpu_id = self.get_current_id();
             let bind_cpu = thread.get_bind_cpu();
@@ -339,10 +339,10 @@ impl Scheduler {
     pub fn remove_thread_locked(&mut self, thread: &mut Thread) {
         debug_assert!(self.is_sched_locked());
 
-        #[cfg(not(feature = "smp"))]
+        #[cfg(not(smp))]
         self.priority_manager.remove_thread(thread);
 
-        #[cfg(feature = "smp")]
+        #[cfg(smp)]
         {
             let bind_cpu = thread.get_bind_cpu();
             if bind_cpu == CPUS_NUMBER as u8 {
@@ -372,10 +372,10 @@ impl Scheduler {
 
     #[inline]
     fn has_ready_thread(&self) -> bool {
-        #[cfg(not(feature = "smp"))]
+        #[cfg(not(smp))]
         return self.priority_manager.priority_group != 0;
 
-        #[cfg(feature = "smp")]
+        #[cfg(smp)]
         return Cpus::get_priority_group_from_global() != 0
             || self.priority_manager.priority_group != 0;
     }
@@ -390,7 +390,7 @@ impl Scheduler {
             match to_thread {
                 Some((mut new_thread, highest_ready_priority)) => {
                     if let Some(mut cur_th) = cur_th {
-                        #[cfg(feature = "smp")]
+                        #[cfg(smp)]
                         let cpu_id = self.get_current_id();
 
                         let cur_th = unsafe { cur_th.as_mut() };
@@ -400,10 +400,10 @@ impl Scheduler {
                                 < highest_ready_priority as u8
                                 || (cur_th.priority.get_current() == highest_ready_priority as u8
                                     && !cur_th.stat.is_yield());
-                            #[cfg(feature = "smp")]
+                            #[cfg(smp)]
                             let some_cpu = cur_th.get_bind_cpu() == CPUS_NUMBER as u8
                                 || cur_th.get_bind_cpu() == cpu_id;
-                            #[cfg(feature = "smp")]
+                            #[cfg(smp)]
                             let switch_current = some_cpu && switch_current;
 
                             if switch_current {
@@ -412,7 +412,7 @@ impl Scheduler {
                                 return None;
                             }
 
-                            #[cfg(feature = "smp")]
+                            #[cfg(smp)]
                             {
                                 cur_th.oncpu = CPU_DETACHED as u8;
                             }
@@ -427,7 +427,7 @@ impl Scheduler {
                     self.current_priority = highest_ready_priority as u8;
 
                     self.remove_thread_locked(to_th);
-                    #[cfg(feature = "smp")]
+                    #[cfg(smp)]
                     {
                         to_th.oncpu = cpu_id;
                     }
@@ -449,7 +449,7 @@ impl Scheduler {
 
     #[cfg(not(hardware_schedule))]
     pub fn start(&mut self) {
-        #[cfg(feature = "smp")]
+        #[cfg(smp)]
         Cpus::unlock_cpus();
 
         let level = self.sched_lock();
@@ -459,13 +459,13 @@ impl Scheduler {
                 self.current_priority = prio as u8;
                 let to_th = unsafe { thread.as_mut() };
                 self.remove_thread_locked(to_th);
-                #[cfg(feature = "smp")]
+                #[cfg(smp)]
                 {
                     to_th.oncpu = self.get_current_id();
                 }
                 to_th.stat.set_base_state(ThreadState::RUNNING);
 
-                #[cfg(feature = "debugging_scheduler")]
+                #[cfg(debugging_scheduler)]
                 println!("Switching to {}", to_th);
 
                 self.set_current_thread(thread);
@@ -484,7 +484,7 @@ impl Scheduler {
         self.preempt_disable();
 
         // lock scheduler
-        #[cfg(feature = "smp")]
+        #[cfg(smp)]
         self.sched_lock_smp();
 
         level
@@ -492,7 +492,7 @@ impl Scheduler {
 
     #[inline]
     pub fn sched_unlock(&mut self, level: usize) {
-        #[cfg(feature = "smp")]
+        #[cfg(smp)]
         self.sched_unlock_smp();
 
         debug_assert!(!self.preemptable());
@@ -504,7 +504,7 @@ impl Scheduler {
     pub fn ctx_switch_unlock(&mut self) {
         debug_assert!(!Arch::is_interrupts_active());
 
-        #[cfg(feature = "smp")]
+        #[cfg(smp)]
         self.sched_unlock_smp();
 
         self.preempt_enable_no_resched();
@@ -533,7 +533,7 @@ impl Scheduler {
                 let cur_thread = self.get_current_thread();
                 if let Some(to_thread) = self.prepare_context_switch_locked(cur_thread) {
                     unsafe {
-                        #[cfg(feature = "debugging_scheduler")]
+                        #[cfg(debugging_scheduler)]
                         println!(
                             "cpu #{} switches from {} to {} ",
                             self.id,
@@ -541,7 +541,7 @@ impl Scheduler {
                             to_thread.as_ref(),
                         );
 
-                        #[cfg(feature = "overflow_check")]
+                        #[cfg(overflow_check)]
                         assert!(!cur_thread.unwrap().as_ref().stack.check_overflow());
 
                         self.set_current_thread(to_thread);
@@ -581,8 +581,8 @@ impl Scheduler {
         let _ = DisableInterruptGuard::new();
         self.set_need_reschedule(true);
         if self.preemptable() {
-            #[cfg(feature = "debugging_scheduler")]
-            println!("Scheduler is triggering context switch...");
+            #[cfg(debugging_scheduler)]
+            debug!("Scheduler is triggering context switch...");
             Arch::trigger_switch();
         }
     }
@@ -606,13 +606,13 @@ impl Scheduler {
         } else {
             self.set_need_reschedule(false);
             // Take the context lock before we do the real scheduling works.
-            #[cfg(feature = "smp")]
+            #[cfg(smp)]
             self.sched_lock_smp();
             // Pick the highest runnable thread, and pass the control to it.
             let cur_thread = self.get_current_thread();
             if let Some(to_thread) = self.prepare_context_switch_locked(cur_thread) {
                 unsafe {
-                    #[cfg(feature = "debugging_scheduler")]
+                    #[cfg(debugging_scheduler)]
                     println!(
                         "cpu #{} switches from {} to {}",
                         self.id,
@@ -620,7 +620,7 @@ impl Scheduler {
                         to_thread.as_ref(),
                     );
 
-                    #[cfg(feature = "overflow_check")]
+                    #[cfg(overflow_check)]
                     assert!(!cur_thread.unwrap().as_ref().stack.check_overflow());
                     self.set_current_thread(to_thread);
                     Arch::context_switch(
@@ -648,14 +648,15 @@ impl Scheduler {
                 scheduler.preempt_enable_no_resched();
             } else if !Cpu::is_in_interrupt() {
                 scheduler.set_need_reschedule(false);
-                #[cfg(feature = "smp")]
+
+                #[cfg(smp)]
                 scheduler.sched_lock_smp();
 
                 // Pick the highest runnable thread, and pass the control to it.
                 let cur_thread = scheduler.get_current_thread();
                 if let Some(to_thread) = scheduler.prepare_context_switch_locked(cur_thread) {
                     if let Some(mut cur_th) = cur_thread {
-                        #[cfg(feature = "debugging_scheduler")]
+                        #[cfg(debugging_scheduler)]
                         unsafe {
                             println!(
                                 "cpu #{} switches from {} to {}",
@@ -664,13 +665,13 @@ impl Scheduler {
                                 to_thread.as_ref(),
                             );
                         }
-                        #[cfg(feature = "overflow_check")]
+                        #[cfg(overflow_check)]
                         unsafe {
                             if cur_th.as_mut().stack_mut().check_overflow() {
                                 panic!("stack overflow");
                             }
                         }
-                        #[cfg(feature = "stack_highwater_check")]
+                        #[cfg(stack_highwater_check)]
                         unsafe {
                             if cur_th.as_mut().stack_mut().highwater() == 0 {
                                 panic!("stack overflow");
@@ -678,7 +679,7 @@ impl Scheduler {
                         }
                         unsafe { cur_th.as_mut().stack_mut().set_sp(stack_ptr) };
                     } else {
-                        #[cfg(feature = "debugging_scheduler")]
+                        #[cfg(debugging_scheduler)]
                         unsafe {
                             println!("cpu #{} switches to {}", scheduler.id, to_thread.as_ref(),);
                         }

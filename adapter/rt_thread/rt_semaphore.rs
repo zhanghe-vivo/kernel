@@ -26,7 +26,7 @@ pub unsafe extern "C" fn rt_sem_detach(sem: *mut Semaphore) -> i32 {
     (*sem).detach();
     code::EOK.to_errno()
 }
-#[cfg(feature = "heap")]
+#[cfg(heap)]
 #[no_mangle]
 pub unsafe extern "C" fn rt_sem_create(
     name: *const ffi::c_char,
@@ -40,7 +40,7 @@ pub unsafe extern "C" fn rt_sem_create(
     Semaphore::new_raw(name, value as u16, wait_mode)
 }
 
-#[cfg(feature = "heap")]
+#[cfg(heap)]
 #[no_mangle]
 pub unsafe extern "C" fn rt_sem_delete(sem: *mut Semaphore) -> i32 {
     assert!(!sem.is_null());

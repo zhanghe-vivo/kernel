@@ -63,7 +63,7 @@ pub unsafe extern "C" fn rt_object_get_pointers(
 pub extern "C" fn rt_object_init(object: *mut KObjectBase, type_: u8, name: *const ffi::c_char) {
     assert!(!object.is_null());
     let obj_ref = unsafe { &mut *(object as *mut KObjectBase) };
-    #[cfg(feature = "debugging_object")]
+    #[cfg(debugging_object)]
     process::object_addr_detect(ObjectClassType::from(type_), obj_ref);
     // initialize object's parameters
     // set object type to static
@@ -90,7 +90,7 @@ pub extern "C" fn rt_object_detach(object: *mut KObjectBase) {
 /// name is the object name. In system, the object's name must be unique.
 ///
 /// Returns the allocated object.
-#[cfg(feature = "heap")]
+#[cfg(heap)]
 #[no_mangle]
 pub extern "C" fn rt_object_allocate(type_: u8, name: *const ffi::c_char) -> *mut KObjectBase {
     KObjectBase::new_raw(ObjectClassType::from(type_), name)
@@ -99,7 +99,7 @@ pub extern "C" fn rt_object_allocate(type_: u8, name: *const ffi::c_char) -> *mu
 /// This function will delete an object and release object memory.
 ///
 /// object is the specified object to be deleted.
-#[cfg(feature = "heap")]
+#[cfg(heap)]
 #[no_mangle]
 pub extern "C" fn rt_object_delete(object: *mut KObjectBase) {
     // object check

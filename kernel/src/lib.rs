@@ -25,7 +25,7 @@ pub extern crate alloc;
 pub use bluekernel_arch::arch;
 pub use bluekernel_kconfig;
 pub use libc;
-#[cfg(feature = "os_adapter")]
+#[cfg(os_adapter)]
 pub use os_bindings;
 
 pub mod allocator;
@@ -38,6 +38,7 @@ pub mod error;
 mod ext_types;
 pub mod idle;
 pub mod irq;
+mod logger;
 mod macros;
 pub mod object;
 pub mod process;
@@ -88,7 +89,7 @@ fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
 }
 
 /// Macro to check current context.
-#[cfg(feature = "debugging_context")]
+#[cfg(debugging_context)]
 #[macro_export]
 macro_rules! debug_not_in_interrupt {
     () => {
@@ -108,7 +109,7 @@ macro_rules! debug_not_in_interrupt {
 ///  "In thread context" means:
 ///    1) the scheduler has been started
 ///    2) not in interrupt context.
-#[cfg(feature = "debugging_context")]
+#[cfg(debugging_context)]
 #[macro_export]
 macro_rules! debug_in_thread_context {
     () => {
@@ -126,7 +127,7 @@ macro_rules! debug_in_thread_context {
 /// 2) not in interrupt context.
 /// 3) scheduler is not locked.
 /// 4) interrupt is not disabled.
-#[cfg(feature = "debugging_context")]
+#[cfg(debugging_context)]
 #[macro_export]
 macro_rules! debug_scheduler_available {
     ($need_check:expr) => {{
@@ -153,17 +154,17 @@ macro_rules! debug_scheduler_available {
     }};
 }
 
-#[cfg(not(feature = "debugging_context"))]
+#[cfg(not(debugging_context))]
 #[macro_export]
 macro_rules! debug_not_in_interrupt {
     () => {};
 }
-#[cfg(not(feature = "debugging_context"))]
+#[cfg(not(debugging_context))]
 #[macro_export]
 macro_rules! debug_in_thread_context {
     () => {};
 }
-#[cfg(not(feature = "debugging_context"))]
+#[cfg(not(debugging_context))]
 #[macro_export]
 macro_rules! debug_scheduler_available {
     ($need_check:expr) => {};

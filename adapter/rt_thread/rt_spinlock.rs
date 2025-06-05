@@ -8,7 +8,7 @@ use crate::kernel::sync::lock::spinlock::RawSpin;
 ///
 #[no_mangle]
 pub unsafe extern "C" fn rt_spin_lock_init(_spin: *mut RawSpin) {
-    #[cfg(feature = "smp")]
+    #[cfg(smp)]
     unsafe {
         //TODO:add rawspinlock init
         // rt_bindings::rt_hw_spin_lock_init(&mut (*_spin).lock)

@@ -2,6 +2,14 @@
 
 use crate::drivers::device::{Device, DeviceClass, DeviceManager};
 
+use crate::{
+    error::{code, Error},
+    vfs::{
+        vfs_dirent::*,
+        vfs_node::{FileType, InodeAttr, InodeNo},
+        vfs_traits::{FileOperationTrait, FileSystemTrait},
+    },
+};
 use alloc::{
     collections::BTreeMap,
     string::{String, ToString},
@@ -10,17 +18,8 @@ use alloc::{
 };
 use core::sync::atomic::{AtomicBool, Ordering};
 use libc::{SEEK_CUR, SEEK_END, SEEK_SET, S_IFCHR};
+use log::{info, warn};
 use spin::RwLock as SpinRwLock;
-
-use crate::{
-    error::{code, Error},
-    vfs::{
-        vfs_dirent::*,
-        vfs_log::*,
-        vfs_node::{FileType, InodeAttr, InodeNo},
-        vfs_traits::{FileOperationTrait, FileSystemTrait},
-    },
-};
 
 struct DevNode {
     attr: InodeAttr,
@@ -38,7 +37,7 @@ pub struct DevFileSystem {
 
 impl DevFileSystem {
     pub fn new(manager: &'static DeviceManager) -> Self {
-        vfslog!("[devfs] Creating new DevFS instance");
+        info!("[devfs] Creating new DevFS instance");
 
         DevFileSystem {
             mounted: AtomicBool::new(false),
@@ -67,7 +66,7 @@ impl DevFileSystem {
     fn scan_devices(&self) -> Result<(), Error> {
         self.manager
             .foreach(|dev| {
-                vfslog!("[devfs] Adding device: {}", dev.name());
+                info!("[devfs] Adding device: {}", dev.name());
                 self.add_device(dev);
             })
             .map_err(|e| Error::from_errno(e as i32))
@@ -101,7 +100,7 @@ impl DevFileSystem {
 
         self.dev_nodes.write().insert(inode_no, node);
 
-        vfslog!(
+        info!(
             "[devfs] Added device: {} (inode_no: {})",
             dev.name(),
             inode_no
@@ -111,7 +110,7 @@ impl DevFileSystem {
 
 impl FileOperationTrait for DevFileSystem {
     fn open(&self, path: &str, flags: i32) -> Result<InodeNo, Error> {
-        vfslog!("[DevFS] Opening device: {} (flags: {})", path, flags);
+        info!("[DevFS] Opening device: {} (flags: {})", path, flags);
 
         self.check_mounted()?;
 
@@ -123,21 +122,21 @@ impl FileOperationTrait for DevFileSystem {
 
         match node_entry {
             Some((inode_no, node)) => {
-                vfslog!("[DevFS] Attempting to open device: {}", dev_name);
+                info!("[DevFS] Attempting to open device: {}", dev_name);
 
                 match node.dev.open(flags) {
                     Ok(_) => {
-                        vfslog!("[DevFS] Device opened successfully: {}", dev_name);
+                        info!("[DevFS] Device opened successfully: {}", dev_name);
                         Ok(*inode_no)
                     }
                     Err(e) => {
-                        vfslog!("[DevFS] Failed to open device: {}", dev_name);
+                        warn!("[DevFS] Failed to open device: {}", dev_name);
                         Err(Error::from(e))
                     }
                 }
             }
             None => {
-                vfslog!("[DevFS] Device node not found: {}", dev_name);
+                warn!("[DevFS] Device node not found: {}", dev_name);
                 Err(code::ENOENT)
             }
         }
@@ -160,7 +159,7 @@ impl FileOperationTrait for DevFileSystem {
     }
 
     fn write(&self, inode_no: InodeNo, buf: &[u8], offset: &mut usize) -> Result<usize, Error> {
-        vfslog!(
+        info!(
             "[devfs] Writing {} bytes at offset {} for inode {}",
             buf.len(),
             offset,
@@ -291,7 +290,7 @@ impl FileOperationTrait for DevFileSystem {
         // Check offset
         let start_idx = offset;
         if start_idx >= entries.len() {
-            vfslog!("[devfs] getdents: offset beyond end of entries");
+            info!("[devfs] getdents: offset beyond end of entries");
             return Ok(0);
         }
 
@@ -303,7 +302,7 @@ impl FileOperationTrait for DevFileSystem {
 
         // Add directory entries to output vector
         dirents.extend(entries.into_iter().skip(start_idx).take(entries_to_write));
-        vfslog!("[devfs] getdents: returned {} entries", entries_to_write);
+        info!("[devfs] getdents: returned {} entries", entries_to_write);
 
         Ok(entries_to_write)
     }

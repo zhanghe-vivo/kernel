@@ -41,7 +41,7 @@ pub unsafe fn reset_handler_inner() -> ! {
         *(&__StackSeal as *const _ as *mut u64) = TZ_STACK_SEAL_VALUE;
     }
 
-    #[cfg(feature = "unaligned_support_disable")]
+    #[cfg(unaligned_support_disable)]
     {
         const SCB_CCR_UNALIGN_TRP_MASK: u32 = 1 << 3;
         scb.ccr.write(scb.ccr.read() | SCB_CCR_UNALIGN_TRP_MASK);

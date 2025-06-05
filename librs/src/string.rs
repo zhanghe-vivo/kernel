@@ -420,7 +420,7 @@ pub unsafe extern "C" fn strrchr(s: *const c_char, c: c_int) -> *mut c_char {
     }
     ptr::null_mut()
 }
-#[cfg(feature = "dedup")]
+#[cfg(dedup)]
 mod dup {
     use super::super::*;
     /// https://pubs.opengroup.org/onlinepubs/9799919799/functions/strncmp.html

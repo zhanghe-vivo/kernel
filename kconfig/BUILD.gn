@@ -1,9 +1,48 @@
 import("//build/templates/build_template.gni")
+
+action("kconfig_const") {
+  script = "//kernel/kconfig/src/parse_const.py"
+  inputs = [
+    "config/Kconfig",
+    "config/$board/$build_type/defconfig",
+  ]
+  output = rebase_path("$target_gen_dir/kconfig.rs")
+  outputs = [ "$target_gen_dir/kconfig.rs" ]
+  args = [
+    "--kconfig",
+    rebase_path("config/Kconfig"),
+    "--board",
+    "$board",
+    "--build_type",
+    "$build_type",
+    "--output",
+    "$output",
+  ]
+}
+
 build_rust("bluekernel_kconfig") {
   crate_type = "rlib"
-  sources = [ "src/load_kconfig.rs" ]
-  inputs = [ "config/.config" ]
+  sources = get_target_outputs(":kconfig_const")
   edition = "2021"
-  proc_macro_deps = [ "//external/cargo-kconfig/v0.1.1:cargo_kconfig" ]
-  deps = [ "//external/enum-iterator/v1.5.0:enum_iterator" ]
+  deps = [ ":kconfig_const" ]
+}
+
+config("kconfigs") {
+  args = [
+    "--kconfig",
+    rebase_path("config/Kconfig"),
+    "--board",
+    "$board",
+    "--build_type",
+    "$build_type",
+  ]
+  parse_configs = rebase_path("//kernel/kconfig/src/parse_rustflags.py")
+  kernel_configs = exec_script(parse_configs, args, "list lines")
+  rustflags = []
+  foreach(_config, kernel_configs) {
+    rustflags += [
+      "--cfg",
+      _config,
+    ]
+  }
 }

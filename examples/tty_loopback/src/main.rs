@@ -3,15 +3,16 @@
 
 extern crate alloc;
 use bluekernel::{
-    libc, println,
+    libc,
     thread::Thread,
     vfs::vfs_api::{vfs_open, vfs_read, vfs_write},
 };
 use core::ffi::c_char;
+use log::info;
 
 #[no_mangle]
 fn main() -> i32 {
-    println!("Hello, Blue Kernel!");
+    info!("Hello, Blue Kernel!");
 
     let path = b"/dev/ttyS0\0".as_ptr() as *const c_char;
     let file = vfs_open(path, libc::O_RDWR | libc::O_NONBLOCK, 0);

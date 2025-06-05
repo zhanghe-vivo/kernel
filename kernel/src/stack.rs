@@ -12,7 +12,7 @@ pub struct Stack {
     size: usize,
 }
 
-#[cfg(feature = "stack_highwater_check")]
+#[cfg(stack_highwater_check)]
 const STACK_MAGIC_WORD: u32 = 0xa5a5_a5a5;
 
 impl Stack {
@@ -22,7 +22,7 @@ impl Stack {
         assert_eq!((stack as usize) & 0x3, 0);
         assert_eq!(size & 0x3, 0);
 
-        #[cfg(feature = "stack_highwater_check")]
+        #[cfg(stack_highwater_check)]
         {
             let slice = unsafe { core::slice::from_raw_parts_mut(stack as *mut u32, size / 4) };
             slice.fill(STACK_MAGIC_WORD);
@@ -68,7 +68,7 @@ impl Stack {
         self.size as u32
     }
 
-    #[cfg(feature = "stack_highwater_check")]
+    #[cfg(stack_highwater_check)]
     pub fn highwater(&self) -> usize {
         let slice = unsafe { core::slice::from_raw_parts(self.bottom as *mut u32, self.size) };
 

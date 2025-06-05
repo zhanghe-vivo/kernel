@@ -18,14 +18,14 @@ pub extern "C" fn rt_hw_local_irq_enable(level: core::ffi::c_long) {
     Arch::enable_interrupts(level as usize);
 }
 
-#[cfg(not(feature = "smp"))]
+#[cfg(not(smp))]
 #[no_mangle]
 #[inline(always)]
 pub extern "C" fn rt_hw_interrupt_disable() -> core::ffi::c_long {
     rt_hw_local_irq_disable() as core::ffi::c_long
 }
 
-#[cfg(not(feature = "smp"))]
+#[cfg(not(smp))]
 #[no_mangle]
 #[inline(always)]
 pub extern "C" fn rt_hw_interrupt_enable(level: core::ffi::c_long) {

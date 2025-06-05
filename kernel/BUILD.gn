@@ -33,25 +33,6 @@ if (coverage || profile) {
   ]
 }
 
-shared_features = [
-  "tlsf",
-  "overflow_check",
-  "idle_hook",
-  "heap",
-  "heap_isr",
-  "debugging_init",
-  "event",
-  "messagequeue",
-  "mailbox",
-  "mutex",
-  "semaphore",
-  "rwlock",
-  "condvar",
-  "thread_priority_max",
-  "schedule_with_time_slice",
-  "stack_highwater_check",
-]
-
 shared_rust_build_flags = []
 if (direct_syscall_handler) {
   shared_rust_build_flags += [
@@ -90,11 +71,10 @@ build_rust("kernel_unittest") {
     "//kernel/test_harness:bluekernel_test_macro",
   ]
   deps = shared_deps
-  features = shared_features
-
   inputs = [ "//kernel/kernel/src/boards/$board/link.x" ]
   rustflags = shared_rust_build_flags
   rustflags += test_image_rustflags
+  configs += [ "//kernel/kconfig:kconfigs" ]
 }
 
 build_rust("kernel_integration_test") {
@@ -114,6 +94,7 @@ build_rust("kernel_integration_test") {
       "//external/semihosting/v0.1.20:semihosting",
     ]
   }
+  configs += [ "//kernel/kconfig:kconfigs" ]
   if (board == "qemu_virt64_aarch64") {
     deps += [ "//external/semihosting/v0.1.20:semihosting" ]
   }
@@ -130,10 +111,9 @@ build_rust("bluekernel") {
     "//external/rust-delegate/v0.13.3:delegate",
   ]
   deps = shared_deps
-  features = shared_features
-
   rustflags = shared_rust_build_flags
   rustflags += common_crate_rustflags
+  configs += [ "//kernel/kconfig:kconfigs" ]
 }
 
 build_rust("bluekernel_std_static") {
@@ -146,10 +126,13 @@ build_rust("bluekernel_std_static") {
     "//external/rust-delegate/v0.13.3:delegate",
   ]
   deps = shared_deps
-  features = shared_features
-  features += [ "std" ]
   rustflags = shared_rust_build_flags
   rustflags += common_crate_rustflags
+  rustflags += [
+    "--cfg",
+    "std",
+  ]
+  configs += [ "//kernel/kconfig:kconfigs" ]
 }
 
 build_rust("bluekernel_std") {
@@ -162,10 +145,13 @@ build_rust("bluekernel_std") {
     "//external/rust-delegate/v0.13.3:delegate",
   ]
   deps = shared_deps
-  features = shared_features
-  features += [ "std" ]
   rustflags = shared_rust_build_flags
   rustflags += common_crate_rustflags
+  rustflags += [
+    "--cfg",
+    "std",
+  ]
+  configs += [ "//kernel/kconfig:kconfigs" ]
 }
 
 build_rust("bluekernel_posixtestsuite") {
@@ -179,10 +165,14 @@ build_rust("bluekernel_posixtestsuite") {
     "//external/rust-delegate/v0.13.3:delegate",
   ]
   deps = shared_deps
-  features = shared_features
-  features += [ "posixtestsuite" ]
+
   rustflags = shared_rust_build_flags
   rustflags += common_crate_rustflags
+  rustflags += [
+    "--cfg",
+    "posixtestsuite",
+  ]
+  configs += [ "//kernel/kconfig:kconfigs" ]
 }
 
 cbindgen("rust_wrapper") {

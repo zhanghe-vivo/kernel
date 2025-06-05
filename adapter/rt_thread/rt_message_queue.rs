@@ -20,7 +20,7 @@ pub unsafe extern "C" fn rt_mq_init(
 
     #[allow(unused_mut, unused_assignments)]
     let mut queue_working_mode = IPC_SYS_QUEUE_FIFO as u8;
-    #[cfg(feature = "messagequeue_priority")]
+    #[cfg(messagequeue_priority)]
     {
         queue_working_mode = IPC_SYS_QUEUE_PRIO as u8;
     }
@@ -43,7 +43,7 @@ pub unsafe extern "C" fn rt_mq_detach(mq: *mut MessageQueue) -> i32 {
     code::EOK.to_errno()
 }
 
-#[cfg(feature = "heap")]
+#[cfg(heap)]
 #[no_mangle]
 pub unsafe extern "C" fn rt_mq_create(
     name: *const ffi::c_char,
@@ -58,7 +58,7 @@ pub unsafe extern "C" fn rt_mq_create(
 
     #[allow(unused_mut, unused_assignments)]
     let mut queue_working_mode = IPC_SYS_QUEUE_FIFO as u8;
-    #[cfg(feature = "messagequeue_priority")]
+    #[cfg(messagequeue_priority)]
     {
         queue_working_mode = IPC_SYS_QUEUE_PRIO as u8;
     }
@@ -71,7 +71,7 @@ pub unsafe extern "C" fn rt_mq_create(
     )
 }
 
-#[cfg(feature = "heap")]
+#[cfg(heap)]
 #[no_mangle]
 pub unsafe extern "C" fn rt_mq_delete(mq: *mut MessageQueue) -> i32 {
     assert!(mq != null_mut());
@@ -236,7 +236,7 @@ pub unsafe extern "C" fn rt_mq_control(
     }
 }
 
-#[cfg(feature = "messagequeue_priority")]
+#[cfg(messagequeue_priority)]
 #[no_mangle]
 pub unsafe extern "C" fn rt_mq_send_wait_prio(
     mq: *mut MessageQueue,
@@ -258,7 +258,7 @@ pub unsafe extern "C" fn rt_mq_send_wait_prio(
         .map_or_else(|e| e.to_errno(), |_| code::EOK.to_errno())
 }
 
-#[cfg(feature = "messagequeue_priority")]
+#[cfg(messagequeue_priority)]
 #[no_mangle]
 pub unsafe extern "C" fn rt_mq_recv_prio(
     mq: *mut MessageQueue,

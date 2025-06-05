@@ -1,8 +1,8 @@
 use crate::{
     error::{code, Error},
     vfs::{
-        vfs_dirent::*, vfs_fd::*, vfs_log::*, vfs_manager::*, vfs_mnt, vfs_mode::*, vfs_node::*,
-        vfs_path::*, vfs_traits::*,
+        vfs_dirent::*, vfs_fd::*, vfs_manager::*, vfs_mnt, vfs_mode::*, vfs_node::*, vfs_path::*,
+        vfs_traits::*,
     },
 };
 use alloc::{
@@ -15,6 +15,7 @@ use core::{
     slice,
 };
 use libc::{O_ACCMODE, O_CREAT, O_DIRECTORY, O_EXCL, O_RDONLY, O_RDWR, O_TRUNC, O_WRONLY, S_IFDIR};
+use log::{info, warn};
 use spin::RwLock as SpinRwLock;
 
 fn access_to_mode(access_mode: AccessMode, base_mode: mode_t) -> mode_t {
@@ -38,7 +39,7 @@ pub fn mount(
     flags: u64,
     data: Option<&[u8]>,
 ) -> i32 {
-    vfslog!(
+    info!(
         "[posix] Mounting {} at {} (type: {})",
         source.unwrap_or("none"),
         target,
@@ -51,17 +52,17 @@ pub fn mount(
     let target_path = match normalize_path(target) {
         Some(path) => path,
         None => {
-            vfslog!("Invalid target path: {}", target);
+            warn!("Invalid target path: {}", target);
             return code::EINVAL.to_errno();
         }
     };
 
-    vfslog!("[posix] Normalized target path: {}", target_path);
+    info!("[posix] Normalized target path: {}", target_path);
 
     // Check if target path is already mounted
     if let Some(mount_point) = mount_manager.find_mount(&target_path) {
         if mount_point.path == target_path {
-            vfslog!("[posix] Target path already mounted: {}", target_path);
+            warn!("[posix] Target path already mounted: {}", target_path);
             return code::EEXIST.to_errno();
         }
     }
@@ -70,7 +71,7 @@ pub fn mount(
     let fs = match vfs_manager.get_fs(fs_type) {
         Some(fs) => fs,
         None => {
-            vfslog!("Filesystem type not found: {}", fs_type);
+            warn!("Filesystem type not found: {}", fs_type);
             return code::EAGAIN.to_errno();
         }
     };
@@ -84,23 +85,21 @@ pub fn mount(
         fs: fs.clone(),
     };
 
-    vfslog!(
+    info!(
         "[posix] Created mount point: {} (type: {})",
-        mount_point.path,
-        mount_point.fs_type
+        mount_point.path, mount_point.fs_type
     );
 
     let _ = fs
         .mount(source.unwrap_or(""), &target_path, flags, data)
         .map_err(|err| {
-            vfslog!("Mount failed: {}", err);
+            warn!("Mount failed: {}", err);
             return err.to_errno();
         });
 
-    vfslog!(
+    info!(
         "[posix] Successfully mounted {} at {}",
-        fs_type,
-        target_path
+        fs_type, target_path
     );
     mount_manager
         .add_mount(mount_point)
@@ -115,7 +114,7 @@ pub fn unmount(target: &str) -> i32 {
     let target_path = match normalize_path(target) {
         Some(path) => path,
         None => {
-            vfslog!("Invalid target path: {}", target);
+            warn!("Invalid target path: {}", target);
             return code::EINVAL.to_errno();
         }
     };
@@ -124,7 +123,7 @@ pub fn unmount(target: &str) -> i32 {
     let mount_point = match mount_manager.find_mount(&target_path) {
         Some(mp) => mp,
         None => {
-            vfslog!("Mount point not found: {}", target_path);
+            warn!("Mount point not found: {}", target_path);
             return code::EINVAL.to_errno();
         }
     };
@@ -139,7 +138,7 @@ pub fn unmount(target: &str) -> i32 {
 
 /// Open a file with optional mode parameter
 pub fn open(file_path: &str, flags: c_int, _mode: mode_t) -> i32 {
-    vfslog!(
+    info!(
         "[posix] open: path = {}, flags = {}",
         file_path,
         flags_to_string(flags)
@@ -149,13 +148,13 @@ pub fn open(file_path: &str, flags: c_int, _mode: mode_t) -> i32 {
 
     // Check if it's a device file path
     if file_path.starts_with("/dev/") {
-        vfslog!("[posix] Opening device file: {}", file_path);
+        info!("[posix] Opening device file: {}", file_path);
 
         // Get device filesystem and relative path
         let (fs, relative_path) = match vfs_mnt::find_filesystem(file_path) {
             Some(x) => x,
             None => {
-                vfslog!("Device filesystem not found for path: {}", file_path);
+                warn!("Device filesystem not found for path: {}", file_path);
                 return code::ENOENT.to_errno();
             }
         };
@@ -177,18 +176,18 @@ pub fn open(file_path: &str, flags: c_int, _mode: mode_t) -> i32 {
     let dnode_cache = match get_dnode_cache() {
         Some(cache) => cache,
         None => {
-            vfslog!("Failed to get DNode cache");
+            warn!("Failed to get DNode cache");
             return code::EAGAIN.to_errno();
         }
     };
 
     // First look up in cache
     if let Some(dnode) = dnode_cache.lookup(file_path) {
-        vfslog!("[posix] Found existing dnode for path: {}", file_path);
+        warn!("[posix] Found existing dnode for path: {}", file_path);
 
         // Check O_EXCL flag
         if (flags & O_CREAT != 0) && (flags & O_EXCL != 0) {
-            vfslog!("File exists and O_EXCL specified");
+            warn!("File exists and O_EXCL specified");
             return code::EEXIST.to_errno();
         }
 
@@ -199,7 +198,7 @@ pub fn open(file_path: &str, flags: c_int, _mode: mode_t) -> i32 {
         let relative_path = match vfs_mnt::find_filesystem(file_path) {
             Some((_, path)) => path,
             None => {
-                vfslog!("Failed to get relative path for: {}", file_path);
+                warn!("Failed to get relative path for: {}", file_path);
                 return code::ENOENT.to_errno();
             }
         };
@@ -217,7 +216,7 @@ pub fn open(file_path: &str, flags: c_int, _mode: mode_t) -> i32 {
         let inode_no = match fs.open(&relative_path, flags) {
             Ok(fd) => fd as InodeNo,
             Err(err) => {
-                vfslog!("Failed to open existing file: {}", err);
+                warn!("Failed to open existing file: {}", err);
                 return err.to_errno();
             }
         };
@@ -230,7 +229,7 @@ pub fn open(file_path: &str, flags: c_int, _mode: mode_t) -> i32 {
 
     // If not found in cache and O_CREAT not specified, return error
     if flags & O_CREAT == 0 {
-        vfslog!("File not found and O_CREAT not specified: {}", file_path);
+        warn!("File not found and O_CREAT not specified: {}", file_path);
         return code::ENOENT.to_errno();
     }
 
@@ -238,17 +237,17 @@ pub fn open(file_path: &str, flags: c_int, _mode: mode_t) -> i32 {
     let (parent_path, file_name) = match split_path(file_path) {
         Some(x) => x,
         None => {
-            vfslog!("Invalid path: {}", file_path);
+            warn!("Invalid path: {}", file_path);
             return code::EINVAL.to_errno();
         }
     };
 
     // Look up parent directory's DNode
-    vfslog!("[posix] Looking up parent directory: {}", parent_path);
+    info!("[posix] Looking up parent directory: {}", parent_path);
     let parent_dnode = match dnode_cache.lookup(parent_path) {
         Some(dnode) => dnode,
         None => {
-            vfslog!("Parent directory not found: {}", parent_path);
+            warn!("Parent directory not found: {}", parent_path);
             return code::ENOENT.to_errno();
         }
     };
@@ -257,7 +256,7 @@ pub fn open(file_path: &str, flags: c_int, _mode: mode_t) -> i32 {
     let (fs, relative_path) = match vfs_mnt::find_filesystem(file_path) {
         Some(x) => x,
         None => {
-            vfslog!("Filesystem not found for path: {}", file_path);
+            warn!("Filesystem not found for path: {}", file_path);
             return code::ENOENT.to_errno();
         }
     };
@@ -267,7 +266,7 @@ pub fn open(file_path: &str, flags: c_int, _mode: mode_t) -> i32 {
     let inode_attr = match fs.create_inode(&relative_path, mode) {
         Ok(attr) => attr,
         Err(err) => {
-            vfslog!("Failed to create inode: {}", err);
+            warn!("Failed to create inode: {}", err);
             return err.to_errno();
         }
     };
@@ -282,7 +281,7 @@ pub fn open(file_path: &str, flags: c_int, _mode: mode_t) -> i32 {
 
     // Add new DNode to parent directory's children
     parent_dnode.add_child(file_name.to_string(), Arc::clone(&new_dnode));
-    vfslog!(
+    info!(
         "[posix] Added new DNode '{}' to parent directory '{}'",
         file_name,
         parent_dnode.get_full_path()
@@ -311,7 +310,7 @@ pub fn open(file_path: &str, flags: c_int, _mode: mode_t) -> i32 {
 
 /// Close a file descriptor  
 pub fn close(fd: c_int) -> c_int {
-    vfslog!("[posix] close: fd = {}", fd);
+    info!("[posix] close: fd = {}", fd);
 
     let mut fd_manager = get_fd_manager().lock();
     let fd_entry = match fd_manager.get_fd_mut(fd) {
@@ -320,7 +319,7 @@ pub fn close(fd: c_int) -> c_int {
     };
 
     if let Err(err) = fd_entry.file.close(fd_entry.inode_no) {
-        vfslog!("[posix] close: Failed to close file: {}", err);
+        warn!("[posix] close: Failed to close file: {}", err);
     }
 
     // Always free the fd
@@ -330,16 +329,16 @@ pub fn close(fd: c_int) -> c_int {
 }
 
 pub fn unlink(file_path: &str) -> i32 {
-    vfslog!("[posix] unlink: path = {}", file_path);
+    info!("[posix] unlink: path = {}", file_path);
 
     // Check path validity
     if !is_valid_path(file_path) {
-        vfslog!("Invalid path: {}", file_path);
+        warn!("Invalid path: {}", file_path);
         return code::EINVAL.to_errno();
     }
 
     if file_path.starts_with("/dev/") {
-        vfslog!(
+        warn!(
             "Unlink operation on device file is not allowed: {}",
             file_path
         );
@@ -350,7 +349,7 @@ pub fn unlink(file_path: &str) -> i32 {
     let dnode_cache = match get_dnode_cache() {
         Some(cache) => cache,
         None => {
-            vfslog!("Failed to get DNode cache");
+            warn!("Failed to get DNode cache");
             return code::EAGAIN.to_errno();
         }
     };
@@ -359,7 +358,7 @@ pub fn unlink(file_path: &str) -> i32 {
     let (parent_path, file_name) = match split_path(file_path) {
         Some(x) => x,
         None => {
-            vfslog!("Invalid path: {}", file_path);
+            warn!("Invalid path: {}", file_path);
             return code::EINVAL.to_errno();
         }
     };
@@ -370,14 +369,14 @@ pub fn unlink(file_path: &str) -> i32 {
         Some(dnode) => {
             // Check if it's a directory
             if dnode.get_inode().is_dir() {
-                vfslog!("is a directory: {}", file_path);
+                warn!("is a directory: {}", file_path);
                 return code::EISDIR.to_errno();
             }
             // Check if it's root directory
             parent_dnode = match dnode.get_parent() {
                 Some(dnode) => dnode,
                 None => {
-                    vfslog!("Cannot remove root directory");
+                    warn!("Cannot remove root directory");
                     return code::EBUSY.to_errno();
                 }
             };
@@ -385,17 +384,17 @@ pub fn unlink(file_path: &str) -> i32 {
         }
         None => {
             // Look up parent directory's DNode
-            vfslog!("[posix] Looking up parent directory: {}", parent_path);
+            info!("[posix] Looking up parent directory: {}", parent_path);
             parent_dnode = match dnode_cache.lookup(parent_path) {
                 Some(dnode) => dnode,
                 None => {
-                    vfslog!("Parent directory not found: {}", parent_path);
+                    warn!("Parent directory not found: {}", parent_path);
                     return code::ENOENT.to_errno();
                 }
             };
             let dnode = parent_dnode.find_child(&file_name.to_string()).unwrap();
             if dnode.get_inode().is_dir() {
-                vfslog!("is a directory: {}", file_path);
+                warn!("is a directory: {}", file_path);
                 return code::EISDIR.to_errno();
             }
 
@@ -408,7 +407,7 @@ pub fn unlink(file_path: &str) -> i32 {
     let (_, relative_path) = match vfs_mnt::find_filesystem(file_path) {
         Some(x) => x,
         None => {
-            vfslog!("Filesystem not found for path: {}", file_path);
+            warn!("Filesystem not found for path: {}", file_path);
             return code::ENOENT.to_errno();
         }
     };
@@ -422,11 +421,11 @@ pub fn unlink(file_path: &str) -> i32 {
             // Remove directory from DNode cache
             dnode_cache.remove(file_path);
 
-            vfslog!("[posix] Successfully removed directory: {}", file_path);
+            info!("[posix] Successfully removed directory: {}", file_path);
             code::EOK.to_errno()
         }
         Err(err) => {
-            vfslog!("Failed to remove directory: {}", err);
+            warn!("Failed to remove directory: {}", err);
             err.to_errno()
         }
     }
@@ -444,7 +443,7 @@ pub fn read(fd: c_int, buf: *mut c_void, len: usize) -> isize {
         None => return code::EBADF.to_errno() as isize,
     };
     if (fd_entry.open_flags & O_ACCMODE) == O_WRONLY {
-        vfslog!("fd {} is write only", fd);
+        warn!("fd {} is write only", fd);
         return code::EBADF.to_errno() as isize;
     }
     let buffer = unsafe { slice::from_raw_parts_mut(buf as *mut u8, len) };
@@ -461,7 +460,7 @@ pub fn read(fd: c_int, buf: *mut c_void, len: usize) -> isize {
 
 /// Write to a file  
 pub fn write(fd: i32, buf: &[u8], count: usize) -> isize {
-    vfslog!("write: fd = {}, count = {}", fd, count);
+    info!("write: fd = {}, count = {}", fd, count);
 
     let mut fd_manager = get_fd_manager().lock();
 
@@ -471,7 +470,7 @@ pub fn write(fd: i32, buf: &[u8], count: usize) -> isize {
     };
 
     if (fd_entry.open_flags & O_ACCMODE) == O_RDONLY {
-        vfslog!("fd {} is read only", fd);
+        warn!("fd {} is read only", fd);
         return code::EBADF.to_errno() as isize;
     }
 
@@ -487,11 +486,9 @@ pub fn write(fd: i32, buf: &[u8], count: usize) -> isize {
 
 /// Seek in a file
 pub fn lseek(fd: c_int, offset: i64, whence: c_int) -> i64 {
-    vfslog!(
+    info!(
         "lseek: fd = {}, offset = {}, whence = {}",
-        fd,
-        offset,
-        whence
+        fd, offset, whence
     );
 
     let mut fd_manager = get_fd_manager().lock();
@@ -535,11 +532,11 @@ pub fn lseek(fd: c_int, offset: i64, whence: c_int) -> i64 {
 
 /// Create a directory
 pub fn mkdir(path: &str, mode: mode_t) -> i32 {
-    vfslog!("[posix] mkdir: path = {}, mode = {:o}", path, mode);
+    info!("[posix] mkdir: path = {}, mode = {:o}", path, mode);
 
     // Check path validity
     if !is_valid_path(path) {
-        vfslog!("Invalid path: {}", path);
+        warn!("Invalid path: {}", path);
         return code::EINVAL.to_errno();
     }
 
@@ -547,7 +544,7 @@ pub fn mkdir(path: &str, mode: mode_t) -> i32 {
     let (parent_path, dir_name) = match split_path(path) {
         Some(x) => x,
         None => {
-            vfslog!("Invalid path: {}", path);
+            warn!("Invalid path: {}", path);
             return code::EINVAL.to_errno();
         }
     };
@@ -556,7 +553,7 @@ pub fn mkdir(path: &str, mode: mode_t) -> i32 {
     let (fs, relative_path) = match vfs_mnt::find_filesystem(path) {
         Some(x) => x,
         None => {
-            vfslog!("Filesystem not found for path: {}", path);
+            warn!("Filesystem not found for path: {}", path);
             return code::ENOENT.to_errno();
         }
     };
@@ -565,7 +562,7 @@ pub fn mkdir(path: &str, mode: mode_t) -> i32 {
     let dnode_cache = match get_dnode_cache() {
         Some(cache) => cache,
         None => {
-            vfslog!("Failed to get DNode cache");
+            warn!("Failed to get DNode cache");
             return code::EAGAIN.to_errno();
         }
     };
@@ -574,20 +571,20 @@ pub fn mkdir(path: &str, mode: mode_t) -> i32 {
     let parent_dnode = match dnode_cache.lookup(parent_path) {
         Some(dnode) => dnode,
         None => {
-            vfslog!("Parent directory not found: {}", parent_path);
+            warn!("Parent directory not found: {}", parent_path);
             return code::ENOENT.to_errno();
         }
     };
 
     // Check if parent is a directory
     if !parent_dnode.get_inode().attr.read().is_dir() {
-        vfslog!("Parent is not a directory: {}", parent_path);
+        warn!("Parent is not a directory: {}", parent_path);
         return code::ENOTDIR.to_errno();
     }
 
     // Check if directory already exists
     if dir_name.is_empty() || parent_dnode.find_child(&dir_name).is_some() {
-        vfslog!("Directory already exists: {}", path);
+        warn!("Directory already exists: {}", path);
         return code::EEXIST.to_errno();
     }
 
@@ -609,11 +606,11 @@ pub fn mkdir(path: &str, mode: mode_t) -> i32 {
             // Add new DNode to cache
             dnode_cache.insert(Arc::clone(&new_dnode));
 
-            vfslog!("[posix] Successfully created directory: {}", path);
+            info!("[posix] Successfully created directory: {}", path);
             code::EOK.to_errno()
         }
         Err(err) => {
-            vfslog!("Failed to create directory: {}", err);
+            warn!("Failed to create directory: {}", err);
             err.to_errno()
         }
     }
@@ -621,11 +618,11 @@ pub fn mkdir(path: &str, mode: mode_t) -> i32 {
 
 /// Remove a directory
 pub fn rmdir(path: &str) -> i32 {
-    vfslog!("[posix] rmdir: path = {}", path);
+    info!("[posix] rmdir: path = {}", path);
 
     // Check path validity
     if !is_valid_path(path) {
-        vfslog!("Invalid path: {}", path);
+        warn!("Invalid path: {}", path);
         return code::EINVAL.to_errno();
     }
 
@@ -633,7 +630,7 @@ pub fn rmdir(path: &str) -> i32 {
     let dnode_cache = match get_dnode_cache() {
         Some(cache) => cache,
         None => {
-            vfslog!("Failed to get DNode cache");
+            warn!("Failed to get DNode cache");
             return code::EAGAIN.to_errno();
         }
     };
@@ -642,7 +639,7 @@ pub fn rmdir(path: &str) -> i32 {
     let (parent_path, dir_name) = match split_path(path) {
         Some(x) => x,
         None => {
-            vfslog!("Invalid path: {}", path);
+            warn!("Invalid path: {}", path);
             return code::EINVAL.to_errno();
         }
     };
@@ -653,14 +650,14 @@ pub fn rmdir(path: &str) -> i32 {
         Some(dnode) => {
             // Check if it's a directory
             if !dnode.get_inode().is_dir() {
-                vfslog!("Not a directory: {}", path);
+                warn!("Not a directory: {}", path);
                 return code::ENOTDIR.to_errno();
             }
             // Check if it's root directory
             parent_dnode = match dnode.get_parent() {
                 Some(dnode) => dnode,
                 None => {
-                    vfslog!("Cannot remove root directory");
+                    warn!("Cannot remove root directory");
                     return code::EBUSY.to_errno();
                 }
             };
@@ -668,23 +665,23 @@ pub fn rmdir(path: &str) -> i32 {
         }
         None => {
             // Look up parent directory's DNode
-            vfslog!("[posix] Looking up parent directory: {}", parent_path);
+            info!("[posix] Looking up parent directory: {}", parent_path);
             parent_dnode = match dnode_cache.lookup(parent_path) {
                 Some(dnode) => dnode,
                 None => {
-                    vfslog!("Parent directory not found: {}", parent_path);
+                    warn!("Parent directory not found: {}", parent_path);
                     return code::ENOENT.to_errno();
                 }
             };
             let dnode = match parent_dnode.find_child(&dir_name.to_string()) {
                 Some(dnode) => dnode,
                 None => {
-                    vfslog!("Directory not found: {}", path);
+                    warn!("Directory not found: {}", path);
                     return code::ENOENT.to_errno();
                 }
             };
             if !dnode.get_inode().is_dir() {
-                vfslog!("Not a directory: {}", path);
+                warn!("Not a directory: {}", path);
                 return code::ENOTDIR.to_errno();
             }
 
@@ -697,7 +694,7 @@ pub fn rmdir(path: &str) -> i32 {
     let (_, relative_path) = match vfs_mnt::find_filesystem(path) {
         Some(x) => x,
         None => {
-            vfslog!("Filesystem not found for path: {}", path);
+            warn!("Filesystem not found for path: {}", path);
             return code::ENOENT.to_errno();
         }
     };
@@ -711,11 +708,11 @@ pub fn rmdir(path: &str) -> i32 {
             // Remove directory from DNode cache
             dnode_cache.remove(path);
 
-            vfslog!("[posix] Successfully removed directory: {}", path);
+            info!("[posix] Successfully removed directory: {}", path);
             code::EOK.to_errno()
         }
         Err(err) => {
-            vfslog!("Failed to remove directory: {}", err);
+            warn!("Failed to remove directory: {}", err);
             err.to_errno()
         }
     }
@@ -723,7 +720,7 @@ pub fn rmdir(path: &str) -> i32 {
 
 /// Open directory
 pub fn opendir(path: &str) -> Result<Arc<Dir>, Error> {
-    vfslog!("[posix] opendir: path = {}", path);
+    info!("[posix] opendir: path = {}", path);
 
     // Get DNode cache
     let dnode_cache = get_dnode_cache().ok_or(code::ENOSYS)?;
@@ -731,7 +728,7 @@ pub fn opendir(path: &str) -> Result<Arc<Dir>, Error> {
     // Look up directory node from cache
     if let Some(dnode) = dnode_cache.lookup(path) {
         if !dnode.get_inode().attr.read().is_dir() {
-            vfslog!("[posix] Not a directory: {}", path);
+            warn!("[posix] Not a directory: {}", path);
             return Err(code::ENOTDIR);
         }
     };
@@ -739,7 +736,7 @@ pub fn opendir(path: &str) -> Result<Arc<Dir>, Error> {
     let (fs, relative_path) = match vfs_mnt::find_filesystem(path) {
         Some(x) => x,
         None => {
-            vfslog!("[posix] Filesystem not found for path: {}", path);
+            warn!("[posix] Filesystem not found for path: {}", path);
             return Err(code::ENOENT);
         }
     };
@@ -750,7 +747,7 @@ pub fn opendir(path: &str) -> Result<Arc<Dir>, Error> {
     let fd = fd_manager.alloc_fd(O_RDONLY | O_DIRECTORY, file_ops, inode_no);
 
     if fd < 0 {
-        vfslog!("[posix] Failed to allocate fd for directory");
+        warn!("[posix] Failed to allocate fd for directory");
         return Err(code::ENOMEM);
     }
 
@@ -762,7 +759,7 @@ pub fn opendir(path: &str) -> Result<Arc<Dir>, Error> {
 
 /// Read directory entry
 pub fn readdir(dir: &Arc<Dir>) -> Result<Dirent, Error> {
-    vfslog!(
+    info!(
         "[posix] readdir: fd = {}, current offset = {}",
         dir.fd,
         dir.state.read().offset
@@ -774,7 +771,7 @@ pub fn readdir(dir: &Arc<Dir>) -> Result<Dirent, Error> {
 
     // Check if it's a directory
     if fd_entry.open_flags & O_DIRECTORY == 0 {
-        vfslog!("[posix] readdir: Not a directory fd: {}", dir.fd);
+        warn!("[posix] readdir: Not a directory fd: {}", dir.fd);
         return Err(code::ENOTDIR);
     }
 
@@ -790,19 +787,16 @@ pub fn readdir(dir: &Arc<Dir>) -> Result<Dirent, Error> {
             let dirent = dirents.remove(0);
             // Update offset
             state.offset += 1;
-            vfslog!("[posix] readdir: Returning entry: {}", dirent.name_as_str());
+            info!("[posix] readdir: Returning entry: {}", dirent.name_as_str());
             Ok(dirent)
         }
-        Err(err) => {
-            //vfslog!("[posix] readdir: No more entries");
-            Err(err)
-        }
+        Err(err) => Err(err),
     }
 }
 
 /// Close directory
 pub fn closedir(dir: Arc<Dir>) -> i32 {
-    vfslog!("[posix] closedir: fd = {}", dir.fd);
+    info!("[posix] closedir: fd = {}", dir.fd);
 
     let mut fd_manager = get_fd_manager().lock();
 
@@ -814,7 +808,7 @@ pub fn closedir(dir: Arc<Dir>) -> i32 {
 
     // Check if it's a directory
     if fd_entry.open_flags & O_DIRECTORY == 0 {
-        vfslog!("Not a directory fd: {}", dir.fd);
+        warn!("Not a directory fd: {}", dir.fd);
         return code::ENOTDIR.to_errno();
     }
 
@@ -824,7 +818,7 @@ pub fn closedir(dir: Arc<Dir>) -> i32 {
 }
 
 pub fn fcntl(fd: i32, cmd: c_int, args: usize) -> c_int {
-    vfslog!("fcntl: fd = {}, cmd = {}, args = {}", fd, cmd, args);
+    info!("fcntl: fd = {}, cmd = {}, args = {}", fd, cmd, args);
     const FD_CLOEXEC: c_int = 1;
 
     match cmd {

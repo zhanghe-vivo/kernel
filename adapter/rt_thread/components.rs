@@ -1,18 +1,18 @@
 use crate::kernel::println;
-#[cfg(feature = "debugging_init")]
+#[cfg(debugging_init)]
 use core::ffi::CStr;
 use paste::paste;
 
 type InitFn = extern "C" fn() -> i32;
 
-#[cfg(feature = "debugging_init")]
+#[cfg(debugging_init)]
 #[repr(C)]
 struct InitDesc {
     fn_name: *const core::ffi::c_char,
     fn_ptr: InitFn,
 }
 
-#[cfg(feature = "debugging_init")]
+#[cfg(debugging_init)]
 unsafe impl Sync for InitDesc {}
 
 /// convert to string type
@@ -32,7 +32,7 @@ macro_rules! level_to_string {
 }
 
 /// initialization export
-#[cfg(feature = "debugging_init")]
+#[cfg(debugging_init)]
 macro_rules! init_export {
     ($func: ident, $level: ident) => {
         paste! {
@@ -50,7 +50,7 @@ macro_rules! init_export {
 }
 
 /// initialization export
-#[cfg(not(feature = "debugging_init"))]
+#[cfg(not(debugging_init))]
 macro_rules! init_export {
     ($func: ident, $level: expr) => {
         paste! {
@@ -97,7 +97,7 @@ init_export!(rti_end, level6_end);
 /// Onboard components initialization.
 /// This funtion will be called to complete the initialization of the on-board peripherals.
 pub fn rt_components_board_init() {
-    #[cfg(feature = "debugging_init")]
+    #[cfg(debugging_init)]
     {
         let mut desc: *const InitDesc = &init_desc_rti_board_start;
         while desc < &init_desc_rti_board_end {
@@ -111,7 +111,7 @@ pub fn rt_components_board_init() {
             desc = unsafe { desc.add(1) };
         }
     }
-    #[cfg(not(feature = "debugging_init"))]
+    #[cfg(not(debugging_init))]
     {
         let mut fn_ptr = &rt_init_rti_board_start as *const extern "C" fn();
         while fn_ptr < &rt_init_rti_board_end {
@@ -125,7 +125,7 @@ pub fn rt_components_board_init() {
 
 ///kernel components Initialization.
 pub fn rt_components_init() {
-    #[cfg(feature = "debugging_init")]
+    #[cfg(debugging_init)]
     {
         let mut desc: *const InitDesc = &init_desc_rti_board_end;
         while desc < &init_desc_rti_end {
@@ -139,7 +139,7 @@ pub fn rt_components_init() {
             desc = unsafe { desc.add(1) };
         }
     }
-    #[cfg(not(feature = "debugging_init"))]
+    #[cfg(not(debugging_init))]
     {
         let mut fn_ptr = &rt_init_rti_board_end as *const extern "C" fn();
         while fn_ptr < &rt_init_rti_end {

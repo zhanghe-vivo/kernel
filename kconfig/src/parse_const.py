@@ -1,0 +1,81 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Parse the int configuration item in Kconfig
+Use the value of .config first, if not, use the default value
+Generate const value to rust
+"""
+
+import sys
+from kconfiglib import Kconfig, INT
+import os
+import argparse
+
+
+def parse_int_configs(kconfig_path, board, build_type):
+    kconf = Kconfig(kconfig_path)
+    dotconfig = os.path.join(os.path.dirname(kconfig_path), board, build_type,
+                             'defconfig')
+    if os.path.exists(dotconfig):
+        kconf.load_config(dotconfig)
+
+    configs = {}
+
+    for sym in kconf.defined_syms:
+        if sym.orig_type != INT or not sym.visibility:
+            continue
+
+        # check depends on
+        if sym.direct_dep is not None and sym.direct_dep.tri_value == 0:
+            continue
+
+        value = None
+        try:
+            # 1. The value set in .config is used first
+            if sym.str_value:
+                value = int(sym.str_value)
+            # 2. Try to get a default value (check the default ... if ... condition)
+            elif sym.defaults:
+                for default, cond in sym.defaults:
+                    if cond is None or cond.eval():
+                        value = int(default.str_value)
+                        break
+
+            if value is not None:
+                configs[sym.name.upper()] = value
+
+        except (ValueError, TypeError) as e:
+            print(f"[WARN] items {sym.name} value conversion failed: {e}",
+                  file=sys.stderr)
+
+    return configs
+
+
+def generate_rust_const(configs, output):
+    rust_code = """
+// Automatically generated configuration constants
+#![no_std]
+#![allow(unused)]
+"""
+    for name, value in sorted(configs.items()):
+        rust_code += f"pub const {name}: usize = {value};\n"
+    output_dir = os.path.dirname(output)
+    os.makedirs(output_dir, exist_ok=True)
+    with open(output, "w") as f:
+        f.write(rust_code)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--kconfig", help="Kconfig dir")
+    parser.add_argument("--board", help="target board")
+    parser.add_argument("--build_type", help="target build_type")
+    parser.add_argument("--output", help="Rust file output directory")
+    args = parser.parse_args()
+    try:
+        results = parse_int_configs(args.kconfig, args.board, args.build_type)
+        if results:
+            generate_rust_const(results, args.output)
+    except Exception as e:
+        print(f"\n[ERROR] Parse failed: {e}", file=sys.stderr)
+        sys.exit(1)

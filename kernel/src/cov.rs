@@ -1,6 +1,7 @@
 // NEWLINE-TIMEOUT: 15
 // ASSERT-SUCC: coverage test end.
 // ASSERT-FAIL: Backtrace in Panic.*
+use log::info;
 use minicov::capture_coverage;
 
 pub fn write_coverage_data() {
@@ -11,5 +12,5 @@ pub fn write_coverage_data() {
     }
     use semihosting::{c, fs, io};
     fs::write(c!("output.profraw"), cov_data).unwrap();
-    crate::println!("coverage test end.");
+    info!("coverage test end.");
 }

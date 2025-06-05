@@ -21,11 +21,11 @@
 // SOFTWARE.
 #![allow(dead_code)]
 use crate::{arch::Arch, cpu::Cpu};
-#[cfg(feature = "debugging_spinlock")]
+#[cfg(debugging_spinlock)]
 use crate::{irq::IrqLock, println, thread::Thread};
-#[cfg(feature = "smp")]
+#[cfg(smp)]
 use core::sync::atomic::{AtomicUsize, Ordering};
-#[cfg(feature = "debugging_spinlock")]
+#[cfg(debugging_spinlock)]
 use core::{cell::Cell, ptr::NonNull};
 use core::{
     cell::{Cell, UnsafeCell},
@@ -33,14 +33,14 @@ use core::{
     ops::{Deref, DerefMut},
 };
 
-#[cfg(feature = "smp")]
+#[cfg(smp)]
 #[repr(C)]
 pub struct Tickets {
     owner: AtomicUsize,
     next: AtomicUsize,
 }
 
-#[cfg(feature = "smp")]
+#[cfg(smp)]
 impl Tickets {
     pub const fn new() -> Self {
         Self {
@@ -52,10 +52,10 @@ impl Tickets {
 
 pub struct RawSpin {
     lock: Cell<usize>,
-    #[cfg(feature = "smp")]
+    #[cfg(smp)]
     tickets: Tickets,
 
-    #[cfg(feature = "debugging_spinlock")]
+    #[cfg(debugging_spinlock)]
     pub(crate) owner: Cell<Option<NonNull<Thread>>>,
 }
 
@@ -66,10 +66,10 @@ impl RawSpin {
     pub const fn new() -> Self {
         Self {
             lock: Cell::new(0),
-            #[cfg(feature = "smp")]
+            #[cfg(smp)]
             tickets: Tickets::new(),
 
-            #[cfg(feature = "debugging_spinlock")]
+            #[cfg(debugging_spinlock)]
             owner: Cell::new(None),
         }
     }
@@ -81,7 +81,7 @@ impl RawSpin {
 
     #[inline]
     pub fn lock_fast(&self) {
-        #[cfg(feature = "debugging_spinlock")]
+        #[cfg(debugging_spinlock)]
         if let Some(thread) = crate::current_thread!() {
             let irq_lock = IrqLock::new();
             let _guard = irq_lock.lock();
@@ -95,11 +95,11 @@ impl RawSpin {
             }
             thread.set_wait(self);
         }
-        #[cfg(feature = "smp")]
+        #[cfg(smp)]
         {
             self.arch_lock();
         }
-        #[cfg(feature = "debugging_spinlock")]
+        #[cfg(debugging_spinlock)]
         if let Some(thread) = crate::current_thread!() {
             self.owner.set(Some(thread));
             unsafe { thread.as_mut().clear_wait() };
@@ -108,11 +108,11 @@ impl RawSpin {
 
     #[inline]
     pub fn unlock_fast(&self) {
-        #[cfg(feature = "debugging_spinlock")]
+        #[cfg(debugging_spinlock)]
         {
             self.owner.set(None);
         }
-        #[cfg(feature = "smp")]
+        #[cfg(smp)]
         {
             self.arch_unlock();
         }
@@ -129,7 +129,7 @@ impl RawSpin {
     }
 
     pub fn lock_irqsave(&self) -> usize {
-        #[cfg(feature = "smp")]
+        #[cfg(smp)]
         {
             Cpu::get_current_scheduler().preempt_disable();
             let level = Arch::disable_interrupts();
@@ -137,7 +137,7 @@ impl RawSpin {
             level
         }
 
-        #[cfg(not(feature = "smp"))]
+        #[cfg(not(smp))]
         {
             Cpu::get_current_scheduler().preempt_disable();
             Arch::disable_interrupts()
@@ -145,21 +145,21 @@ impl RawSpin {
     }
 
     pub fn unlock_irqrestore(&self, level: usize) {
-        #[cfg(feature = "smp")]
+        #[cfg(smp)]
         {
             self.unlock_fast();
             Arch::enable_interrupts(level);
             Cpu::get_current_scheduler().preempt_enable();
         }
 
-        #[cfg(not(feature = "smp"))]
+        #[cfg(not(smp))]
         {
             Arch::enable_interrupts(level);
             Cpu::get_current_scheduler().preempt_enable();
         };
     }
 
-    #[cfg(feature = "smp")]
+    #[cfg(smp)]
     pub fn arch_lock(&self) {
         let lockval = self.tickets.next.fetch_add(1, Ordering::SeqCst);
         while lockval != self.tickets.owner.load(Ordering::SeqCst) {
@@ -167,7 +167,7 @@ impl RawSpin {
         }
     }
 
-    #[cfg(feature = "smp")]
+    #[cfg(smp)]
     pub fn arch_unlock(&self) {
         self.tickets.owner.fetch_add(1, Ordering::SeqCst);
         Arch::signal_event();

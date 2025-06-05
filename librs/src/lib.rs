@@ -2,7 +2,7 @@
 // ASSERT-SUCC: Librs unittest ended
 // ASSERT-FAIL: Backtrace in Panic.*
 
-#![cfg_attr(not(feature = "std"), no_std)]
+#![cfg_attr(not(std), no_std)]
 #![cfg_attr(test, feature(custom_test_frameworks))]
 #![cfg_attr(test, test_runner(librs_test_runner))]
 #![cfg_attr(test, reexport_test_harness_main = "librs_test_main")]
@@ -63,7 +63,7 @@ pub extern "C" fn start_blueos_posix() {
 }
 
 // FIXME: Remove this when we have a proper libc implementation.
-#[cfg(feature = "posixtestsuite")]
+#[cfg(posixtestsuite)]
 #[path = "../tests/posixtestsuite/utils.rs"]
 pub mod utils;
 

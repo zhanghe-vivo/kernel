@@ -3,7 +3,7 @@
 
 use crate::{
     error::{code, Error},
-    vfs::{vfs_log::*, vfs_path::*, vfs_traits::*},
+    vfs::{vfs_path::*, vfs_traits::*},
 };
 use alloc::{
     collections::{BTreeMap, VecDeque},
@@ -12,6 +12,7 @@ use alloc::{
     sync::Arc,
     vec::Vec,
 };
+use log::{info, warn};
 use spin::{Mutex, RwLock};
 
 /// Filesystem inode number
@@ -330,7 +331,7 @@ impl DNodeCache {
             bucket_count,
         };
 
-        vfslog!("[vfs_node] DNodeCache initialized successfully");
+        info!("[vfs_node] DNodeCache initialized successfully");
         cache
     }
 
@@ -364,7 +365,7 @@ impl DNodeCache {
         // If LRU list exceeds capacity, remove oldest item
         if lru.len() > self.capacity {
             if let Some(old_hash) = lru.pop_front() {
-                vfslog!(
+                info!(
                     "[vfs_node] LRU list exceeded capacity, removed oldest hash {}",
                     old_hash
                 );
@@ -441,12 +442,9 @@ impl DNodeCache {
         let hash = self.hash_path(&normalized_path);
         let bucket_idx = self.get_bucket_index(hash);
 
-        vfslog!(
+        info!(
             "[vfs_node] Cache remove: path = {}, normalized = {}, hash = {}, bucket = {}",
-            path,
-            normalized_path,
-            hash,
-            bucket_idx
+            path, normalized_path, hash, bucket_idx
         );
 
         let bucket = &self.buckets[bucket_idx];
@@ -457,36 +455,36 @@ impl DNodeCache {
             .position(|e| e.hash == hash && e.full_path == normalized_path)
         {
             let entry = entries.remove(pos);
-            vfslog!("[vfs_node] Removed entry from cache: {}", normalized_path);
+            info!("[vfs_node] Removed entry from cache: {}", normalized_path);
 
             // Remove from LRU list
             let mut lru = self.lru_list.lock();
             if let Some(index) = lru.iter().position(|&x| x == hash) {
                 lru.remove(index);
-                vfslog!("[vfs_node] Removed hash {} from LRU list", hash);
+                info!("[vfs_node] Removed hash {} from LRU list", hash);
             }
 
             Some(entry.dnode)
         } else {
-            vfslog!("[vfs_node] Entry not found in cache: {}", normalized_path);
+            warn!("[vfs_node] Entry not found in cache: {}", normalized_path);
             None
         }
     }
 
     /// Clear cache
     pub fn clear(&self) {
-        vfslog!("[vfs_node] Clearing entire cache");
+        info!("[vfs_node] Clearing entire cache");
 
         let mut total_entries = 0;
         for (i, bucket) in self.buckets.iter().enumerate() {
             let mut entries = bucket.entries.lock();
             total_entries += entries.len();
             entries.clear();
-            vfslog!("[vfs_node] Cleared bucket {}", i);
+            info!("[vfs_node] Cleared bucket {}", i);
         }
 
         self.lru_list.lock().clear();
-        vfslog!(
+        info!(
             "[vfs_node] Cleared cache: removed {} entries from {} buckets",
             total_entries,
             self.buckets.len()

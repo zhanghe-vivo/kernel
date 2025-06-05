@@ -19,7 +19,7 @@ pub unsafe extern "C" fn rt_mutex_detach(mutex: *mut Mutex) -> i32 {
     code::EOK.to_errno()
 }
 
-#[cfg(feature = "heap")]
+#[cfg(heap)]
 #[no_mangle]
 pub unsafe extern "C" fn rt_mutex_create(
     name: *const ffi::c_char,
@@ -28,7 +28,7 @@ pub unsafe extern "C" fn rt_mutex_create(
     Mutex::new_raw(name)
 }
 
-#[cfg(feature = "heap")]
+#[cfg(heap)]
 #[no_mangle]
 pub unsafe extern "C" fn rt_mutex_delete(mutex: *mut Mutex) -> i32 {
     assert!(!mutex.is_null());

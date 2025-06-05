@@ -5,17 +5,18 @@ use crate::{
     drivers::device::DeviceManager,
     error::{code, Error},
     vfs::{
-        vfs_devfs, vfs_fd, vfs_log::*, vfs_manager::*, vfs_mnt::*, vfs_mode::*, vfs_node::*,
-        vfs_posix, vfs_tmpfs,
+        vfs_devfs, vfs_fd, vfs_manager::*, vfs_mnt::*, vfs_mode::*, vfs_node::*, vfs_posix,
+        vfs_tmpfs,
     },
 };
 use alloc::{slice, string::String, sync::Arc};
 use core::ffi::{c_char, c_int, c_ulong, c_void, CStr};
 use libc::{EINVAL, S_IFDIR};
+use log::{info, warn};
 
 /// Initialize the virtual file system  
 pub fn vfs_init() -> Result<(), Error> {
-    vfslog!("Initializing VFS...");
+    info!("Initializing VFS...");
 
     // Get VFS manager instance
     let vfs_manager = get_vfs_manager();
@@ -26,7 +27,7 @@ pub fn vfs_init() -> Result<(), Error> {
 
     // Mount root filesystem (tmpfs)
     if vfs_posix::mount(None, "/", "tmpfs", 0, None) != 0 {
-        vfslog!("Failed to mount root filesystem");
+        warn!("Failed to mount root filesystem");
         return Err(code::EAGAIN);
     }
 
@@ -37,7 +38,7 @@ pub fn vfs_init() -> Result<(), Error> {
     let (fs, _) = match find_filesystem("/") {
         Some(x) => x,
         None => {
-            vfslog!("Failed to get root filesystem");
+            warn!("Failed to get root filesystem");
             return Err(code::EAGAIN);
         }
     };
@@ -45,7 +46,7 @@ pub fn vfs_init() -> Result<(), Error> {
     let dnode_cache = match get_dnode_cache() {
         Some(cache) => cache,
         None => {
-            vfslog!("Failed to get DNode cache");
+            warn!("Failed to get DNode cache");
             return Err(code::EAGAIN);
         }
     };
@@ -57,11 +58,11 @@ pub fn vfs_init() -> Result<(), Error> {
     let root_inode = Arc::new(Inode::new(root_attr, fs.clone()));
     let root_dnode = Arc::new(DNode::new(String::from("/"), root_inode, None));
     dnode_cache.insert(root_dnode.clone());
-    vfslog!("Created root directory '/'");
+    info!("Created root directory '/'");
 
     // Verify directory structure
     if dnode_cache.lookup("/").is_none() {
-        vfslog!("Failed to verify root directory in cache");
+        warn!("Failed to verify root directory in cache");
         return Err(code::EAGAIN);
     }
 
@@ -71,25 +72,25 @@ pub fn vfs_init() -> Result<(), Error> {
 
     // Mount devfs to /dev
     if vfs_posix::mount(None, "/dev", "devfs", 0, None) != 0 {
-        vfslog!("Failed to mount devfs");
+        warn!("Failed to mount devfs");
         return Err(code::EAGAIN);
     }
-    vfslog!("Mounted devfs at '/dev'");
+    info!("Mounted devfs at '/dev'");
 
     // Verify mount success
     if let Some(_) = find_filesystem("/dev") {
-        vfslog!("devfs mount verified");
+        info!("devfs mount verified");
     } else {
-        vfslog!("Failed to verify devfs mount");
+        warn!("Failed to verify devfs mount");
         return Err(code::EAGAIN);
     }
 
-    vfslog!("init stdio");
+    info!("init stdio");
     let mut fd_manager = vfs_fd::get_fd_manager().lock();
     #[cfg(not(cortex_a))]
     fd_manager.init_stdio()?;
 
-    vfslog!("VFS initialized successfully");
+    info!("VFS initialized successfully");
     Ok(())
 }
 

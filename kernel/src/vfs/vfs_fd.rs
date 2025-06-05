@@ -3,12 +3,12 @@
 
 use crate::{
     error::{code, Error},
-    vfs::{vfs_log::*, vfs_mnt, vfs_node::InodeNo, vfs_traits::*},
+    vfs::{vfs_mnt, vfs_node::InodeNo, vfs_traits::*},
 };
 use alloc::{sync::Arc, vec::Vec};
 use core::ffi::c_int;
+use log::{info, warn};
 use spin::{Mutex as SpinLock, Once};
-
 /// Standard file descriptors
 pub const STDIN_FILENO: c_int = 0;
 pub const STDOUT_FILENO: c_int = 1;
@@ -54,7 +54,7 @@ impl FdManager {
 
     pub fn init_stdio(&mut self) -> Result<(), Error> {
         let Some((fs, _)) = vfs_mnt::find_filesystem("/dev/console") else {
-            vfslog!("[fd] init_stdio: Failed to find filesystem for /dev/console");
+            warn!("[fd] init_stdio: Failed to find filesystem for /dev/console");
             return Err(code::ENOENT);
         };
         let stdin_inode = fs.open("console", libc::O_RDONLY)?;
@@ -113,10 +113,9 @@ impl FdManager {
         self.fds[fd as usize] = Some(file_desc);
         self.update_next_fd(fd);
 
-        vfslog!(
+        info!(
             "[fd] alloc_fd: Allocated fd = {} with inode = {}",
-            fd,
-            inode_no
+            fd, inode_no
         );
         fd
     }
@@ -157,17 +156,17 @@ impl FdManager {
     pub fn free_fd(&mut self, fd: c_int) -> Result<(), Error> {
         // free std fd is not allowed
         if fd < FIRST_FD {
-            vfslog!("[fd] free_fd: Cannot free standard file descriptor: {}", fd);
+            warn!("[fd] free_fd: Cannot free standard file descriptor: {}", fd);
             return Err(code::EBADF);
         }
 
         if fd as usize >= self.fds.len() {
-            vfslog!("[fd] free_fd: Invalid fd: {}", fd);
+            warn!("[fd] free_fd: Invalid fd: {}", fd);
             return Err(code::EBADF);
         }
 
         if self.fds[fd as usize].is_none() {
-            vfslog!("[fd] free_fd: Fd {} not in use", fd);
+            warn!("[fd] free_fd: Fd {} not in use", fd);
             return Err(code::EBADF);
         }
 
@@ -176,20 +175,20 @@ impl FdManager {
             self.next_fd = fd;
         }
 
-        vfslog!("[fd] free_fd: Freed fd = {}", fd);
+        info!("[fd] free_fd: Freed fd = {}", fd);
         Ok(())
     }
 
     /// Get file descriptor
     pub fn get_fd(&self, fd: c_int) -> Option<&FileDescriptor> {
         if fd < 0 || fd as usize >= self.fds.len() {
-            vfslog!("[fd] get_fd: Invalid fd: {}", fd);
+            warn!("[fd] get_fd: Invalid fd: {}", fd);
             return None;
         }
 
         let result = self.fds[fd as usize].as_ref();
         if result.is_none() {
-            vfslog!("[fd] get_fd: Fd {} not found", fd);
+            warn!("[fd] get_fd: Fd {} not found", fd);
         }
         result
     }
@@ -197,13 +196,13 @@ impl FdManager {
     /// Get mutable file descriptor
     pub fn get_fd_mut(&mut self, fd: c_int) -> Option<&mut FileDescriptor> {
         if fd < 0 || fd as usize >= self.fds.len() {
-            vfslog!("[fd] get_fd_mut: Invalid fd: {}", fd);
+            warn!("[fd] get_fd_mut: Invalid fd: {}", fd);
             return None;
         }
 
         let result = self.fds[fd as usize].as_mut();
         if result.is_none() {
-            vfslog!("[fd] get_fd_mut: Fd {} not found", fd);
+            warn!("[fd] get_fd_mut: Fd {} not found", fd);
         }
         result
     }

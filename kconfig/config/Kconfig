@@ -12,18 +12,19 @@ config MAIN_THREAD_PRIORITY
     default 10
     int "Set main thread priority"
 
-config MAIN_THREAD_STACK_SIZE
-    default 12288
-    int "Set main thread stack size"
-
 config SMP
     default n
     bool "Enable Symmetric multiprocessing"
 
 config CPUS_NR
-    default 4
-    depends on SMP
+    default 4 if SMP
+    default 1 if !SMP
     int "Number of CPUs"
+
+config THREAD_PRIORITY
+    default y
+    depends on THREAD_PRIORITY_MAX > 32
+    bool "use thread stack priority"
 
 config THREAD_PRIORITY_MAX
     default 256
@@ -37,9 +38,25 @@ config SERIAL_TX_FIFO_SIZE
     default 512
     int "The serial tx fifo size"
 
-config TLSF
-    default y
-    bool "Enable TLSF"
+choice
+    prompt "Memory allocation algorithm"
+    default ALLOCATOR_TLSF
+    config ALLOCATOR_TLSF
+        bool "TLSF algorithm"
+    config ALLOCATOR_SLAB
+        bool "SLAB algorithm"
+    config ALLOCATOR_LLFF
+        bool "LLFF algorithm"
+    config ALLOCATOR_BUDDY
+        bool "BUDDY mode"
+endchoice
+
+config ALLOCATOR
+    string
+    default "tlsf" if ALLOCATOR_TLSF
+    default "slab" if ALLOCATOR_SLAB
+    default "llff" if ALLOCATOR_LLFF
+    default "buddy" if ALLOCATOR_BUDDY
 
 config OVERFLOW_CHECK
     default y
@@ -92,6 +109,39 @@ config CONDVAR
 config COMPAT_NEWLIBC
     default y
     bool "Enable newlibc"
+
+config SCHEDULE_WITH_TIME_SLICE
+    default y
+    bool "Enable schedule with time_slice"
+
+config STACK_HIGHWATER_CHECK
+    default y
+    bool "Enable stack overflow checking"
+
+config DEBUGGING_OBJECT
+    default n
+    bool "Enable debugging of object"
+
+config DEBUGGING_SCHEDULER
+    default n
+    bool "Enable debugging of scheduler"
+
+config DEBUGGING_CONTEXT
+    default n
+    bool "Enable debugging of context switch"
+
+config MEMPOOL
+    default n
+    bool "Enable mempool"
+
+config MEMHEAP
+    default n
+    bool "Enable memheap"
+
+config MAIN_THREAD_STACK_SIZE
+    default 12288
+    int "Set main thread stack size"
+
 
 config IDLE_THREAD_STACK_SIZE
     default 2048

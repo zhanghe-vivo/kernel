@@ -22,6 +22,6 @@ pub extern "C" fn board_init() {
     Systick::init();
     register_reschedule();
 
-    #[cfg(feature = "idle_hook")]
+    #[cfg(idle_hook)]
     IDLE_HOOK_LIST.sethook(idle_wfi as *mut _);
 }

@@ -2,27 +2,27 @@ pub mod components;
 pub mod cpuport;
 pub mod rt_allocator;
 pub mod rt_clock;
-#[cfg(feature = "condvar")]
+#[cfg(condvar)]
 pub mod rt_condvar;
 pub mod rt_cpu;
 pub mod rt_error;
-#[cfg(feature = "event")]
+#[cfg(event)]
 pub mod rt_event;
-#[cfg(feature = "idle_hook")]
+#[cfg(idle_hook)]
 pub mod rt_idle;
 pub mod rt_irq;
 pub mod rt_list;
-#[cfg(feature = "mailbox")]
+#[cfg(mailbox)]
 pub mod rt_mailbox;
-#[cfg(feature = "messagequeue")]
+#[cfg(messagequeue)]
 pub mod rt_message_queue;
-#[cfg(feature = "mutex")]
+#[cfg(mutex)]
 pub mod rt_mutex;
 pub mod rt_object;
-#[cfg(feature = "rwlock")]
+#[cfg(rwlock)]
 pub mod rt_rwlock;
 pub mod rt_scheduler;
-#[cfg(feature = "semaphore")]
+#[cfg(semaphore)]
 pub mod rt_semaphore;
 pub mod rt_spinlock;
 pub mod rt_thread;

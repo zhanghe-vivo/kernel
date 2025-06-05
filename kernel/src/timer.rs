@@ -533,7 +533,7 @@ pub fn system_timer_thread_init() {
 
 pub fn timer_check() {
     assert!(Cpu::interrupt_nest_load() > 0);
-    #[cfg(feature = "smp")]
+    #[cfg(smp)]
     {
         if unsafe { Arch::smp::core_id() != 0u8 } {
             return;

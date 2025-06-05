@@ -33,7 +33,7 @@ pub fn board_init() {
         Err(e) => early_println!("Failed to init console: {}", Error::from(e)),
     }
 
-    #[cfg(feature = "os_adapter")]
+    #[cfg(os_adapter)]
     {
         extern "C" {
             fn adapter_board_init();
@@ -43,6 +43,6 @@ pub fn board_init() {
         unsafe { os_bindings::rt_console_set_device(sys_config::CONSOLE_DEVICE_NAME) };
     }
 
-    #[cfg(feature = "idle_hook")]
+    #[cfg(idle_hook)]
     IDLE_HOOK_LIST.sethook(idle_wfi as *mut _);
 }

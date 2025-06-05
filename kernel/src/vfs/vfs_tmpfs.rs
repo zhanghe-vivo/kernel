@@ -16,7 +16,6 @@ use crate::{
     error::{code, Error},
     vfs::{
         vfs_dirent::*,
-        vfs_log::*,
         vfs_mode::*,
         vfs_node::{FileType, InodeAttr, InodeNo},
         vfs_path::*,
@@ -24,6 +23,7 @@ use crate::{
     },
 };
 use libc::{O_APPEND, O_DIRECTORY, O_RDWR, O_TRUNC, O_WRONLY, S_IFDIR, S_IFLNK, S_IFMT, S_IFREG};
+use log::{info, warn};
 
 // File access permissions
 const R_OK: u32 = 4; // Read permission
@@ -52,7 +52,7 @@ pub struct TmpFileSystem {
 
 impl TmpFileSystem {
     pub fn new() -> Self {
-        vfslog!("[tmpfs] Creating new tmpfs instance");
+        info!("[tmpfs] Creating new tmpfs instance");
 
         TmpFileSystem {
             mounted: AtomicBool::new(false),
@@ -101,7 +101,7 @@ impl TmpFileSystem {
     /// Look up inode by path
     fn lookup_path(&self, path: &str) -> Result<InodeNo, Error> {
         if !is_valid_path(path) {
-            vfslog!("[tmpfs] lookup_path: Invalid path: {}", path);
+            warn!("[tmpfs] lookup_path: Invalid path: {}", path);
             return Err(code::EINVAL);
         }
 
@@ -111,16 +111,15 @@ impl TmpFileSystem {
         // Get mount point
         let mount_point = self.mount_point.read();
         if mount_point.is_empty() {
-            vfslog!("[tmpfs] lookup_path: Filesystem not mounted");
+            warn!("[tmpfs] lookup_path: Filesystem not mounted");
             return Err(code::EINVAL);
         }
 
         // Check if path is under mount point
         if !path.starts_with(&*mount_point) {
-            vfslog!(
+            warn!(
                 "[tmpfs] lookup_path: Path {} not under mount point {}",
-                path,
-                *mount_point
+                path, *mount_point
             );
             return Err(code::EINVAL);
         }
@@ -169,21 +168,15 @@ impl TmpFileSystem {
             match dentries.get(&(current_inode_no, component.to_string())) {
                 Some(&inode_no) => current_inode_no = inode_no,
                 None => {
-                    vfslog!(
+                    warn!(
                         "[tmpfs] lookup_path: Component {} not found under inode {}",
-                        component,
-                        current_inode_no
+                        component, current_inode_no
                     );
                     return Err(code::ENOENT);
                 }
             }
         }
 
-        // vfslog!(
-        //     "[tmpfs] lookup_path: Found inode {} for path {}",
-        //     current_inode_no,
-        //     path
-        // );
         Ok(current_inode_no)
     }
 
@@ -216,12 +209,12 @@ impl FileOperationTrait for TmpFileSystem {
         if (flags & O_DIRECTORY) != 0 {
             // If O_DIRECTORY is specified but the path is not a directory, return error
             if inode.attr.file_type != FileType::Directory {
-                vfslog!("[tmpfs] open: O_DIRECTORY specified but path is not a directory");
+                warn!("[tmpfs] open: O_DIRECTORY specified but path is not a directory");
                 return Err(code::ENOTDIR);
             }
         } else if inode.attr.file_type == FileType::Directory {
             // If opening a directory but not specifying O_DIRECTORY, also return error
-            vfslog!("[tmpfs] open: Opening directory without O_DIRECTORY flag");
+            warn!("[tmpfs] open: Opening directory without O_DIRECTORY flag");
             return Err(code::EISDIR);
         }
 
@@ -255,11 +248,9 @@ impl FileOperationTrait for TmpFileSystem {
             inode.offset = 0;
         }
 
-        vfslog!(
+        info!(
             "[tmpfs] Successfully opened {} with flags {:x} inode_no {}",
-            path,
-            flags,
-            inode_no
+            path, flags, inode_no
         );
         Ok(inode_no) // Return inode number
     }
@@ -272,7 +263,7 @@ impl FileOperationTrait for TmpFileSystem {
             None => return Err(code::ENOENT),
         };
 
-        vfslog!("[tmpfs] close: inode_no = {}", inode_no);
+        info!("[tmpfs] close: inode_no = {}", inode_no);
         Ok(())
     }
 
@@ -418,11 +409,9 @@ impl FileOperationTrait for TmpFileSystem {
         dirents: &mut Vec<Dirent>,
         count: usize,
     ) -> Result<usize, Error> {
-        vfslog!(
+        info!(
             "[tmpfs] getdents: start - inode_no={}, offset={}, count={}",
-            inode_no,
-            offset,
-            count
+            inode_no, offset, count
         );
 
         // Check if filesystem is mounted
@@ -466,16 +455,6 @@ impl FileOperationTrait for TmpFileSystem {
         all_entries.sort_by(|a, b| a.name.cmp(&b.name));
 
         let skip_entries = offset as usize;
-        // vfslog!(
-        //     "[tmpfs] getdents: total_entries={}, skip_entries={}",
-        //     all_entries.len(),
-        //     skip_entries
-        // );
-
-        // if skip_entries >= all_entries.len() {
-        //     vfslog!("[tmpfs] getdents: no more entries (offset too large)");
-        //     return Err(code::EFAULT);
-        // }
 
         // Get entries to return
         let entries_to_write = min(count, all_entries.len() - skip_entries);
@@ -492,11 +471,6 @@ impl FileOperationTrait for TmpFileSystem {
                 .take(entries_to_write),
         );
 
-        // vfslog!(
-        //     "[tmpfs] getdents: successfully returned {} entries",
-        //     entries_to_write
-        // );
-
         Ok(entries_to_write)
     }
 }
@@ -509,29 +483,29 @@ impl FileSystemTrait for TmpFileSystem {
         _flags: u64,
         _data: Option<&[u8]>,
     ) -> Result<(), Error> {
-        vfslog!("[tmpfs] mount: target = {}", target);
+        info!("[tmpfs] mount: target = {}", target);
 
         // Check if already mounted
         if self.mounted.load(Ordering::Relaxed) {
-            vfslog!("[tmpfs] Already mounted");
+            warn!("[tmpfs] Already mounted");
             return Err(code::EEXIST);
         }
         // Check mount point path
         if target.is_empty() {
-            vfslog!("[tmpfs] Empty mount point");
+            warn!("[tmpfs] Empty mount point");
             return Err(code::EINVAL);
         }
         // Normalize mount point path
         let normalized_target = match normalize_path(target) {
             Some(path) => path,
             None => {
-                vfslog!("[tmpfs] Invalid mount point path");
+                warn!("[tmpfs] Invalid mount point path");
                 return Err(code::EINVAL);
             }
         };
         // Allocate root directory inode number
         let root_inode_no = self.alloc_inode_no();
-        vfslog!(
+        info!(
             "[tmpfs] Allocated root directory inode_no = {}",
             root_inode_no
         );
@@ -569,14 +543,14 @@ impl FileSystemTrait for TmpFileSystem {
             dentries.insert((root_inode_no, ".".to_string()), root_inode_no);
             dentries.insert((root_inode_no, "..".to_string()), root_inode_no);
 
-            vfslog!("[tmpfs] Created root directory");
+            info!("[tmpfs] Created root directory");
         }
         // Set mount point and state
         let mount_path = normalized_target.clone(); // Clone for log output
         *self.mount_point.write() = normalized_target;
         self.mounted.store(true, Ordering::Relaxed);
 
-        vfslog!("[tmpfs] Successfully mounted at {}", mount_path);
+        info!("[tmpfs] Successfully mounted at {}", mount_path);
         Ok(())
     }
 
@@ -599,18 +573,17 @@ impl FileSystemTrait for TmpFileSystem {
     }
 
     fn create_inode(&self, path: &str, mode: u32) -> Result<InodeAttr, Error> {
-        vfslog!("[tmpfs] create_inode: path = {}, mode = {:o}", path, mode);
+        info!("[tmpfs] create_inode: path = {}, mode = {:o}", path, mode);
 
         // Check mount state
         self.check_mounted()?;
         // Check path validity
         if !is_valid_path(path) {
-            vfslog!("[tmpfs] create_inode: invalid path");
+            warn!("[tmpfs] create_inode: invalid path");
             return Err(code::EINVAL);
         }
         // Normalize path
         let path = normalize_path(path).ok_or(code::EINVAL)?;
-        // vfslog!("[tmpfs] create_inode: normalized path = {}", path);
 
         // Check if path is under mount point
         let mount_point = self.mount_point.read();
@@ -639,7 +612,7 @@ impl FileSystemTrait for TmpFileSystem {
         drop(inodes);
         // Create new inode
         let inode_no = self.alloc_inode_no();
-        vfslog!("[tmpfs] Allocated new inode: {}", inode_no);
+        info!("[tmpfs] Allocated new inode: {}", inode_no);
 
         let file_type = if mode & S_IFMT == S_IFDIR {
             FileType::Directory

@@ -3,24 +3,6 @@ build_rust("adapter") {
   crate_type = "staticlib"
   sources = [ "lib.rs" ]
   edition = "2021"
-  features = [
-    "tlsf",
-    "overflow_check",
-    "idle_hook",
-    "heap",
-    "heap_isr",
-    "debugging_init",
-    "event",
-    "messagequeue",
-    "mailbox",
-    "mutex",
-    "semaphore",
-    "rwlock",
-    "condvar",
-    "compat_newlibc",
-    "thread_priority_max",
-    "schedule_with_time_slice",
-  ]
 
   proc_macro_deps = [ "//external/paste/v1.0.15:paste" ]
 
@@ -38,4 +20,5 @@ build_rust("adapter") {
       "rt_thread",
     ]
   }
+  configs += [ "//kernel/kconfig:kconfigs" ]
 }

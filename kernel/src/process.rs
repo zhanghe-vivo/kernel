@@ -36,36 +36,36 @@ pub(crate) struct Kprocess {
     children: LinkedListNode,
     #[pin]
     threads: ListHead,
-    #[cfg(feature = "semaphore")]
+    #[cfg(semaphore)]
     #[pin]
     semaphore: ListHead,
-    #[cfg(feature = "mutex")]
+    #[cfg(mutex)]
     #[pin]
     mutex: ListHead,
-    #[cfg(feature = "rwlock")]
+    #[cfg(rwlock)]
     #[pin]
     rwlock: ListHead,
-    #[cfg(feature = "event")]
+    #[cfg(event)]
     #[pin]
     event: ListHead,
-    #[cfg(feature = "condvar")]
+    #[cfg(condvar)]
     #[pin]
     condvar: ListHead,
-    #[cfg(feature = "mailbox")]
+    #[cfg(mailbox)]
     #[pin]
     mailbox: ListHead,
-    #[cfg(feature = "messagequeue")]
+    #[cfg(messagequeue)]
     #[pin]
     msgqueue: ListHead,
-    #[cfg(feature = "memheap")]
+    #[cfg(memheap)]
     #[pin]
     memheap: ListHead,
-    #[cfg(feature = "mempool")]
+    #[cfg(mempool)]
     #[pin]
     mempool: ListHead,
     #[pin]
     timer: ListHead,
-    #[cfg(feature = "heap")]
+    #[cfg(heap)]
     #[pin]
     memory: ListHead,
     pid: u64,
@@ -86,26 +86,26 @@ impl Kprocess {
             let _ =
                 LinkedListNode::new().__pinned_init(&mut cur_ref.children as *mut LinkedListNode);
             let _ = ListHead::new().__pinned_init(&mut cur_ref.threads as *mut ListHead);
-            #[cfg(feature = "semaphore")]
+            #[cfg(semaphore)]
             let _ = ListHead::new().__pinned_init(&mut cur_ref.semaphore as *mut ListHead);
-            #[cfg(feature = "mutex")]
+            #[cfg(mutex)]
             let _ = ListHead::new().__pinned_init(&mut cur_ref.mutex as *mut ListHead);
-            #[cfg(feature = "rwlock")]
+            #[cfg(rwlock)]
             let _ = ListHead::new().__pinned_init(&mut cur_ref.rwlock as *mut ListHead);
-            #[cfg(feature = "event")]
+            #[cfg(event)]
             let _ = ListHead::new().__pinned_init(&mut cur_ref.event as *mut ListHead);
-            #[cfg(feature = "condvar")]
+            #[cfg(condvar)]
             let _ = ListHead::new().__pinned_init(&mut cur_ref.condvar as *mut ListHead);
-            #[cfg(feature = "mailbox")]
+            #[cfg(mailbox)]
             let _ = ListHead::new().__pinned_init(&mut cur_ref.mailbox as *mut ListHead);
-            #[cfg(feature = "messagequeue")]
+            #[cfg(messagequeue)]
             let _ = ListHead::new().__pinned_init(&mut cur_ref.msgqueue as *mut ListHead);
-            #[cfg(feature = "memheap")]
+            #[cfg(memheap)]
             let _ = ListHead::new().__pinned_init(&mut cur_ref.memheap as *mut ListHead);
-            #[cfg(feature = "mempool")]
+            #[cfg(mempool)]
             let _ = ListHead::new().__pinned_init(&mut cur_ref.mempool as *mut ListHead);
             let _ = ListHead::new().__pinned_init(&mut cur_ref.timer as *mut ListHead);
-            #[cfg(feature = "heap")]
+            #[cfg(heap)]
             let _ = ListHead::new().__pinned_init(&mut cur_ref.memory as *mut ListHead);
             cur_ref.pid = 0;
             cur_ref.lock = RawSpin::new();
@@ -120,26 +120,26 @@ impl Kprocess {
         let _ = process.lock.acquire();
         match object_type.without_static() {
             ObjectClassType::ObjectClassThread => &mut process.threads,
-            #[cfg(feature = "semaphore")]
+            #[cfg(semaphore)]
             ObjectClassType::ObjectClassSemaphore => &mut process.semaphore,
-            #[cfg(feature = "mutex")]
+            #[cfg(mutex)]
             ObjectClassType::ObjectClassMutex => &mut process.mutex,
-            #[cfg(feature = "rwlock")]
+            #[cfg(rwlock)]
             ObjectClassType::ObjectClassRwLock => &mut process.rwlock,
-            #[cfg(feature = "event")]
+            #[cfg(event)]
             ObjectClassType::ObjectClassEvent => &mut process.event,
-            #[cfg(feature = "condvar")]
+            #[cfg(condvar)]
             ObjectClassType::ObjectClassCondVar => &mut process.condvar,
-            #[cfg(feature = "mailbox")]
+            #[cfg(mailbox)]
             ObjectClassType::ObjectClassMailBox => &mut process.mailbox,
-            #[cfg(feature = "messagequeue")]
+            #[cfg(messagequeue)]
             ObjectClassType::ObjectClassMessageQueue => &mut process.msgqueue,
-            #[cfg(feature = "memheap")]
+            #[cfg(memheap)]
             ObjectClassType::ObjectClassMemHeap => &mut process.memheap,
-            #[cfg(feature = "mempool")]
+            #[cfg(mempool)]
             ObjectClassType::ObjectClassMemPool => &mut process.mempool,
             ObjectClassType::ObjectClassTimer => &mut process.timer,
-            #[cfg(feature = "heap")]
+            #[cfg(heap)]
             ObjectClassType::ObjectClassMemory => &mut process.memory,
             _ => unreachable!("not a kernel object type!"),
         }
@@ -151,26 +151,26 @@ impl Kprocess {
         let _ = process.lock.acquire();
         match object_type.without_static() {
             ObjectClassType::ObjectClassThread => &process.threads,
-            #[cfg(feature = "semaphore")]
+            #[cfg(semaphore)]
             ObjectClassType::ObjectClassSemaphore => &process.semaphore,
-            #[cfg(feature = "mutex")]
+            #[cfg(mutex)]
             ObjectClassType::ObjectClassMutex => &process.mutex,
-            #[cfg(feature = "rwlock")]
+            #[cfg(rwlock)]
             ObjectClassType::ObjectClassRwLock => &process.rwlock,
-            #[cfg(feature = "event")]
+            #[cfg(event)]
             ObjectClassType::ObjectClassEvent => &process.event,
-            #[cfg(feature = "condvar")]
+            #[cfg(condvar)]
             ObjectClassType::ObjectClassCondVar => &process.condvar,
-            #[cfg(feature = "mailbox")]
+            #[cfg(mailbox)]
             ObjectClassType::ObjectClassMailBox => &process.mailbox,
-            #[cfg(feature = "messagequeue")]
+            #[cfg(messagequeue)]
             ObjectClassType::ObjectClassMessageQueue => &process.msgqueue,
-            #[cfg(feature = "memheap")]
+            #[cfg(memheap)]
             ObjectClassType::ObjectClassMemHeap => &process.memheap,
-            #[cfg(feature = "mempool")]
+            #[cfg(mempool)]
             ObjectClassType::ObjectClassMemPool => &process.mempool,
             ObjectClassType::ObjectClassTimer => &process.timer,
-            #[cfg(feature = "heap")]
+            #[cfg(heap)]
             ObjectClassType::ObjectClassMemory => &process.memory,
             _ => unreachable!("not a kernel object type!"),
         }
@@ -193,7 +193,7 @@ impl Kprocess {
         }
     }
 
-    #[cfg(feature = "debugging_object")]
+    #[cfg(debugging_object)]
     fn addr_detect(&mut self, object_type: ObjectClassType, ptr: &mut KObjectBase) {
         let list = self.get_object_list(object_type);
         let _ = self.lock.acquire();
@@ -209,7 +209,7 @@ pub fn insert(object_type: ObjectClassType, node: &mut ListHead) {
     process.insert(object_type, node);
 }
 
-#[cfg(feature = "debugging_object")]
+#[cfg(debugging_object)]
 pub fn object_addr_detect(object_type: ObjectClassType, ptr: &mut KObjectBase) {
     let process = Kprocess::get_process();
     process.addr_detect(object_type, ptr);

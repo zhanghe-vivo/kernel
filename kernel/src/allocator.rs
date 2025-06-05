@@ -7,24 +7,24 @@ use core::{
     ptr,
 };
 
-#[cfg(feature = "slab")]
+#[cfg(allocator = "slab")]
 pub mod buddy;
-#[cfg(feature = "slab")]
+#[cfg(allocator = "slab")]
 pub mod slab;
-#[cfg(feature = "slab")]
+#[cfg(allocator = "slab")]
 pub use slab::Heap;
-#[cfg(feature = "llff")]
+#[cfg(allocator = "llff")]
 pub mod llff;
-#[cfg(feature = "llff")]
+#[cfg(allocator = "llff")]
 pub use llff::Heap;
-#[cfg(feature = "buddy")]
+#[cfg(allocator = "buddy")]
 pub mod buddy;
-#[cfg(feature = "buddy")]
+#[cfg(allocator = "buddy")]
 pub use buddy::Heap;
-#[cfg(feature = "tlsf")]
+#[cfg(allocator = "tlsf")]
 /// using tlsf
 pub mod tlsf;
-#[cfg(feature = "tlsf")]
+#[cfg(allocator = "tlsf")]
 pub use tlsf::Heap;
 
 mod block_hdr;
@@ -57,7 +57,7 @@ unsafe impl GlobalAlloc for KernelAllocator {
     }
 }
 
-#[cfg(feature = "allocator_api")]
+#[cfg(allocator_api)]
 mod allocator_api {
     use super::{ptr, KernelAllocator, Layout, HEAP};
     use core::alloc::{AllocError, Allocator};

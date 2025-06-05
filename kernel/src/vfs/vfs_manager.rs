@@ -3,9 +3,10 @@
 
 use crate::{
     error::{code, Error},
-    vfs::{vfs_log::*, vfs_traits::VfsOperations},
+    vfs::vfs_traits::VfsOperations,
 };
 use alloc::{collections::BTreeMap, string::String, sync::Arc};
+use log::{info, warn};
 use spin::{Lazy, RwLock as SpinRwLock};
 
 /// File System Manager
@@ -28,12 +29,12 @@ impl VfsManager {
         let mut fs_types = self.fs_types.write();
 
         if fs_types.contains_key(name) {
-            vfslog!("Filesystem {} already exists", name);
+            warn!("Filesystem {} already exists", name);
             return Err(code::EEXIST);
         }
 
         fs_types.insert(String::from(name), fs);
-        vfslog!("Registered filesystem: {}", name);
+        info!("Registered filesystem: {}", name);
         Ok(())
     }
 
@@ -42,11 +43,11 @@ impl VfsManager {
         let mut fs_types = self.fs_types.write();
 
         if fs_types.remove(name).is_none() {
-            vfslog!("Filesystem {} not found", name);
+            warn!("Filesystem {} not found", name);
             return Err(code::ENOENT);
         }
 
-        vfslog!("Unregistered filesystem: {}", name);
+        info!("Unregistered filesystem: {}", name);
         Ok(())
     }
 

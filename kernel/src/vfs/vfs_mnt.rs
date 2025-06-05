@@ -2,13 +2,14 @@
 
 use crate::{
     error::{code, Error},
-    vfs::{vfs_log::vfslog, vfs_path, vfs_traits::VfsOperations},
+    vfs::{vfs_path, vfs_traits::VfsOperations},
 };
 use alloc::{
     string::{String, ToString},
     sync::Arc,
     vec::Vec,
 };
+use log::{info, warn};
 use spin::{Lazy, RwLock as SpinRwLock};
 
 /// Mount point information
@@ -56,24 +57,23 @@ impl MountManager {
     pub fn add_mount(&self, mount: MountPoint) -> Result<(), Error> {
         let mut mounts = self.mount_points.write();
 
-        vfslog!(
+        info!(
             "[mount_manager] Adding mount point: {} (type: {})",
-            mount.path,
-            mount.fs_type
+            mount.path, mount.fs_type
         );
 
         // Normalize mount point path
         let normalized_path = match vfs_path::normalize_path(&mount.path) {
             Some(p) => p,
             None => {
-                vfslog!("[mount_manager] Invalid mount path: {}", mount.path);
+                warn!("[mount_manager] Invalid mount path: {}", mount.path);
                 return Err(code::EINVAL);
             }
         };
 
         // Check if mount point already exists
         if mounts.iter().any(|m| m.path == normalized_path) {
-            vfslog!(
+            warn!(
                 "[mount_manager] Mount point already exists: {}",
                 normalized_path
             );
@@ -82,14 +82,14 @@ impl MountManager {
 
         // Special handling for /dev directory mount
         if normalized_path == "/dev" {
-            vfslog!("[mount_manager] Special handling for /dev mount");
+            info!("[mount_manager] Special handling for /dev mount");
             let new_mount = MountPoint {
                 path: normalized_path.clone(),
                 ..mount
             };
             mounts.push(new_mount);
             mounts.sort_by(|a, b| b.path.len().cmp(&a.path.len()));
-            vfslog!("[mount_manager] Successfully added /dev mount point");
+            info!("[mount_manager] Successfully added /dev mount point");
             return Ok(());
         }
 
@@ -97,7 +97,7 @@ impl MountManager {
         mounts.push(mount);
         mounts.sort_by(|a, b| b.path.len().cmp(&a.path.len()));
 
-        vfslog!("[mount_manager] Added mount point: {}", normalized_path);
+        info!("[mount_manager] Added mount point: {}", normalized_path);
         return Ok(());
     }
 
@@ -106,10 +106,10 @@ impl MountManager {
 
         if let Some(index) = mounts.iter().position(|m| m.path == path) {
             mounts.remove(index);
-            vfslog!("Removed mount point: {}", path);
+            info!("Removed mount point: {}", path);
             Ok(())
         } else {
-            vfslog!("Mount point not found: {}", path);
+            warn!("Mount point not found: {}", path);
             Err(code::ENOENT)
         }
     }
@@ -130,12 +130,12 @@ impl MountManager {
         if normalized_path == "/dev" {
             // Check if in mount list
             if let Some(mount) = mounts.iter().find(|m| m.path == "/dev") {
-                vfslog!("[mount_manager] Found /dev mount point");
+                info!("[mount_manager] Found /dev mount point");
                 return Some(mount.clone());
             }
             // If it's a mount operation, return None to allow mounting
             if path == "/dev" {
-                vfslog!("[mount_manager] Special case: allowing /dev mount");
+                warn!("[mount_manager] Special case: allowing /dev mount");
                 return None;
             }
         }
@@ -148,7 +148,7 @@ impl MountManager {
             // For /dev paths, only allow exact match or /dev mount point
             if normalized_path.starts_with("/dev/") {
                 if mount.path == "/dev" {
-                    vfslog!("[mount_manager] Found /dev mount for /dev/ path");
+                    info!("[mount_manager] Found /dev mount for /dev/ path");
                     return Some(mount.clone());
                 }
                 if mount.path == "/" {

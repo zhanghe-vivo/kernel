@@ -1,5 +1,5 @@
-#[cfg(feature = "mutex")]
+#[cfg(mutex)]
 pub mod mutex;
-#[cfg(feature = "rwlock")]
+#[cfg(rwlock)]
 pub mod rwlock;
 pub mod spinlock;

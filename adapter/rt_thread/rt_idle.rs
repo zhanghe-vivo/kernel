@@ -1,6 +1,6 @@
 use crate::kernel::{error::code, idle};
 
-#[cfg(feature = "idle_hook")]
+#[cfg(idle_hook)]
 #[no_mangle]
 pub unsafe extern "C" fn rt_thread_idle_sethook(hook: Option<idle::IdleHookFn>) -> i32 {
     if let Some(hook_fn) = hook {
@@ -12,7 +12,7 @@ pub unsafe extern "C" fn rt_thread_idle_sethook(hook: Option<idle::IdleHookFn>) 
     code::ENOSPC.to_errno()
 }
 
-#[cfg(feature = "idle_hook")]
+#[cfg(idle_hook)]
 #[no_mangle]
 pub unsafe extern "C" fn rt_thread_idle_delhook(hook: Option<idle::IdleHookFn>) -> i32 {
     if let Some(hook_fn) = hook {

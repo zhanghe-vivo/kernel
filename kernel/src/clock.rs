@@ -30,15 +30,15 @@ pub fn tick_from_millisecond(ms: i32) -> u32 {
         // use fp
         #[cfg(has_fpu)]
         {
-            let tick = TICK_PER_SECOND * (ms as u32 / 1000);
-            tick + (TICK_PER_SECOND * (ms as u32 % 1000) + 999) / 1000
+            let tick = TICK_PER_SECOND as u32 * (ms as u32 / 1000);
+            tick + (TICK_PER_SECOND as u32 * (ms as u32 % 1000) + 999) / 1000
         }
         // use 1024 as 1000 to aviod use math library
         #[cfg(not(has_fpu))]
         {
-            let tick = TICK_PER_SECOND.wrapping_mul(ms as u32 >> 10);
+            let tick = (TICK_PER_SECOND as u32).wrapping_mul(ms as u32 >> 10);
             let remainder = ms as u32 & 0x3FF;
-            tick.wrapping_add((TICK_PER_SECOND.wrapping_mul(remainder) + 1023) >> 10)
+            tick.wrapping_add(((TICK_PER_SECOND as u32).wrapping_mul(remainder) + 1023) >> 10)
         }
     }
 }
@@ -48,5 +48,5 @@ pub fn tick_get_millisecond() -> u32 {
     crate::static_assert!(TICK_PER_SECOND > 0);
     crate::static_assert!(1000 % TICK_PER_SECOND == 0);
 
-    Cpu::get_by_id(0).tick_load() * (1000 / TICK_PER_SECOND)
+    Cpu::get_by_id(0).tick_load() * (1000 / TICK_PER_SECOND as u32)
 }

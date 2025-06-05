@@ -28,7 +28,7 @@ pub unsafe extern "C" fn rt_mb_detach(mb: *mut Mailbox) -> i32 {
     return code::EOK.to_errno();
 }
 
-#[cfg(feature = "heap")]
+#[cfg(heap)]
 #[no_mangle]
 pub unsafe extern "C" fn rt_mb_create(
     name: *const ffi::c_char,
@@ -42,7 +42,7 @@ pub unsafe extern "C" fn rt_mb_create(
     Mailbox::new_raw(name, size as usize, wait_mode)
 }
 
-#[cfg(feature = "heap")]
+#[cfg(heap)]
 #[no_mangle]
 pub unsafe extern "C" fn rt_mb_delete(mb: *mut Mailbox) -> i32 {
     assert!(!mb.is_null());
