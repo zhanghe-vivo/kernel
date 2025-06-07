@@ -9,6 +9,7 @@ use crate::{
     thread::{ThreadEntryFn, ThreadWithStack},
     zombie,
 };
+use bluekernel_kconfig::IDLE_THREAD_STACK_SIZE;
 use core::ffi::CStr;
 use pinned_init::{pin_data, pin_init, pin_init_array_from_fn, PinInit};
 
@@ -71,11 +72,10 @@ impl IdleHooks {
     }
 }
 
-const IDLE_STACK_SIZE: usize = 65536;
 #[pin_data]
 pub struct IdleTheads {
     #[pin]
-    threads: [ThreadWithStack<IDLE_STACK_SIZE>; cpu::CPUS_NUMBER],
+    threads: [ThreadWithStack<IDLE_THREAD_STACK_SIZE>; cpu::CPUS_NUMBER],
 }
 
 static mut IDLE_THREADS: UnsafeStaticInit<IdleTheads, IdleTheadsInit> =

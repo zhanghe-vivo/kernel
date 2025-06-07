@@ -6,7 +6,7 @@ group("run_examples") {
   deps = [ ":tty_loopback_runner($kernel_toolchain)" ]
 
   # rust-std is large, the size might exceed FLASH limit in debug build.
-  if (build_type == "release" && board != "qemu_virt64_aarch64") {
+  if (build_type == "release") {
     deps += [ ":run_std_thread_demo($libc_toolchain)" ]
   }
 }
@@ -14,10 +14,6 @@ group("run_examples") {
 common_deps = []
 if (coverage) {
   common_deps += [ "//external/minicov/v0.3.7:minicov" ]
-}
-
-if (board == "qemu_virt64_aarch64") {
-  common_deps += [ "//external/semihosting/v0.1.20:semihosting" ]
 }
 
 build_rust("tty_loopback") {
@@ -113,7 +109,6 @@ gen_qemu_runner("std_thread_demo_runner") {
   qemu = "$qemu_exe"
   machine = "$machine"
   if ("$board" == "qemu_virt64_aarch64") {
-    semihosting = true
     qemu_args = "-cpu cortex-a53 -net none -chardev stdio,id=con,mux=on -serial chardev:con -mon chardev=con,mode=readline"
   }
 }

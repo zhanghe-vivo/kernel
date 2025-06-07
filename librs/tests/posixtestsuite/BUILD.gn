@@ -22,9 +22,6 @@ build_rust("librs_for_posix_testsuite") {
     "//kernel/scal:bluekernel_scal_posixtestsuite",
     "//libc:libc",
   ]
-  if (board == "qemu_virt64_aarch64") {
-    deps += [ "//external/semihosting/v0.1.20:semihosting" ]
-  }
   rustflags = common_crate_rustflags
   rustflags += [
     "--cfg",

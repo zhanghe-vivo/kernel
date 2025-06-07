@@ -22,9 +22,6 @@ build_rust("everyting") {
       "coverage",
     ]
   }
-  if (board == "qemu_virt64_aarch64") {
-    deps += [ "//external/semihosting/v0.1.20:semihosting" ]
-  }
 }
 
 postlink_action("gen_everyting_elf_path_symbol") {

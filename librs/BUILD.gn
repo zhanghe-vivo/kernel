@@ -38,9 +38,6 @@ build_rust("librs_static") {
     "//kernel/scal:bluekernel_scal_std",
     "//libc:libc",
   ]
-  if (board == "qemu_virt64_aarch64") {
-    deps += [ "//external/semihosting/v0.1.20:semihosting" ]
-  }
   rustflags = common_crate_rustflags
 }
 
@@ -71,9 +68,6 @@ build_rust("librs_unittest_image") {
     "//kernel/scal:bluekernel_scal_test",
     "//libc:libc",
   ]
-  if (board == "qemu_virt64_aarch64") {
-    deps += [ "//external/semihosting/v0.1.20:semihosting" ]
-  }
   proc_macro_deps = [ "//kernel/test_harness:bluekernel_test_macro" ]
   inputs = [ "//kernel/kernel/src/boards/$board/link.x" ]
   rustflags = test_image_rustflags

@@ -18,9 +18,6 @@ build_rust("loader_integration_test") {
   if (coverage || profile) {
     deps += [ "//kernel/loader:common_cov" ]
   }
-  if (board == "qemu_virt64_aarch64") {
-    deps += [ "//external/semihosting/v0.1.20:semihosting" ]
-  }
   proc_macro_deps = [ "//kernel/test_harness:bluekernel_test_macro" ]
   inputs = [ "//kernel/kernel/src/boards/$board/link.x" ]
   rustflags = test_image_rustflags

@@ -6,6 +6,7 @@ use crate::{
     thread::{Thread, ThreadWithStack},
 };
 use bluekernel_infra::list::doubly_linked_list::{LinkedListNode, ListHead};
+use bluekernel_kconfig::TIMER_THREAD_STACK_SIZE;
 use core::{
     ffi::{c_char, c_void},
     pin::Pin,
@@ -16,11 +17,9 @@ use pinned_init::{pin_data, pin_init, pin_init_array_from_fn, pin_init_from_clos
 
 const TIMER_WHEEL_SIZE: usize = 32;
 
-const TIMER_THREAD_PRIO: u8 = 4;
+const TIMER_THREAD_PRIO: u8 = 1;
 
 pub type TimeoutFn = extern "C" fn(*mut c_void);
-
-const TIMER_THREAD_STACK_SIZE: usize = 65536;
 
 pub(crate) static mut TIMER_WHEEL: UnsafeStaticInit<TimerWheel, TimerWheelInit> =
     UnsafeStaticInit::new(TimerWheelInit);
