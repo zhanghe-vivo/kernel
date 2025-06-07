@@ -1,6 +1,6 @@
 use super::{sys_config, systick::Systick, uart};
 use crate::{
-    allocator, arch::Arch, drivers::console, early_println, error::Error, idle::IDLE_HOOK_LIST,
+    allocator, arch::Arch, devices::console, early_println, error::Error, idle::IDLE_HOOK_LIST,
 };
 use core::ptr::addr_of;
 
@@ -27,8 +27,8 @@ pub fn board_init() {
         Ok(_) => (),
         Err(e) => early_println!("Failed to init uart: {}", Error::from(e)),
     }
-    let uart = uart::get_uart0().clone();
-    match console::init_console(uart) {
+    let uart = uart::get_serial0();
+    match console::init_console(&uart) {
         Ok(_) => (),
         Err(e) => early_println!("Failed to init console: {}", Error::from(e)),
     }

@@ -969,7 +969,6 @@ mod tests {
         assert_eq!(result, code::EBADF.to_errno() as isize);
     }
 
-    #[cfg(not(cortex_a))]
     #[test]
     fn test_lseek_invalid_params() {
         // Test with invalid file descriptor

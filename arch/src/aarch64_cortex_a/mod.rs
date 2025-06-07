@@ -1,6 +1,6 @@
 pub mod asm;
 mod context;
-pub mod interrupt;
+mod interrupt;
 pub mod mmu;
 pub mod registers;
 mod scheduler;
@@ -10,3 +10,5 @@ mod start;
 pub mod vector;
 pub struct Arch;
 mod backtrace;
+
+pub use interrupt::{IrqHandler, IrqNumber, IrqTrigger};

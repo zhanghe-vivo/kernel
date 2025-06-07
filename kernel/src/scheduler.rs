@@ -21,10 +21,10 @@ use log::debug;
 use pinned_init::{pin_data, pin_init, pin_init_array_from_fn, PinInit};
 
 #[cfg(all(target_arch = "aarch64", feature = "smp"))]
-use crate::arch::{asm::DsbOptions, gic::send_sgi};
+use crate::arch::asm::DsbOptions;
 
 #[cfg(target_arch = "aarch64")]
-use crate::arch::interrupt::{IrqHandler, SGI_SCHED};
+use crate::arch::{IrqHandler, IrqNumber};
 #[cfg(target_arch = "aarch64")]
 use {alloc::boxed::Box, bluekernel_kconfig::CPUS_NR};
 
@@ -316,7 +316,7 @@ impl Scheduler {
                 #[cfg(target_arch = "aarch64")]
                 {
                     Arch::dsb(DsbOptions::NonShareable);
-                    send_sgi(SGI_SCHED, cpu_mask);
+                    Arch::send_sgi(SGI_SCHED, cpu_mask);
                 }
             } else {
                 if bind_cpu == cpu_id {
@@ -329,7 +329,7 @@ impl Scheduler {
                     #[cfg(target_arch = "aarch64")]
                     {
                         Arch::dsb(DsbOptions::NonShareable);
-                        send_sgi(SGI_SCHED, cpu_mask);
+                        Arch::send_sgi(SGI_SCHED, cpu_mask);
                     }
                 }
             }
@@ -441,6 +441,35 @@ impl Scheduler {
         None
     }
 
+    #[inline]
+    unsafe fn check_thread_switch(
+        &self,
+        cur_thread: Option<NonNull<Thread>>,
+        to_thread: NonNull<Thread>,
+    ) {
+        #[cfg(debugging_scheduler)]
+        if let Some(cur_th) = cur_thread {
+            debug!(
+                "cpu #{} switches from {} to {}",
+                self.id,
+                cur_th.as_ref(),
+                to_thread.as_ref(),
+            );
+        } else {
+            debug!("cpu #{} switches to {}", self.id, to_thread.as_ref());
+        }
+
+        #[cfg(overflow_check)]
+        if let Some(cur_th) = cur_thread {
+            assert!(!cur_th.as_ref().stack.check_overflow(), "stack_overflow");
+        }
+
+        #[cfg(stack_highwater_check)]
+        if let Some(cur_th) = cur_thread {
+            assert!(cur_th.as_ref().stack.highwater() > 0, "stack_overflow");
+        }
+    }
+
     #[cfg(hardware_schedule)]
     pub fn start(&mut self) {
         self.set_need_reschedule(true);
@@ -465,9 +494,9 @@ impl Scheduler {
                 }
                 to_th.stat.set_base_state(ThreadState::RUNNING);
 
-                #[cfg(debugging_scheduler)]
-                println!("Switching to {}", to_th);
-
+                unsafe {
+                    self.check_thread_switch(None, thread);
+                }
                 self.set_current_thread(thread);
                 self.ctx_switch_unlock();
                 // enable interrupt in context_switch_to
@@ -533,17 +562,7 @@ impl Scheduler {
                 let cur_thread = self.get_current_thread();
                 if let Some(to_thread) = self.prepare_context_switch_locked(cur_thread) {
                     unsafe {
-                        #[cfg(debugging_scheduler)]
-                        println!(
-                            "cpu #{} switches from {} to {} ",
-                            self.id,
-                            cur_thread.unwrap().as_ref(),
-                            to_thread.as_ref(),
-                        );
-
-                        #[cfg(overflow_check)]
-                        assert!(!cur_thread.unwrap().as_ref().stack.check_overflow());
-
+                        self.check_thread_switch(cur_thread, to_thread);
                         self.set_current_thread(to_thread);
                         Arch::context_switch(
                             cur_thread.unwrap().as_ref().stack().sp_ptr(),
@@ -612,16 +631,7 @@ impl Scheduler {
             let cur_thread = self.get_current_thread();
             if let Some(to_thread) = self.prepare_context_switch_locked(cur_thread) {
                 unsafe {
-                    #[cfg(debugging_scheduler)]
-                    println!(
-                        "cpu #{} switches from {} to {}",
-                        self.id,
-                        cur_thread.unwrap().as_ref(),
-                        to_thread.as_ref(),
-                    );
-
-                    #[cfg(overflow_check)]
-                    assert!(!cur_thread.unwrap().as_ref().stack.check_overflow());
+                    self.check_thread_switch(cur_thread, to_thread);
                     self.set_current_thread(to_thread);
                     Arch::context_switch(
                         cur_thread.unwrap().as_ref().stack().sp_ptr(),
@@ -655,33 +665,12 @@ impl Scheduler {
                 // Pick the highest runnable thread, and pass the control to it.
                 let cur_thread = scheduler.get_current_thread();
                 if let Some(to_thread) = scheduler.prepare_context_switch_locked(cur_thread) {
+                    unsafe {
+                        scheduler.check_thread_switch(cur_thread, to_thread);
+                    }
                     if let Some(mut cur_th) = cur_thread {
-                        #[cfg(debugging_scheduler)]
                         unsafe {
-                            println!(
-                                "cpu #{} switches from {} to {}",
-                                scheduler.id,
-                                cur_th.as_ref(),
-                                to_thread.as_ref(),
-                            );
-                        }
-                        #[cfg(overflow_check)]
-                        unsafe {
-                            if cur_th.as_mut().stack_mut().check_overflow() {
-                                panic!("stack overflow");
-                            }
-                        }
-                        #[cfg(stack_highwater_check)]
-                        unsafe {
-                            if cur_th.as_mut().stack_mut().highwater() == 0 {
-                                panic!("stack overflow");
-                            }
-                        }
-                        unsafe { cur_th.as_mut().stack_mut().set_sp(stack_ptr) };
-                    } else {
-                        #[cfg(debugging_scheduler)]
-                        unsafe {
-                            println!("cpu #{} switches to {}", scheduler.id, to_thread.as_ref(),);
+                            cur_th.as_mut().stack_mut().set_sp(stack_ptr);
                         }
                     }
                     scheduler.set_current_thread(to_thread);
@@ -746,12 +735,12 @@ impl Scheduler {
 struct SchedulerIrq {}
 #[cfg(target_arch = "aarch64")]
 impl IrqHandler for SchedulerIrq {
-    fn handle(&mut self) -> Result<(), &'static str> {
+    fn handle(&mut self) {
         Cpu::get_current_scheduler().do_task_schedule();
-        Ok(())
     }
 }
-
+#[cfg(target_arch = "aarch64")]
+pub const SGI_SCHED: IrqNumber = IrqNumber::new(1);
 #[cfg(target_arch = "aarch64")]
 pub fn register_reschedule() {
     Arch::register_handler(SGI_SCHED, Box::new(SchedulerIrq {}));

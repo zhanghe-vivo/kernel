@@ -215,7 +215,6 @@ pub fn malloc_align(size: usize, align: usize) -> *mut u8 {
     if core::intrinsics::unlikely(size == 0) {
         return ptr::null_mut();
     }
-
     let layout = Layout::from_size_align(size, align.max(ALIGN_SIZE)).unwrap();
     let ptr = HEAP
         .alloc(layout)

@@ -17,9 +17,11 @@ shared_deps = [
   "//external/embedded-io/v0.6.1:embedded_io",
   "//external/log/v0.4.22:log",
   "//external/pinned-init/v0.0.8:pinned_init",
+  "//external/safe-mmio/v0.2.5:safe_mmio",
   "//external/spin/v0.9.8:spin",
   "//external/thiserror/v2.0.9:thiserror",
   "//external/tock-registers/v0.9.0:tock_registers",
+  "//external/zerocopy/v0.8.25:zerocopy",
   "//kernel/arch:bluekernel_arch",
   "//kernel/header:bluekernel_header",
   "//kernel/infra:bluekernel_infra",
@@ -50,7 +52,8 @@ if (board == "qemu_mps2_an385" || board == "qemu_mps3_an547") {
 } else if (board == "qemu_virt64_aarch64") {
   shared_deps += [
     "//external/arm-gic/v0.4.0:arm_gic",
-    "//external/semihosting/v0.1.20:semihosting",
+    "//external/flat_device_tree/v3.1.1:flat_device_tree",
+    "//external/virtio-drivers/v0.11.0:virtio_drivers",
   ]
 }
 
@@ -95,9 +98,6 @@ build_rust("kernel_integration_test") {
     ]
   }
   configs += [ "//kernel/kconfig:kconfigs" ]
-  if (board == "qemu_virt64_aarch64") {
-    deps += [ "//external/semihosting/v0.1.20:semihosting" ]
-  }
   inputs = [ "//kernel/kernel/src/boards/$board/link.x" ]
   rustflags = test_image_rustflags
 }
@@ -190,8 +190,13 @@ gen_qemu_runner("integration_test_runner") {
   qemu = "$qemu_exe"
   machine = "$machine"
   if ("$board" == "qemu_virt64_aarch64") {
-    semihosting = true
-    qemu_args = "-cpu cortex-a53 -net none -chardev stdio,id=con,mux=on -serial chardev:con -mon chardev=con,mode=readline"
+    qemu_args =
+        "-cpu cortex-a53" + " -chardev stdio,id=con,mux=on" +
+        " -serial chardev:con" + " -global virtio-mmio.force-legacy=false" +
+        " -device virtio-rng-device,bus=virtio-mmio-bus.1" +
+        " -mon chardev=con,mode=readline"
+    block_img = "test.img"
+    net_args = "-netdev user,id=u1,hostfwd=tcp:127.0.0.1:10024-10.0.2.15:23,hostfwd=tcp:127.0.0.1:15002-10.0.2.15:5001 -device virtio-net-device,netdev=u1,bus=virtio-mmio-bus.2"
   }
 }
 
@@ -212,8 +217,13 @@ gen_qemu_runner("unittest_runner") {
   qemu = "$qemu_exe"
   machine = "$machine"
   if ("$board" == "qemu_virt64_aarch64") {
-    semihosting = true
-    qemu_args = "-cpu cortex-a53 -net none -chardev stdio,id=con,mux=on -serial chardev:con -mon chardev=con,mode=readline"
+    qemu_args =
+        "-cpu cortex-a53" + " -chardev stdio,id=con,mux=on" +
+        " -serial chardev:con" + " -global virtio-mmio.force-legacy=false" +
+        " -device virtio-rng-device,bus=virtio-mmio-bus.1" +
+        " -mon chardev=con,mode=readline"
+    block_img = "test.img"
+    net_args = "-netdev user,id=u1,hostfwd=tcp:127.0.0.1:10023-10.0.2.15:23,hostfwd=tcp:127.0.0.1:15001-10.0.2.15:5001 -device virtio-net-device,netdev=u1,bus=virtio-mmio-bus.2"
   }
 }
 

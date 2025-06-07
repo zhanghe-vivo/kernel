@@ -20,13 +20,26 @@ pub type InodeNo = u64;
 
 /// File type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
 pub enum FileType {
-    Regular,     // Regular file
-    Directory,   // Directory
-    CharDevice,  // Character device
-    BlockDevice, // Block device
-    SymLink,     // Symbolic link
+    Unknown = 0,
+    Regular = 1,     // Regular file
+    Directory = 2,   // Directory
+    CharDevice = 3,  // Character device
+    BlockDevice = 4, // Block device
+    Fifo = 5,        // Fifo
+    Socket = 6,      // Socket
+    SymLink = 7,     // Symbolic link
 }
+
+const FT_UNKNOWN: u8 = FileType::Unknown as u8;
+const FT_REG_FILE: u8 = FileType::Regular as u8;
+const FT_DIR: u8 = FileType::Directory as u8;
+const FT_CHRDEV: u8 = FileType::CharDevice as u8;
+const FT_BLKDEV: u8 = FileType::BlockDevice as u8;
+const FT_FIFO: u8 = FileType::Fifo as u8;
+const FT_SOCK: u8 = FileType::Socket as u8;
+const FT_SYMLINK: u8 = FileType::SymLink as u8;
 
 /// Inode attributes
 #[derive(Debug, Clone)]

@@ -14,7 +14,6 @@ mod test_futex;
 /// Unstable rust custom test framework test file hierarchy.
 /// Since there is no cargo framework, we manually set it up.
 mod test_semaphore;
-#[cfg(not(cortex_a))]
 mod test_vfs;
 
 /// Unstable rust custom test framework test runner

@@ -26,11 +26,10 @@ pub mod syscalls {
 
 pub mod thread {
     pub const DEFAULT_STACK_SIZE: usize = 8192;
-    // FIXME: Should be target dependent.
-    #[cfg(not(aarch64))]
-    pub const STACK_ALIGN: usize = 4;
-    #[cfg(aarch64)]
-    pub const STACK_ALIGN: usize = 8;
+    #[cfg(not(target_arch = "aarch64"))]
+    pub const STACK_ALIGN: usize = core::mem::size_of::<usize>();
+    #[cfg(target_arch = "aarch64")]
+    pub const STACK_ALIGN: usize = 16;
 
     #[repr(C)]
     pub struct CloneArgs {

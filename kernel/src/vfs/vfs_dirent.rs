@@ -4,16 +4,31 @@
 use alloc::string::String;
 use spin::RwLock as SpinRwLock;
 
-/// File type constants
-pub const DT_UNKNOWN: u8 = 0; // Unknown type
-pub const DT_FIFO: u8 = 1; // Named pipe
-pub const DT_CHR: u8 = 2; // Character device
-pub const DT_DIR: u8 = 4; // Directory
-pub const DT_BLK: u8 = 6; // Block device
-pub const DT_REG: u8 = 8; // Regular file
-pub const DT_LNK: u8 = 10; // Symbolic link
-pub const DT_SOCK: u8 = 12; // Socket
-pub const DT_WHT: u8 = 14; // Reserved
+/// File type enum
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum DirType {
+    Unknown = 0, // Unknown type
+    Fifo = 1,    // Named pipe
+    Chr = 2,     // Character device
+    Dir = 4,     // Directory
+    Blk = 6,     // Block device
+    Reg = 8,     // Regular file
+    Lnk = 10,    // Symbolic link
+    Sock = 12,   // Socket
+    Wht = 14,    // Reserved
+}
+
+// For backward compatibility
+pub const DT_UNKNOWN: u8 = DirType::Unknown as u8;
+pub const DT_FIFO: u8 = DirType::Fifo as u8;
+pub const DT_CHR: u8 = DirType::Chr as u8;
+pub const DT_DIR: u8 = DirType::Dir as u8;
+pub const DT_BLK: u8 = DirType::Blk as u8;
+pub const DT_REG: u8 = DirType::Reg as u8;
+pub const DT_LNK: u8 = DirType::Lnk as u8;
+pub const DT_SOCK: u8 = DirType::Sock as u8;
+pub const DT_WHT: u8 = DirType::Wht as u8;
 
 /// Directory entry structure  
 #[derive(Debug, Clone)]

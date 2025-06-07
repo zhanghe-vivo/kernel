@@ -1,7 +1,7 @@
-use super::config::SerialConfig;
 use crate::{
     clock::WAITING_FOREVER,
-    drivers::device::{Device, DeviceBase, DeviceClass, DeviceId, DeviceRequest},
+    cpu::Cpu,
+    devices::{Device, DeviceBase, DeviceClass, DeviceId, DeviceRequest},
     sync::{
         futex::{atomic_wait, atomic_wake},
         lock::spinlock::SpinLock,
@@ -16,19 +16,31 @@ use delegate::delegate;
 use embedded_io::{ErrorKind, ErrorType, Read, ReadReady, Write, WriteReady};
 use libc::{EAGAIN, EINVAL, EIO, ENOSPC, ETIMEDOUT};
 
+pub mod arm_pl011;
+pub mod cmsdk_uart;
+pub mod config;
+
+use config::SerialConfig;
+
 const SERIAL_RX_FIFO_MIN_SIZE: usize = 256;
 const SERIAL_TX_FIFO_MIN_SIZE: usize = 256;
 
 #[derive(Debug, Clone, Eq, PartialEq, thiserror::Error)]
 pub enum SerialError {
-    #[error("Buffer is full")]
-    BufferFull,
+    #[error("Overrun")]
+    Overrun,
+    #[error("Break")]
+    Break,
+    #[error("Parity")]
+    Parity,
+    #[error("Framing")]
+    Framing,
     #[error("Buffer is empty")]
     BufferEmpty,
     #[error("Device error")]
     DeviceError,
     #[error("Invalid configuration")]
-    InvalidConfig,
+    InvalidParameter,
     #[error("Operation timed out")]
     TimedOut,
 }
@@ -36,23 +48,11 @@ pub enum SerialError {
 impl embedded_io::Error for SerialError {
     fn kind(&self) -> ErrorKind {
         match self {
-            Self::BufferFull => ErrorKind::WriteZero,
-            Self::BufferEmpty => ErrorKind::InvalidInput,
+            Self::Break | Self::Overrun => ErrorKind::Other,
+            Self::Framing | Self::Parity => ErrorKind::InvalidData,
+            Self::BufferEmpty | Self::InvalidParameter => ErrorKind::InvalidInput,
             Self::DeviceError => ErrorKind::Other,
-            Self::InvalidConfig => ErrorKind::InvalidInput,
             Self::TimedOut => ErrorKind::TimedOut,
-        }
-    }
-}
-
-impl From<SerialError> for i32 {
-    fn from(error: SerialError) -> Self {
-        match error {
-            SerialError::BufferFull => -ENOSPC,    // No space left on device
-            SerialError::BufferEmpty => -EAGAIN,   // Resource temporarily unavailable
-            SerialError::DeviceError => -EIO,      // Input/output error
-            SerialError::InvalidConfig => -EINVAL, // Invalid argument
-            SerialError::TimedOut => -ETIMEDOUT,   // Operation timed out
         }
     }
 }
@@ -60,10 +60,10 @@ impl From<SerialError> for i32 {
 impl From<SerialError> for ErrorKind {
     fn from(error: SerialError) -> Self {
         match error {
-            SerialError::BufferFull => ErrorKind::WriteZero,
-            SerialError::BufferEmpty => ErrorKind::InvalidInput,
+            SerialError::Break | SerialError::Overrun => ErrorKind::Other,
+            SerialError::Framing | SerialError::Parity => ErrorKind::InvalidData,
+            SerialError::BufferEmpty | SerialError::InvalidParameter => ErrorKind::InvalidInput,
             SerialError::DeviceError => ErrorKind::Other,
-            SerialError::InvalidConfig => ErrorKind::InvalidInput,
             SerialError::TimedOut => ErrorKind::TimedOut,
         }
     }
@@ -158,7 +158,7 @@ impl Serial {
         let _ = atomic_wake(&self.tx_fifo.futex as *const AtomicUsize as usize, 1);
         self.uart_ops.lock_irqsave().set_tx_interrupt(false);
         // send all data in tx fifo
-        self.uart_xmitchars()?;
+        self.xmitchars()?;
         Ok(())
     }
 
@@ -221,10 +221,12 @@ impl Serial {
                 writer.push_done(n);
                 self.uart_ops.lock_irqsave().set_tx_interrupt(true);
                 // write some data to uart to trigger interrupt
-                let _ = self.uart_xmitchars();
+                if !Cpu::is_in_interrupt() {
+                    let _ = self.xmitchars();
+                }
             }
 
-            if is_blocking {
+            if is_blocking && !Cpu::is_in_interrupt() {
                 if !writer.is_empty() {
                     // wait for data to be written
                     atomic_wait(
@@ -248,8 +250,8 @@ impl Serial {
     /// this Function is called from the UART interrupt handler
     /// when an interrupt is received indicating that there is more space in the
     /// transmit FIFO
-    pub fn uart_xmitchars(&self) -> Result<(), SerialError> {
-        let mut nbytes = 0;
+    pub fn xmitchars(&self) -> Result<usize, SerialError> {
+        let mut nbytes: usize = 0;
         {
             let mut uart_ops = self.uart_ops.lock_irqsave();
             // Safety: tx_fifo reader is only accessed in the UART interrupt handler
@@ -274,15 +276,14 @@ impl Serial {
             let _ = atomic_wake(&self.tx_fifo.futex as *const AtomicUsize as usize, 1);
         }
 
-        Ok(())
+        Ok(nbytes)
     }
 
     /// this Function is called from the UART interrupt handler
     /// when an interrupt is received indicating that there is more data in the
     /// receive FIFO
-    pub fn uart_recvchars(&self) -> Result<(), SerialError> {
-        let mut nbytes = 0;
-
+    pub fn recvchars(&self) -> Result<usize, SerialError> {
+        let mut nbytes: usize = 0;
         {
             let mut uart_ops = self.uart_ops.lock_irqsave();
             // Safety: rx_fifo writer is only accessed in the UART interrupt handler
@@ -304,7 +305,7 @@ impl Serial {
             let _ = atomic_wake(&self.rx_fifo.futex as *const AtomicUsize as usize, 1);
         }
 
-        Ok(())
+        Ok(nbytes)
     }
 }
 
@@ -318,10 +319,9 @@ impl Device for Serial {
     }
 
     fn id(&self) -> DeviceId {
-        // TODO: add device id
         DeviceId {
-            major: 4, // TTY major number
-            minor: 0, // First UART device
+            major: 1, // 1 is the major number for char devices
+            minor: 4, // 4 is the minor number for /dev/tty
         }
     }
 

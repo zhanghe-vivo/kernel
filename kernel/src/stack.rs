@@ -1,5 +1,10 @@
 #![allow(dead_code)]
 
+#[cfg(not(target_arch = "aarch64"))]
+pub const STACK_ALIGN: usize = core::mem::size_of::<usize>();
+#[cfg(target_arch = "aarch64")]
+pub const STACK_ALIGN: usize = 16;
+
 /// Stack management structure
 #[repr(C)]
 #[derive(Debug)]

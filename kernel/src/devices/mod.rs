@@ -3,20 +3,25 @@ use alloc::{collections::BTreeMap, sync::Arc};
 use core::sync::atomic::{AtomicU32, Ordering};
 use embedded_io::ErrorKind;
 use libc::*;
+use safe_mmio::UniqueMmioPointer;
 use spin::{Once, RwLock as SpinRwLock};
+
+pub mod console;
+mod error;
+#[cfg(fdt)]
+pub mod fdt;
+mod null;
+pub mod serial;
+#[cfg(virtio)]
+pub mod virtio;
+mod zero;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum DeviceClass {
     Char,
     Block,
-    // NetIf,
-    // MTD,
-    // CAN,
-    // RTC,
-    // Sound,
-    // Graphic,
-    // ...
+    Net,
 }
 
 /// general device commands
@@ -58,12 +63,6 @@ impl From<u32> for DeviceRequest {
 
 /// Mask for control commands
 pub const DEVICE_GENERAL_REQUEST_MASK: u32 = 0x1f;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct DeviceId {
-    pub major: u32,
-    pub minor: u32,
-}
 
 #[derive(Debug)]
 pub struct DeviceBase {
@@ -119,6 +118,20 @@ impl DeviceBase {
     pub fn access_mode(&self) -> AccessMode {
         self.access_mode
     }
+
+    pub fn set_name(&mut self, name: &'static str) {
+        self.name = name;
+    }
+
+    pub fn set_access_mode(&mut self, access_mode: AccessMode) {
+        self.access_mode = access_mode;
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct DeviceId {
+    major: u32,
+    minor: u32,
 }
 
 pub trait Device: Send + Sync {
@@ -138,7 +151,7 @@ pub trait Device: Send + Sync {
 static DEVICE_MANAGER: Once<DeviceManager> = Once::new();
 
 pub struct DeviceManager {
-    devices: SpinRwLock<BTreeMap<&'static str, Arc<dyn Device>>>,
+    pub devices: SpinRwLock<BTreeMap<&'static str, Arc<dyn Device>>>,
 }
 
 impl DeviceManager {
@@ -184,11 +197,17 @@ impl DeviceManager {
 
     pub fn foreach<F>(&self, callback: F) -> Result<(), ErrorKind>
     where
-        F: Fn(Arc<dyn Device>),
+        F: Fn(&'static str, Arc<dyn Device>) -> Result<(), ErrorKind>,
     {
-        for device in self.devices.read().values() {
-            callback(device.clone());
+        for (name, device) in self.devices.read().iter() {
+            callback(name, device.clone())?
         }
         Ok(())
     }
+}
+
+pub fn init() -> Result<(), ErrorKind> {
+    null::Null::register()?;
+    zero::Zero::register()?;
+    Ok(())
 }

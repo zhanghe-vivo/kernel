@@ -72,6 +72,8 @@ if __name__ == "__main__":
     parser.add_argument("--build_type", help="target build_type")
     parser.add_argument("--output", help="Rust file output directory")
     args = parser.parse_args()
+    os.environ['BOARD'] = args.board
+    os.environ['KCONFIG_DIR'] = os.path.dirname(args.kconfig)
     try:
         results = parse_int_configs(args.kconfig, args.board, args.build_type)
         if results:

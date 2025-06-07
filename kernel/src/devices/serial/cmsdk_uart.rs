@@ -1,4 +1,7 @@
-use crate::drivers::serial::SerialError;
+// SPDX-FileCopyrightText: Copyright 2023-2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
+use crate::devices::serial::SerialError;
 use core::hint::spin_loop;
 
 use tock_registers::{
@@ -108,7 +111,7 @@ impl Uart {
     ///
     /// clock: Uart clock in Hz.
     /// baud_rate: Baud rate.
-    pub fn init(&mut self, clock: u32, baud_rate: u32) {
+    pub fn enable(&mut self, clock: u32, baud_rate: u32) {
         let divisor = (clock << 2) / baud_rate;
 
         self.registers()
@@ -118,7 +121,7 @@ impl Uart {
         self.registers().INTSTATUS.set(0xf);
     }
 
-    pub fn deinit(&mut self) {
+    pub fn disable(&mut self) {
         self.registers().CTRL.modify(
             CTRL::RXIRQEN::CLEAR + CTRL::RXEN::CLEAR + CTRL::TXIRQEN::CLEAR + CTRL::TXEN::CLEAR,
         );
@@ -174,7 +177,7 @@ impl Uart {
             // no data
             Ok(None)
         } else if state.is_set(STATE::RXOR) {
-            Err(SerialError::BufferFull)
+            Err(SerialError::Overrun)
         } else {
             let ch = self.registers().DATA.read(DATA::DATA) as u8;
             self.registers().STATE.set(0);
@@ -193,19 +196,19 @@ impl Uart {
 
     pub fn try_write_data(&mut self, byte: u8) -> Result<(), SerialError> {
         if self.registers().STATE.is_set(STATE::TXBF) {
-            Err(SerialError::BufferFull)
+            Err(SerialError::Overrun)
         } else {
             self.write_data(byte);
             Ok(())
         }
     }
 
-    pub fn read_ready(&self) -> bool {
+    pub fn is_rx_fifo_full(&self) -> bool {
         self.registers().STATE.is_set(STATE::RXBF)
     }
 
-    pub fn write_ready(&self) -> bool {
-        !self.registers().STATE.is_set(STATE::TXBF)
+    pub fn is_tx_fifo_full(&self) -> bool {
+        self.registers().STATE.is_set(STATE::TXBF)
     }
 
     #[inline]

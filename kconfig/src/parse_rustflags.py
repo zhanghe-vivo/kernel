@@ -33,6 +33,8 @@ if __name__ == '__main__':
     parser.add_argument("--board", help="target board")
     parser.add_argument("--build_type", help="target build_type")
     args = parser.parse_args()
+    os.environ['BOARD'] = args.board
+    os.environ['KCONFIG_DIR'] = os.path.dirname(args.kconfig)
     try:
         rustflags = parse_rustflags(args.kconfig, args.board, args.build_type)
         if rustflags:

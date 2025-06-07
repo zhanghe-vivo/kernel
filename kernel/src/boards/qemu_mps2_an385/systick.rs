@@ -13,7 +13,6 @@ pub extern "C" fn SysTick_Handler() {
 }
 
 pub struct Systick {}
-
 impl Systick {
     pub fn init(tick_per_second: u32) -> Result<(), error::Error> {
         let syst = &mut Peripherals::take().unwrap().SYST;

@@ -2,18 +2,18 @@
 #[cfg(smp)]
 use crate::cpu::CPU_DETACHED;
 use crate::{
-    allocator::malloc,
     arch::Arch,
     clock,
     cpu::Cpu,
     error::{code, Error},
     object::{KObjectBase, KernelObject, ObjectClassType},
-    stack::Stack,
+    stack::{Stack, STACK_ALIGN},
     static_init::UnsafeStaticInit,
     sync::{lock::mutex::*, RawSpin, SpinLock},
     timer::{Timer, TimerState},
     zombie,
 };
+use alloc::alloc::{alloc, Layout};
 use bluekernel_infra::list::doubly_linked_list::{LinkedListNode, ListHead};
 use core::{
     cell::UnsafeCell,
@@ -540,19 +540,30 @@ impl Thread {
 
     pub(crate) fn new_tid(thread_ptr: usize) -> usize {
         static TID: AtomicUsize = AtomicUsize::new(0);
-        let id = TID.fetch_add(1, Ordering::SeqCst);
+
+        // Try to get next available ID from current position
+        let start_id = TID.load(Ordering::SeqCst) % MAX_THREAD_SIZE;
         let mut tids = TIDS.lock();
-        if id >= MAX_THREAD_SIZE || !tids[id].is_none() {
-            for i in 0..MAX_THREAD_SIZE {
-                if tids[i].is_none() {
-                    tids[i] = Some(thread_ptr);
-                    TID.store(0, Ordering::SeqCst);
-                    return i;
-                }
-            }
-            panic!("The maximum number of threads has been exceeded");
+        if let Some(id) = tids[start_id..MAX_THREAD_SIZE]
+            .iter()
+            .position(|slot| slot.is_none())
+            .map(|pos| pos + start_id)
+        {
+            tids[id] = Some(thread_ptr);
+            TID.store(id + 1, Ordering::SeqCst);
+            return id;
         }
-        id
+        if let Some(id) = tids[..start_id]
+            .iter()
+            .position(|slot| slot.is_none())
+            .map(|pos| pos + start_id)
+        {
+            tids[id] = Some(thread_ptr);
+            TID.store(id + 1, Ordering::SeqCst);
+            return id;
+        }
+        // No available slots found
+        panic!("Maximum thread limit reached: {}", MAX_THREAD_SIZE);
     }
 
     #[no_mangle]
@@ -872,8 +883,11 @@ impl Thread {
             if cpu != CPUS_NUMBER as u8 {
                 if cpu != current_cpu {
                     unsafe {
-                        // TODO: call from libcpu.
-                        // rt_bindings::rt_hw_ipi_send(rt_bindings::RT_SCHEDULE_IPI as i32, 1 << cpu)
+                        #[cfg(target_arch = "aarch64")]
+                        {
+                            Arch::dsb(DsbOptions::NonShareable);
+                            Arch::send_sgi(SGI_SCHED, 1 << cpu);
+                        }
                     };
                     // self cpu need reschedule
                     scheduler.sched_unlock_with_sched(level);
@@ -881,11 +895,11 @@ impl Thread {
             } else {
                 // Not running on self cpu, but destintation cpu can be itself.
                 unsafe {
-                    // TODO: call from libcpu.
-                    // rt_bindings::rt_hw_ipi_send(
-                    //     rt_bindings::RT_SCHEDULE_IPI as i32,
-                    //     1 << self.oncpu,
-                    // )
+                    #[cfg(target_arch = "aarch64")]
+                    {
+                        Arch::dsb(DsbOptions::NonShareable);
+                        Arch::send_sgi(SGI_SCHED, 1 << self.oncpu);
+                    }
                 };
                 scheduler.sched_unlock(level);
             }
@@ -1075,7 +1089,12 @@ impl ThreadBuilder {
         thread.priority = ThreadPriority::new(self.priority);
         // If user doesn't specify an existing stack, we'll allocate one.
         let stack_start = self.stack_start.unwrap_or_else(|| {
-            let stack_start = malloc(self.stack_size);
+            let stack_start = unsafe {
+                alloc(Layout::from_size_align_unchecked(
+                    self.stack_size,
+                    STACK_ALIGN,
+                ))
+            };
             thread.set_should_free_stack(true);
             unsafe { NonNull::new_unchecked(stack_start) }
         });

@@ -1,11 +1,10 @@
 use super::sys_config::{TICK_PER_SECOND, TIME_IRQ_NUM};
 use crate::{
     arch::{
-        interrupt::IrqHandler,
         registers::{
             cntfrq_el0::CNTFRQ_EL0, cntp_ctl_el0::CNTP_CTL_EL0, cntp_tval_el0::CNTP_TVAL_EL0,
         },
-        Arch,
+        Arch, IrqHandler,
     },
     clock, error,
     irq::Irq,
@@ -20,12 +19,11 @@ pub struct SystickIrq {}
 static mut STEP: u64 = 0;
 
 impl IrqHandler for SystickIrq {
-    fn handle(&mut self) -> Result<(), &'static str> {
+    fn handle(&mut self) {
         Irq::enter();
         clock::handle_tick_increase();
         unsafe { CNTP_TVAL_EL0.set(STEP) };
         Irq::leave();
-        Ok(())
     }
 }
 

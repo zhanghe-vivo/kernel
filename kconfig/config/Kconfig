@@ -1,5 +1,7 @@
 mainmenu "Blue Kernel"
 
+source "$KCONFIG_DIR/$BOARD/Kconfig"
+
 config ALIGN_SIZE
     default 8
     int "Alignment size for CPU architecture data access"
@@ -147,3 +149,11 @@ config IDLE_THREAD_STACK_SIZE
     default 2048
     depends on SMP
     int "The stack size of idle thread"
+
+config FDT
+    default n
+    bool "Enable Flat Device Tree"
+
+config VIRTIO
+    default n
+    bool "Enable VirtIO"

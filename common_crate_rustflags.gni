@@ -37,13 +37,6 @@ if (board == "qemu_mps2_an385") {
     "--cfg",
     "has_fpu",
   ]
-} else if (board == "qemu_virt64_aarch64") {
-  common_crate_rustflags += [
-    "--cfg",
-    "cortex_a",
-    "--cfg",
-    "aarch64",
-  ]
 }
 
 common_gcc_rustflags = [

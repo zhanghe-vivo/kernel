@@ -437,11 +437,14 @@ impl FileOperationTrait for TmpFileSystem {
             if *parent == inode_no {
                 let d_type = if let Some(child_inode_node) = inodes.get(&child_inode_no) {
                     match child_inode_node.attr.file_type {
+                        FileType::Unknown => DT_UNKNOWN,
                         FileType::Regular => DT_REG,
                         FileType::Directory => DT_DIR,
                         FileType::SymLink => DT_LNK,
                         FileType::CharDevice => DT_CHR,
                         FileType::BlockDevice => DT_BLK,
+                        FileType::Fifo => DT_FIFO,
+                        FileType::Socket => DT_SOCK,
                     }
                 } else {
                     DT_UNKNOWN

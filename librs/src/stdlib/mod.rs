@@ -636,8 +636,7 @@ mod tests {
     // [ 7] .data             PROGBITS        20000000 075000 003d80 00  WA  0   0 16
     // [ 8] .bss              NOBITS          20003d80 078d80 000050 00  WA  0   0  4
 
-    // The below testcase causes code bloating, disable it on ARM
-    // embedded platform temporarily.
+    // FIXME: use https://docs.rs/float-cmp/latest/float_cmp/
     #[cfg(not(target_os = "blueos"))]
     #[test]
     fn check_strtof() {
@@ -647,8 +646,7 @@ mod tests {
         assert!((result - 3.14).abs() <= f32::EPSILON);
     }
 
-    // The below testcase causes code bloating, disable it on ARM
-    // embedded platform temporarily.
+    // FIXME: use https://docs.rs/float-cmp/latest/float_cmp/
     #[cfg(not(target_os = "blueos"))]
     #[test]
     fn check_strtod() {
@@ -658,6 +656,7 @@ mod tests {
         assert!((result - 3.14).abs() <= f64::EPSILON);
     }
 
+    // FIXME: use https://docs.rs/float-cmp/latest/float_cmp/
     #[cfg(not(target_os = "blueos"))]
     #[test]
     fn check_strtol() {

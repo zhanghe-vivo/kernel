@@ -1,6 +1,7 @@
 extern crate alloc;
 use alloc::{sync::Arc, vec};
 
+#[derive(Debug)]
 pub struct MemoryMapper {
     entry: usize,
     start: usize,
@@ -17,9 +18,9 @@ impl MemoryMapper {
             start: usize::MAX,
             end: 0,
             mem: None,
-            #[cfg(aarch64)]
+            #[cfg(target_arch = "aarch64")]
             align: 4096,
-            #[cfg(not(aarch64))]
+            #[cfg(not(target_arch = "aarch64"))]
             align: core::mem::size_of::<usize>(),
         }
     }

@@ -4,9 +4,9 @@ use super::{
 };
 use crate::{
     arch::{Arch, IrqNumber},
-    drivers::{
-        device::{DeviceManager, DeviceRequest},
+    devices::{
         serial::{cmsdk_uart::Uart, config::SerialConfig, Serial, SerialError, UartOps},
+        DeviceManager, DeviceRequest,
     },
     irq::Irq,
     sync::SpinLock,
@@ -52,7 +52,7 @@ impl Write for UartDriver {
 
 impl WriteReady for UartDriver {
     fn write_ready(&mut self) -> Result<bool, SerialError> {
-        Ok(self.inner.write_ready())
+        Ok(!self.inner.is_tx_fifo_full())
     }
 }
 
@@ -80,14 +80,14 @@ impl Read for UartDriver {
 
 impl ReadReady for UartDriver {
     fn read_ready(&mut self) -> Result<bool, SerialError> {
-        Ok(self.inner.read_ready())
+        Ok(self.inner.is_rx_fifo_full())
     }
 }
 
 impl UartDriver {
     fn new(base: u32) -> Self {
         let mut inner = unsafe { Uart::new(base as *mut u32) };
-        inner.init(SYSTEM_CORE_CLOCK, 115200);
+        inner.enable(SYSTEM_CORE_CLOCK, 115200);
         Self {
             inner,
             rx_irq: UARTRX0_IRQn,
@@ -98,14 +98,14 @@ impl UartDriver {
 
 impl Drop for UartDriver {
     fn drop(&mut self) {
-        self.inner.deinit();
+        self.inner.disable();
     }
 }
 
 impl UartOps for UartDriver {
     fn setup(&mut self, serial_config: &SerialConfig) -> Result<(), SerialError> {
         let uart = &mut self.inner;
-        uart.init(SYSTEM_CORE_CLOCK, serial_config.baudrate);
+        uart.enable(SYSTEM_CORE_CLOCK, serial_config.baudrate);
         uart.clear_interrupt();
         Arch::enable_irq(self.rx_irq);
         Arch::enable_irq(self.tx_irq);
@@ -115,7 +115,7 @@ impl UartOps for UartDriver {
     fn shutdown(&mut self) -> Result<(), SerialError> {
         Arch::disable_irq(self.rx_irq);
         Arch::disable_irq(self.tx_irq);
-        self.inner.deinit();
+        self.inner.disable();
         Ok(())
     }
 
@@ -166,31 +166,27 @@ impl UartOps for UartDriver {
         match DeviceRequest::from(request) {
             DeviceRequest::Config => {
                 let config = unsafe { *(arg as *const SerialConfig) };
-                self.inner.init(SYSTEM_CORE_CLOCK, config.baudrate);
+                self.inner.enable(SYSTEM_CORE_CLOCK, config.baudrate);
             }
             DeviceRequest::Close => {
-                self.inner.deinit();
+                self.inner.disable();
             }
-            _ => return Err(SerialError::InvalidConfig),
+            _ => return Err(SerialError::InvalidParameter),
         }
         Ok(())
     }
 }
 
-static UART0: Once<Arc<SpinLock<dyn UartOps>>> = Once::new();
+// UART0 is used for early console output
+static UART0: Once<SpinLock<UartDriver>> = Once::new();
+pub fn get_early_uart() -> &'static SpinLock<dyn UartOps> {
+    UART0.call_once(|| SpinLock::new(UartDriver::new(UART0_BASE_S)))
+}
+
 static SERIAL0: Once<Arc<Serial>> = Once::new();
-
-pub fn get_uart0() -> &'static Arc<SpinLock<dyn UartOps>> {
-    UART0.call_once(|| Arc::new(SpinLock::new(UartDriver::new(UART0_BASE_S))))
-}
-
-pub fn get_early_uart() -> &'static Arc<SpinLock<dyn UartOps>> {
-    get_uart0()
-}
-
 pub fn get_serial0() -> &'static Arc<Serial> {
     SERIAL0.call_once(|| {
-        let uart = get_uart0().clone();
+        let uart = Arc::new(SpinLock::new(UartDriver::new(UART0_BASE_S)));
         Arc::new(Serial::new(
             "ttyS0",
             AccessMode::O_RDWR,
@@ -213,7 +209,7 @@ pub unsafe extern "C" fn UARTRX0_Handler() {
     let uart = get_serial0();
     uart.uart_ops.lock_irqsave().clear_rx_interrupt();
 
-    if let Err(_e) = uart.uart_recvchars() {
+    if let Err(_e) = uart.recvchars() {
         // println!("UART RX error: {:?}", e);
     }
     Irq::leave();
@@ -227,7 +223,7 @@ pub unsafe extern "C" fn UARTTX0_Handler() {
     let uart = get_serial0();
     uart.uart_ops.lock_irqsave().clear_tx_interrupt();
 
-    if let Err(_e) = uart.uart_xmitchars() {
+    if let Err(_e) = uart.xmitchars() {
         // println!("UART TX error: {:?}", e);
     }
     Irq::leave();

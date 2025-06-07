@@ -12,9 +12,6 @@ build_rust("librs") {
     "//kernel/scal:bluekernel_scal",
     "//libc:libc",
   ]
-  if (board == "qemu_virt64_aarch64") {
-    deps += [ "//external/semihosting/v0.1.20:semihosting" ]
-  }
   rustflags = common_crate_rustflags
 }
 
@@ -28,9 +25,6 @@ build_rust("librs_swi") {
     "//kernel/scal:bluekernel_scal_swi",
     "//libc:libc",
   ]
-  if (board == "qemu_virt64_aarch64") {
-    deps += [ "//external/semihosting/v0.1.20:semihosting" ]
-  }
   rustflags = common_crate_rustflags
 }
 
@@ -61,9 +55,6 @@ build_rust("librs_test") {
     "//kernel/scal:bluekernel_scal_test",
     "//libc:libc",
   ]
-  if (board == "qemu_virt64_aarch64") {
-    deps += [ "//external/semihosting/v0.1.20:semihosting" ]
-  }
   rustflags = common_crate_rustflags
 }
 
@@ -95,7 +86,6 @@ gen_qemu_runner("librs_unittest_runner") {
   qemu = "$qemu_exe"
   machine = "$machine"
   if ("$board" == "qemu_virt64_aarch64") {
-    semihosting = true
     qemu_args = "-cpu cortex-a53 -net none -chardev stdio,id=con,mux=on -serial chardev:con -mon chardev=con,mode=readline"
   }
 }

@@ -1,5 +1,5 @@
 use crate::{
-    arch::Arch, boards, c_str, cpu, drivers, early_println, idle, logger, thread::ThreadBuilder,
+    arch::Arch, boards, c_str, cpu, devices, early_println, idle, logger, thread::ThreadBuilder,
     timer,
 };
 use bluekernel_kconfig::{MAIN_THREAD_PRIORITY, MAIN_THREAD_STACK_SIZE};
@@ -103,11 +103,28 @@ fn application_init() {
 
 #[no_mangle]
 pub extern "C" fn _startup() -> ! {
+    let blueos_logo = r#"
+=====            ...
+===== .*##*=:    #@@+                                    -*#%%%%#+:       .=*%@@%#*-
+::::=:+++#@@@*   #@@+                                 .*@@@*+==+%@@@=    +@@@*++*#@@:
+  :#@     +@@@   #@@+  ...      ...      .:--:       :@@@+       -@@@*  .@@@-      .
+ :@@@    :#@@+   #@@+  %@@-    .@@@   .+@@@%@@@*.    %@@*         :@@@-  %@@@+-.
+ -@@@@@@@@@%=    #@@+  %@@-    .@@@  .@@@-   .@@%   .@@@-          @@@*   +%@@@@@%+:
+ -@@@::::-*@@@:  #@@+  %@@-    .@@@  +@@@*****%@@:   @@@=          @@@+     .-=*%@@@#
+ -@@@      #@@#  #@@+  %@@-    :@@@  *@@#--------    *@@@.        *@@@.          -@@@:
+ -@@@    .=@@@=  #@@+  *@@#.  :%@@@  .@@@=.    .      *@@@+-. .:=%@@@:  -@#+:.  .+@@@.
+ -@@@@@@@@@@#-   #@@+   *@@@@@@+@@@   .*@@@@@@@@:      :*@@@@@@@@@#=    -*@@@@@@@@@#.
+"#;
+
     Arch::disable_interrupts();
     cpu::init_cpus();
+
+    crate::early_println!("{}", blueos_logo);
+
     timer::system_timer_init();
     boards::init::board_init();
-    match drivers::init() {
+
+    match devices::init() {
         Ok(_) => (),
         Err(e) => early_println!("Failed to init drivers: {:?}", e),
     }

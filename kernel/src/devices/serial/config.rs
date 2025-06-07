@@ -23,14 +23,15 @@ pub enum StopBits {
 }
 
 /// Parity
-///
-/// The "none" state of parity is represented with the Option type (None).
 #[derive(Debug, Clone, Copy)]
 pub enum Parity {
+    None,
     /// Odd parity
     Odd,
     /// Even parity
     Even,
+    One,
+    Zero,
 }
 
 /// A struct holding the configuration for an UART device.
@@ -46,7 +47,7 @@ pub struct SerialConfig {
     pub stop_bits: StopBits,
 
     /// The parity that this uart should have
-    pub parity: Option<Parity>,
+    pub parity: Parity,
 }
 
 impl SerialConfig {
@@ -54,7 +55,7 @@ impl SerialConfig {
     pub const fn new(
         baudrate: u32,
         data_bits: DataBits,
-        parity: Option<Parity>,
+        parity: Parity,
         stop_bits: StopBits,
     ) -> SerialConfig {
         SerialConfig {
@@ -72,7 +73,7 @@ impl Default for SerialConfig {
             baudrate: 115200,
             data_bits: DataBits::Eight,
             stop_bits: StopBits::One,
-            parity: None,
+            parity: Parity::None,
         }
     }
 }
@@ -82,7 +83,7 @@ pub const _9600_8_N_1: SerialConfig = SerialConfig {
     baudrate: 9600,
     data_bits: DataBits::Eight,
     stop_bits: StopBits::One,
-    parity: None,
+    parity: Parity::None,
 };
 
 /// 19200 baud, 8 data bits, no parity, 1 stop bit
@@ -90,7 +91,7 @@ pub const _19200_8_N_1: SerialConfig = SerialConfig {
     baudrate: 19200,
     data_bits: DataBits::Eight,
     stop_bits: StopBits::One,
-    parity: None,
+    parity: Parity::None,
 };
 
 /// 38400 baud, 8 data bits, no parity, 1 stop bit
@@ -98,7 +99,7 @@ pub const _38400_8_N_1: SerialConfig = SerialConfig {
     baudrate: 38400,
     data_bits: DataBits::Eight,
     stop_bits: StopBits::One,
-    parity: None,
+    parity: Parity::None,
 };
 
 /// 57600 baud, 8 data bits, no parity, 1 stop bit
@@ -106,7 +107,7 @@ pub const _57600_8_N_1: SerialConfig = SerialConfig {
     baudrate: 57600,
     data_bits: DataBits::Eight,
     stop_bits: StopBits::One,
-    parity: None,
+    parity: Parity::None,
 };
 
 /// 115200 baud, 8 data bits, no parity, 1 stop bit
@@ -114,5 +115,5 @@ pub const _115200_8_N_1: SerialConfig = SerialConfig {
     baudrate: 115200,
     data_bits: DataBits::Eight,
     stop_bits: StopBits::One,
-    parity: None,
+    parity: Parity::None,
 };

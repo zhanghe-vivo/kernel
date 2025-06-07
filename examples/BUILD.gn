@@ -43,7 +43,6 @@ gen_qemu_runner("tty_loopback_runner") {
   qemu = "$qemu_exe"
   machine = "$machine"
   if ("$board" == "qemu_virt64_aarch64") {
-    semihosting = true
     qemu_args = "-cpu cortex-a53 -net none -chardev stdio,id=con,mux=on -serial chardev:con -mon chardev=con,mode=readline"
   }
 }

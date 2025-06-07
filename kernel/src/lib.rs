@@ -33,7 +33,7 @@ mod boards;
 pub mod clock;
 pub mod console;
 pub mod cpu;
-pub mod drivers;
+pub mod devices;
 pub mod error;
 mod ext_types;
 pub mod idle;

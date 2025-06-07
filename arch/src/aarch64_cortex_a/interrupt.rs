@@ -3,7 +3,7 @@ use spin::Mutex;
 use tock_registers::interfaces::{Readable, Writeable};
 extern crate alloc;
 use alloc::boxed::Box;
-use arm_gic::{gicv3::*, IntId, Trigger};
+use arm_gic::{gicv3::*, IntId};
 use bluekernel_kconfig::CPUS_NR;
 
 const GICD: usize = 0x8000000;
@@ -11,8 +11,11 @@ const GICR: usize = 0x80a0000;
 
 // The ID of the first Private Peripheral Interrupt.
 const PPI_START: u32 = 16;
-// The ID of the first Shared Peripheral Interrupt.
 const SPI_START: u32 = 32;
+const SPECIAL_START: u32 = 1020;
+const SPECIAL_END: u32 = 1024;
+
+static GIC: Mutex<Option<GicV3>> = Mutex::new(None);
 
 pub use arm_gic::Trigger as IrqTrigger;
 
@@ -44,8 +47,6 @@ impl From<IrqNumber> for usize {
     }
 }
 
-static GIC: Mutex<Option<GicV3>> = Mutex::new(None);
-
 // Initialize the GIC for the system
 pub fn init() {
     let mut gic = unsafe {
@@ -64,8 +65,6 @@ pub fn init() {
     *GIC.lock() = Some(gic);
 }
 
-pub const SGI_SCHED: IrqNumber = IrqNumber::new(1);
-
 const MAX_HANDLER_NUM: usize = 128;
 
 pub struct IrqContext {
@@ -75,12 +74,12 @@ pub struct IrqContext {
 
 impl core::fmt::Display for IrqContext {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        write!(f, "IRQ{:#?} -> Handler@{:p}", self.irq, self.handler)
+        write!(f, "IRQ {:?} -> Handler@{:p}", self.irq, self.handler)
     }
 }
 
 pub trait IrqHandler: Send + Sync {
-    fn handle(&mut self) -> Result<(), &'static str>;
+    fn handle(&mut self);
 }
 
 impl IrqContext {
@@ -108,7 +107,7 @@ impl IrqManager {
         irq: IrqNumber,
         handler: Box<dyn IrqHandler>,
     ) -> Result<(), &'static str> {
-        if u32::from(irq) as usize >= MAX_HANDLER_NUM {
+        if u32::from(irq) >= MAX_HANDLER_NUM as u32 {
             return Err("IRQ number out of range");
         }
         self.contexts[usize::from(irq)] = Some(IrqContext::new(irq, handler));
@@ -117,7 +116,7 @@ impl IrqManager {
 
     fn trigger_irq(&mut self, irq: IrqNumber) -> Result<(), &'static str> {
         if let Some(context) = &mut self.contexts[usize::from(irq)] {
-            return context.handler.handle();
+            return Ok(context.handler.handle());
         }
         Err("handler not found")
     }
@@ -162,14 +161,14 @@ impl Arch {
         IRQ_MANAGER.lock().trigger_irq(irq)
     }
 
-    // Unmask interrupt
+    // enable interrupt
     pub fn enable_irq(irq: IrqNumber, cpu_id: usize) {
         if let Some(gic) = &mut *GIC.lock() {
             gic.enable_interrupt(irq.0, Some(cpu_id), true);
         }
     }
 
-    // Mask interrupt
+    // disable interrupt
     pub fn disable_irq(irq: IrqNumber, cpu_id: usize) {
         if let Some(gic) = &mut *GIC.lock() {
             gic.enable_interrupt(irq.0, Some(cpu_id), false);
@@ -189,7 +188,7 @@ impl Arch {
     }
 
     // Configures the trigger type for the interrupt with the given ID
-    pub fn set_trigger(irq: IrqNumber, cpu_id: usize, trigger: Trigger) {
+    pub fn set_trigger(irq: IrqNumber, cpu_id: usize, trigger: IrqTrigger) {
         if let Some(gic) = &mut *GIC.lock() {
             gic.set_trigger(irq.0, Some(cpu_id), trigger);
         }
@@ -199,7 +198,7 @@ impl Arch {
     pub fn get_interrupt() -> IrqNumber {
         match GicV3::get_and_acknowledge_interrupt() {
             None => IrqNumber(IntId::SPECIAL_NONE),
-            Some(IntId) => IrqNumber(IntId),
+            Some(intid) => IrqNumber(intid),
         }
     }
 

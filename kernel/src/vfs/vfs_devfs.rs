@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::drivers::device::{Device, DeviceClass, DeviceManager};
+use crate::devices::{Device, DeviceClass, DeviceManager};
 
 use crate::{
     error::{code, Error},
@@ -17,11 +17,14 @@ use alloc::{
     vec::Vec,
 };
 use core::sync::atomic::{AtomicBool, Ordering};
+use embedded_io::ErrorKind;
 use libc::{SEEK_CUR, SEEK_END, SEEK_SET, S_IFCHR};
 use log::{info, warn};
 use spin::RwLock as SpinRwLock;
 
 struct DevNode {
+    // FIXME: add DevNode to DirNode children
+    name: &'static str,
     attr: InodeAttr,
     offset: usize,
     dev: Arc<dyn Device>,
@@ -65,14 +68,11 @@ impl DevFileSystem {
 
     fn scan_devices(&self) -> Result<(), Error> {
         self.manager
-            .foreach(|dev| {
-                info!("[devfs] Adding device: {}", dev.name());
-                self.add_device(dev);
-            })
+            .foreach(|name, dev| self.add_device(name, dev))
             .map_err(|e| Error::from_errno(e as i32))
     }
 
-    fn add_device(&self, dev: Arc<dyn Device>) {
+    fn add_device(&self, name: &'static str, dev: Arc<dyn Device>) -> Result<(), ErrorKind> {
         let inode_no = self.alloc_inode_no();
 
         let attr = InodeAttr {
@@ -85,6 +85,8 @@ impl DevFileSystem {
             file_type: match dev.class() {
                 DeviceClass::Char => FileType::CharDevice,
                 DeviceClass::Block => FileType::BlockDevice,
+                // devfs does not support net devices
+                DeviceClass::Net => return Err(ErrorKind::Unsupported),
             },
             mode: u32::from(dev.access_mode()) | S_IFCHR,
             nlinks: 1,
@@ -93,6 +95,7 @@ impl DevFileSystem {
         };
 
         let node = DevNode {
+            name,
             attr,
             offset: 0,
             dev: dev.clone(),
@@ -105,6 +108,7 @@ impl DevFileSystem {
             dev.name(),
             inode_no
         );
+        Ok(())
     }
 }
 
@@ -115,10 +119,9 @@ impl FileOperationTrait for DevFileSystem {
         self.check_mounted()?;
 
         let dev_name = path.trim_start_matches('/');
+        // FIXME: find in parent children.
         let mut nodes = self.dev_nodes.write();
-        let node_entry = nodes
-            .iter_mut()
-            .find(|(_, node)| node.dev.name() == dev_name);
+        let node_entry = nodes.iter_mut().find(|(_, node)| node.name == dev_name);
 
         match node_entry {
             Some((inode_no, node)) => {
@@ -278,9 +281,12 @@ impl FileOperationTrait for DevFileSystem {
                     FileType::SymLink => DT_LNK,
                     FileType::CharDevice => DT_CHR,
                     FileType::BlockDevice => DT_BLK,
+                    FileType::Fifo => DT_FIFO,
+                    FileType::Socket => DT_SOCK,
+                    FileType::Unknown => DT_UNKNOWN,
                 };
 
-                Dirent::new(d_type, node.dev.name().to_string())
+                Dirent::new(d_type, node.name.to_string())
             })
             .collect();
 

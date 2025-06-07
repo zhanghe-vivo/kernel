@@ -30,10 +30,4 @@ build_rust("bluekernel_loader") {
     "//external/goblin/v0.9.3:goblin",
     "//kernel/librs:librs",
   ]
-  if (board == "qemu_virt64_aarch64") {
-    rustflags = [
-      "--cfg",
-      "aarch64",
-    ]
-  }
 }

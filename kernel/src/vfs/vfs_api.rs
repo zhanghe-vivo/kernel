@@ -2,7 +2,7 @@
 //! C API for VFS operations  
 
 use crate::{
-    drivers::device::DeviceManager,
+    devices::DeviceManager,
     error::{code, Error},
     vfs::{
         vfs_devfs, vfs_fd, vfs_manager::*, vfs_mnt::*, vfs_mode::*, vfs_node::*, vfs_posix,
@@ -87,7 +87,6 @@ pub fn vfs_init() -> Result<(), Error> {
 
     info!("init stdio");
     let mut fd_manager = vfs_fd::get_fd_manager().lock();
-    #[cfg(not(cortex_a))]
     fd_manager.init_stdio()?;
 
     info!("VFS initialized successfully");

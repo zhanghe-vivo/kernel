@@ -1,25 +1,25 @@
 use crate::{
-    drivers::device::{Device, DeviceBase, DeviceClass, DeviceId},
+    devices::{Device, DeviceBase, DeviceClass, DeviceId, DeviceManager},
     vfs::vfs_mode::AccessMode,
 };
 use alloc::sync::Arc;
 use delegate::delegate;
 use embedded_io::ErrorKind;
 
-pub struct Zero {
+pub struct Null {
     base: DeviceBase,
 }
 
-impl Zero {
+impl Null {
     pub fn new() -> Self {
         Self {
-            base: DeviceBase::new("zero", DeviceClass::Char, AccessMode::O_RDWR),
+            base: DeviceBase::new("null", DeviceClass::Char, AccessMode::O_RDWR),
         }
     }
 
     pub fn register() -> Result<(), ErrorKind> {
-        let zero = Arc::new(Zero::new());
-        crate::drivers::device::DeviceManager::get().register_device("/dev/zero", zero)
+        let null = Arc::new(Null::new());
+        DeviceManager::get().register_device("/dev/null", null)
     }
 
     delegate! {
@@ -32,7 +32,7 @@ impl Zero {
     }
 }
 
-impl Device for Zero {
+impl Device for Null {
     delegate! {
         to self.base {
             fn name(&self) -> &'static str;
@@ -44,14 +44,13 @@ impl Device for Zero {
     fn id(&self) -> DeviceId {
         DeviceId {
             major: 1, // 1 is the major number for char devices
-            minor: 5, // 5 is the minor number for /dev/zero
+            minor: 3, // 3 is the minor number for /dev/null
         }
     }
 
-    fn read(&self, _pos: usize, buf: &mut [u8], _is_blocking: bool) -> Result<usize, ErrorKind> {
-        // Fill buffer with zeros
-        buf.fill(0);
-        Ok(buf.len())
+    fn read(&self, _pos: usize, _buf: &mut [u8], _is_blocking: bool) -> Result<usize, ErrorKind> {
+        // Always return EOF (0 bytes read)
+        Ok(0)
     }
 
     fn write(&self, _pos: usize, buf: &[u8], _is_blocking: bool) -> Result<usize, ErrorKind> {
@@ -74,60 +73,59 @@ impl Device for Zero {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::drivers::device::DeviceManager;
+    use crate::devices::DeviceManager;
     use bluekernel_test_macro::test;
 
     #[test]
-    fn test_zero_device_read() {
-        let zero = Zero::new();
-        let mut buffer = [1u8; 10];
+    fn test_null_device_read() {
+        let null = Null::new();
+        let mut buffer = [0u8; 10];
 
-        // Read should fill buffer with zeros
-        let result = zero.read(0, &mut buffer, true);
+        // Read should always return 0 bytes (EOF)
+        let result = null.read(0, &mut buffer, true);
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), buffer.len());
-        assert!(buffer.iter().all(|&x| x == 0));
+        assert_eq!(result.unwrap(), 0);
     }
 
     #[test]
-    fn test_zero_device_write() {
-        let zero = Zero::new();
+    fn test_null_device_write() {
+        let null = Null::new();
         let buffer = [1u8, 2, 3, 4, 5];
 
         // Write should always succeed and return the buffer length
-        let result = zero.write(0, &buffer, true);
+        let result = null.write(0, &buffer, true);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), buffer.len());
     }
 
     #[test]
-    fn test_zero_device_open_close() {
-        let zero = Zero::new();
+    fn test_null_device_open_close() {
+        let null = Null::new();
 
         // Test opening with valid flags
-        let result = zero.open(libc::O_RDWR);
+        let result = null.open(libc::O_RDWR);
         assert!(result.is_ok());
-        assert!(zero.is_opened());
+        assert!(null.is_opened());
 
         // Test closing
-        let result = zero.close();
+        let result = null.close();
         assert!(result.is_ok());
-        assert!(!zero.is_opened());
+        assert!(!null.is_opened());
     }
 
     #[test]
-    fn test_zero_device_id() {
-        let zero = Zero::new();
-        let id = zero.id();
+    fn test_null_device_id() {
+        let null = Null::new();
+        let id = null.id();
 
         assert_eq!(id.major, 1);
-        assert_eq!(id.minor, 5);
+        assert_eq!(id.minor, 3);
     }
 
     #[test]
-    fn test_zero_device_registration() {
+    fn test_null_device_registration() {
         // Verify we can find the device
-        let device = DeviceManager::get().find_device("/dev/zero");
+        let device = DeviceManager::get().find_device("/dev/null");
         assert!(device.is_ok());
     }
 }
