@@ -20,6 +20,8 @@ pub mod syscalls {
         AllocMem,
         FreeMem,
         Write,
+        Close,
+        Read,
         LastNR,
     }
 }

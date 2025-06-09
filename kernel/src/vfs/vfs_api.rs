@@ -10,11 +10,12 @@ use crate::{
     },
 };
 use alloc::{slice, string::String, sync::Arc};
-use core::ffi::{c_char, c_int, c_ulong, c_void, CStr};
-use libc::{EINVAL, S_IFDIR};
+use core::ffi::{c_void, CStr};
+use libc::{c_char, c_int, c_ulong, EINVAL, S_IFDIR};
+
 use log::{info, warn};
 
-/// Initialize the virtual file system  
+/// Initialize the virtual file system
 pub fn vfs_init() -> Result<(), Error> {
     info!("Initializing VFS...");
 
@@ -166,7 +167,7 @@ pub extern "C" fn vfs_open(path: *const c_char, flags: c_int, mode: mode_t) -> c
 
 /// Close a file descriptor
 #[no_mangle]
-pub extern "C" fn vfs_close(fd: i32) -> i32 {
+pub extern "C" fn vfs_close(fd: c_int) -> c_int {
     vfs_posix::close(fd)
 }
 

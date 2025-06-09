@@ -5,9 +5,10 @@ use crate::{
     cpu::Cpu,
     sync::futex,
     thread::{ThreadBuilder, THREAD_DEFAULT_TICK},
+    vfs::vfs_posix,
 };
 use bluekernel_header::{syscalls::NR, thread::CloneArgs};
-use libc::{c_void, clockid_t, timespec};
+use libc::{c_int, c_void, clockid_t, size_t, timespec};
 
 #[repr(C)]
 #[derive(Default)]
@@ -160,6 +161,17 @@ write(fd: i32, buf: *const u8, size: usize) -> c_long {
     }
 });
 
+define_syscall_handler!(
+    close(fd: c_int) -> c_int {
+        vfs_posix::close(fd)
+    }
+);
+define_syscall_handler!(
+    read(fd: c_int, buf: *mut c_void, count: size_t) -> isize {
+        vfs_posix::read(fd, buf as *mut core::ffi::c_void, count as usize)
+    }
+);
+
 syscall_table! {
     (Echo, echo),
     (Nop, nop),
@@ -173,6 +185,8 @@ syscall_table! {
     (AllocMem, alloc_mem),
     (FreeMem, free_mem),
     (Write, write),
+    (Close, close),
+    (Read, read),
 }
 
 // Begin syscall modules.
