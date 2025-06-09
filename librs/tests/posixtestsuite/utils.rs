@@ -33,6 +33,27 @@ pub extern "C" fn sleep(seconds: c_uint) -> c_uint {
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn fprintf(
+    _stream: *mut core::ffi::c_void,
+    format: *const c_char,
+    mut __valist: ...
+) -> c_int {
+    // don't use it, only check printf output
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn fwrite(
+    _ptr: *const core::ffi::c_void,
+    _size: usize,
+    _nmemb: usize,
+    _stream: *mut core::ffi::c_void,
+) -> usize {
+    // don't use it, only check printf output
+    0
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn pthread_cancel(thread: pthread_t) -> c_int {
     0
 }
@@ -74,3 +95,13 @@ pub unsafe extern "C" fn exit(status: c_int) -> ! {
     // exit will terminate whole process, now we just call pthread_exit instead
     pthread_exit(0 as *mut core::ffi::c_void);
 }
+
+#[no_mangle]
+#[link_name = "stdin"]
+pub static stdin: i32 = 0;
+#[no_mangle]
+#[link_name = "stdout"]
+pub static stdout: i32 = 1;
+#[no_mangle]
+#[link_name = "stderr"]
+pub static stderr: i32 = 2;

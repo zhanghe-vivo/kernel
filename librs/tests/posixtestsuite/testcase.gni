@@ -12,49 +12,6 @@ template("posix_testsuite_case") {
 
   executable(exe_name) {
     testonly = true
-    deps = [
-      "//kernel/librs/tests/posixtestsuite:${case_name}",
-      "//kernel/librs/tests/posixtestsuite:librs_for_posix_testsuite",
-    ]
-    inputs = [ "//kernel/kernel/src/boards/$board/link.x" ]
-    ldflags = [
-      "-T",
-      rebase_path("//kernel/kernel/src/boards/$board/link.x"),
-      "-Wl,-cref,-u,Reset_Handler",
-      "-nostartfiles",
-      "-lgcc",
-      "-nodefaultlibs",
-    ]
-    if (coverage || profile) {
-      deps += [
-        "//external/minicov/v0.3.7:minicov",
-        "//external/semihosting/v0.1.20:semihosting",
-      ]
-    }
-  }
-
-  gen_qemu_runner(runner_name) {
-    testonly = true
-    img = ":${exe_name}"
-    qemu = "$qemu_exe"
-    machine = "$machine"
-    if ("$board" == "qemu_virt64_aarch64") {
-      qemu_args = "-cpu cortex-a53 -net none -chardev stdio,id=con,mux=on -serial chardev:con -mon chardev=con,mode=readline"
-    }
-  }
-
-  run_qemu_check(checker_name) {
-    testonly = true
-    runner = ":${runner_name}"
-    if (coverage) {
-      img = ":${exe_name}"
-      checker = "//kernel/kernel/src/cov.rs"
-    } else {
-      checker = "//kernel/librs/tests/posixtestsuite/common_checker.test"
-    }
-  }
-
-  source_set(case_name) {
     name_components = string_split(case_name, "_")
     count = 0
     foreach(i, name_components) {
@@ -95,5 +52,40 @@ template("posix_testsuite_case") {
       "-Wall",
       "-nostartfiles",
     ]
+
+    deps = [ "//kernel/librs/tests/posixtestsuite:librs_for_posix_testsuite" ]
+    inputs = [ "//kernel/kernel/src/boards/$board/link.x" ]
+    ldflags = [
+      "-T",
+      rebase_path("//kernel/kernel/src/boards/$board/link.x"),
+      "-Wl,-cref,-u,Reset_Handler",
+      "-nostartfiles",
+      "-lgcc",
+      "-nodefaultlibs",
+    ]
+    if (coverage || profile) {
+      deps += [
+        "//external/minicov/v0.3.7:minicov",
+        "//external/semihosting/v0.1.20:semihosting",
+      ]
+    }
+  }
+
+  gen_qemu_runner(runner_name) {
+    testonly = true
+    img = ":${exe_name}"
+    qemu = "$qemu_exe"
+    board = "$board"
+  }
+
+  run_qemu_check(checker_name) {
+    testonly = true
+    runner = ":${runner_name}"
+    if (coverage) {
+      img = ":${exe_name}"
+      checker = "//kernel/kernel/src/cov.rs"
+    } else {
+      checker = "//kernel/librs/tests/posixtestsuite/common_checker.test"
+    }
   }
 }
