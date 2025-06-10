@@ -3,6 +3,7 @@ use core::{alloc::Layout, pin::Pin, ptr::NonNull};
 use pinned_init::{pin_data, pin_init, pin_init_array_from_fn, pin_init_from_closure, PinInit};
 
 pub mod buddy_system_heap;
+use crate::allocator::MemoryInfo;
 use buddy_system_heap::Heap as BuddyHeap;
 
 /// A buddy system heap.
@@ -73,13 +74,12 @@ impl Heap {
         new_ptr
     }
 
-    pub fn memory_info(&self) -> (usize, usize, usize) {
+    pub fn memory_info(&self) -> MemoryInfo {
         let heap = self.heap.lock_irqsave();
-        let x = (
-            (*heap).stats_total_bytes(),
-            (*heap).stats_alloc_actual(),
-            (*heap).stats_alloc_max(),
-        );
-        x
+        MemoryInfo {
+            total: (*heap).stats_total_bytes(),
+            used: (*heap).stats_alloc_actual(),
+            max_used: (*heap).stats_alloc_max(),
+        }
     }
 }

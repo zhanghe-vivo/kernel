@@ -27,7 +27,10 @@ pub mod syscalls {
 }
 
 pub mod thread {
-    pub const DEFAULT_STACK_SIZE: usize = 8192;
+    #[cfg(debug)]
+    pub const DEFAULT_STACK_SIZE: usize = 16384; // 16 kb
+    #[cfg(release)]
+    pub const DEFAULT_STACK_SIZE: usize = 12288; // 12 kb
     #[cfg(not(target_arch = "aarch64"))]
     pub const STACK_ALIGN: usize = core::mem::size_of::<usize>();
     #[cfg(target_arch = "aarch64")]

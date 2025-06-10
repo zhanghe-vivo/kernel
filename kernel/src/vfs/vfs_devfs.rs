@@ -351,19 +351,23 @@ impl FileSystemTrait for DevFileSystem {
     }
 
     fn create_inode(&self, _path: &str, _mode: u32) -> Result<InodeAttr, Error> {
-        Err(code::EAGAIN)
+        Err(code::ENOSYS)
     }
 
     fn remove_inode(&self, _path: &str) -> Result<(), Error> {
-        Err(code::EAGAIN)
+        Err(code::ENOSYS)
     }
 
     fn free_inode(&self, _inode_no: InodeNo) -> Result<(), Error> {
-        Err(code::EAGAIN)
+        Err(code::ENOSYS)
     }
 
     fn sync(&self) -> Result<(), Error> {
-        Err(code::EAGAIN)
+        Err(code::ENOSYS)
+    }
+
+    fn lookup_path(&self, path: &str) -> Result<InodeNo, Error> {
+        Err(code::ENOSYS)
     }
 
     // fn lookup_inode(&self, inode_no: InodeNo) -> Result<InodeAttr, i32> {

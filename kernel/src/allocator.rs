@@ -244,7 +244,7 @@ pub fn free_align(ptr: *mut u8, align: usize) {
 /// * `total` - Output parameter containing the total available memory on the heap.
 /// * `used` - Output parameter containing the currently used memory on the heap.
 /// * `max_used` - Output parameter containing the largest amount of memory ever used during execution.
-pub fn memory_info() -> (usize, usize, usize) {
+pub fn memory_info() -> MemoryInfo {
     HEAP.memory_info()
 }
 
@@ -290,5 +290,21 @@ mod ffi {
     #[linkage = "weak"]
     pub extern "C" fn realloc(ptr: *mut u8, newsize: usize) -> *mut u8 {
         super::realloc(ptr, newsize)
+    }
+}
+
+pub struct MemoryInfo {
+    pub total: usize,
+    pub used: usize,
+    pub max_used: usize,
+}
+
+impl MemoryInfo {
+    pub(crate) fn new(total: usize, used: usize, max_used: usize) -> MemoryInfo {
+        MemoryInfo {
+            total,
+            used,
+            max_used,
+        }
     }
 }

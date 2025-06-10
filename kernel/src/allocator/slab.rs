@@ -1,6 +1,7 @@
 use crate::sync::SpinLock;
 use core::{alloc::Layout, ptr::NonNull};
 pub mod slab_heap;
+use crate::allocator::MemoryInfo;
 use slab_heap::Heap as SlabHeap;
 
 pub const PAGE_SIZE: usize = 4096;
@@ -95,9 +96,12 @@ impl Heap {
         new_ptr
     }
 
-    pub fn memory_info(&self) -> (usize, usize, usize) {
+    pub fn memory_info(&self) -> MemoryInfo {
         let heap = self.heap.lock_irqsave();
-        let x = ((*heap).total(), (*heap).allocated(), (*heap).maximum());
-        x
+        MemoryInfo {
+            total: (*heap).total(),
+            used: (*heap).allocated(),
+            max_used: (*heap).maximum(),
+        }
     }
 }

@@ -1,6 +1,7 @@
 use crate::sync::SpinLock;
 use core::{alloc::Layout, ptr::NonNull};
 pub mod linked_list_heap;
+use crate::allocator::MemoryInfo;
 use linked_list_heap::Heap as LLHeap;
 
 /// A linked list first fit heap.
@@ -85,9 +86,12 @@ impl Heap {
         new_ptr
     }
 
-    pub fn memory_info(&self) -> (usize, usize, usize) {
+    pub fn memory_info(&self) -> MemoryInfo {
         let heap = self.heap.lock_irqsave();
-        let x = ((*heap).total(), (*heap).allocated(), (*heap).maximum());
-        x
+        MemoryInfo {
+            total: (*heap).total(),
+            used: (*heap).allocated(),
+            max_used: (*heap).maximum(),
+        }
     }
 }

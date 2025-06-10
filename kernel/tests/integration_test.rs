@@ -30,11 +30,11 @@ pub fn kernel_test_runner(tests: &[&dyn Fn()]) {
 fn main() -> i32 {
     println!("Hello, Blue Kernel!");
 
-    let (total, used, max_used) = allocator::memory_info();
+    let memory_info = allocator::memory_info();
     println!("Kernel memory statistics: ");
-    println!("Total memory: {} bytes.", total);
-    println!("Used memory: {} bytes.", used);
-    println!("Max used memory: {} bytes.", max_used);
+    println!("Total memory: {} bytes.", memory_info.total);
+    println!("Used memory: {} bytes.", memory_info.used);
+    println!("Max used memory: {} bytes.", memory_info.max_used);
 
     // Unstable rust custom test framework tests entry.
     kernel_test_main();

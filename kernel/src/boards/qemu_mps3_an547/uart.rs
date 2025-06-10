@@ -3,7 +3,7 @@ use super::{
     sys_config::{SYSTEM_CORE_CLOCK, UART0_BASE_S},
 };
 use crate::{
-    arch::{Arch, IrqNumber},
+    arch::{Arch, interrupt::IrqNumber},
     devices::{
         serial::{cmsdk_uart::Uart, config::SerialConfig, Serial, SerialError, UartOps},
         DeviceManager, DeviceRequest,
@@ -205,7 +205,7 @@ pub fn uart_init() -> Result<(), ErrorKind> {
 #[coverage(off)]
 #[no_mangle]
 pub unsafe extern "C" fn UARTRX0_Handler() {
-    Irq::enter();
+    Irq::enter(UARTRX0_IRQn);
     let uart = get_serial0();
     uart.uart_ops.lock_irqsave().clear_rx_interrupt();
 
@@ -219,7 +219,7 @@ pub unsafe extern "C" fn UARTRX0_Handler() {
 #[coverage(off)]
 #[no_mangle]
 pub unsafe extern "C" fn UARTTX0_Handler() {
-    Irq::enter();
+    Irq::enter(UARTTX0_IRQn);
     let uart = get_serial0();
     uart.uart_ops.lock_irqsave().clear_tx_interrupt();
 

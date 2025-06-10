@@ -57,8 +57,6 @@ pub fn mount(
         }
     };
 
-    info!("[posix] Normalized target path: {}", target_path);
-
     // Check if target path is already mounted
     if let Some(mount_point) = mount_manager.find_mount(&target_path) {
         if mount_point.path == target_path {
@@ -90,12 +88,13 @@ pub fn mount(
         mount_point.path, mount_point.fs_type
     );
 
-    let _ = fs
-        .mount(source.unwrap_or(""), &target_path, flags, data)
-        .map_err(|err| {
-            warn!("Mount failed: {}", err);
+    match fs.mount(source.unwrap_or(""), &target_path, flags, data) {
+        Err(err) => {
+            warn!("[posix] Mount failed: {}", err);
             return err.to_errno();
-        });
+        }
+        Ok(_) => {}
+    }
 
     info!(
         "[posix] Successfully mounted {} at {}",
@@ -181,27 +180,40 @@ pub fn open(file_path: &str, flags: c_int, _mode: mode_t) -> i32 {
         }
     };
 
-    // First look up in cache
-    if let Some(dnode) = dnode_cache.lookup(file_path) {
-        warn!("[posix] Found existing dnode for path: {}", file_path);
-
+    let file_found_result: Option<(Arc<dyn VfsOperations>, String)> =
+        // TODO: Is the dnode cache needed?
+        if let Some(dnode) = dnode_cache.lookup(file_path) {
+            // Found existing dnode cache
+            // Get filesystem operations object
+            let fs = dnode.get_inode().fs_ops.clone();
+            // Get relative path
+            let relative_path = match vfs_mnt::find_filesystem(file_path) {
+                Some((_, path)) => path,
+                None => {
+                    return code::ENOENT.to_errno();
+                }
+            };
+            Some((fs, relative_path))
+        } else {
+            // lookup through the fs api 
+            if let Some((fs, relative_path)) = vfs_mnt::find_filesystem(file_path) {
+                if let Ok(_) = fs.lookup_path(file_path) {
+                    // Found existing inode
+                    Some((fs, relative_path))
+                } else {
+                    None
+                }
+            } else {
+                return code::ENOENT.to_errno();
+            }
+        };
+    if let Some((fs, relative_path)) = file_found_result {
+        // File found
         // Check O_EXCL flag
         if (flags & O_CREAT != 0) && (flags & O_EXCL != 0) {
             warn!("File exists and O_EXCL specified");
             return code::EEXIST.to_errno();
         }
-
-        // Get filesystem operations object
-        let fs = dnode.get_inode().fs_ops.clone();
-
-        // Get relative path
-        let relative_path = match vfs_mnt::find_filesystem(file_path) {
-            Some((_, path)) => path,
-            None => {
-                warn!("Failed to get relative path for: {}", file_path);
-                return code::ENOENT.to_errno();
-            }
-        };
 
         // If O_TRUNC is specified, truncate the file
         if flags & O_TRUNC != 0 {
@@ -225,87 +237,82 @@ pub fn open(file_path: &str, flags: c_int, _mode: mode_t) -> i32 {
         let mut fd_manager = get_fd_manager().lock();
         let file_ops = as_file_ops(fs);
         return fd_manager.alloc_fd(flags, file_ops, inode_no);
-    }
-
-    // If not found in cache and O_CREAT not specified, return error
-    if flags & O_CREAT == 0 {
-        warn!("File not found and O_CREAT not specified: {}", file_path);
-        return code::ENOENT.to_errno();
-    }
-
-    // Get parent directory path and filename
-    let (parent_path, file_name) = match split_path(file_path) {
-        Some(x) => x,
-        None => {
-            warn!("Invalid path: {}", file_path);
-            return code::EINVAL.to_errno();
-        }
-    };
-
-    // Look up parent directory's DNode
-    info!("[posix] Looking up parent directory: {}", parent_path);
-    let parent_dnode = match dnode_cache.lookup(parent_path) {
-        Some(dnode) => dnode,
-        None => {
-            warn!("Parent directory not found: {}", parent_path);
+    } else {
+        // File not found
+        // If not found in cache and fs, and O_CREAT not specified, return error
+        if flags & O_CREAT == 0 {
+            warn!("File not found and O_CREAT not specified: {}", file_path);
             return code::ENOENT.to_errno();
         }
-    };
 
-    // Get filesystem and relative path
-    let (fs, relative_path) = match vfs_mnt::find_filesystem(file_path) {
-        Some(x) => x,
-        None => {
-            warn!("Filesystem not found for path: {}", file_path);
-            return code::ENOENT.to_errno();
-        }
-    };
-
-    // we do not have execute permission for now
-    let mode = access_to_mode(access_mode, 0o644);
-    let inode_attr = match fs.create_inode(&relative_path, mode) {
-        Ok(attr) => attr,
-        Err(err) => {
-            warn!("Failed to create inode: {}", err);
-            return err.to_errno();
-        }
-    };
-
-    // Create new Inode and DNode
-    let new_inode = Arc::new(Inode::new(inode_attr, fs.clone()));
-    let new_dnode = Arc::new(DNode::new(
-        file_name.to_string(),
-        new_inode,
-        Some(Arc::clone(&parent_dnode)),
-    ));
-
-    // Add new DNode to parent directory's children
-    parent_dnode.add_child(file_name.to_string(), Arc::clone(&new_dnode));
-    info!(
-        "[posix] Added new DNode '{}' to parent directory '{}'",
-        file_name,
-        parent_dnode.get_full_path()
-    );
-
-    // Add new DNode to cache
-    dnode_cache.insert(Arc::clone(&new_dnode));
-
-    // Open newly created file
-    let inode_no = match fs.open(&relative_path, flags) {
-        Ok(fd) => fd as InodeNo,
-        Err(err) => {
-            // If it's a newly created file, need to clean up nodes
-            if flags & O_CREAT != 0 {
-                parent_dnode.remove_child(&file_name.to_string());
-                dnode_cache.remove(file_path);
+        // Get parent directory path and filename
+        let (parent_path, file_name) = match split_path(file_path) {
+            Some(x) => x,
+            None => {
+                warn!("Invalid path: {}", file_path);
+                return code::EINVAL.to_errno();
             }
-            return err.to_errno();
-        }
-    };
+        };
 
-    let mut fd_manager = get_fd_manager().lock();
-    let file_ops = as_file_ops(fs);
-    fd_manager.alloc_fd(flags, file_ops, inode_no)
+        // Get filesystem and relative path
+        let (fs, relative_path) = match vfs_mnt::find_filesystem(file_path) {
+            Some(x) => x,
+            None => {
+                warn!("Filesystem not found for path: {}", file_path);
+                return code::ENOENT.to_errno();
+            }
+        };
+
+        // Create new inode
+        // we do not have execute permission for now
+        let mode: u32 = access_to_mode(access_mode, 0o644);
+        let inode_attr = match fs.create_inode(&relative_path, mode) {
+            Ok(attr) => attr,
+            Err(err) => {
+                warn!("Failed to create inode: {}", err);
+                return err.to_errno();
+            }
+        };
+
+        // Open newly created file
+        let inode_no = match fs.open(&relative_path, flags) {
+            Ok(fd) => fd as InodeNo,
+            Err(err) => {
+                return err.to_errno();
+            }
+        };
+
+        // If the parent DNode is found, add new child DNode
+        match dnode_cache.lookup(parent_path) {
+            Some(parent_dnode) => {
+                // Create new Inode and DNode
+                let new_inode = Arc::new(Inode::new(inode_attr, fs.clone()));
+                let new_dnode = Arc::new(DNode::new(
+                    file_name.to_string(),
+                    new_inode,
+                    Some(Arc::clone(&parent_dnode)),
+                ));
+
+                // Add new DNode to parent directory's children
+                parent_dnode.add_child(file_name.to_string(), Arc::clone(&new_dnode));
+                info!(
+                    "[posix] Added new DNode '{}' to parent directory '{}'",
+                    file_name,
+                    parent_dnode.get_full_path()
+                );
+
+                // Add new DNode to cache
+                dnode_cache.insert(Arc::clone(&new_dnode));
+            }
+            None => {
+                warn!("Parent dnode cache not found: path {}", parent_path);
+            }
+        };
+
+        let mut fd_manager = get_fd_manager().lock();
+        let file_ops = as_file_ops(fs);
+        fd_manager.alloc_fd(flags, file_ops, inode_no)
+    }
 }
 
 /// Close a file descriptor  

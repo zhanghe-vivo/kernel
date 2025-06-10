@@ -25,7 +25,7 @@ use core::{
 };
 use cortex_m::{
     asm,
-    peripheral::{scb, scb::VectActive, syst::SystClkSource, SCB},
+    peripheral::{scb, scb::VectActive, syst::SystClkSource, SCB, SYST},
     register::control::{Fpca, Npriv, Spsel},
     Peripherals,
 };
@@ -253,5 +253,13 @@ impl Arch {
                 "isb"
             );
         }
+    }
+
+    pub fn get_systick_value() -> u64 {
+        SYST::get_current() as u64
+    }
+
+    pub fn get_systick_reload() -> u64 {
+        SYST::get_reload() as u64
     }
 }

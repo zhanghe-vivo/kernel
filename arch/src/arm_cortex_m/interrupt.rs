@@ -25,6 +25,13 @@ impl IrqNumber {
     }
 }
 
+// IrqNumber to usize
+impl From<IrqNumber> for usize {
+    fn from(irq: IrqNumber) -> Self {
+        usize::from(irq.0)
+    }
+}
+
 // SAFETY: get the number of the interrupt is safe
 unsafe impl InterruptNumber for IrqNumber {
     #[inline]
@@ -148,8 +155,10 @@ impl Arch {
 /// The interrupt vector table must be properly aligned and contain valid function pointers
 /// for all used interrupt vectors. Incorrect configuration may lead to undefined behavior.
 #[cfg(armv6m)]
-pub type InterruptTable = [Vector; 32];
+pub const INTERRUPT_TABLE_LEN: usize = 32;
 #[cfg(any(armv7m, armv7em))]
-pub type InterruptTable = [Vector; 240];
+pub const INTERRUPT_TABLE_LEN: usize = 240;
 #[cfg(armv8m)]
-pub type InterruptTable = [Vector; 496];
+pub const INTERRUPT_TABLE_LEN: usize = 496;
+
+pub type InterruptTable = [Vector; INTERRUPT_TABLE_LEN];

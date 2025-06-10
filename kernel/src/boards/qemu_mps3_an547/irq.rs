@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 #![allow(non_upper_case_globals)]
-use crate::arch::IrqNumber;
+use crate::arch::interrupt::IrqNumber;
 
 // use some name as arm cmsdk
 pub const NONSEC_WATCHDOG_RESET_REQ_IRQn: IrqNumber = IrqNumber::new(0); // Non-Secure Watchdog Reset Request Interrupt

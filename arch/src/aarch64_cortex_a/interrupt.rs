@@ -65,7 +65,7 @@ pub fn init() {
     *GIC.lock() = Some(gic);
 }
 
-const MAX_HANDLER_NUM: usize = 128;
+pub const INTERRUPT_TABLE_LEN: usize = 128;
 
 pub struct IrqContext {
     pub irq: IrqNumber,
@@ -89,7 +89,7 @@ impl IrqContext {
 }
 
 pub struct IrqManager {
-    pub contexts: [Option<IrqContext>; MAX_HANDLER_NUM],
+    pub contexts: [Option<IrqContext>; INTERRUPT_TABLE_LEN],
 }
 
 pub static IRQ_MANAGER: Mutex<IrqManager> = Mutex::new(IrqManager::new());
@@ -98,7 +98,7 @@ impl IrqManager {
     const fn new() -> Self {
         const NONE_CONTEXT: Option<IrqContext> = None;
         Self {
-            contexts: [NONE_CONTEXT; MAX_HANDLER_NUM],
+            contexts: [NONE_CONTEXT; INTERRUPT_TABLE_LEN],
         }
     }
 
@@ -107,7 +107,7 @@ impl IrqManager {
         irq: IrqNumber,
         handler: Box<dyn IrqHandler>,
     ) -> Result<(), &'static str> {
-        if u32::from(irq) >= MAX_HANDLER_NUM as u32 {
+        if u32::from(irq) >= INTERRUPT_TABLE_LEN as u32 {
             return Err("IRQ number out of range");
         }
         self.contexts[usize::from(irq)] = Some(IrqContext::new(irq, handler));

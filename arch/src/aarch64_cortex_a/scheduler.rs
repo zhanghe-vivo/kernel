@@ -1,8 +1,9 @@
-use crate::arch::{stack_frame::StackFrame, Arch};
+use crate::arch::{registers::cntpct_el0::CNTPCT_EL0, stack_frame::StackFrame, Arch};
 use core::{
     arch::{asm, naked_asm},
     mem,
 };
+use tock_registers::interfaces::Readable;
 
 impl Arch {
     /// This function will initialize thread stack
@@ -63,5 +64,9 @@ impl Arch {
                 "eret\n",
             ),)
         }
+    }
+
+    pub fn get_cycle_count() -> u64 {
+        CNTPCT_EL0.get()
     }
 }

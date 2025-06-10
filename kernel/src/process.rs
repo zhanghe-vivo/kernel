@@ -2,7 +2,7 @@ use crate::{
     cpu::Cpu,
     object::{KObjectBase, ObjectClassType},
     static_init::UnsafeStaticInit,
-    sync::RawSpin,
+    sync::{lock::spinlock::RawSpinGuard, RawSpin},
 };
 use bluekernel_infra::list::doubly_linked_list::{LinkedListNode, ListHead};
 
@@ -68,7 +68,7 @@ pub(crate) struct Kprocess {
     #[cfg(heap)]
     #[pin]
     memory: ListHead,
-    pid: u64,
+    pub(crate) pid: u64,
     lock: RawSpin,
 }
 
@@ -114,6 +114,11 @@ impl Kprocess {
         unsafe { pin_init_from_closure(init) }
     }
 
+    #[inline(always)]
+    pub(crate) fn aquire_lock(&self) -> RawSpinGuard<'_> {
+        self.lock.acquire()
+    }
+
     #[inline]
     fn get_object_list_mut(&self, object_type: ObjectClassType) -> &mut ListHead {
         let process = Kprocess::get_process();
@@ -146,7 +151,7 @@ impl Kprocess {
     }
 
     #[inline]
-    fn get_object_list(&self, object_type: ObjectClassType) -> &ListHead {
+    pub(crate) fn get_object_list(&self, object_type: ObjectClassType) -> &ListHead {
         let process = Kprocess::get_process();
         let _ = process.lock.acquire();
         match object_type.without_static() {
@@ -176,7 +181,7 @@ impl Kprocess {
         }
     }
 
-    fn get_process() -> &'static mut UnsafeStaticInit<Kprocess, KprocessInit> {
+    pub(crate) fn get_process() -> &'static mut UnsafeStaticInit<Kprocess, KprocessInit> {
         let process;
         unsafe {
             process = &mut *addr_of_mut!(KPROCESS);
@@ -273,6 +278,17 @@ pub fn get_objects_by_type(
     } else {
         0
     }
+}
+
+/// Traverse the linked list of the specified object type and execute the code block.
+#[macro_export]
+macro_rules! foreach {
+    ($node:ident, $list:ident, $object_type:expr, $code:block) => {
+        let process = Kprocess::get_process();
+        let $list = process.get_object_list($object_type);
+        let guard = process.aquire_lock();
+        crate::doubly_linked_list_for_each!($node, $list, { $code });
+    };
 }
 
 pub fn foreach<F>(callback: F, object_type: ObjectClassType) -> Result<(), i32>

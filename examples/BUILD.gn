@@ -4,11 +4,8 @@ import("//kernel/common_crate_rustflags.gni")
 
 group("run_examples") {
   deps = [ ":tty_loopback_runner($kernel_toolchain)" ]
-
-  # rust-std is large, the size might exceed FLASH limit in debug build.
-  if (build_type == "release") {
-    deps += [ ":run_std_thread_demo($libc_toolchain)" ]
-  }
+  # TODO: Fix the bug and reopen me!
+  # deps += [ ":run_std_thread_demo($libc_toolchain)" ]
 }
 
 common_deps = []

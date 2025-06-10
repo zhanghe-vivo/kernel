@@ -1,3 +1,5 @@
+#[cfg(procfs)]
+pub mod procfs;
 pub mod vfs_api;
 mod vfs_devfs;
 mod vfs_dirent;

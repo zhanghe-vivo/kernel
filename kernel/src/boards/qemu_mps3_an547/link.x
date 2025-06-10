@@ -37,7 +37,10 @@
   </h>
   -----------------------------------------------------------------------------*/
 __ROM_BASE = 0x00000000;
-__ROM_SIZE = 0x00080000;
+__ROM_SIZE = 0x00080000; /* 512K */
+
+__ROM_EXT_BASE = 0x01000000;
+__ROM_EXT_SIZE = 0x00200000; /* 2M */
 
 /*--------------------- Embedded RAM Configuration ----------------------------
   <h> RAM Configuration
@@ -54,7 +57,7 @@ __RAM_SIZE = 0x00400000;
     <o1> Heap Size (in Bytes) <0x0-0xFFFFFFFF:8>
   </h>
   -----------------------------------------------------------------------------*/
-__STACK_SIZE = 0x00001000;
+__STACK_SIZE = 0x00010000; /* 64K */
 
 /*
  *-------------------- <<< end of configuration section >>> -------------------
@@ -69,6 +72,7 @@ __STACKSEAL_SIZE = 8;
 MEMORY
 {
   FLASH (rx)  : ORIGIN = __ROM_BASE, LENGTH = __ROM_SIZE
+  FLASH_EXT (rx)  : ORIGIN = __ROM_EXT_BASE, LENGTH = __ROM_EXT_SIZE
   RAM   (rwx) : ORIGIN = __RAM_BASE, LENGTH = __RAM_SIZE
 }
 
@@ -171,7 +175,7 @@ SECTIONS
     __rt_init_start = .;
     KEEP(*(SORT(.rti_fn*)))
     __rt_init_end = .;
-  } > FLASH
+  } > FLASH_EXT
 
   . = ALIGN(4);
   __rodata_start = .;

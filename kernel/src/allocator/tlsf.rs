@@ -2,6 +2,7 @@ use crate::sync::SpinLock;
 use const_default::ConstDefault;
 use core::{alloc::Layout, ptr::NonNull};
 pub mod tlsf_heap;
+use crate::allocator::MemoryInfo;
 use tlsf_heap::Tlsf;
 
 type TlsfHeap = Tlsf<'static, usize, usize, { usize::BITS as usize }, { usize::BITS as usize }>;
@@ -101,9 +102,12 @@ impl Heap {
     /// * `total` - Output parameter containing the total available memory on the heap.
     /// * `used` - Output parameter containing the currently used memory on the heap.
     /// * `max_used` - Output parameter containing the largest amount of memory ever used during execution.
-    pub fn memory_info(&self) -> (usize, usize, usize) {
+    pub fn memory_info(&self) -> MemoryInfo {
         let heap = self.heap.lock_irqsave();
-        let x = ((*heap).total(), (*heap).allocated(), (*heap).maximum());
-        x
+        MemoryInfo {
+            total: (*heap).total(),
+            used: (*heap).allocated(),
+            max_used: (*heap).maximum(),
+        }
     }
 }

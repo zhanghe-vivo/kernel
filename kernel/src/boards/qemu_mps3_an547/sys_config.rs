@@ -33,3 +33,7 @@ pub const UART0_NAME: &CStr = c_str!("uart0");
 pub const UART1_CLOCK: u32 = 25000000;
 pub const UART1_NAME: &CStr = c_str!("uart1");
 pub const CONSOLE_DEVICE_NAME: *const core::ffi::c_char = UART0_NAME.as_ptr();
+
+pub fn get_system_core_clock() -> u64 {
+    SYSTEM_CORE_CLOCK as u64
+}

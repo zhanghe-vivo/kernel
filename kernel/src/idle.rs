@@ -173,6 +173,31 @@ impl IdleTheads {
             // TODO: add power manager
         }
     }
+
+    #[inline]
+    pub(crate) fn is_inited() -> bool {
+        let idle_threads = unsafe {
+            &*(&raw const IDLE_THREADS as *const UnsafeStaticInit<IdleTheads, IdleTheadsInit>)
+        };
+        idle_threads.is_inited()
+    }
+
+    #[inline]
+    pub fn get_idle_thread(index: usize) -> &'static ThreadWithStack<IDLE_THREAD_STACK_SIZE> {
+        assert!(
+            index < cpu::CPUS_NUMBER,
+            "CPU index {} exceeds maximum {}",
+            index,
+            cpu::CPUS_NUMBER - 1
+        );
+        debug_assert!(Self::is_inited());
+        unsafe {
+            let idle_threads = (&*IDLE_THREADS as *const _ as *const IdleTheads)
+                .as_ref()
+                .unwrap();
+            &idle_threads.threads[index]
+        }
+    }
 }
 
 /// bindgen for idle hook

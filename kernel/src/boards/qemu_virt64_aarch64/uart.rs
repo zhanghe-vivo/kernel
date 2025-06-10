@@ -1,6 +1,10 @@
 use super::sys_config::{APBP_CLOCK, PL011_UART0_BASE, PL011_UART0_IRQ};
 use crate::{
-    arch::{registers::cntfrq_el0::CNTFRQ_EL0, Arch, IrqHandler, IrqNumber, IrqTrigger},
+    arch::{
+        interrupt::{IrqHandler, IrqNumber, IrqTrigger},
+        registers::cntfrq_el0::CNTFRQ_EL0,
+        Arch,
+    },
     devices::{
         serial::{
             arm_pl011::{Interrupts, Uart, ALL_INTERRUPTS},
@@ -198,7 +202,7 @@ pub fn get_serial0() -> &'static Arc<Serial> {
 pub struct Serial0Irq {}
 impl IrqHandler for Serial0Irq {
     fn handle(&mut self) {
-        Irq::enter();
+        Irq::enter(PL011_UART0_IRQ);
         let serial0 = get_serial0();
         let _ = serial0.recvchars();
         serial0.uart_ops.lock().clear_rx_interrupt();

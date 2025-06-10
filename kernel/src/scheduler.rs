@@ -1,3 +1,5 @@
+#[cfg(procfs)]
+use crate::clock;
 use crate::{
     arch::Arch,
     bluekernel_kconfig::THREAD_PRIORITY_MAX,
@@ -24,7 +26,7 @@ use pinned_init::{pin_data, pin_init, pin_init_array_from_fn, PinInit};
 use crate::arch::asm::DsbOptions;
 
 #[cfg(target_arch = "aarch64")]
-use crate::arch::{IrqHandler, IrqNumber};
+use crate::arch::interrupt::{IrqHandler, IrqNumber};
 #[cfg(target_arch = "aarch64")]
 use {alloc::boxed::Box, bluekernel_kconfig::CPUS_NR};
 
@@ -68,7 +70,7 @@ pub struct PriorityTableManager {
 
 #[pin_data]
 pub struct Scheduler {
-    id: u8,
+    pub(crate) id: u8,
     pub(crate) current_thread: AtomicPtr<Thread>,
     // Scheduler lock as local irq, not need spin_lock
     ///priority list headers
@@ -420,6 +422,19 @@ impl Scheduler {
                             self.insert_thread_locked(cur_th);
                             // Consume the yield flags after scheduling.
                             cur_th.stat.clear_yield();
+
+                            #[cfg(procfs)]
+                            {
+                                // Record thread running time
+                                // Statistical error cases:
+                                // case 1: While the systick interrupt is disabled, a cycle reset of the systick occurs
+                                // case 2: The tick statistics overflowed
+                                let current_cycle = clock::get_clock_cycle();
+                                let cycle_start = cur_th.trace_info.last_running_start_cycle;
+                                cur_th.trace_info.running_cycle +=
+                                    (current_cycle.saturating_sub(cycle_start));
+                                cur_th.trace_info.last_running_start_cycle = 0;
+                            }
                         }
                     }
 
@@ -432,6 +447,17 @@ impl Scheduler {
                         to_th.oncpu = cpu_id;
                     }
                     to_th.stat.set_base_state(ThreadState::RUNNING);
+
+                    #[cfg(procfs)]
+                    {
+                        // Record the time when the thread starts running
+                        let current_cycle = clock::get_clock_cycle();
+                        to_th.trace_info.last_running_start_cycle = if current_cycle == 0 {
+                            current_cycle + 1
+                        } else {
+                            current_cycle
+                        };
+                    }
 
                     return Some(new_thread);
                 }

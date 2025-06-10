@@ -1,6 +1,8 @@
 #![allow(dead_code)]
 #[cfg(smp)]
 use crate::cpu::CPU_DETACHED;
+#[cfg(procfs)]
+use crate::vfs::procfs::ProcFileSystem;
 use crate::{
     arch::Arch,
     clock,
@@ -113,9 +115,27 @@ impl ThreadState {
     pub const STATE_MASK: Self = Self(0b0000_0111);
     pub const YIELD: Self = Self(0b0000_1000);
 
+    const STATE_R_STR: &'static str = "R"; // running
+    const STATE_T_STR: &'static str = "T"; // traced or stopped
+    const STATE_S_STR: &'static str = "S"; // sleeping
+    const STATE_D_STR: &'static str = "D"; // sleeping in an uninterruptible wait
+    const STATE_Z_STR: &'static str = "Z"; // zombie
+
     pub const SUSPENDED_INTERRUPTIBLE: Self = Self(Self::SUSPENDED.0);
     pub const SUSPENDED_KILLABLE: Self = Self(Self::SUSPENDED.0 | 0b0000_0001);
     pub const SUSPENDED_UNINTERRUPTIBLE: Self = Self(Self::SUSPENDED.0 | 0b0000_0010);
+
+    // R is running, S is sleeping, D is sleeping in an uninterruptible wait, Z is zombie, T is traced or stopped
+    pub fn to_str(&self) -> &'static str {
+        let base = self.base_state();
+        if self.is_suspended() {
+            Self::STATE_S_STR
+        } else if self.is_close() {
+            Self::STATE_Z_STR
+        } else {
+            Self::STATE_R_STR
+        }
+    }
 
     fn base_state(self) -> Self {
         Self(self.0 & Self::STATE_MASK.0)
@@ -327,7 +347,7 @@ pub struct Thread {
     // Can't add Option because of cbindgen.
     pub cleanup: ThreadCleanupFn,
 
-    tid: usize,
+    pub(crate) tid: usize,
 
     /// built-in thread timer, used for wait timeout
     #[pin]
@@ -363,6 +383,9 @@ pub struct Thread {
 
     #[pin]
     pin: PhantomPinned,
+
+    #[cfg(procfs)]
+    pub(crate) trace_info: ThreadTraceInfo,
 }
 
 #[repr(C, align(8))]
@@ -743,6 +766,10 @@ impl Thread {
 
         #[cfg(mutex)]
         self.detach_from_mutex();
+
+        // TODO: move into zombie
+        #[cfg(procfs)]
+        let _ = ProcFileSystem::trace_thread_close(self.tid);
 
         unsafe {
             (&raw const zombie::ZOMBIE_MANAGER as *const UnsafeStaticInit<zombie::ZombieManager, _>)
@@ -1158,6 +1185,17 @@ impl ThreadBuilder {
                 hold_count: 0,
             };
         }
+
+        #[cfg(procfs)]
+        {
+            thread.trace_info = ThreadTraceInfo {
+                running_cycle: 0,
+                last_running_start_cycle: 0,
+            };
+            let name = thread.get_name().to_str().expect("Cstr to str failed");
+            let _ = ProcFileSystem::trace_thread_init(thread.tid, name);
+        }
+
         Ok(())
     }
 
@@ -1193,4 +1231,9 @@ impl ThreadBuilder {
         }
         Ok(())
     }
+}
+
+pub(crate) struct ThreadTraceInfo {
+    pub(crate) running_cycle: u64,
+    pub(crate) last_running_start_cycle: u64, // 0 indicates an illegal value
 }

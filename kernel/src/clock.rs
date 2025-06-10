@@ -1,10 +1,38 @@
-use crate::{bluekernel_kconfig::TICK_PER_SECOND, cpu::Cpu, timer};
+#[cfg(not(cortex_m))]
+use crate::boards::systick::BOOT_CYCLE_COUNT;
+use crate::{
+    arch::Arch, bluekernel_kconfig::TICK_PER_SECOND, boards::sys_config, clock, cpu::Cpu, timer,
+};
+use core::sync::atomic::Ordering;
 
 pub const WAITING_FOREVER: u32 = u32::MAX;
 
 #[doc = "This function will return current tick from operating system startup."]
 pub fn get_tick() -> u32 {
     Cpu::get_by_id(0).tick_load()
+}
+
+#[cfg(cortex_m)]
+/// Return the cycle counts since the boot.
+pub(crate) fn get_clock_cycle() -> u64 {
+    let systick_val = Arch::get_systick_value();
+    let tick = clock::get_tick() as u64;
+    let systick_reload = Arch::get_systick_reload();
+    (systick_reload + 1) * tick + systick_reload.saturating_sub(systick_val)
+}
+
+#[cfg(not(cortex_m))]
+/// Return the cycle counts since the boot.
+pub(crate) fn get_clock_cycle() -> u64 {
+    let current_cycle_count: u64 = Arch::get_cycle_count();
+    let boot_cycle_count: u64 = BOOT_CYCLE_COUNT.load(Ordering::Relaxed);
+    current_cycle_count.saturating_sub(boot_cycle_count)
+}
+
+/// Convert the cycle counts to the time in units of 10ms.
+pub(crate) fn cycle_to_10ms(cycle: u64) -> u64 {
+    let cycle_per_10ms: u64 = sys_config::get_system_core_clock() / 100;
+    (cycle + cycle_per_10ms / 2) / cycle_per_10ms
 }
 
 #[doc = "This function will set current tick."]

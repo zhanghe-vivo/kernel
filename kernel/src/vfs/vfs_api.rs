@@ -1,6 +1,8 @@
 //! vfs_api.rs  
 //! C API for VFS operations  
 
+#[cfg(procfs)]
+use crate::vfs::procfs::ProcFileSystem;
 use crate::{
     devices::DeviceManager,
     error::{code, Error},
@@ -89,6 +91,25 @@ pub fn vfs_init() -> Result<(), Error> {
     info!("init stdio");
     let mut fd_manager = vfs_fd::get_fd_manager().lock();
     fd_manager.init_stdio()?;
+
+    #[cfg(procfs)]
+    {
+        // Register procfs filesystem
+        let procfs = Arc::new(ProcFileSystem::new());
+        vfs_manager.register_fs("procfs", procfs.clone())?;
+        // Mount procfs to /proc
+        if vfs_posix::mount(None, "/proc", "procfs", 0, None) == 0 {
+            info!("Mounted procfs at '/proc'");
+        } else {
+            warn!("Failed to mount procfs");
+            return Err(code::EAGAIN);
+        }
+        if find_filesystem("/proc").is_none() {
+            warn!("Failed to verify procfs mount");
+            return Err(code::EAGAIN);
+        }
+        ProcFileSystem::init()?;
+    }
 
     info!("VFS initialized successfully");
     Ok(())

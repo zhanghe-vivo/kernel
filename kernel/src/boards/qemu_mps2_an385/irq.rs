@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 #![allow(non_upper_case_globals)]
-use crate::arch::IrqNumber;
+use crate::arch::interrupt::IrqNumber;
 
 // use some name as arm cmsdk
 pub const UART0RX_IRQn: IrqNumber = IrqNumber::new(0);

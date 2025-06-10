@@ -177,3 +177,7 @@ config FDT
 config VIRTIO
     default n
     bool "Enable VirtIO"
+
+config PROCFS
+    default n
+    bool "Enable proc file system"

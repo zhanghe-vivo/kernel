@@ -98,88 +98,6 @@ impl TmpFileSystem {
         Ok(current_inode_no)
     }
 
-    /// Look up inode by path
-    fn lookup_path(&self, path: &str) -> Result<InodeNo, Error> {
-        if !is_valid_path(path) {
-            warn!("[tmpfs] lookup_path: Invalid path: {}", path);
-            return Err(code::EINVAL);
-        }
-
-        // Normalize path
-        let path = normalize_path(path).ok_or(code::EINVAL)?;
-
-        // Get mount point
-        let mount_point = self.mount_point.read();
-        if mount_point.is_empty() {
-            warn!("[tmpfs] lookup_path: Filesystem not mounted");
-            return Err(code::EINVAL);
-        }
-
-        // Check if path is under mount point
-        if !path.starts_with(&*mount_point) {
-            warn!(
-                "[tmpfs] lookup_path: Path {} not under mount point {}",
-                path, *mount_point
-            );
-            return Err(code::EINVAL);
-        }
-
-        // If path is the mount point itself
-        if path == *mount_point {
-            // Find root directory inode
-            let inodes = self.inodes.read();
-            let root_entry = inodes
-                .iter()
-                .find(|(_, inode)| inode.attr.file_type == FileType::Directory)
-                .ok_or(code::ENOENT)?;
-            return Ok(*root_entry.0);
-        }
-
-        // Get path relative to mount point
-        let rel_path = &path[mount_point.len()..];
-        if rel_path.is_empty() || rel_path == "/" {
-            // If relative path is empty or only /, return root directory inode
-            let inodes = self.inodes.read();
-            let root_entry = inodes
-                .iter()
-                .find(|(_, inode)| inode.attr.file_type == FileType::Directory)
-                .ok_or(code::ENOENT)?;
-            return Ok(*root_entry.0);
-        }
-
-        // Find root directory inode
-        let root_inode_no = {
-            let inodes = self.inodes.read();
-            let root_entry = inodes
-                .iter()
-                .find(|(_, inode)| inode.attr.file_type == FileType::Directory)
-                .ok_or(code::ENOENT)?;
-            *root_entry.0
-        };
-
-        // Traverse path from root directory
-        let mut current_inode_no = root_inode_no;
-        for component in rel_path
-            .trim_start_matches('/')
-            .split('/')
-            .filter(|s| !s.is_empty())
-        {
-            let dentries = self.dentries.read();
-            match dentries.get(&(current_inode_no, component.to_string())) {
-                Some(&inode_no) => current_inode_no = inode_no,
-                None => {
-                    warn!(
-                        "[tmpfs] lookup_path: Component {} not found under inode {}",
-                        component, current_inode_no
-                    );
-                    return Err(code::ENOENT);
-                }
-            }
-        }
-
-        Ok(current_inode_no)
-    }
-
     /// Look up parent directory inode and filename
     fn lookup_parent(&self, path: &str) -> Result<(InodeNo, String), Error> {
         // Split path
@@ -732,7 +650,97 @@ impl FileSystemTrait for TmpFileSystem {
     }
 
     fn sync(&self) -> Result<(), Error> {
-        Err(code::EAGAIN)
+        Err(code::ENOSYS)
+    }
+
+    /// Look up inode by path
+    fn lookup_path(&self, path: &str) -> Result<InodeNo, Error> {
+        info!("[tmpfs] lookup_path: path {}", path);
+        if !is_valid_path(path) {
+            warn!("[tmpfs] lookup_path: Invalid path: {}", path);
+            return Err(code::EINVAL);
+        }
+
+        // Normalize path
+        let path = normalize_path(path).ok_or(code::EINVAL)?;
+
+        // Get mount point
+        let mount_point = self.mount_point.read();
+        if mount_point.is_empty() {
+            warn!("[tmpfs] lookup_path: Filesystem not mounted");
+            return Err(code::EINVAL);
+        }
+
+        // Check if path is under mount point
+        if !path.starts_with(&*mount_point) {
+            warn!(
+                "[tmpfs] lookup_path: Path {} not under mount point {}",
+                path,
+                *mount_point
+            );
+            return Err(code::EINVAL);
+        }
+
+        // If path is the mount point itself
+        if path == *mount_point {
+            // Find root directory inode
+            let inodes = self.inodes.read();
+            let root_entry = inodes
+                .iter()
+                .find(|(_, inode)| inode.attr.file_type == FileType::Directory)
+                .ok_or(code::ENOENT)?;
+            return Ok(*root_entry.0);
+        }
+
+        // Get path relative to mount point
+        let rel_path = &path[mount_point.len()..];
+        if rel_path.is_empty() || rel_path == "/" {
+            // If relative path is empty or only /, return root directory inode
+            let inodes = self.inodes.read();
+            let root_entry = inodes
+                .iter()
+                .find(|(_, inode)| inode.attr.file_type == FileType::Directory)
+                .ok_or(code::ENOENT)?;
+            return Ok(*root_entry.0);
+        }
+
+        // Find root directory inode
+        let root_inode_no = {
+            let inodes = self.inodes.read();
+            let root_entry = inodes
+                .iter()
+                .find(|(_, inode)| inode.attr.file_type == FileType::Directory)
+                .ok_or(code::ENOENT)?;
+            *root_entry.0
+        };
+
+        // Traverse path from root directory
+        let mut current_inode_no = root_inode_no;
+        for component in rel_path
+            .trim_start_matches('/')
+            .split('/')
+            .filter(|s| !s.is_empty())
+        {
+            let dentries = self.dentries.read();
+            match dentries.get(&(current_inode_no, component.to_string())) {
+                Some(&inode_no) => current_inode_no = inode_no,
+                None => {
+                    warn!(
+                        "[tmpfs] lookup_path: Component {} not found under inode {}",
+                        component,
+                        current_inode_no
+                    );
+                    return Err(code::ENOENT);
+                }
+            }
+        }
+
+        // info!(
+        //     "[tmpfs] lookup_path: Found inode {} for path {}",
+        //     current_inode_no,
+        //     path
+        // );
+        Ok(current_inode_no)
     }
 }
 

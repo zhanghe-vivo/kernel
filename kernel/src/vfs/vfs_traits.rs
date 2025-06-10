@@ -102,6 +102,8 @@ pub trait FileSystemTrait: Send + Sync {
     fn free_inode(&self, inode_no: InodeNo) -> Result<(), Error>;
 
     fn sync(&self) -> Result<(), Error>;
+
+    fn lookup_path(&self, path: &str) -> Result<InodeNo, Error>;
 }
 
 /// Combined trait representing a complete file system implementation

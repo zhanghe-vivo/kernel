@@ -1,10 +1,14 @@
+use alloc::{format, string::String};
+#[cfg(procfs)]
+use bluekernel::vfs::procfs::ProcFileSystem;
 use bluekernel::{
+    error::{code, Error},
     println,
     vfs::{vfs_api::*, vfs_mode::*, vfs_posix},
 };
 use bluekernel_test_macro::test;
 use core::ffi::{c_char, c_int, CStr};
-use libc::{ENOSYS, O_CREAT, O_RDWR, SEEK_SET};
+use libc::{ENOSYS, O_CREAT, O_RDONLY, O_RDWR, O_WRONLY, SEEK_SET};
 
 #[test]
 fn vfs_test_uart() {
@@ -293,4 +297,158 @@ fn vfs_test_std_fds() {
         );
         assert!(false);
     }
+}
+
+#[test]
+#[cfg(procfs)]
+fn vfs_test_procfs_posix() {
+    // 1. Test: read /proc/meminfo
+    let path_ptr = "/proc/meminfo";
+    let fd = vfs_posix::open(path_ptr, O_RDONLY, 0o000);
+    assert!(
+        fd >= 0,
+        "[VFS Test proc posix]  Failed to open file {}",
+        path_ptr
+    );
+    let read_size = read_fd_content(path_ptr, fd);
+    assert!(
+        read_size > 0,
+        "[VFS Test proc posix] Failed to read {}",
+        path_ptr
+    );
+    vfs_close(fd);
+
+    // 2. Test: read /proc/stat
+    let path_ptr = "/proc/stat";
+    let fd = vfs_posix::open(path_ptr, O_RDONLY, 0o000);
+    assert!(
+        fd >= 0,
+        "[VFS Test proc posix]  Failed to open file {}",
+        path_ptr
+    );
+    let read_size = read_fd_content(path_ptr, fd);
+    assert!(
+        read_size > 0,
+        "[VFS Test proc posix] Failed to read {}",
+        path_ptr
+    );
+    vfs_close(fd);
+
+    // 3. Test: write the read-only file "/proc/meminfo"
+    let path_ptr = "/proc/meminfo";
+    let fd = vfs_posix::open(path_ptr, O_WRONLY, 0o000);
+    assert!(
+        fd == code::EACCES.to_errno(),
+        "[VFS Test proc posix] The open operation should fail due to incorrect permissions"
+    );
+    let fd = vfs_posix::open(path_ptr, O_RDWR, 0o000);
+    assert!(
+        fd == code::EACCES.to_errno(),
+        "[VFS Test proc posix] The open operation should fail due to incorrect permissions"
+    );
+    vfs_close(fd);
+
+    // 4. Test: readdir /proc & read /proc/0/task/{tid}/task
+    match vfs_posix::opendir("/proc") {
+        Ok(dir) => {
+            while let Ok(entry) = vfs_posix::readdir(&dir) {
+                if &entry.name == "0" && entry.d_type == libc::DT_DIR {
+                    let task_path = "/proc/0/task";
+                    match vfs_posix::opendir(task_path) {
+                        Ok(dir) => {
+                            while let Ok(entry) = vfs_posix::readdir(&dir) {
+                                if entry.d_type == libc::DT_DIR
+                                    && entry.name_as_str() != "."
+                                    && entry.name_as_str() != ".."
+                                {
+                                    println!(
+                                        "[VFS Test proc posix]: Found /proc/0/task dir&file: {:?}",
+                                        entry
+                                    );
+                                    let stat_path = &format!("{}/{}/status", task_path, entry.name);
+                                    let fd = vfs_posix::open(stat_path, O_RDONLY, 0o000);
+                                    assert!(
+                                        fd >= 0,
+                                        "[VFS Test proc posix]  Failed to open file {}",
+                                        stat_path
+                                    );
+                                    let read_size = read_fd_content(stat_path, fd);
+                                    assert!(
+                                        read_size > 0,
+                                        "[VFS Test proc posix] Failed to read {}",
+                                        stat_path
+                                    );
+                                    vfs_close(fd);
+                                }
+                            }
+                            vfs_posix::closedir(dir);
+                        }
+                        Err(err) => {
+                            unreachable!(
+                                "[VFS Test proc posix]: Opendir {} failed with error {}",
+                                task_path, err
+                            );
+                        }
+                    }
+                }
+            }
+            vfs_posix::closedir(dir);
+        }
+        Err(err) => {
+            unreachable!(
+                "[VFS Test proc posix]: Opendir /proc failed with error {}",
+                err
+            );
+        }
+    }
+}
+
+#[test]
+#[cfg(procfs)]
+fn vfs_test_proc_internal_api() {
+    // 1. Test: create a file in a non-existent directory
+    if let Ok(_) = ProcFileSystem::proc_create_file("/proc/test/1", 0o444, None) {
+        // There is no /proc/test path, so an error should be returned.
+        unreachable!("[VFS Test proc api]: Success to crate file /proc/test/1, not as expected",);
+    }
+    // 2. Verify the existence of the folder after it is created
+    if let Err(err) = ProcFileSystem::proc_mkdir("/proc/test", 0o555) {
+        unreachable!("[VFS Test proc api]: Fail to mkdir /proc/test, err {}", err);
+    }
+    if let Err(err) = ProcFileSystem::proc_find("/proc/test") {
+        unreachable!("[VFS Test proc api]: /proc/test not found, err {}", err);
+    }
+    // 3. Test: create a file in an existing directory
+    if let Err(err) = ProcFileSystem::proc_create_file("/proc/test/1", 0o444, None) {
+        unreachable!(
+            "[VFS Test proc api]: Fail to crate file /proc/test/1, err {}",
+            err
+        );
+    }
+    // 4. Test: delete files
+    if let Err(_) = ProcFileSystem::proc_remove("/proc/test") {
+        unreachable!("[VFS Test proc api]: Fail to remove dir /proc/test",);
+    }
+    if let Ok(_) = ProcFileSystem::proc_find("/proc/test") {
+        unreachable!("[VFS Test proc api]: /proc/test found, not as expected");
+    }
+}
+
+fn read_fd_content(path: &str, fd: i32) -> usize {
+    let mut read_buf;
+    let mut read_size = 0;
+    let mut result = String::new();
+    while true {
+        read_buf = [0u8; 64];
+        let tmp_size = vfs_read(fd, read_buf.as_mut_ptr(), read_buf.len());
+        let tmp: alloc::borrow::Cow<'_, str> =
+            String::from_utf8_lossy(&read_buf[..tmp_size as usize]);
+        result.push_str(tmp.as_ref());
+        read_size += tmp_size;
+        if tmp_size == 0 {
+            break;
+        }
+    }
+    println!("[VFS Test] read {} content:\n{}", path, result);
+    read_size as usize
 }

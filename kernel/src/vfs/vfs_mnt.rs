@@ -12,6 +12,11 @@ use alloc::{
 use log::{info, warn};
 use spin::{Lazy, RwLock as SpinRwLock};
 
+const RESERVED_MOUNT_PATH: &[&str] = &[
+    #[cfg(procfs)]
+    "/proc",
+    "/dev",
+];
 /// Mount point information
 #[derive(Clone)]
 pub struct MountPoint {
@@ -126,29 +131,24 @@ impl MountManager {
             return Some(mount.clone());
         }
 
-        // Special handling for /dev path
-        if normalized_path == "/dev" {
-            // Check if in mount list
-            if let Some(mount) = mounts.iter().find(|m| m.path == "/dev") {
-                info!("[mount_manager] Found /dev mount point");
-                return Some(mount.clone());
-            }
+        // Special handling for deserved path
+        if RESERVED_MOUNT_PATH
+            .iter()
+            .any(|&reserved_path| path == reserved_path)
+        {
             // If it's a mount operation, return None to allow mounting
-            if path == "/dev" {
-                warn!("[mount_manager] Special case: allowing /dev mount");
-                return None;
-            }
+            return None;
         }
 
         // Find longest prefix match
         let mut longest_match: Option<&MountPoint> = None;
         let mut longest_length = 0;
-
+        let hited_deserved_path = RESERVED_MOUNT_PATH.iter().find(|&&deserved_path| {
+            normalized_path.starts_with(&(deserved_path.to_string() + "/"))
+        });
         for mount in mounts.iter() {
-            // For /dev paths, only allow exact match or /dev mount point
-            if normalized_path.starts_with("/dev/") {
-                if mount.path == "/dev" {
-                    info!("[mount_manager] Found /dev mount for /dev/ path");
+            if let Some(&deserved_path) = hited_deserved_path {
+                if mount.path == deserved_path {
                     return Some(mount.clone());
                 }
                 if mount.path == "/" {
@@ -199,25 +199,62 @@ pub fn find_filesystem(path: &str) -> Option<(Arc<dyn VfsOperations>, String)> {
     let normalized_path = vfs_path::normalize_path(path)?;
 
     // Find the longest matching mount point
-    mount_manager.find_mount(&normalized_path).map(|mp| {
-        // Calculate relative path
-        let relative_path = if mp.path == "/" {
-            // Special handling for root mount point
-            if normalized_path == "/" {
-                String::from("/")
+    mount_manager
+        .find_mount(&normalized_path)
+        .map(|mp: MountPoint| {
+            // Calculate relative path
+            let relative_path = if mp.path == "/" {
+                // Special handling for root mount point
+                if normalized_path == "/" {
+                    String::from("/")
+                } else {
+                    normalized_path
+                }
             } else {
-                normalized_path
-            }
-        } else {
-            // Remove mount point path prefix
-            let rel_path = &normalized_path[mp.path.len()..];
-            if rel_path.is_empty() {
-                String::from("/")
-            } else {
-                rel_path.to_string()
-            }
-        };
+                // Remove mount point path prefix
+                let rel_path = &normalized_path[mp.path.len()..];
+                if rel_path.is_empty() {
+                    String::from("/")
+                } else {
+                    rel_path.to_string()
+                }
+            };
 
-        (mp.fs.clone(), relative_path)
-    })
+            (mp.fs.clone(), relative_path)
+        })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bluekernel_test_macro::test;
+
+    #[test]
+    fn test_mount() {
+        let mount_manager = get_mount_manager();
+
+        // Test normalize path and exact match
+        let test_path = "/dev/1/..";
+        let expected_mount_path = "/dev";
+        assert_eq!(
+            mount_manager.find_mount(test_path).unwrap().path,
+            expected_mount_path
+        );
+
+        // Test longest prefix match, the path start with deserved values
+        let test_path = "/dev/1/2";
+        let expected_mount_path = "/dev";
+        assert_eq!(
+            mount_manager.find_mount(test_path).unwrap().path,
+            expected_mount_path
+        );
+
+        // Test longest prefix match, the path does not start with deserved values
+        let test_path = "/dev2/1/2";
+        let expected_mount_path = "/";
+        assert_eq!(
+            mount_manager.find_mount(test_path).unwrap().path,
+            expected_mount_path
+        );
+    }
 }
