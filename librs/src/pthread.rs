@@ -19,7 +19,7 @@ use core::{
     ffi::{c_int, c_size_t, c_uint, c_void},
     intrinsics::transmute,
     num::NonZeroU32,
-    sync::atomic::{AtomicI32, AtomicI8, AtomicUsize, Ordering},
+    sync::atomic::{AtomicBool, AtomicI32, AtomicI8, AtomicUsize, Ordering},
 };
 use libc::{
     clockid_t, pthread_attr_t, pthread_barrier_t, pthread_barrierattr_t, pthread_cond_t,
@@ -31,6 +31,14 @@ use libc::{
 pub const PTHREAD_BARRIER_SERIAL_THREAD: c_int = -1;
 pub const PTHREAD_PROCESS_SHARED: c_int = 1;
 pub const PTHREAD_PROCESS_PRIVATE: c_int = 0;
+
+pub const SCHED_RR: c_int = 1;
+
+pub const PTHREAD_CANCEL_ASYNCHRONOUS: c_int = 0;
+pub const PTHREAD_CANCEL_ENABLE: c_int = 1;
+pub const PTHREAD_CANCEL_DEFERRED: c_int = 2;
+pub const PTHREAD_CANCEL_DISABLE: c_int = 3;
+
 use spin::RwLock;
 
 pub type PosixRoutineEntry = extern "C" fn(arg: *mut c_void) -> *mut c_void;
@@ -57,6 +65,7 @@ struct PthreadTcb {
     stack_start: usize,
     // 0 indicates joinable, 1 indicates detached. -1 indicates the state is frozen and is set in pthread_exit.
     detached: AtomicI8,
+    cancel_enabled: AtomicBool,
     waitval: Waitval<usize>,
 }
 
@@ -134,11 +143,94 @@ pub extern "C" fn pthread_getschedparam(
     policy: *mut c_int,
     _param: *mut sched_param,
 ) -> c_int {
-    // todo
+    // TODO: Currently BlueKernel only supports SCHED_RR.
     unsafe {
-        *policy = 0;
+        *policy = SCHED_RR;
     }
     0
+}
+
+// Only support SCHED_RR, it's the only policy BlueKernel supports.
+// this function is a no-op in fact.
+#[linkage = "weak"]
+#[no_mangle]
+pub unsafe extern "C" fn pthread_setschedparam(
+    thread: pthread_t,
+    policy: c_int,
+    param: *const sched_param,
+) -> c_int {
+    0
+}
+
+#[linkage = "weak"]
+#[no_mangle]
+pub extern "C" fn pthread_setconcurrency(concurrency: c_int) -> c_int {
+    // BlueKernel supports only 1:1 thread model, so this function is a no-op.
+    0
+}
+
+#[linkage = "weak"]
+#[no_mangle]
+pub extern "C" fn pthread_setschedprio(thread: pthread_t, prio: c_int) -> c_int {
+    // BlueKernel currently doesn't support setting thread priority.
+    0
+}
+
+#[linkage = "weak"]
+#[no_mangle]
+pub unsafe extern "C" fn pthread_cancel(thread: pthread_t) -> c_int {
+    // now BlueKernel doesn't support full posix cancelation
+    // just set cancel_enabled to false, so pthread_testcancel will exit this thread.
+    let Some(tcb) = get_tcb(thread) else {
+        panic!("{:x}: target tcb is gone!", thread)
+    };
+    tcb.write().cancel_enabled.store(true, Ordering::SeqCst);
+    0
+}
+
+#[linkage = "weak"]
+#[no_mangle]
+pub unsafe extern "C" fn pthread_setcancelstate(state: c_int, oldstate: *mut c_int) -> c_int {
+    // BlueKernel currently hasn't signal support, no cancel point is implemented.
+    // just exit when pthread_testcancel is called.
+    let tid = pthread_self();
+    let Some(tcb) = get_tcb(tid) else {
+        panic!("{:x}: My tcb is gone!", tid)
+    };
+    if !oldstate.is_null() {
+        *oldstate = if tcb.read().cancel_enabled.load(Ordering::SeqCst) {
+            PTHREAD_CANCEL_ENABLE
+        } else {
+            PTHREAD_CANCEL_DISABLE
+        }
+    }
+    match state {
+        PTHREAD_CANCEL_ENABLE => tcb.write().cancel_enabled.store(true, Ordering::SeqCst),
+        PTHREAD_CANCEL_DISABLE => tcb.write().cancel_enabled.store(false, Ordering::SeqCst),
+        _ => return EINVAL,
+    }
+    0
+}
+
+#[linkage = "weak"]
+#[no_mangle]
+pub extern "C" fn pthread_setcanceltype(ty: c_int, oldty: *mut c_int) -> c_int {
+    // BlueKernel currently hasn't signal support, no cancel point is implemented.
+    // just exit when pthread_testcancel is called.
+    PTHREAD_CANCEL_DEFERRED
+}
+
+#[linkage = "weak"]
+#[no_mangle]
+pub extern "C" fn pthread_testcancel() {
+    let tid = pthread_self();
+    let Some(tcb) = get_tcb(tid) else {
+        panic!("{:x}: My tcb is gone!", tid)
+    };
+    if tcb.read().cancel_enabled.load(Ordering::SeqCst) {
+        // We should exit this thread.
+        pthread_exit(core::ptr::null_mut());
+    }
 }
 
 #[linkage = "weak"]
@@ -168,6 +260,7 @@ fn register_posix_tcb(tid: usize, clone_args: &CloneArgs) {
         let tcb = Arc::new(RwLock::new(PthreadTcb {
             kv: RwLock::new(BTreeMap::new()),
             stack_start: clone_args.stack_start as usize,
+            cancel_enabled: AtomicBool::new(false),
             detached: AtomicI8::new(0),
             waitval: Waitval::new(),
         }));
