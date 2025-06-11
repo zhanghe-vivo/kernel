@@ -3,7 +3,7 @@ use super::{
     sys_config::{SYSTEM_CORE_CLOCK, UART0_BASE},
 };
 use crate::{
-    arch::{Arch, interrupt::IrqNumber},
+    arch::{interrupt::IrqNumber, Arch},
     devices::{
         serial::{cmsdk_uart::Uart, config::SerialConfig, Serial, SerialError, UartOps},
         DeviceManager, DeviceRequest,

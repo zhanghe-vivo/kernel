@@ -675,8 +675,7 @@ impl FileSystemTrait for TmpFileSystem {
         if !path.starts_with(&*mount_point) {
             warn!(
                 "[tmpfs] lookup_path: Path {} not under mount point {}",
-                path,
-                *mount_point
+                path, *mount_point
             );
             return Err(code::EINVAL);
         }
@@ -727,8 +726,7 @@ impl FileSystemTrait for TmpFileSystem {
                 None => {
                     warn!(
                         "[tmpfs] lookup_path: Component {} not found under inode {}",
-                        component,
-                        current_inode_no
+                        component, current_inode_no
                     );
                     return Err(code::ENOENT);
                 }
