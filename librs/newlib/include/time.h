@@ -12,7 +12,7 @@
 #define CLOCK_REALTIME 0
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define CLOCK_REALTIME 1
 #endif
 
@@ -20,7 +20,7 @@
 #define CLOCK_MONOTONIC 1
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define CLOCK_MONOTONIC 4
 #endif
 

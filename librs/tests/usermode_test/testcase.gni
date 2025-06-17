@@ -1,0 +1,86 @@
+import("//build/templates/rust.gni")
+import("//build/toolchain/bluekernel.gni")
+import("//build/toolchain/cflags.gni")
+import("//kernel/common_crate_rustflags.gni")
+
+template("librs_usermode_case") {
+  forward_variables_from(invoker, "*")
+  case_name = target_name
+  exe_name = "librs_usermode_image_${case_name}"
+  runner_name = "librs_usermode_runner_${case_name}"
+  checker_name = "run_librs_usermode_${case_name}"
+
+  executable(exe_name) {
+    testonly = true
+    sources = [ "//kernel/librs/tests/usermode_test/${case_name}.c" ]
+    deps = [ "//kernel/librs/tests/usermode_test:librs_usermode" ]
+    specs = "-specs=" +
+            rebase_path("//kernel/librs/tests/usermode_test/blueos.specs")
+    librs_path =
+        rebase_path(
+            get_label_info("//kernel/librs/tests/usermode_test:librs_usermode",
+                           "target_out_dir")) + "/" + "librs_usermode"
+
+    ldflags = [
+      specs,
+      "-L",
+      librs_path,
+    ]
+
+    # link librs by same ldflags
+    if (board == "qemu_mps3_an547") {
+      ldflags += [
+        "-march=armv8.1-m.main",
+        "-mfpu=fpv5-d16",
+        "-mfloat-abi=hard",
+      ]
+    } else if (board == "qemu_mps2_an385") {
+      ldflags += [
+        "-mcpu=cortex-m3",
+        "-mthumb",
+      ]
+    } else {
+      # print("Unsupported board for librs usermode test: ${board}")
+    }
+
+    include_dirs = [ "//kernel/librs/newlib/include" ]
+
+    # common flags should come from board arg
+
+    cflags = [ "-D__blueos__" ]
+    if (board == "qemu_mps3_an547") {
+      cflags += [
+        "-march=armv8.1-m.main",
+        "-mfpu=fpv5-d16",
+        "-mfloat-abi=hard",
+      ]
+    } else if (board == "qemu_mps2_an385") {
+      cflags += [
+        "-mcpu=cortex-m3",
+        "-mthumb",
+      ]
+    } else {
+      # print("Unsupported board for librs usermode test: ${board}")
+    }
+  }
+
+  gen_usermode_runner(runner_name) {
+    testonly = true
+    img = ":${exe_name}"
+
+    # qemu binary/cpu model should be come from board arg
+    qemu = "qemu-arm"
+    cpu = "cortex-m55"
+    if (board == "qemu_mps2_an385") {
+      cpu = "cortex-m3"
+    } else {
+      # print("Unsupported board for librs usermode test: ${board}")
+    }
+  }
+
+  run_qemu_check(checker_name) {
+    testonly = true
+    runner = ":${runner_name}"
+    checker = "//kernel/librs/tests/usermode_test/common_checker.test"
+  }
+}

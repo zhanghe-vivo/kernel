@@ -1,0 +1,36 @@
+import("//build/templates/rust.gni")
+import("//kernel/common_crate_rustflags.gni")
+import("//kernel/librs/tests/usermode_test/testcase.gni")
+group("run_librs_usermode") {
+  testonly = true
+  deps = [
+    ":run_librs_usermode_clock",
+    ":run_librs_usermode_mqueue",
+    ":run_librs_usermode_sched",
+    ":run_librs_usermode_time",
+  ]
+}
+
+build_rust("librs_usermode") {
+  testonly = true
+  crate_type = "staticlib"
+  crate_name = "librs"
+  sources = [ "//kernel/librs/src/lib.rs" ]
+  deps = [
+    "//external/spin/v0.9.8:spin",
+    "//kernel/header:bluekernel_header",
+    "//kernel/scal:bluekernel_scal_test",
+    "//libc:libc",
+  ]
+  features = [ "usermode" ]
+  rustflags = common_crate_rustflags
+}
+
+librs_usermode_case("clock") {
+}
+librs_usermode_case("time") {
+}
+librs_usermode_case("sched") {
+}
+librs_usermode_case("mqueue") {
+}

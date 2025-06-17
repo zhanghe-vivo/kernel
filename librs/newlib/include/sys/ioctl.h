@@ -5,7 +5,7 @@
 #define TCGETS 21505
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define TCGETS 21505
 #endif
 
@@ -13,7 +13,7 @@
 #define TCSETS 21506
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define TCSETS 21506
 #endif
 
@@ -21,7 +21,7 @@
 #define TCSETSW 21507
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define TCSETSW 21507
 #endif
 
@@ -29,7 +29,7 @@
 #define TCSETSF 21508
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define TCSETSF 21508
 #endif
 
@@ -53,7 +53,7 @@
 #define TCSBRK 21513
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define TCSBRK 21513
 #endif
 
@@ -61,7 +61,7 @@
 #define TCXONC 21514
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define TCXONC 21514
 #endif
 
@@ -69,7 +69,7 @@
 #define TCFLSH 21515
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define TCFLSH 21515
 #endif
 
@@ -85,7 +85,7 @@
 #define TIOCSCTTY 21518
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define TIOCSCTTY 21518
 #endif
 
@@ -93,7 +93,7 @@
 #define TIOCGPGRP 21519
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define TIOCGPGRP 21519
 #endif
 
@@ -101,7 +101,7 @@
 #define TIOCSPGRP 21520
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define TIOCSPGRP 21520
 #endif
 
@@ -117,7 +117,7 @@
 #define TIOCGWINSZ 21523
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define TIOCGWINSZ 21523
 #endif
 
@@ -125,7 +125,7 @@
 #define TIOCSWINSZ 21524
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define TIOCSWINSZ 21524
 #endif
 
@@ -157,7 +157,7 @@
 #define FIONREAD 21531
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define FIONREAD 21531
 #endif
 
@@ -189,7 +189,7 @@
 #define FIONBIO 21537
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define FIONBIO 21537
 #endif
 
@@ -237,7 +237,7 @@
 #define TIOCSPTLCK 1074025521
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define TIOCSPTLCK 1074025521
 #endif
 
@@ -277,7 +277,7 @@
 #define TIOCGPTLCK 2147767353
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define TIOCGPTLCK 2147767353
 #endif
 
@@ -525,7 +525,7 @@
 #define SIOCATMARK 35077
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define SIOCATMARK 35077
 #endif
 
@@ -776,7 +776,7 @@ extern "C" {
 int ioctl(int fd, unsigned long request, void *out);
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 int ioctl(int fd, unsigned long request, void *out);
 #endif
 

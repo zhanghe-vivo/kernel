@@ -112,6 +112,8 @@ const fn build_errno_string_table() -> [&'static str; NUM_ERRNO] {
     tbl
 }
 
+pub struct Errno(pub c_int);
+pub type Result<T, E = Errno> = core::result::Result<T, E>;
 /// String representations for the respective `errno` values.
 pub const STR_ERROR: [&'static str; NUM_ERRNO] = build_errno_string_table();
 
@@ -128,4 +130,20 @@ pub extern "C" fn __errno() -> *mut c_int {
 #[no_mangle]
 pub extern "C" fn __errno_location() -> *mut c_int {
     ERRNO.as_ptr()
+}
+
+pub trait SysCallFailed<T> {
+    fn syscall_failed(self) -> T;
+}
+
+impl<T: From<i8>> SysCallFailed<T> for Result<T, Errno> {
+    fn syscall_failed(self) -> T {
+        match self {
+            Self::Ok(v) => v,
+            Self::Err(Errno(errno)) => {
+                ERRNO.set(errno);
+                T::from(-1)
+            }
+        }
+    }
 }

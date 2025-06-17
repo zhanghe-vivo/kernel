@@ -24,17 +24,22 @@ pub mod c_str;
 pub mod ctype;
 pub mod errno;
 pub mod iter;
+pub mod misc;
+pub mod mqueue;
+pub mod pal;
 pub mod pthread;
+pub mod sched;
 pub mod semaphore;
+pub mod stat;
 pub mod stdio;
 pub mod stdlib;
 pub mod string;
 pub mod sync;
+pub mod sys_mmap;
 pub mod time;
 pub mod tls;
 pub mod types;
 pub mod unistd;
-
 extern "C" fn start_blueos_posix_main(arg: *mut core::ffi::c_void) -> *mut core::ffi::c_void {
     // TODO: Pass argc, argv and envp?
     // TODO: Before exit, we have to check owned threads' status and recycle them.
@@ -66,6 +71,10 @@ pub extern "C" fn start_blueos_posix() {
 #[cfg(posixtestsuite)]
 #[path = "../tests/posixtestsuite/utils.rs"]
 pub mod utils;
+
+#[cfg(feature = "usermode")]
+#[path = "../tests/usermode_test/usermode.rs"]
+pub mod usermode;
 
 #[cfg(target_arch = "arm")]
 #[no_mangle]

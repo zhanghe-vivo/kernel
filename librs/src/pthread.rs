@@ -136,6 +136,12 @@ pub extern "C" fn pthread_self() -> pthread_t {
     bk_syscall!(GetTid) as pthread_t
 }
 
+/// Same as `pthread_self`
+#[no_mangle]
+pub extern "C" fn gettid() -> pthread_t {
+    bk_syscall!(GetTid) as pthread_t
+}
+
 #[linkage = "weak"]
 #[no_mangle]
 pub extern "C" fn pthread_getschedparam(

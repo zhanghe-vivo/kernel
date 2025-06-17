@@ -22,7 +22,7 @@
 #define SIGHUP 1
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define SIGHUP 1
 #endif
 
@@ -30,7 +30,7 @@
 #define SIGINT 2
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define SIGINT 2
 #endif
 
@@ -38,7 +38,7 @@
 #define SIGQUIT 3
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define SIGQUIT 3
 #endif
 
@@ -46,7 +46,7 @@
 #define SIGILL 4
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define SIGILL 4
 #endif
 
@@ -54,7 +54,7 @@
 #define SIGTRAP 5
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define SIGTRAP 5
 #endif
 
@@ -62,7 +62,7 @@
 #define SIGABRT 6
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define SIGABRT 6
 #endif
 
@@ -74,7 +74,7 @@
 #define SIGBUS 7
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define SIGBUS 7
 #endif
 
@@ -82,7 +82,7 @@
 #define SIGFPE 8
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define SIGFPE 8
 #endif
 
@@ -90,7 +90,7 @@
 #define SIGKILL 9
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define SIGKILL 9
 #endif
 
@@ -98,7 +98,7 @@
 #define SIGUSR1 10
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define SIGUSR1 10
 #endif
 
@@ -106,7 +106,7 @@
 #define SIGSEGV 11
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define SIGSEGV 11
 #endif
 
@@ -114,7 +114,7 @@
 #define SIGUSR2 12
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define SIGUSR2 12
 #endif
 
@@ -122,7 +122,7 @@
 #define SIGPIPE 13
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define SIGPIPE 13
 #endif
 
@@ -130,7 +130,7 @@
 #define SIGALRM 14
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define SIGALRM 14
 #endif
 
@@ -138,7 +138,7 @@
 #define SIGTERM 15
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define SIGTERM 15
 #endif
 
@@ -146,7 +146,7 @@
 #define SIGSTKFLT 16
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define SIGSTKFLT 16
 #endif
 
@@ -154,7 +154,7 @@
 #define SIGCHLD 17
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define SIGCHLD 17
 #endif
 
@@ -162,7 +162,7 @@
 #define SIGCONT 18
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define SIGCONT 18
 #endif
 
@@ -170,7 +170,7 @@
 #define SIGSTOP 19
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define SIGSTOP 19
 #endif
 
@@ -178,7 +178,7 @@
 #define SIGTSTP 20
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define SIGTSTP 20
 #endif
 
@@ -186,7 +186,7 @@
 #define SIGTTIN 21
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define SIGTTIN 21
 #endif
 
@@ -194,7 +194,7 @@
 #define SIGTTOU 22
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define SIGTTOU 22
 #endif
 
@@ -202,7 +202,7 @@
 #define SIGURG 23
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define SIGURG 23
 #endif
 
@@ -210,7 +210,7 @@
 #define SIGXCPU 24
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define SIGXCPU 24
 #endif
 
@@ -218,7 +218,7 @@
 #define SIGXFSZ 25
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define SIGXFSZ 25
 #endif
 
@@ -226,7 +226,7 @@
 #define SIGVTALRM 26
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define SIGVTALRM 26
 #endif
 
@@ -234,7 +234,7 @@
 #define SIGPROF 27
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define SIGPROF 27
 #endif
 
@@ -242,7 +242,7 @@
 #define SIGWINCH 28
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define SIGWINCH 28
 #endif
 
@@ -250,7 +250,7 @@
 #define SIGIO 29
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define SIGIO 29
 #endif
 
@@ -262,7 +262,7 @@
 #define SIGPWR 30
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define SIGPWR 30
 #endif
 
@@ -270,7 +270,7 @@
 #define SIGSYS 31
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define SIGSYS 31
 #endif
 
@@ -282,7 +282,7 @@
 #define NSIG 32
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define NSIG 32
 #endif
 
@@ -290,7 +290,7 @@
 #define SIGRTMIN 35
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define SIGRTMIN 35
 #endif
 
@@ -298,7 +298,7 @@
 #define SIGRTMAX 64
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define SIGRTMAX 64
 #endif
 
@@ -306,7 +306,7 @@
 #define SA_NOCLDSTOP 1
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define SA_NOCLDSTOP 1073741824
 #endif
 
@@ -314,7 +314,7 @@
 #define SA_NOCLDWAIT 2
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define SA_NOCLDWAIT 2
 #endif
 
@@ -322,7 +322,7 @@
 #define SA_SIGINFO 4
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define SA_SIGINFO 33554432
 #endif
 
@@ -330,7 +330,7 @@
 #define SA_ONSTACK 134217728
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define SA_ONSTACK 67108864
 #endif
 
@@ -338,7 +338,7 @@
 #define SA_RESTART 268435456
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define SA_RESTART 134217728
 #endif
 
@@ -346,7 +346,7 @@
 #define SA_NODEFER 1073741824
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define SA_NODEFER 268435456
 #endif
 
@@ -354,7 +354,7 @@
 #define SA_RESETHAND 2147483648
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define SA_RESETHAND 536870912
 #endif
 
@@ -362,7 +362,7 @@
 #define SA_RESTORER 67108864
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define SA_RESTORER 4
 #endif
 
@@ -370,7 +370,7 @@
 #define SS_ONSTACK 1
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define SS_ONSTACK 1
 #endif
 
@@ -378,7 +378,7 @@
 #define SS_DISABLE 2
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define SS_DISABLE 2
 #endif
 
@@ -386,7 +386,7 @@
 #define MINSIGSTKSZ 2048
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define MINSIGSTKSZ 2048
 #endif
 
@@ -394,7 +394,7 @@
 #define SIGSTKSZ 8096
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 #define SIGSTKSZ 8096
 #endif
 
@@ -460,7 +460,7 @@ struct mcontext {
 };
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 struct mcontext {
 #if defined(__i386__)
   uint8_t _opaque[512]
@@ -485,7 +485,7 @@ struct mcontext {
 typedef struct mcontext mcontext_t;
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 typedef struct mcontext mcontext_t;
 #endif
 
@@ -500,7 +500,7 @@ struct ucontext {
 };
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 struct ucontext {
 #if (defined(__x86_64__) || defined(__aarch64__) || defined(__riscv))
   uintptr_t _pad[1]
@@ -524,7 +524,7 @@ struct ucontext {
 typedef struct ucontext ucontext_t;
 #endif
 
-#if defined(__redox__)
+#if defined(__blueos__)
 typedef struct ucontext ucontext_t;
 #endif
 
@@ -596,7 +596,7 @@ void psignal(int sig, const char *prefix);
 
 void psiginfo(const siginfo_t *info, const char *prefix);
 
-#if defined(__redox__)
+#if defined(__blueos__)
 void __completely_unused_cbindgen_workaround_fn_ucontext_mcontext(const ucontext_t *a,
                                                                   const mcontext_t *b);
 #endif

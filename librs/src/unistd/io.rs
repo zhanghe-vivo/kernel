@@ -2,10 +2,18 @@ use bluekernel_header::syscalls::NR::{Close, Read, Write};
 use bluekernel_scal::bk_syscall;
 use libc::{c_int, c_ulong, c_void, size_t, ssize_t};
 
+use crate::{
+    errno::{Errno, Result, SysCallFailed, ERRNO},
+    pal::{Pal, Sys},
+};
+use core::slice;
 #[no_mangle]
 #[linkage = "weak"]
 pub extern "C" fn write(fd: i32, buf: *const u8, size: usize) -> isize {
-    bk_syscall!(Write, fd, buf, size) as isize
+    let buf = unsafe { slice::from_raw_parts(buf, size) };
+    Sys::write(fd, buf)
+        .map(|bytes| bytes as isize)
+        .syscall_failed()
 }
 
 /// See <https://pubs.opengroup.org/onlinepubs/9799919799/functions/close.html>.

@@ -8,8 +8,7 @@ use crate::{
     vfs::vfs_posix,
 };
 use bluekernel_header::{syscalls::NR, thread::CloneArgs};
-use libc::{c_int, c_void, clockid_t, size_t, timespec};
-
+use libc::{c_char, c_int, c_void, clockid_t, mode_t, size_t, timespec, EINVAL};
 #[repr(C)]
 #[derive(Default)]
 pub struct Context {
@@ -155,12 +154,22 @@ free_mem(ptr: *mut c_void) -> c_long {
 define_syscall_handler!(
 write(fd: i32, buf: *const u8, size: usize) -> c_long {
     unsafe {
-        crate::vfs::vfs_posix::write(
+        vfs_posix::write(
         fd,
         core::slice::from_raw_parts(buf, size), size) as c_long
     }
 });
 
+define_syscall_handler!(
+    open(path: *const c_char, flags: c_int, mode: mode_t) -> c_int {
+    let path = match unsafe { core::ffi::CStr::from_ptr(path).to_str() } {
+            Ok(s) => s,
+            Err(_) => return -EINVAL,
+    };
+
+    vfs_posix::open(path, flags, mode)
+    }
+);
 define_syscall_handler!(
     close(fd: c_int) -> c_int {
         vfs_posix::close(fd)
@@ -169,6 +178,12 @@ define_syscall_handler!(
 define_syscall_handler!(
     read(fd: c_int, buf: *mut c_void, count: size_t) -> isize {
         vfs_posix::read(fd, buf as *mut core::ffi::c_void, count as usize)
+    }
+);
+
+define_syscall_handler!(
+    lseek(fildes: c_int, offset: usize, whence: c_int) -> c_int {
+        vfs_posix::lseek(fildes, offset as i64, whence) as c_int
     }
 );
 
@@ -187,6 +202,8 @@ syscall_table! {
     (Write, write),
     (Close, close),
     (Read, read),
+    (Open, open),
+    (Lseek, lseek),
 }
 
 // Begin syscall modules.

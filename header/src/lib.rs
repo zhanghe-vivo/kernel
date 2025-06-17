@@ -22,6 +22,8 @@ pub mod syscalls {
         Write,
         Close,
         Read,
+        Open,
+        Lseek,
         LastNR,
     }
 }

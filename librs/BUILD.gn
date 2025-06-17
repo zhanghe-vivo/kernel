@@ -105,3 +105,8 @@ group("check_librs") {
     # "tests/posixtestsuite:run_librs_posix_testsuite",
   ]
 }
+
+group("check_librs_usermode") {
+  testonly = true
+  deps = [ "tests/usermode_test:run_librs_usermode" ]
+}
