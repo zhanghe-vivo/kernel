@@ -1,8 +1,8 @@
 use crate::{
     c_str::CStr,
     errno::{SysCallFailed, ERRNO},
-    pal::{Pal, Sys},
     stat::fstat,
+    syscall::{Sys, Syscall},
 };
 use core::slice;
 use libc::{

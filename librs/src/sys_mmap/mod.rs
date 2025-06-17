@@ -1,6 +1,6 @@
 use crate::{
     errno::{Errno, Result, SysCallFailed, ERRNO},
-    pal::{Pal, Sys},
+    syscall::{Sys, Syscall},
 };
 use libc::{c_int, c_void, off_t, size_t};
 
@@ -36,7 +36,7 @@ pub unsafe extern "C" fn mmap(
 }
 
 /// See <https://pubs.opengroup.org/onlinepubs/9799919799/functions/munmap.html>.
-/// This is not valid for blueos now , but is provided for compatibility with usermode applications.
+/// This is not valid for blueos now , but is provided for compatibility with linux emulation applications.
 #[no_mangle]
 pub unsafe extern "C" fn munmap(addr: *mut c_void, len: size_t) -> c_int {
     Sys::munmap(addr, len).map(|()| 0).syscall_failed()

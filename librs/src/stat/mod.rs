@@ -1,7 +1,7 @@
 use crate::{
     c_str::CStr,
     errno::SysCallFailed,
-    pal::{Pal, Sys},
+    syscall::{Sys, Syscall},
 };
 use libc::{c_char, c_int, dev_t, mode_t, statvfs};
 

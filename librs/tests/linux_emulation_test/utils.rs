@@ -47,7 +47,7 @@ unsafe impl GlobalAlloc for SimpleAllocator {
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
-        // memory don't need to be deallocated in usermode
+        // memory don't need to be deallocated in linux emulation
     }
 }
 

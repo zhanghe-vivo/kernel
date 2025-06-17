@@ -4,7 +4,7 @@ use libc::{c_int, c_ulong, c_void, size_t, ssize_t};
 
 use crate::{
     errno::{Errno, Result, SysCallFailed, ERRNO},
-    pal::{Pal, Sys},
+    syscall::{Sys, Syscall},
 };
 use core::slice;
 #[no_mangle]

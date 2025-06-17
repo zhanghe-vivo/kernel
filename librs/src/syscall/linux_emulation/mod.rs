@@ -1,5 +1,5 @@
 pub use self::consts::*;
-use super::Pal;
+use super::Syscall;
 use crate::{
     c_str::CStr,
     errno::{Errno, Result, SysCallFailed},
@@ -17,7 +17,7 @@ pub const AT_EMPTY_PATH: c_int = 0x1000;
 
 const ERRNO_MAX: usize = 4095;
 // convert value returned by syscall to user Result.
-pub fn to_user(result: usize) -> Result<usize> {
+pub fn to_result(result: usize) -> Result<usize> {
     if result > ERRNO_MAX.wrapping_neg() {
         Err(Errno(result.wrapping_neg() as _))
     } else {
@@ -26,7 +26,7 @@ pub fn to_user(result: usize) -> Result<usize> {
 }
 
 pub struct Sys;
-impl Pal for Sys {
+impl Syscall for Sys {
     unsafe fn mmap(
         addr: *mut c_void,
         len: usize,
@@ -35,27 +35,27 @@ impl Pal for Sys {
         fildes: c_int,
         off: off_t,
     ) -> Result<*mut c_void> {
-        Ok(to_user(bk_syscall!(SYS_MMAP, addr, len, prot, flags, fildes, off))? as *mut c_void)
+        Ok(to_result(bk_syscall!(SYS_MMAP, addr, len, prot, flags, fildes, off))? as *mut c_void)
     }
 
     unsafe fn munmap(addr: *mut c_void, len: usize) -> Result<()> {
-        to_user(bk_syscall!(SYS_MUNMAP, addr, len)).map(|_| ())
+        to_result(bk_syscall!(SYS_MUNMAP, addr, len)).map(|_| ())
     }
 
     unsafe fn clock_gettime(clk_id: clockid_t, tp: *mut timespec) -> Result<()> {
-        to_user(bk_syscall!(CLOCK_GETTIME, clk_id, tp)).map(|_| ())
+        to_result(bk_syscall!(CLOCK_GETTIME, clk_id, tp)).map(|_| ())
     }
     fn write(fildes: c_int, buf: &[u8]) -> Result<usize> {
-        to_user(bk_syscall!(SYS_WRITE, fildes, buf.as_ptr(), buf.len()))
+        to_result(bk_syscall!(SYS_WRITE, fildes, buf.as_ptr(), buf.len()))
     }
     unsafe fn clock_getres(clk_id: clockid_t, tp: *mut timespec) -> Result<()> {
-        to_user(bk_syscall!(CLOCK_GETRES, clk_id, tp)).map(|_| ())
+        to_result(bk_syscall!(CLOCK_GETRES, clk_id, tp)).map(|_| ())
     }
     unsafe fn clock_settime(clk_id: clockid_t, tp: *const timespec) -> Result<()> {
-        to_user(bk_syscall!(CLOCK_SETTIME, clk_id, tp)).map(|_| ())
+        to_result(bk_syscall!(CLOCK_SETTIME, clk_id, tp)).map(|_| ())
     }
     unsafe fn nanosleep(rqtp: *const timespec, rmtp: *mut timespec) -> Result<()> {
-        to_user(unsafe { bk_syscall!(NANOSLEEP, rqtp, rmtp) }).map(|_| ())
+        to_result(unsafe { bk_syscall!(NANOSLEEP, rqtp, rmtp) }).map(|_| ())
     }
     unsafe fn clock_nanosleep(
         clk_id: clockid_t,
@@ -63,59 +63,59 @@ impl Pal for Sys {
         rqtp: *const timespec,
         rmtp: *mut timespec,
     ) -> Result<()> {
-        to_user(bk_syscall!(CLOCK_NANOSLEEP, clk_id, flags, rqtp, rmtp)).map(|_| ())
+        to_result(bk_syscall!(CLOCK_NANOSLEEP, clk_id, flags, rqtp, rmtp)).map(|_| ())
     }
     fn access(path: CStr, mode: c_int) -> Result<()> {
-        to_user(bk_syscall!(SYS_ACCESS, path.as_ptr(), mode)).map(|_| ())
+        to_result(bk_syscall!(SYS_ACCESS, path.as_ptr(), mode)).map(|_| ())
     }
     fn chdir(path: CStr) -> Result<()> {
-        to_user(unsafe { bk_syscall!(SYS_CHDIR, path.as_ptr()) }).map(|_| ())
+        to_result(unsafe { bk_syscall!(SYS_CHDIR, path.as_ptr()) }).map(|_| ())
     }
     fn chmod(path: CStr, mode: mode_t) -> Result<()> {
-        to_user(unsafe { bk_syscall!(SYS_CHMOD, path.as_ptr(), mode) }).map(|_| ())
+        to_result(unsafe { bk_syscall!(SYS_CHMOD, path.as_ptr(), mode) }).map(|_| ())
     }
     fn fchmod(fildes: c_int, mode: mode_t) -> Result<()> {
-        to_user(unsafe { bk_syscall!(SYS_FCHMOD, fildes, mode) }).map(|_| ())
+        to_result(unsafe { bk_syscall!(SYS_FCHMOD, fildes, mode) }).map(|_| ())
     }
     fn fdatasync(fildes: c_int) -> Result<()> {
-        to_user(unsafe { bk_syscall!(SYS_FDATASYNC, fildes) }).map(|_| ())
+        to_result(unsafe { bk_syscall!(SYS_FDATASYNC, fildes) }).map(|_| ())
     }
     unsafe fn fstat(fildes: c_int, buf: *mut c_char) -> Result<()> {
         let empty = b"\0";
         let empty_ptr = empty.as_ptr() as *const c_char;
-        to_user(unsafe { bk_syscall!(SYS_NEWFSTATAT, fildes, empty_ptr, buf, AT_EMPTY_PATH) })
+        to_result(unsafe { bk_syscall!(SYS_NEWFSTATAT, fildes, empty_ptr, buf, AT_EMPTY_PATH) })
             .map(|_| ())
     }
     unsafe fn fstatvfs(fildes: c_int, buf: *mut statvfs) -> Result<()> {
-        to_user(unsafe { bk_syscall!(SYS_FSTATFS, fildes, buf) }).map(|_| ())
+        to_result(unsafe { bk_syscall!(SYS_FSTATFS, fildes, buf) }).map(|_| ())
     }
 
     fn fsync(fildes: c_int) -> Result<()> {
-        to_user(unsafe { bk_syscall!(SYS_FSYNC, fildes) }).map(|_| ())
+        to_result(unsafe { bk_syscall!(SYS_FSYNC, fildes) }).map(|_| ())
     }
 
     fn ftruncate(fildes: c_int, length: off_t) -> Result<()> {
-        to_user(unsafe { bk_syscall!(SYS_FTRUNCATE, fildes, length) }).map(|_| ())
+        to_result(unsafe { bk_syscall!(SYS_FTRUNCATE, fildes, length) }).map(|_| ())
     }
 
     fn dup(fildes: c_int) -> Result<c_int> {
-        to_user(unsafe { bk_syscall!(SYS_DUP, fildes) }).map(|f| f as c_int)
+        to_result(unsafe { bk_syscall!(SYS_DUP, fildes) }).map(|f| f as c_int)
     }
 
     unsafe fn uname(utsname: *mut utsname) -> Result<()> {
-        to_user(bk_syscall!(SYS_UNAME, utsname, 0)).map(|_| ())
+        to_result(bk_syscall!(SYS_UNAME, utsname, 0)).map(|_| ())
     }
     fn open(path: CStr, oflag: c_int, mode: mode_t) -> c_int {
         unsafe { bk_syscall!(SYS_OPEN, path.as_ptr(), oflag, mode) as c_int }
     }
     fn close(fildes: c_int) -> Result<()> {
-        to_user(bk_syscall!(SYS_CLOSE, fildes)).map(|_| ())
+        to_result(bk_syscall!(SYS_CLOSE, fildes)).map(|_| ())
     }
     unsafe fn statfs(path: CStr, buf: *mut c_char) -> Result<()> {
-        to_user(unsafe { bk_syscall!(SYS_STATFS, path.as_ptr(), buf) }).map(|_| ())
+        to_result(unsafe { bk_syscall!(SYS_STATFS, path.as_ptr(), buf) }).map(|_| ())
     }
     fn link(path1: CStr, path2: CStr) -> Result<()> {
-        to_user(unsafe {
+        to_result(unsafe {
             bk_syscall!(
                 SYS_LINKAT,
                 AT_FDCWD,
@@ -128,7 +128,7 @@ impl Pal for Sys {
         .map(|_| ())
     }
     fn mkdir(path: CStr, mode: mode_t) -> Result<()> {
-        to_user(unsafe { bk_syscall!(SYS_MKDIRAT, AT_FDCWD, path.as_ptr(), mode) }).map(|_| ())
+        to_result(unsafe { bk_syscall!(SYS_MKDIRAT, AT_FDCWD, path.as_ptr(), mode) }).map(|_| ())
     }
 
     fn mknod(path: CStr, mode: mode_t, dev: dev_t) -> Result<()> {
@@ -143,16 +143,16 @@ impl Pal for Sys {
         if k_dev as dev_t != dev {
             return Err(Errno(EINVAL));
         }
-        to_user(unsafe { bk_syscall!(SYS_MKNODAT, fildes, path.as_ptr(), mode, k_dev) }).map(|_| ())
+        to_result(unsafe { bk_syscall!(SYS_MKNODAT, fildes, path.as_ptr(), mode, k_dev) }).map(|_| ())
     }
     fn pause() -> Result<()> {
-        to_user(unsafe { bk_syscall!(SYS_PAUSE) }).map(|_| ())
+        to_result(unsafe { bk_syscall!(SYS_PAUSE) }).map(|_| ())
     }
     fn nice(inc: c_int) -> Result<c_int> {
-        to_user(unsafe { bk_syscall!(SYS_NICE, inc) }).map(|n| n as c_int)
+        to_result(unsafe { bk_syscall!(SYS_NICE, inc) }).map(|n| n as c_int)
     }
     fn readlink(pathname: CStr, out: &mut [u8]) -> Result<usize> {
-        to_user(unsafe {
+        to_result(unsafe {
             bk_syscall!(
                 SYS_READLINKAT,
                 AT_FDCWD,
@@ -167,21 +167,21 @@ impl Pal for Sys {
     }
 
     fn rename(old: CStr, new: CStr) -> Result<()> {
-        to_user(unsafe {
+        to_result(unsafe {
             bk_syscall!(SYS_RENAMEAT, AT_FDCWD, old.as_ptr(), AT_FDCWD, new.as_ptr())
         })
         .map(|_| ())
     }
     fn unlink(path: CStr) -> Result<()> {
-        to_user(unsafe { bk_syscall!(SYS_UNLINKAT, AT_FDCWD, path.as_ptr(), 0) }).map(|_| ())
+        to_result(unsafe { bk_syscall!(SYS_UNLINKAT, AT_FDCWD, path.as_ptr(), 0) }).map(|_| ())
     }
 
     fn symlink(path1: CStr, path2: CStr) -> Result<()> {
-        to_user(unsafe { bk_syscall!(SYS_SYMLINKAT, path1.as_ptr(), AT_FDCWD, path2.as_ptr()) })
+        to_result(unsafe { bk_syscall!(SYS_SYMLINKAT, path1.as_ptr(), AT_FDCWD, path2.as_ptr()) })
             .map(|_| ())
     }
     fn sync() -> Result<()> {
-        to_user(unsafe { bk_syscall!(SYS_SYNC) }).map(|_| ())
+        to_result(unsafe { bk_syscall!(SYS_SYNC) }).map(|_| ())
     }
     fn umask(mask: mode_t) -> mode_t {
         // blueos is not valid for this syscall now
@@ -193,13 +193,13 @@ impl Pal for Sys {
         mode: mode_t,
         attr: *const mq_attr,
     ) -> Result<c_int> {
-        to_user(unsafe { bk_syscall!(SYS_MQ_OPEN, name, oflag, mode, attr) }).map(|fd| fd as c_int)
+        to_result(unsafe { bk_syscall!(SYS_MQ_OPEN, name, oflag, mode, attr) }).map(|fd| fd as c_int)
     }
     unsafe fn mq_getsetattr(mqdes: c_int, new: *mut mq_attr, old: *mut mq_attr) -> Result<()> {
-        to_user(unsafe { bk_syscall!(SYS_MQ_GETSETATTR, mqdes, new, old) }).map(|_| ())
+        to_result(unsafe { bk_syscall!(SYS_MQ_GETSETATTR, mqdes, new, old) }).map(|_| ())
     }
     unsafe fn mq_unlink(name: *const c_char) -> Result<()> {
-        to_user(unsafe { bk_syscall!(SYS_MQ_UNLINK, name) }).map(|_| ())
+        to_result(unsafe { bk_syscall!(SYS_MQ_UNLINK, name) }).map(|_| ())
     }
 
     unsafe fn mq_timedsend(
@@ -209,7 +209,7 @@ impl Pal for Sys {
         msg_prio: c_uint,
         timeout: *const timespec,
     ) -> Result<c_int> {
-        to_user(unsafe {
+        to_result(unsafe {
             bk_syscall!(SYS_MQ_TIMEDSEND, mqdes, msg_ptr, msg_len, msg_prio, timeout)
         })
         .map(|e| e as c_int)
@@ -221,7 +221,7 @@ impl Pal for Sys {
         msg_prio: *mut c_uint,
         timeout: *const timespec,
     ) -> Result<ssize_t> {
-        to_user(unsafe {
+        to_result(unsafe {
             bk_syscall!(
                 SYS_MQ_TIMEDRECEIVE,
                 mqdes,
@@ -234,7 +234,7 @@ impl Pal for Sys {
         .map(|e| e as ssize_t)
     }
     fn sched_yield() -> Result<()> {
-        to_user(unsafe { bk_syscall!(SYS_SCHED_YIELD) }).map(|_| ())
+        to_result(unsafe { bk_syscall!(SYS_SCHED_YIELD) }).map(|_| ())
     }
     fn sched_get_priority_min(policy: c_int) -> c_int {
         unsafe { bk_syscall!(SYS_SCHED_GET_PRIORITY_MIN, policy) as c_int }
@@ -243,15 +243,15 @@ impl Pal for Sys {
         unsafe { bk_syscall!(SYS_SCHED_GET_PRIORITY_MAX, policy) as c_int }
     }
     unsafe fn sched_rr_get_interval(pid: c_int, interval: *mut timespec) -> Result<()> {
-        to_user(unsafe { bk_syscall!(SYS_SCHED_RR_GET_INTERVAL, pid, interval) }).map(|_| ())
+        to_result(unsafe { bk_syscall!(SYS_SCHED_RR_GET_INTERVAL, pid, interval) }).map(|_| ())
     }
     fn pipe2(fds: &mut [c_int], flags: c_int) -> Result<()> {
-        to_user(unsafe { bk_syscall!(SYS_PIPE2, fds.as_ptr(), flags) }).map(|_| ())
+        to_result(unsafe { bk_syscall!(SYS_PIPE2, fds.as_ptr(), flags) }).map(|_| ())
     }
     fn pread(fildes: c_int, buf: &mut [u8], off: off_t) -> Result<usize> {
-        to_user(unsafe { bk_syscall!(SYS_PREAD, fildes, buf.as_mut_ptr(), buf.len(), off) })
+        to_result(unsafe { bk_syscall!(SYS_PREAD, fildes, buf.as_mut_ptr(), buf.len(), off) })
     }
     fn pwrite(fildes: c_int, buf: &[u8], off: off_t) -> Result<usize> {
-        to_user(unsafe { bk_syscall!(SYS_PWRITE, fildes, buf.as_ptr(), buf.len(), off) })
+        to_result(unsafe { bk_syscall!(SYS_PWRITE, fildes, buf.as_ptr(), buf.len(), off) })
     }
 }

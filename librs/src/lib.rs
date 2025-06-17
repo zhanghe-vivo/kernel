@@ -26,7 +26,6 @@ pub mod errno;
 pub mod iter;
 pub mod misc;
 pub mod mqueue;
-pub mod pal;
 pub mod pthread;
 pub mod sched;
 pub mod semaphore;
@@ -36,6 +35,7 @@ pub mod stdlib;
 pub mod string;
 pub mod sync;
 pub mod sys_mmap;
+pub mod syscall;
 pub mod time;
 pub mod tls;
 pub mod types;
@@ -72,9 +72,9 @@ pub extern "C" fn start_blueos_posix() {
 #[path = "../tests/posixtestsuite/utils.rs"]
 pub mod utils;
 
-#[cfg(feature = "usermode")]
-#[path = "../tests/usermode_test/usermode.rs"]
-pub mod usermode;
+#[cfg(feature = "linux_emulation")]
+#[path = "../tests/linux_emulation_test/utils.rs"]
+pub mod utils;
 
 #[cfg(target_arch = "arm")]
 #[no_mangle]

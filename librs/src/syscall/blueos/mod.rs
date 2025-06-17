@@ -6,12 +6,12 @@ use libc::{
     timespec, utsname,
 };
 
-use super::Pal;
+use super::Syscall;
 use crate::errno::{Errno, Result};
 
 // convert value returned by syscall to user Result.
 const ERRNO_MAX: usize = 4095;
-pub fn to_user(result: usize) -> Result<usize> {
+pub fn to_result(result: usize) -> Result<usize> {
     if result > ERRNO_MAX.wrapping_neg() {
         Err(Errno(result.wrapping_neg() as _))
     } else {
@@ -20,7 +20,7 @@ pub fn to_user(result: usize) -> Result<usize> {
 }
 pub struct Sys;
 
-impl Pal for Sys {
+impl Syscall for Sys {
     unsafe fn mmap(
         addr: *mut c_void,
         len: usize,
@@ -45,7 +45,7 @@ impl Pal for Sys {
         }
     }
     fn write(fildes: c_int, buf: &[u8]) -> Result<usize> {
-        to_user(bk_syscall!(Write, fildes, buf.as_ptr() as *const u8, buf.len()) as usize)
+        to_result(bk_syscall!(Write, fildes, buf.as_ptr() as *const u8, buf.len()) as usize)
     }
     unsafe fn clock_getres(clk_id: clockid_t, tp: *mut timespec) -> Result<()> {
         // blueos is not valid for this syscall now
@@ -117,7 +117,7 @@ impl Pal for Sys {
         bk_syscall!(Open, path.as_ptr(), oflag, mode) as c_int
     }
     fn close(fildes: c_int) -> Result<()> {
-        to_user(bk_syscall!(Close, fildes) as usize).map(|_| ())
+        to_result(bk_syscall!(Close, fildes) as usize).map(|_| ())
     }
     unsafe fn statfs(path: CStr, buf: *mut c_char) -> Result<()> {
         // blueos is not valid for this syscall now

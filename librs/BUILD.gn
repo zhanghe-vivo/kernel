@@ -106,7 +106,7 @@ group("check_librs") {
   ]
 }
 
-group("check_librs_usermode") {
+group("check_librs_linux_emulation") {
   testonly = true
-  deps = [ "tests/usermode_test:run_librs_usermode" ]
+  deps = [ "tests/linux_emulation_test:run_librs_linux_emulation" ]
 }

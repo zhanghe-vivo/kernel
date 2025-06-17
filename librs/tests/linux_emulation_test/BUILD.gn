@@ -1,0 +1,36 @@
+import("//build/templates/rust.gni")
+import("//kernel/common_crate_rustflags.gni")
+import("//kernel/librs/tests/linux_emulation_test/testcase.gni")
+group("run_librs_linux_emulation") {
+  testonly = true
+  deps = [
+    ":run_librs_linux_emulation_clock",
+    ":run_librs_linux_emulation_mqueue",
+    ":run_librs_linux_emulation_sched",
+    ":run_librs_linux_emulation_time",
+  ]
+}
+
+build_rust("librs_linux_emulation") {
+  testonly = true
+  crate_type = "staticlib"
+  crate_name = "librs"
+  sources = [ "//kernel/librs/src/lib.rs" ]
+  deps = [
+    "//external/spin/v0.9.8:spin",
+    "//kernel/header:bluekernel_header",
+    "//kernel/scal:bluekernel_scal_test",
+    "//libc:libc",
+  ]
+  features = [ "linux_emulation" ]
+  rustflags = common_crate_rustflags
+}
+
+librs_linux_emulation_case("clock") {
+}
+librs_linux_emulation_case("time") {
+}
+librs_linux_emulation_case("sched") {
+}
+librs_linux_emulation_case("mqueue") {
+}

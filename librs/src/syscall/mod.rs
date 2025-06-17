@@ -4,7 +4,7 @@ use libc::{
     timespec, utsname,
 };
 
-pub trait Pal {
+pub trait Syscall {
     unsafe fn mmap(
         addr: *mut c_void,
         len: usize,
@@ -86,10 +86,10 @@ pub trait Pal {
 
 pub use self::sys::Sys;
 
-#[cfg(feature = "usermode")]
-#[path = "usermode/mod.rs"]
+#[cfg(feature = "linux_emulation")]
+#[path = "linux_emulation/mod.rs"]
 pub mod sys;
 
-#[cfg(not(feature = "usermode"))]
+#[cfg(not(feature = "linux_emulation"))]
 #[path = "blueos/mod.rs"]
 pub mod sys;

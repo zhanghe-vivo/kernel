@@ -1,6 +1,6 @@
 use crate::{
     errno::SysCallFailed,
-    pal::{Pal, Sys},
+    syscall::{Sys, Syscall},
 };
 use libc::{c_char, c_int, pid_t, timespec};
 

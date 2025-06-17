@@ -1,6 +1,6 @@
 use crate::{
     errno::SysCallFailed,
-    pal::{Pal, Sys},
+    syscall::{Sys, Syscall},
 };
 use core::{arch::asm, mem};
 use libc::{
