@@ -88,6 +88,7 @@ build_rust("kernel_integration_test") {
   proc_macro_deps = [ "//kernel/test_harness:bluekernel_test_macro" ]
   deps = [
     ":bluekernel",
+    "//external/smoltcp/v0.12.0:smoltcp",
     "//kernel/scal:bluekernel_scal_test",
     "//libc:libc",
   ]

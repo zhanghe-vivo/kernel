@@ -11,6 +11,7 @@ extern crate alloc;
 use bluekernel::{allocator, println};
 
 mod test_futex;
+mod test_net_smoltcp;
 /// Unstable rust custom test framework test file hierarchy.
 /// Since there is no cargo framework, we manually set it up.
 mod test_semaphore;
