@@ -9,7 +9,7 @@ use libc::{EINVAL, ERANGE};
 
 #[linkage = "weak"]
 #[no_mangle]
-pub unsafe extern "C" fn getenv(key: *const i8) -> *mut i8 {
+pub unsafe extern "C" fn getenv(_key: *const i8) -> *mut i8 {
     core::ptr::null_mut()
 }
 
@@ -140,43 +140,46 @@ macro_rules! strto_float_impl {
 
 #[macro_export]
 macro_rules! primitive_to_ascii {
-    ($type:ty, $n:expr,$s:expr, $radix:expr) => {{
-        let mut n: $type = $n;
-        let mut i = 0;
-        let mut is_negative = false;
-        let mut s = $s;
-        if n < 0 {
-            is_negative = true;
-            n = 0 - n;
-        }
-
-        let mut buffer = [0 as c_char; 33];
-        loop {
-            let rem = n % ($radix as $type);
-            buffer[i] = if rem < 10 {
-                (rem + b'0' as $type) as c_char
-            } else {
-                (rem - 10 + b'a' as $type) as c_char
-            };
-            i += 1;
-            n /= $radix as $type;
-            if n == 0 {
-                break;
+    ($type:ty, $n:expr,$s:expr, $radix:expr) => {
+        #[allow(unused_comparisons)]
+        {
+            let mut n: $type = $n;
+            let mut i = 0;
+            let mut is_negative = false;
+            let s = $s;
+            if n < 0 {
+                is_negative = true;
+                n = 0 - n;
             }
-        }
 
-        if is_negative {
-            buffer[i] = b'-' as c_char;
-            i += 1;
-        }
+            let mut buffer = [0 as c_char; 33];
+            loop {
+                let rem = n % ($radix as $type);
+                buffer[i] = if rem < 10 {
+                    (rem + b'0' as $type) as c_char
+                } else {
+                    (rem - 10 + b'a' as $type) as c_char
+                };
+                i += 1;
+                n /= $radix as $type;
+                if n == 0 {
+                    break;
+                }
+            }
 
-        for j in 0..i {
-            *s.add(j) = buffer[i - 1 - j];
-        }
+            if is_negative {
+                buffer[i] = b'-' as c_char;
+                i += 1;
+            }
 
-        *s.add(i) = 0;
-        s
-    }};
+            for j in 0..i {
+                *s.add(j) = buffer[i - 1 - j];
+            }
+
+            *s.add(i) = 0;
+            s
+        }
+    };
 }
 
 #[macro_export]
@@ -366,7 +369,7 @@ pub unsafe extern "C" fn strtol(s: *const c_char, endptr: *mut *mut c_char, base
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn strtold(s: *const c_char, endptr: *mut *mut c_char) -> ! {
+pub unsafe extern "C" fn strtold(_s: *const c_char, _endptr: *mut *mut c_char) -> ! {
     todo!("c_longdouble is not stable in llvm  yet!")
 }
 
@@ -668,52 +671,52 @@ mod tests {
 
     #[test]
     fn check_llabs() {
-        let result = unsafe { llabs(-9223372036854775807) };
+        let result = llabs(-9223372036854775807);
         assert_eq!(result, 9223372036854775807);
     }
 
     #[test]
     fn check_llabs_positive() {
-        let result = unsafe { llabs(9223372036854775807) };
+        let result = llabs(9223372036854775807);
         assert_eq!(result, 9223372036854775807);
     }
 
     #[test]
     fn check_labs() {
-        let result = unsafe { labs(-2147483647) };
+        let result = labs(-2147483647);
         assert_eq!(result, 2147483647);
     }
 
     #[test]
     fn check_labs_positive() {
-        let result = unsafe { labs(2147483647) };
+        let result = labs(2147483647);
         assert_eq!(result, 2147483647);
     }
 
     #[test]
     fn check_lldiv() {
-        let result = unsafe { lldiv(10, 3) };
+        let result = lldiv(10, 3);
         assert_eq!(result.quot, 3);
         assert_eq!(result.rem, 1);
     }
 
     #[test]
     fn check_div() {
-        let result = unsafe { div(10, 3) };
+        let result = div(10, 3);
         assert_eq!(result.quot, 3);
         assert_eq!(result.rem, 1);
     }
 
     #[test]
     fn check_div_negative() {
-        let result = unsafe { div(-10, 3) };
+        let result = div(-10, 3);
         assert_eq!(result.quot, -3);
         assert_eq!(result.rem, -1);
     }
 
     #[test]
     fn check_lldiv_negative() {
-        let result = unsafe { lldiv(-10, 3) };
+        let result = lldiv(-10, 3);
         assert_eq!(result.quot, -3);
         assert_eq!(result.rem, -1);
     }

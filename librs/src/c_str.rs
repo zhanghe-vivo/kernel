@@ -2,10 +2,7 @@
 
 use core::{ffi::c_char, marker::PhantomData, ptr::NonNull, str::Utf8Error};
 
-use alloc::{
-    borrow::{Cow, ToOwned},
-    string::String,
-};
+use alloc::{borrow::Cow, string::String};
 
 use crate::string::strlen;
 /// C string wrapper, guaranteed to be
@@ -102,7 +99,6 @@ pub use alloc::ffi::CString;
 mod tests {
     use super::*;
     use crate::println;
-    use alloc::string::ToString;
     use bluekernel_test_macro::test;
 
     #[test]

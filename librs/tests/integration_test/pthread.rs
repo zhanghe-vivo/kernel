@@ -4,24 +4,13 @@ use alloc::vec::Vec;
 use bluekernel_test_macro::test;
 use core::{
     cell::{Cell, RefCell},
-    ffi::{c_int, c_size_t, c_void},
+    ffi::c_void,
     intrinsics::transmute,
-    mem::{align_of, size_of, MaybeUninit},
-    sync::atomic::{AtomicI8, AtomicUsize, Ordering},
+    mem::MaybeUninit,
+    sync::atomic::{AtomicUsize, Ordering},
 };
-use libc::{
-    clockid_t, pthread_attr_t, pthread_cond_t, pthread_condattr_t, pthread_key_t, pthread_mutex_t,
-    pthread_mutexattr_t, pthread_t, EDEADLK, EINVAL, ESRCH,
-};
-use librs::{
-    pthread::*,
-    stdlib::malloc::{free, posix_memalign},
-    sync::{
-        cond::{Cond, CondAttr},
-        mutex::{Mutex, MutexAttr},
-        waitval::Waitval,
-    },
-};
+use libc::{pthread_cond_t, pthread_condattr_t, pthread_mutex_t, pthread_t};
+use librs::{pthread::*, sync::cond::CondAttr};
 
 extern "C" fn mutex_lock_unlock(arg: *mut c_void) -> *mut c_void {
     let mutex = arg.cast::<pthread_mutex_t>();

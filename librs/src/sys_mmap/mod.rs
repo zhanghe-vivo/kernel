@@ -1,5 +1,5 @@
 use crate::{
-    errno::{Errno, Result, SysCallFailed, ERRNO},
+    errno::{Errno, SysCallFailed, ERRNO},
     syscall::{Sys, Syscall},
 };
 use libc::{c_int, c_void, off_t, size_t};

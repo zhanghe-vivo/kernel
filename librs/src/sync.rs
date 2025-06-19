@@ -1,3 +1,4 @@
+#[allow(unused_imports)]
 use bluekernel_header::syscalls::NR::{AtomicWait, AtomicWake};
 use bluekernel_scal::bk_syscall;
 use core::{
@@ -73,15 +74,19 @@ impl AtomicLock {
             atomic: AtomicUsize::new(value),
         }
     }
+    #[allow(dead_code)]
     pub fn notify_one(&self) {
         futex_wake(&self.atomic, 1);
     }
+    #[allow(dead_code)]
     pub fn notify_all(&self) {
         futex_wake(&self.atomic, usize::MAX);
     }
+    #[allow(dead_code)]
     pub fn wait_if(&self, value: usize, timeout_opt: Option<&timespec>) {
         self.wait_if_raw(value, timeout_opt);
     }
+    #[allow(dead_code)]
     pub fn wait_if_raw(&self, value: usize, timeout_opt: Option<&timespec>) -> c_int {
         futex_wait(&self.atomic, value, timeout_opt)
     }
@@ -105,6 +110,7 @@ impl AtomicLock {
     /// order to avoid race conditions where the atomic could be
     /// modified to the desired value before the call is complete and
     /// we receive the wakeup notification.
+    #[allow(dead_code)]
     pub fn wait_until<F1, F2>(&self, attempt: F1, mark_long: F2, long: usize)
     where
         F1: Fn(&AtomicUsize) -> AttemptStatus,

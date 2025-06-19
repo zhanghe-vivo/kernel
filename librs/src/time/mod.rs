@@ -2,17 +2,19 @@ use crate::{
     errno::SysCallFailed,
     syscall::{Sys, Syscall},
 };
+#[allow(unused_imports)]
 use core::{arch::asm, mem};
 use libc::{
-    c_double, c_int, c_long, c_uint, c_void, clock_t, clockid_t, time_t, timespec, CLOCK_MONOTONIC,
-    CLOCK_REALTIME,
+    c_double, c_int, c_long, c_uint, c_void, clock_t, clockid_t, time_t, timespec, CLOCK_REALTIME,
 };
 
 pub const CLOCK_PROCESS_CPUTIME_ID: clockid_t = 2;
 pub const CLOCKS_PER_SEC: c_long = 1_000_000;
-
+#[allow(non_camel_case_types)]
 pub struct sigevent;
+#[allow(non_camel_case_types)]
 pub type timer_t = *mut c_void;
+#[allow(non_camel_case_types)]
 pub struct itimerspec {
     pub it_interval: timespec,
     pub it_value: timespec,
@@ -26,6 +28,7 @@ pub unsafe extern "C" fn clock_gettime(clock_id: clockid_t, tp: *mut timespec) -
 }
 
 /// See <https://pubs.opengroup.org/onlinepubs/9799919799/functions/time.html>
+#[allow(unused)]
 #[no_mangle]
 pub unsafe extern "C" fn time(tloc: *mut time_t) -> time_t {
     let mut ts = timespec {
@@ -97,7 +100,7 @@ pub extern "C" fn difftime(time1: time_t, time0: time_t) -> c_double {
 
 #[no_mangle]
 pub extern "C" fn usleep(usec: c_uint) -> c_int {
-    let mut rqtp = timespec {
+    let rqtp = timespec {
         tv_sec: (usec / 1_000_000) as time_t,
         tv_nsec: ((usec % 1_000_000) * 1000) as c_int,
     };
@@ -107,7 +110,7 @@ pub extern "C" fn usleep(usec: c_uint) -> c_int {
 
 #[no_mangle]
 pub extern "C" fn msleep(msec: c_uint) -> c_int {
-    let mut rqtp = timespec {
+    let rqtp = timespec {
         tv_sec: (msec / 1000) as time_t,
         tv_nsec: ((msec % 1000) * 1_000_000) as c_int,
     };
@@ -117,7 +120,7 @@ pub extern "C" fn msleep(msec: c_uint) -> c_int {
 
 #[no_mangle]
 pub extern "C" fn ssleep(sec: c_uint) -> c_int {
-    let mut rqtp = timespec {
+    let rqtp = timespec {
         tv_sec: sec as time_t,
         tv_nsec: 0,
     };
@@ -128,38 +131,38 @@ pub extern "C" fn ssleep(sec: c_uint) -> c_int {
 /// See <https://pubs.opengroup.org/onlinepubs/9799919799/functions/timer_create.html>.
 // #[no_mangle]
 pub extern "C" fn timer_create(
-    clock_id: clockid_t,
-    evp: *mut sigevent,
-    timerid: *mut timer_t,
+    _clock_id: clockid_t,
+    _evp: *mut sigevent,
+    _timerid: *mut timer_t,
 ) -> c_int {
     unimplemented!();
 }
 
 /// See <https://pubs.opengroup.org/onlinepubs/9799919799/functions/timer_delete.html>.
 // #[no_mangle]
-pub extern "C" fn timer_delete(timerid: timer_t) -> c_int {
+pub extern "C" fn timer_delete(_timerid: timer_t) -> c_int {
     unimplemented!();
 }
 
 /// See <https://pubs.opengroup.org/onlinepubs/9799919799/functions/timer_getoverrun.html>.
 // #[no_mangle]
-pub extern "C" fn timer_getoverrun(timerid: timer_t) -> c_int {
+pub extern "C" fn timer_getoverrun(_timerid: timer_t) -> c_int {
     unimplemented!();
 }
 
 /// See <https://pubs.opengroup.org/onlinepubs/9799919799/functions/timer_getoverrun.html>.
 // #[no_mangle]
-pub extern "C" fn timer_gettime(timerid: timer_t, value: *mut itimerspec) -> c_int {
+pub extern "C" fn timer_gettime(_timerid: timer_t, _value: *mut itimerspec) -> c_int {
     unimplemented!();
 }
 
 /// See <https://pubs.opengroup.org/onlinepubs/9799919799/functions/timer_getoverrun.html>.
 // #[no_mangle]
 pub extern "C" fn timer_settime(
-    timerid: timer_t,
-    flags: c_int,
-    value: *const itimerspec,
-    ovalue: *mut itimerspec,
+    _timerid: timer_t,
+    _flags: c_int,
+    _value: *const itimerspec,
+    _ovalue: *mut itimerspec,
 ) -> c_int {
     unimplemented!();
 }
@@ -178,7 +181,7 @@ pub extern "C" fn udelay(usec: c_uint) {
 #[cfg(target_arch = "arm")]
 #[inline(always)]
 unsafe fn busy_wait(cycles: u32) {
-    let mut count = cycles;
+    let count = cycles;
     while count > 0 {
         asm!(
             "subs {0}, {0}, #1",

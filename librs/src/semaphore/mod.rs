@@ -1,17 +1,17 @@
 use core::ptr;
-use libc::{c_char, c_int, c_long, c_uint, sem_t};
+use libc::{c_char, c_int, c_uint, sem_t};
 
 pub type RsSemaphore = crate::sync::semaphore::Semaphore;
 
 #[no_mangle]
 pub unsafe extern "C" fn sem_close(sem: *mut sem_t) -> c_int {
-    core::ptr::drop_in_place(sem.cast::<RsSemaphore>());
+    ptr::drop_in_place(sem.cast::<RsSemaphore>());
     0
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn sem_destroy(sem: *mut sem_t) -> c_int {
-    core::ptr::drop_in_place(sem.cast::<RsSemaphore>());
+    ptr::drop_in_place(sem.cast::<RsSemaphore>());
     0
 }
 
@@ -34,8 +34,8 @@ pub unsafe extern "C" fn sem_init(sem: *mut sem_t, _pshared: c_int, value: c_uin
 // TODO: va_list
 // #[no_mangle]
 pub unsafe extern "C" fn sem_open(
-    name: *const c_char,
-    oflag: c_int, /* (va_list) value: c_uint */
+    _name: *const c_char,
+    _oflag: c_int, /* (va_list) value: c_uint */
 ) -> *mut sem_t {
     todo!("named semaphores")
 }
@@ -54,10 +54,11 @@ pub unsafe extern "C" fn sem_trywait(sem: *mut sem_t) -> c_int {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn sem_unlink(name: *const c_char) -> c_int {
+pub unsafe extern "C" fn sem_unlink(_name: *const c_char) -> c_int {
     todo!("named semaphores")
 }
 
+#[allow(unused)]
 #[no_mangle]
 pub unsafe extern "C" fn sem_wait(sem: *mut sem_t) -> c_int {
     get(sem).wait(None);

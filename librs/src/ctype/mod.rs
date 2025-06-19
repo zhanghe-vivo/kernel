@@ -9,7 +9,6 @@ pub extern "C" fn isalpha(c: c_int) -> c_int {
     c_int::from(islower(c) != 0 || isupper(c) != 0)
 }
 
-#[deprecated]
 #[no_mangle]
 pub extern "C" fn isascii(c: c_int) -> c_int {
     c_int::from((c & !0x7f) == 0)
@@ -77,7 +76,6 @@ pub extern "C" fn isxdigit(c: c_int) -> c_int {
     c_int::from(isdigit(c) != 0 || (c | 32 >= c_int::from(b'a') && c | 32 <= c_int::from(b'f')))
 }
 
-#[deprecated]
 #[no_mangle]
 pub extern "C" fn toascii(c: c_int) -> c_int {
     c & 0x7f
@@ -132,6 +130,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn check_is_ascii() {
         assert_eq!(isascii(b'a' as c_int), 1);
         assert_eq!(isascii(0x80), 0);

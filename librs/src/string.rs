@@ -3,17 +3,14 @@
 //! See <https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/string.h.html>.
 
 use crate::{
-    errno::{ERRNO, STR_ERROR},
-    iter::{NullTerminated, NullTerminatedInclusive, SrcDstPtrIter},
-    stdlib::malloc::malloc,
+    errno::STR_ERROR,
+    iter::{NullTerminated, NullTerminatedInclusive},
 };
 use core::{
-    ffi::{c_char, c_int, c_long, c_longlong, c_size_t, c_uchar, c_void},
-    fmt,
-    iter::{once, zip},
-    mem, ptr, slice,
+    ffi::{c_char, c_int, c_long, c_longlong, c_size_t, c_void},
+    fmt, ptr, slice,
 };
-use libc::{ENOMEM, ERANGE};
+use libc::ERANGE;
 pub struct StringWriter(pub *mut u8, pub usize);
 
 impl StringWriter {
@@ -156,12 +153,14 @@ pub unsafe extern "C" fn strlen(s: *const c_char) -> c_size_t {
 }
 
 /// See <https://pubs.opengroup.org/onlinepubs/9799919799/functions/strerror.html>.
+/// posix don't need this thread safe, simple using raw operator diable warning
 #[linkage = "weak"]
 #[no_mangle]
 pub unsafe extern "C" fn strerror(errnum: c_int) -> *mut c_char {
-    static mut strerror_buf: [u8; 256] = [0; 256];
+    static mut STRERROR_BUF: [u8; 256] = [0; 256];
+    let buf = &raw mut STRERROR_BUF;
 
-    let mut w = StringWriter(strerror_buf.as_mut_ptr(), strerror_buf.len());
+    let mut w = StringWriter(buf.as_mut_ptr(), 256);
 
     if errnum >= 0 && errnum < STR_ERROR.len() as c_int {
         let _ = w.write_str(STR_ERROR[errnum as usize]);
@@ -169,7 +168,7 @@ pub unsafe extern "C" fn strerror(errnum: c_int) -> *mut c_char {
         let _ = w.write_str("Unknown error {}");
     }
 
-    strerror_buf.as_mut_ptr() as *mut c_char
+    buf.as_mut_ptr() as *mut c_char
 }
 
 /// See <https://pubs.opengroup.org/onlinepubs/9799919799/functions/strerror.html>.
@@ -234,10 +233,9 @@ pub unsafe extern "C" fn bsearch(
 ) -> *mut c_void {
     let mut low = 0;
     let mut high = nmemb as isize - 1;
-    let mut mid = 0;
-    let mut ptr = base as *const u8;
+    let ptr = base as *const u8;
     while low <= high {
-        mid = low + (high - low) / 2;
+        let mid = low + (high - low) / 2;
         let cmp = compare.unwrap()(key, ptr.offset(mid * size as isize) as *const c_void);
         if cmp == 0 {
             return ptr.offset(mid * size as isize) as *mut c_void;
@@ -291,7 +289,7 @@ pub unsafe extern "C" fn rindex(s: *const c_char, c: c_int) -> *mut c_char {
 
 /// https://pubs.opengroup.org/onlinepubs/9799919799/functions/strchr.html
 #[no_mangle]
-pub unsafe extern "C" fn strchr(mut s: *const c_char, c: c_int) -> *mut c_char {
+pub unsafe extern "C" fn strchr(s: *const c_char, c: c_int) -> *mut c_char {
     let c_as_c_char = c as c_char;
 
     // We iterate over non-mut references and thus need to coerce the
@@ -351,7 +349,7 @@ pub unsafe extern "C" fn strpbrk(s1: *const c_char, s2: *const c_char) -> *mut c
 #[no_mangle]
 pub unsafe extern "C" fn strtok(s1: *mut c_char, delimiter: *const c_char) -> *mut c_char {
     static mut HAYSTACK: *mut c_char = ptr::null_mut();
-    strtok_r(s1, delimiter, &mut HAYSTACK)
+    strtok_r(s1, delimiter, &raw mut HAYSTACK)
 }
 
 /// https://pubs.opengroup.org/onlinepubs/9799919799/functions/strtok_r.html

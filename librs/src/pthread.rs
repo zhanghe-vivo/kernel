@@ -1,5 +1,4 @@
 use crate::{
-    semaphore::RsSemaphore,
     stdlib::malloc::{free, posix_memalign},
     sync::{
         barrier::{Barrier, BarrierAttr, WaitResult},
@@ -10,6 +9,7 @@ use crate::{
     },
 };
 use alloc::{collections::btree_map::BTreeMap, sync::Arc, vec::Vec};
+#[allow(unused_imports)]
 use bluekernel_header::{
     syscalls::NR::{CreateThread, ExitThread, GetTid},
     thread::{CloneArgs, DEFAULT_STACK_SIZE, STACK_ALIGN},
@@ -24,9 +24,12 @@ use core::{
 use libc::{
     clockid_t, pthread_attr_t, pthread_barrier_t, pthread_barrierattr_t, pthread_cond_t,
     pthread_condattr_t, pthread_key_t, pthread_mutex_t, pthread_mutexattr_t, pthread_rwlock_t,
-    pthread_rwlockattr_t, pthread_spinlock_t, pthread_t, sched_param, sem_t, timespec, EBUSY,
-    EDEADLK, EINVAL, ESRCH,
+    pthread_rwlockattr_t, pthread_spinlock_t, pthread_t, sched_param, timespec, EBUSY, EDEADLK,
+    EINVAL, ESRCH,
 };
+
+pub use crate::semaphore::RsSemaphore;
+pub use libc::sem_t;
 
 pub const PTHREAD_BARRIER_SERIAL_THREAD: c_int = -1;
 pub const PTHREAD_PROCESS_SHARED: c_int = 1;
@@ -50,8 +53,7 @@ struct InnerPthreadAttr {
 }
 
 // TODO: Current BlueOS kernel doesn't feature using thread-pointer pointing to TCB. Use a global map temporarily.
-pub static TCBS: RwLock<BTreeMap<pthread_t, Arc<RwLock<PthreadTcb>>>> =
-    RwLock::new(BTreeMap::new());
+static TCBS: RwLock<BTreeMap<pthread_t, Arc<RwLock<PthreadTcb>>>> = RwLock::new(BTreeMap::new());
 // TODO: Maybe store KEYS in BlueProcess.
 static KEYS: RwLock<BTreeMap<pthread_key_t, Dtor>> = RwLock::new(BTreeMap::new());
 struct Dtor(Option<extern "C" fn(value: *mut c_void)>);
@@ -74,6 +76,7 @@ fn get_tcb(tid: pthread_t) -> Option<Arc<RwLock<PthreadTcb>>> {
     TCBS.read().get(&tid).map(|tcb| Arc::clone(tcb))
 }
 
+#[allow(dead_code)]
 #[inline(always)]
 fn get_my_tcb() -> Option<Arc<RwLock<PthreadTcb>>> {
     let tid = pthread_self();
@@ -161,23 +164,23 @@ pub extern "C" fn pthread_getschedparam(
 #[linkage = "weak"]
 #[no_mangle]
 pub unsafe extern "C" fn pthread_setschedparam(
-    thread: pthread_t,
-    policy: c_int,
-    param: *const sched_param,
+    _thread: pthread_t,
+    _policy: c_int,
+    _param: *const sched_param,
 ) -> c_int {
     0
 }
 
 #[linkage = "weak"]
 #[no_mangle]
-pub extern "C" fn pthread_setconcurrency(concurrency: c_int) -> c_int {
+pub extern "C" fn pthread_setconcurrency(_concurrency: c_int) -> c_int {
     // BlueKernel supports only 1:1 thread model, so this function is a no-op.
     0
 }
 
 #[linkage = "weak"]
 #[no_mangle]
-pub extern "C" fn pthread_setschedprio(thread: pthread_t, prio: c_int) -> c_int {
+pub extern "C" fn pthread_setschedprio(_thread: pthread_t, _prio: c_int) -> c_int {
     // BlueKernel currently doesn't support setting thread priority.
     0
 }
@@ -220,7 +223,7 @@ pub unsafe extern "C" fn pthread_setcancelstate(state: c_int, oldstate: *mut c_i
 
 #[linkage = "weak"]
 #[no_mangle]
-pub extern "C" fn pthread_setcanceltype(ty: c_int, oldty: *mut c_int) -> c_int {
+pub extern "C" fn pthread_setcanceltype(_ty: c_int, _oldty: *mut c_int) -> c_int {
     // BlueKernel currently hasn't signal support, no cancel point is implemented.
     // just exit when pthread_testcancel is called.
     PTHREAD_CANCEL_DEFERRED

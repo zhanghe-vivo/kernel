@@ -17,7 +17,7 @@
 #![feature(box_as_ptr)]
 #![feature(atomic_from_mut)]
 #![feature(c_variadic)]
-
+#![feature(array_ptr_get)]
 extern crate alloc;
 // We don't expose any interfaces or types externally, rust-lang/libc is doing that.
 pub mod c_str;
@@ -40,7 +40,7 @@ pub mod time;
 pub mod tls;
 pub mod types;
 pub mod unistd;
-extern "C" fn start_blueos_posix_main(arg: *mut core::ffi::c_void) -> *mut core::ffi::c_void {
+extern "C" fn start_blueos_posix_main(_arg: *mut core::ffi::c_void) -> *mut core::ffi::c_void {
     // TODO: Pass argc, argv and envp?
     // TODO: Before exit, we have to check owned threads' status and recycle them.
     extern "C" {

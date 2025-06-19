@@ -1,7 +1,7 @@
 #![allow(non_camel_case_types)]
 
 use core::num::NonZeroU32;
-use libc::{c_int, c_uchar, PTHREAD_PROCESS_PRIVATE};
+use libc::{c_int, PTHREAD_PROCESS_PRIVATE};
 
 #[derive(Clone, Copy)]
 pub(crate) struct BarrierAttr {

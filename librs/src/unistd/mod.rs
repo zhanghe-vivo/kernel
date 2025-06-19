@@ -1,13 +1,10 @@
 use crate::{
     c_str::CStr,
-    errno::{SysCallFailed, ERRNO},
-    stat::fstat,
+    errno::SysCallFailed,
     syscall::{Sys, Syscall},
 };
 use core::slice;
-use libc::{
-    c_char, c_int, c_long, c_void, gid_t, mode_t, off_t, pid_t, size_t, ssize_t, timespec, uid_t,
-};
+use libc::{c_char, c_int, c_void, gid_t, mode_t, off_t, pid_t, size_t, ssize_t, uid_t};
 pub mod io;
 pub mod sysconf;
 pub use io::*;
@@ -69,6 +66,7 @@ pub extern "C" fn dup(fildes: c_int) -> c_int {
 }
 
 /// See https://pubs.opengroup.org/onlinepubs/9799919799/functions/stat.html
+#[allow(unused)]
 #[no_mangle]
 pub unsafe extern "C" fn stat(file: *const c_char, buf: *mut c_char) -> c_int {
     let file = CStr::from_ptr(file);
@@ -85,6 +83,7 @@ pub unsafe extern "C" fn stat(file: *const c_char, buf: *mut c_char) -> c_int {
     res
 }
 
+#[allow(unused)]
 #[no_mangle]
 pub unsafe extern "C" fn lstat(path: *const c_char, buf: *mut c_char) -> c_int {
     let path = CStr::from_ptr(path);
@@ -172,6 +171,7 @@ pub unsafe extern "C" fn symlink(path1: *const c_char, path2: *const c_char) -> 
 }
 
 /// See <https://pubs.opengroup.org/onlinepubs/9799919799/functions/sync.html>.
+#[allow(unused)]
 #[no_mangle]
 pub extern "C" fn sync() {
     Sys::sync();
@@ -263,7 +263,7 @@ pub extern "C" fn getppid() -> pid_t {
 /// See https://gitblueos.vivo.xyz/BlueOS/Kernel/BlueKernel/kernel/-/issues/31#note_22536
 /// See <https://pubs.opengroup.org/onlinepubs/9799919799/functions/seteuid.html>.
 #[no_mangle]
-pub extern "C" fn seteuid(uid: uid_t) -> c_int {
+pub extern "C" fn seteuid(_uid: uid_t) -> c_int {
     0
 }
 

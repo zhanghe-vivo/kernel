@@ -143,7 +143,8 @@ impl Syscall for Sys {
         if k_dev as dev_t != dev {
             return Err(Errno(EINVAL));
         }
-        to_result(unsafe { bk_syscall!(SYS_MKNODAT, fildes, path.as_ptr(), mode, k_dev) }).map(|_| ())
+        to_result(unsafe { bk_syscall!(SYS_MKNODAT, fildes, path.as_ptr(), mode, k_dev) })
+            .map(|_| ())
     }
     fn pause() -> Result<()> {
         to_result(unsafe { bk_syscall!(SYS_PAUSE) }).map(|_| ())
@@ -193,7 +194,8 @@ impl Syscall for Sys {
         mode: mode_t,
         attr: *const mq_attr,
     ) -> Result<c_int> {
-        to_result(unsafe { bk_syscall!(SYS_MQ_OPEN, name, oflag, mode, attr) }).map(|fd| fd as c_int)
+        to_result(unsafe { bk_syscall!(SYS_MQ_OPEN, name, oflag, mode, attr) })
+            .map(|fd| fd as c_int)
     }
     unsafe fn mq_getsetattr(mqdes: c_int, new: *mut mq_attr, old: *mut mq_attr) -> Result<()> {
         to_result(unsafe { bk_syscall!(SYS_MQ_GETSETATTR, mqdes, new, old) }).map(|_| ())

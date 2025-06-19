@@ -10,7 +10,7 @@
 #![feature(thread_local)]
 #![feature(c_variadic)]
 
-use bluekernel::{allocator, println, thread::Thread};
+use bluekernel::println;
 use core::ffi::c_void;
 use libc::pthread_t;
 use librs::pthread::{pthread_create, pthread_join};

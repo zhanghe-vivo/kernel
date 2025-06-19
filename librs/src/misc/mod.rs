@@ -1,5 +1,4 @@
 use crate::{
-    c_str::CStr,
     errno::SysCallFailed,
     syscall::{Sys, Syscall},
 };

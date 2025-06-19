@@ -39,9 +39,10 @@ const INDEX_MASK: usize = !WAITING_BIT;
 const RECURSIVE_COUNT_MAX_INCLUSIVE: usize = usize::MAX;
 // TODO: How many spins should we do before it becomes more time-economical to enter kernel mode
 // via futexes?
-const SPIN_COUNT: usize = 0;
+// const SPIN_COUNT: usize = 0;
 
 impl Mutex {
+    #[allow(unreachable_patterns)]
     pub(crate) fn new(attr: &MutexAttr) -> Result<Self, c_int> {
         let MutexAttr {
             prioceiling: _,

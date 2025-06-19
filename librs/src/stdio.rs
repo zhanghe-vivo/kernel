@@ -1,4 +1,3 @@
-use alloc::vec::Vec;
 use libc::{c_char, c_int};
 
 #[no_mangle]

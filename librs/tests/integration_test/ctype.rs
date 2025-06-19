@@ -4,6 +4,7 @@ use librs::ctype::{
     isalnum, isalpha, isascii, isblank, iscntrl, isdigit, isgraph, islower, isprint, ispunct,
     isspace, isupper, isxdigit, toascii, tolower, toupper,
 };
+#[allow(non_camel_case_types)]
 type c_int = i32;
 
 pub const EOF: c_int = -1;

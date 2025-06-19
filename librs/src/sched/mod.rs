@@ -2,8 +2,9 @@ use crate::{
     errno::SysCallFailed,
     syscall::{Sys, Syscall},
 };
-use libc::{c_char, c_int, pid_t, timespec};
+use libc::{c_int, pid_t, timespec};
 
+#[allow(non_camel_case_types)]
 pub struct sched_param {
     pub sched_priority: c_int,
 }
@@ -30,9 +31,9 @@ pub unsafe extern "C" fn sched_rr_get_interval(pid: pid_t, time: *mut timespec) 
 
 #[no_mangle]
 pub unsafe extern "C" fn sched_setscheduler(
-    pid: pid_t,
-    policy: c_int,
-    param: *const sched_param,
+    _pid: pid_t,
+    _policy: c_int,
+    _param: *const sched_param,
 ) -> c_int {
     // POSIX support scheduler in pthread* functions, just return error value
     -1
