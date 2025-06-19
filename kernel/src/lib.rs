@@ -16,6 +16,8 @@
 #![feature(pointer_is_aligned_to)]
 #![feature(new_zeroed_alloc)]
 #![feature(coverage_attribute)]
+#![feature(map_try_insert)]
+#![feature(trait_upcasting)]
 #![no_main]
 #![feature(custom_test_frameworks)]
 #![test_runner(kernel_utest_runner)]
@@ -74,8 +76,11 @@ fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
         cpu::Cpus::lock_cpus();
     }
     early_println!("{}", info);
-
     early_println!("Backtrace in Panic: {}", arch::Arch::backtrace());
+
+    if let Some(thread) = crate::cpu::Cpu::get_current_thread() {
+        early_println!("current thread: {:?}", unsafe { thread.as_ref() });
+    }
 
     #[cfg(debug_assertions)]
     loop {

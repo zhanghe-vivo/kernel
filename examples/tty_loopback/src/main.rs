@@ -5,7 +5,7 @@ extern crate alloc;
 use bluekernel::{
     libc,
     thread::Thread,
-    vfs::vfs_api::{vfs_open, vfs_read, vfs_write},
+    vfs::posix::{vfs_open, vfs_read, vfs_write},
 };
 use core::ffi::c_char;
 use log::info;

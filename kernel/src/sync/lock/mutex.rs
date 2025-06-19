@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use crate::{
     alloc::{boxed::Box, ffi::CString, format},
     bluekernel_kconfig::THREAD_PRIORITY_MAX,

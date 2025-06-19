@@ -1,5 +1,7 @@
+#![allow(dead_code)]
+
 use crate::{clock::tick_get_millisecond, cpu::Cpu, println};
-use log::{Level, LevelFilter, Metadata, Record};
+use log::{LevelFilter, Metadata, Record};
 
 struct Logger;
 

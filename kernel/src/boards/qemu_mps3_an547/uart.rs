@@ -10,9 +10,8 @@ use crate::{
     },
     irq::Irq,
     sync::SpinLock,
-    vfs::vfs_mode::AccessMode,
 };
-use alloc::sync::Arc;
+use alloc::{string::String, sync::Arc};
 use core::hint::spin_loop;
 use embedded_io::{ErrorKind, ErrorType, Read, ReadReady, Write, WriteReady};
 use spin::Once;
@@ -187,18 +186,13 @@ static SERIAL0: Once<Arc<Serial>> = Once::new();
 pub fn get_serial0() -> &'static Arc<Serial> {
     SERIAL0.call_once(|| {
         let uart = Arc::new(SpinLock::new(UartDriver::new(UART0_BASE_S)));
-        Arc::new(Serial::new(
-            "ttyS0",
-            AccessMode::O_RDWR,
-            SerialConfig::default(),
-            uart,
-        ))
+        Arc::new(Serial::new(0, SerialConfig::default(), uart))
     })
 }
 
 pub fn uart_init() -> Result<(), ErrorKind> {
     let serial0 = get_serial0();
-    DeviceManager::get().register_device("ttyS0", serial0.clone())
+    DeviceManager::get().register_device(String::from("ttyS0"), serial0.clone())
 }
 
 #[link_section = ".text.vector_handlers"]

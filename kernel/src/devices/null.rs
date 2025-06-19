@@ -1,46 +1,24 @@
-use crate::{
-    devices::{Device, DeviceBase, DeviceClass, DeviceId, DeviceManager},
-    vfs::vfs_mode::AccessMode,
-};
-use alloc::sync::Arc;
-use delegate::delegate;
+use crate::devices::{Device, DeviceClass, DeviceId, DeviceManager};
+use alloc::{string::String, sync::Arc};
 use embedded_io::ErrorKind;
 
-pub struct Null {
-    base: DeviceBase,
-}
+pub struct Null;
 
 impl Null {
-    pub fn new() -> Self {
-        Self {
-            base: DeviceBase::new("null", DeviceClass::Char, AccessMode::O_RDWR),
-        }
-    }
-
     pub fn register() -> Result<(), ErrorKind> {
-        let null = Arc::new(Null::new());
-        DeviceManager::get().register_device("/dev/null", null)
-    }
-
-    delegate! {
-        to self.base {
-            fn check_permission(&self, oflag: i32) -> Result<(), ErrorKind>;
-            fn inc_open_count(&self) -> u32;
-            fn dec_open_count(&self) -> u32;
-            fn is_opened(&self) -> bool;
-        }
+        let null_dev = Arc::new(Null);
+        DeviceManager::get().register_device(String::from("null"), null_dev)
     }
 }
 
 impl Device for Null {
-    delegate! {
-        to self.base {
-            fn name(&self) -> &'static str;
-            fn class(&self) -> DeviceClass;
-            fn access_mode(&self) -> AccessMode;
-        }
+    fn name(&self) -> String {
+        String::from("null")
     }
 
+    fn class(&self) -> DeviceClass {
+        DeviceClass::Char
+    }
     fn id(&self) -> DeviceId {
         DeviceId {
             major: 1, // 1 is the major number for char devices
@@ -57,28 +35,16 @@ impl Device for Null {
         // Always succeed, but discard the data
         Ok(buf.len())
     }
-
-    fn open(&self, oflag: i32) -> Result<(), ErrorKind> {
-        self.check_permission(oflag)?;
-        self.inc_open_count();
-        Ok(())
-    }
-
-    fn close(&self) -> Result<(), ErrorKind> {
-        self.dec_open_count();
-        Ok(())
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::devices::DeviceManager;
     use bluekernel_test_macro::test;
 
     #[test]
     fn test_null_device_read() {
-        let null = Null::new();
+        let null = Null;
         let mut buffer = [0u8; 10];
 
         // Read should always return 0 bytes (EOF)
@@ -89,7 +55,7 @@ mod tests {
 
     #[test]
     fn test_null_device_write() {
-        let null = Null::new();
+        let null = Null;
         let buffer = [1u8, 2, 3, 4, 5];
 
         // Write should always succeed and return the buffer length
@@ -100,32 +66,23 @@ mod tests {
 
     #[test]
     fn test_null_device_open_close() {
-        let null = Null::new();
+        let null = Null;
 
         // Test opening with valid flags
-        let result = null.open(libc::O_RDWR);
+        let result = null.open();
         assert!(result.is_ok());
-        assert!(null.is_opened());
 
         // Test closing
         let result = null.close();
         assert!(result.is_ok());
-        assert!(!null.is_opened());
     }
 
     #[test]
     fn test_null_device_id() {
-        let null = Null::new();
+        let null = Null;
         let id = null.id();
 
         assert_eq!(id.major, 1);
         assert_eq!(id.minor, 3);
-    }
-
-    #[test]
-    fn test_null_device_registration() {
-        // Verify we can find the device
-        let device = DeviceManager::get().find_device("/dev/null");
-        assert!(device.is_ok());
     }
 }

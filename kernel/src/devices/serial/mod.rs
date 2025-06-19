@@ -6,15 +6,13 @@ use crate::{
         futex::{atomic_wait, atomic_wake},
         lock::spinlock::SpinLock,
     },
-    vfs::vfs_mode::AccessMode,
 };
-use alloc::sync::Arc;
+use alloc::{format, string::String, sync::Arc};
 use bluekernel_infra::ringbuffer::BoxedRingBuffer;
 use bluekernel_kconfig::{SERIAL_RX_FIFO_SIZE, SERIAL_TX_FIFO_SIZE};
 use core::sync::atomic::AtomicUsize;
 use delegate::delegate;
 use embedded_io::{ErrorKind, ErrorType, Read, ReadReady, Write, WriteReady};
-use libc::{EAGAIN, EINVAL, EIO, ENOSPC, ETIMEDOUT};
 
 pub mod arm_pl011;
 pub mod cmsdk_uart;
@@ -117,6 +115,7 @@ impl SerialTxFifo {
 
 pub struct Serial {
     base: DeviceBase,
+    index: u32,
     config: SerialConfig,
     rx_fifo: SerialRxFifo,
     tx_fifo: SerialTxFifo,
@@ -124,14 +123,10 @@ pub struct Serial {
 }
 
 impl Serial {
-    pub fn new(
-        name: &'static str,
-        access_mode: AccessMode,
-        config: SerialConfig,
-        uart_ops: Arc<SpinLock<dyn UartOps>>,
-    ) -> Self {
+    pub fn new(index: u32, config: SerialConfig, uart_ops: Arc<SpinLock<dyn UartOps>>) -> Self {
         Self {
-            base: DeviceBase::new(name, DeviceClass::Char, access_mode),
+            base: DeviceBase::new(),
+            index,
             config,
             rx_fifo: SerialRxFifo::new(SERIAL_RX_FIFO_SIZE.max(SERIAL_RX_FIFO_MIN_SIZE)),
             tx_fifo: SerialTxFifo::new(SERIAL_TX_FIFO_SIZE.max(SERIAL_TX_FIFO_MIN_SIZE)),
@@ -141,7 +136,6 @@ impl Serial {
 
     delegate! {
         to self.base {
-            fn check_permission(&self, oflag: i32) -> Result<(), ErrorKind>;
             fn inc_open_count(&self) -> u32;
             fn dec_open_count(&self) -> u32;
             fn is_opened(&self) -> bool;
@@ -162,7 +156,7 @@ impl Serial {
         Ok(())
     }
 
-    fn fifo_rx(&self, buf: &mut [u8], is_blocking: bool) -> Result<usize, SerialError> {
+    fn fifo_rx(&self, buf: &mut [u8], is_nonblocking: bool) -> Result<usize, SerialError> {
         let len = buf.len();
         let mut count = 0;
         let mut reader = unsafe { self.rx_fifo.rb.reader() };
@@ -179,9 +173,9 @@ impl Serial {
             }
             reader.pop_done(n);
 
-            if is_blocking {
+            if !is_nonblocking {
                 // if the available data is less than the requested data, wait for data
-                if count < len {
+                if n == 0 {
                     atomic_wait(
                         &self.rx_fifo.futex as *const AtomicUsize as usize,
                         0,
@@ -199,7 +193,7 @@ impl Serial {
         Ok(count)
     }
 
-    fn fifo_tx(&self, buf: &[u8], is_blocking: bool) -> Result<usize, SerialError> {
+    fn fifo_tx(&self, buf: &[u8], is_nonblocking: bool) -> Result<usize, SerialError> {
         let len = buf.len();
         let mut count = 0;
         let mut writer = unsafe { self.tx_fifo.rb.writer() };
@@ -226,7 +220,7 @@ impl Serial {
                 }
             }
 
-            if is_blocking && !Cpu::is_in_interrupt() {
+            if !is_nonblocking && !Cpu::is_in_interrupt() {
                 if !writer.is_empty() {
                     // wait for data to be written
                     atomic_wait(
@@ -310,29 +304,25 @@ impl Serial {
 }
 
 impl Device for Serial {
-    delegate! {
-        to self.base {
-            fn name(&self) -> &'static str;
-            fn class(&self) -> DeviceClass;
-            fn access_mode(&self) -> AccessMode;
-        }
+    fn name(&self) -> String {
+        format!("ttyS{}", self.index)
+    }
+
+    fn class(&self) -> DeviceClass {
+        DeviceClass::Char
     }
 
     fn id(&self) -> DeviceId {
         DeviceId {
-            major: 1, // 1 is the major number for char devices
-            minor: 4, // 4 is the minor number for /dev/tty
+            major: 4, // 4 is the minor number for /dev/tty
+            minor: 64 + self.index,
         }
     }
 
-    fn open(&self, oflag: i32) -> Result<(), ErrorKind> {
-        // Check flags first
-        self.check_permission(oflag)?;
-
+    fn open(&self) -> Result<(), ErrorKind> {
         if !self.is_opened() {
             let mut uart_ops = self.uart_ops.lock_irqsave();
             uart_ops.setup(&self.config)?;
-            //uart_ops.set_tx_interrupt(true);
             uart_ops.set_rx_interrupt(true);
         }
 
@@ -343,7 +333,7 @@ impl Device for Serial {
 
     fn close(&self) -> Result<(), ErrorKind> {
         if !self.is_opened() {
-            return Ok(());
+            return Err(ErrorKind::NotFound);
         }
 
         if self.dec_open_count() == 0 {
@@ -357,12 +347,12 @@ impl Device for Serial {
         Ok(())
     }
 
-    fn read(&self, _pos: usize, buf: &mut [u8], is_blocking: bool) -> Result<usize, ErrorKind> {
-        self.fifo_rx(buf, is_blocking).map_err(|e| e.into())
+    fn read(&self, _pos: usize, buf: &mut [u8], is_nonblocking: bool) -> Result<usize, ErrorKind> {
+        self.fifo_rx(buf, is_nonblocking).map_err(|e| e.into())
     }
 
-    fn write(&self, _pos: usize, buf: &[u8], is_blocking: bool) -> Result<usize, ErrorKind> {
-        self.fifo_tx(buf, is_blocking).map_err(|e| e.into())
+    fn write(&self, _pos: usize, buf: &[u8], is_nonblocking: bool) -> Result<usize, ErrorKind> {
+        self.fifo_tx(buf, is_nonblocking).map_err(|e| e.into())
     }
 
     fn ioctl(&self, request: u32, arg: usize) -> Result<(), ErrorKind> {

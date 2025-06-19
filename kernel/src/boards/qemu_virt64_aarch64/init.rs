@@ -2,14 +2,14 @@ use super::{sys_config, systick::Systick, uart};
 use crate::{
     allocator,
     arch::Arch,
-    devices::{console, fdt, virtio},
+    devices::{console, virtio},
     early_println,
     error::Error,
     idle::IDLE_HOOK_LIST,
     scheduler::register_reschedule,
 };
-
 use core::ptr::addr_of;
+use flat_device_tree::Fdt;
 
 #[no_mangle]
 extern "C" fn idle_wfi() {
@@ -28,7 +28,7 @@ pub extern "C" fn board_init() {
     allocator::system_heap_init(heap_start, heap_end);
 
     // initialize hardware interrupt
-    Systick::init();
+    let _ = Systick::init();
     // initialize uart
     match uart::uart_init() {
         Ok(_) => (),
@@ -40,9 +40,11 @@ pub extern "C" fn board_init() {
         Err(e) => early_println!("Failed to init console: {}", Error::from(e)),
     }
     // initialize fdt
-    fdt::fdt_init(sys_config::DRAM_BASE);
+    // SAFETY: We trust that the FDT pointer we were given is valid, and this is the only time we
+    // use it.
+    let fdt = unsafe { Fdt::from_ptr(sys_config::DRAM_BASE as *const u8).unwrap() };
     // initialize virtio
-    virtio::init_virtio(fdt::get_fdt());
+    virtio::init_virtio(&fdt);
     // register reschedule
     register_reschedule();
 

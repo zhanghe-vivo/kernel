@@ -27,8 +27,13 @@ pub mod code {
     pub const EEXIST: super::Error = super::Error(-libc::EEXIST);
     pub const ENOTDIR: super::Error = super::Error(-libc::ENOTDIR);
     pub const EISDIR: super::Error = super::Error(-libc::EISDIR);
+    pub const ENAMETOOLONG: super::Error = super::Error(-libc::ENAMETOOLONG);
     pub const ENOTEMPTY: super::Error = super::Error(-libc::ENOTEMPTY);
     pub const EACCES: super::Error = super::Error(-libc::EACCES);
+    pub const ESPIPE: super::Error = super::Error(-libc::ESPIPE);
+    pub const EOVERFLOW: super::Error = super::Error(-libc::EOVERFLOW);
+    pub const ELOOP: super::Error = super::Error(-libc::ELOOP);
+    pub const EXDEV: super::Error = super::Error(-libc::EXDEV);
 }
 
 const UNKNOW_STR: &'static CStr = crate::c_str!("EUNKNOW ");
@@ -52,8 +57,13 @@ const EEXIST_STR: &'static CStr = crate::c_str!("File exists");
 const ENOTDIR_STR: &'static CStr = crate::c_str!("Not a directory");
 const EISDIR_STR: &'static CStr = crate::c_str!("Is a directory");
 const ENOTEMPTY_STR: &'static CStr = crate::c_str!("Directory not empty");
+const ENAMETOOLONG_STR: &'static CStr = crate::c_str!("File name too long");
+const ESPIPE_STR: &'static CStr = crate::c_str!("Invalid seek");
+const EOVERFLOW_STR: &'static CStr = crate::c_str!("Value too large to be stored in data type");
+const ELOOP_STR: &'static CStr = crate::c_str!("Too many symbolic links encountered");
+const EXDEV_STR: &'static CStr = crate::c_str!("Cross-device link");
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct Error(i32);
 static mut ERRNO: Error = Error(0);
@@ -83,6 +93,11 @@ impl Error {
             &code::ENOENT => ENOENT_STR,
             &code::EPERM => EPERM_STR,
             &code::ENODEV => ENODEV_STR,
+            &code::ENAMETOOLONG => ENAMETOOLONG_STR,
+            &code::ESPIPE => ESPIPE_STR,
+            &code::EOVERFLOW => EOVERFLOW_STR,
+            &code::ELOOP => ELOOP_STR,
+            &code::EXDEV => EXDEV_STR,
             _ => UNKNOW_STR,
         }
     }

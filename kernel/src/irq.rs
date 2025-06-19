@@ -1,7 +1,8 @@
 #![allow(dead_code)]
+#[cfg(procfs)]
+use crate::clock;
 use crate::{
     arch::{interrupt::IrqNumber, Arch},
-    clock,
     cpu::Cpu,
 };
 use core::{
@@ -109,6 +110,7 @@ impl<'a, T> Drop for IrqGuard<'a, T> {
 pub struct Irq;
 
 impl Irq {
+    #[allow(unused_variables)]
     pub fn enter(irq_number: IrqNumber) {
         let last_nest = Cpu::interrupt_nest_inc();
         #[cfg(procfs)]
@@ -123,6 +125,7 @@ impl Irq {
         }
     }
 
+    #[allow(unused_variables)]
     pub fn leave() {
         let last_nest = Cpu::interrupt_nest_dec();
         #[cfg(procfs)]

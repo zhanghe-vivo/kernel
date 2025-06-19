@@ -468,6 +468,7 @@ impl Scheduler {
     }
 
     #[inline]
+    #[allow(unused_variables)]
     unsafe fn check_thread_switch(
         &self,
         cur_thread: Option<NonNull<Thread>>,
@@ -507,7 +508,8 @@ impl Scheduler {
         #[cfg(smp)]
         Cpus::unlock_cpus();
 
-        let level = self.sched_lock();
+        // sched_unlock in context_switch_to
+        let _ = self.sched_lock();
         let to_thread = self.get_highest_priority_thread_locked();
         match to_thread {
             Some((mut thread, prio)) => {
@@ -525,7 +527,6 @@ impl Scheduler {
                 }
                 self.set_current_thread(thread);
                 self.ctx_switch_unlock();
-                // enable interrupt in context_switch_to
                 Arch::context_switch_to(to_th.stack().sp_ptr());
             }
             None => panic!("!!! no thread !!!"),
@@ -634,7 +635,6 @@ impl Scheduler {
 
     #[cfg(not(hardware_schedule))]
     pub fn do_task_schedule(&mut self) {
-        use crate::{println, scheduler};
         if !self.is_scheduled() {
             return;
         }
@@ -769,7 +769,7 @@ impl IrqHandler for SchedulerIrq {
 pub const SGI_SCHED: IrqNumber = IrqNumber::new(1);
 #[cfg(target_arch = "aarch64")]
 pub fn register_reschedule() {
-    Arch::register_handler(SGI_SCHED, Box::new(SchedulerIrq {}));
+    let _ = Arch::register_handler(SGI_SCHED, Box::new(SchedulerIrq {}));
     for i in 0..CPUS_NR {
         Arch::enable_irq(SGI_SCHED, i as usize);
     }

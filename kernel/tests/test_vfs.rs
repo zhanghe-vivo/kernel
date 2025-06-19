@@ -1,14 +1,18 @@
-use alloc::{format, string::String};
+#![allow(dead_code)]
+
+use alloc::string::String;
 #[cfg(procfs)]
-use bluekernel::vfs::procfs::ProcFileSystem;
+use bluekernel::{error::code, libc::O_WRONLY, vfs::procfs::ProcFileSystem};
 use bluekernel::{
-    error::{code, Error},
     println,
-    vfs::{vfs_api::*, vfs_mode::*, vfs_posix},
+    vfs::{
+        dirent::{Dirent, DirentType},
+        posix::*,
+    },
 };
 use bluekernel_test_macro::test;
-use core::ffi::{c_char, c_int, CStr};
-use libc::{ENOSYS, O_CREAT, O_RDONLY, O_RDWR, O_WRONLY, SEEK_SET};
+use core::ffi::{c_char, c_int};
+use libc::{mode_t, ENOSYS, O_CREAT, O_RDONLY, O_RDWR, SEEK_SET};
 
 #[test]
 fn vfs_test_uart() {
@@ -170,10 +174,7 @@ fn vfs_test_directory_tree() {
 
     // Create root test directory
     let root_dir = b"/test_dir\0";
-    let root_dir_str = unsafe { CStr::from_ptr(root_dir.as_ptr() as *const c_char) }
-        .to_str()
-        .unwrap();
-    let result = vfs_posix::mkdir(root_dir_str, 0o755);
+    let result = vfs_mkdir(root_dir.as_ptr() as *const c_char, 0o755);
     assert!(
         result >= 0,
         "[VFS Test DirctoryTree]: Failed to create root test directory"
@@ -181,12 +182,9 @@ fn vfs_test_directory_tree() {
 
     // Create subdirectory dir1
     let dir1 = b"/test_dir/dir1\0";
-    let dir1_str = unsafe { CStr::from_ptr(dir1.as_ptr() as *const c_char) }
-        .to_str()
-        .unwrap();
-    let result = vfs_posix::mkdir(dir1_str, 0o755);
+    let result = vfs_mkdir(dir1.as_ptr() as *const c_char, 0o755);
     if result < 0 {
-        vfs_posix::rmdir(root_dir_str);
+        vfs_rmdir(root_dir.as_ptr() as *const c_char);
         unreachable!(
             "[VFS Test DirctoryTree]: Failed to create directory dir1: {}",
             result
@@ -195,13 +193,10 @@ fn vfs_test_directory_tree() {
 
     // Create subdirectory dir2
     let dir2 = b"/test_dir/dir2\0";
-    let dir2_str = unsafe { CStr::from_ptr(dir2.as_ptr() as *const c_char) }
-        .to_str()
-        .unwrap();
-    let result = vfs_posix::mkdir(dir2_str, 0o755);
+    let result = vfs_mkdir(dir2.as_ptr() as *const c_char, 0o755);
     if result < 0 {
-        vfs_posix::rmdir(dir1_str);
-        vfs_posix::rmdir(root_dir_str);
+        vfs_rmdir(dir1.as_ptr() as *const c_char);
+        vfs_rmdir(root_dir.as_ptr() as *const c_char);
         unreachable!(
             "[VFS Test DirctoryTree]: Failed to create directory dir2: {}",
             result
@@ -210,14 +205,11 @@ fn vfs_test_directory_tree() {
 
     // Create subdirectory subdir1
     let subdir1 = b"/test_dir/dir1/subdir1\0";
-    let subdir1_str = unsafe { CStr::from_ptr(subdir1.as_ptr() as *const c_char) }
-        .to_str()
-        .unwrap();
-    let result = vfs_posix::mkdir(subdir1_str, 0o755);
+    let result = vfs_mkdir(subdir1.as_ptr() as *const c_char, 0o755);
     if result < 0 {
-        vfs_posix::rmdir(dir1_str);
-        vfs_posix::rmdir(dir2_str);
-        vfs_posix::rmdir(root_dir_str);
+        vfs_rmdir(dir1.as_ptr() as *const c_char);
+        vfs_rmdir(dir2.as_ptr() as *const c_char);
+        vfs_rmdir(root_dir.as_ptr() as *const c_char);
         unreachable!(
             "[VFS Test DirctoryTree]: Failed to create directory subdir1: {}",
             result
@@ -225,50 +217,67 @@ fn vfs_test_directory_tree() {
     }
 
     // Create test file
-    let fd = vfs_posix::open("/test_dir/dir1/file1.txt", O_CREAT | O_RDWR, 0o755);
+    let fd = vfs_open(
+        b"/test_dir/dir1/file1.txt\0".as_ptr() as *const c_char,
+        O_CREAT | O_RDWR,
+        0o755,
+    );
     if fd < 0 {
-        vfs_posix::rmdir(subdir1_str);
-        vfs_posix::rmdir(dir1_str);
-        vfs_posix::rmdir(dir2_str);
-        vfs_posix::rmdir(root_dir_str);
+        vfs_rmdir(subdir1.as_ptr() as *const c_char);
+        vfs_rmdir(dir1.as_ptr() as *const c_char);
+        vfs_rmdir(dir2.as_ptr() as *const c_char);
+        vfs_rmdir(root_dir.as_ptr() as *const c_char);
         unreachable!(
             "[VFS Test DirctoryTree]: Failed to create test file: {}",
             fd
         );
     }
-    vfs_posix::close(fd);
+    vfs_close(fd);
 
     // Verify directory structure
-    unsafe {
-        match verify_directory(b"/test_dir/dir1\0".as_ptr() as *const c_char) {
-            Ok(_) => {}
-            Err(err) => {
-                unreachable!(
-                    "[VFS Test DirctoryTree]:  Verification failed with error {}",
-                    err
-                );
-            }
+    match verify_directory(b"/test_dir/dir1\0".as_ptr() as *const c_char) {
+        Ok(_) => {}
+        Err(err) => {
+            unreachable!(
+                "[VFS Test DirctoryTree]:  Verification failed with error {}",
+                err
+            );
         }
     }
 }
 
-unsafe fn verify_directory(path: *const c_char) -> Result<(), c_int> {
-    let path_str = CStr::from_ptr(path).to_str().unwrap();
-    let Ok(dir) = vfs_posix::opendir(path_str) else {
+fn verify_directory(path: *const c_char) -> Result<(), c_int> {
+    let dir = vfs_open(path, O_RDONLY, 0o755);
+    if dir < 0 {
         return Err(-ENOSYS);
     };
 
+    let mut buf = [0u8; Dirent::SIZE * 4];
     // Print return value of each readdir call
-    while let Ok(entry) = vfs_posix::readdir(&dir) {
-        if entry.d_type == libc::DT_DIR {
-            println!("[VFS Test DirctoryTree]: Found directory: {:?}", entry);
+    let count = vfs_getdents(dir, buf.as_mut_ptr() as *mut u8, buf.len());
+    if count < 0 {
+        vfs_close(dir);
+        return Err(count);
+    }
+    for i in 0..count {
+        let entry = unsafe { Dirent::from_buf(&buf[i as usize * Dirent::SIZE..]) };
+        if entry.type_() == DirentType::Dir {
+            println!(
+                "[VFS Test DirctoryTree]: Found directory: {} {}",
+                entry.ino(),
+                entry.name()
+            );
         } else {
-            println!("[VFS Test DirctoryTree]: Found file: {:?}", entry);
+            println!(
+                "[VFS Test DirctoryTree]: Found file: {} {}",
+                entry.ino(),
+                entry.name()
+            );
         }
     }
 
     // Close directory
-    vfs_posix::closedir(dir);
+    vfs_close(dir);
     Ok(())
 }
 
@@ -438,7 +447,7 @@ fn read_fd_content(path: &str, fd: i32) -> usize {
     let mut read_buf;
     let mut read_size = 0;
     let mut result = String::new();
-    while true {
+    loop {
         read_buf = [0u8; 64];
         let tmp_size = vfs_read(fd, read_buf.as_mut_ptr(), read_buf.len());
         let tmp: alloc::borrow::Cow<'_, str> =

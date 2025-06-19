@@ -12,7 +12,6 @@ use safe_mmio::{
     fields::{ReadPure, ReadPureWrite, ReadWrite, WriteOnly},
     UniqueMmioPointer,
 };
-use thiserror::Error;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 // Register descriptions

@@ -5,10 +5,10 @@ use crate::{
     cpu::Cpu,
     sync::futex,
     thread::{ThreadBuilder, THREAD_DEFAULT_TICK},
-    vfs::vfs_posix,
+    vfs::posix,
 };
 use bluekernel_header::{syscalls::NR, thread::CloneArgs};
-use libc::{c_char, c_int, c_void, clockid_t, mode_t, size_t, timespec, EINVAL};
+use libc::{c_char, c_int, c_void, clockid_t, mode_t, size_t, timespec};
 #[repr(C)]
 #[derive(Default)]
 pub struct Context {
@@ -51,6 +51,8 @@ macro_rules! define_syscall_handler {
     ) => (
         pub mod $handler {
             use super::*;
+
+            #[allow(unused_imports)]
             use core::ffi::c_long;
 
             // FIXME: Rustc miscompiles if inlined.
@@ -59,6 +61,7 @@ macro_rules! define_syscall_handler {
                 $body
             }
 
+            #[allow(unused_variables)]
             pub fn handle_context(ctx: &Context) -> usize {
                 map_args!(ctx.args, 0 $(, $arg, $argty)*);
                 handle($($arg),*) as usize
@@ -136,54 +139,48 @@ define_syscall_handler!(
 });
 
 define_syscall_handler!(
-alloc_mem(ptr: *mut *mut c_void, size: usize, align: usize) -> c_long {
-    let addr = crate::allocator::malloc_align(size, align);
-    if addr.is_null() {
-        return -1;
+    alloc_mem(ptr: *mut *mut c_void, size: usize, align: usize) -> c_long {
+        let addr = crate::allocator::malloc_align(size, align);
+        if addr.is_null() {
+            return -1;
+        }
+        unsafe { ptr.write(addr as *mut c_void) };
+        return 0;
     }
-    unsafe { ptr.write(addr as *mut c_void) };
-    return 0;
-});
+);
 
 define_syscall_handler!(
-free_mem(ptr: *mut c_void) -> c_long {
-    crate::allocator::free(ptr as *mut u8);
-    return 0;
-});
+    free_mem(ptr: *mut c_void) -> c_long {
+        crate::allocator::free(ptr as *mut u8);
+        return 0;
+    }
+);
 
 define_syscall_handler!(
-write(fd: i32, buf: *const u8, size: usize) -> c_long {
-    unsafe {
-        vfs_posix::write(
-        fd,
-        core::slice::from_raw_parts(buf, size), size) as c_long
+    write(fd: i32, buf: *const u8, size: usize) -> c_long {
+        posix::vfs_write(fd, buf, size) as c_long
     }
-});
+);
 
 define_syscall_handler!(
     open(path: *const c_char, flags: c_int, mode: mode_t) -> c_int {
-    let path = match unsafe { core::ffi::CStr::from_ptr(path).to_str() } {
-            Ok(s) => s,
-            Err(_) => return -EINVAL,
-    };
-
-    vfs_posix::open(path, flags, mode)
+        posix::vfs_open(path, flags, mode)
     }
 );
 define_syscall_handler!(
     close(fd: c_int) -> c_int {
-        vfs_posix::close(fd)
+        posix::vfs_close(fd)
     }
 );
 define_syscall_handler!(
     read(fd: c_int, buf: *mut c_void, count: size_t) -> isize {
-        vfs_posix::read(fd, buf as *mut core::ffi::c_void, count as usize)
+        posix::vfs_read(fd, buf as *mut u8, count as usize)
     }
 );
 
 define_syscall_handler!(
     lseek(fildes: c_int, offset: usize, whence: c_int) -> c_int {
-        vfs_posix::lseek(fildes, offset as i64, whence) as c_int
+        posix::vfs_lseek(fildes, offset as i64, whence) as c_int
     }
 );
 

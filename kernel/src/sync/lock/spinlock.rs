@@ -50,6 +50,7 @@ impl Tickets {
     }
 }
 
+#[derive(Debug)]
 pub struct RawSpin {
     lock: Cell<usize>,
     #[cfg(smp)]

@@ -26,8 +26,8 @@ pub struct IrqNumber(IntId);
 impl IrqNumber {
     pub const fn new(irq: u32) -> Self {
         let id = match irq {
-            0..=PPI_START => IntId::sgi(irq),
-            PPI_START..=SPI_START => IntId::ppi(irq - PPI_START),
+            0..PPI_START => IntId::sgi(irq),
+            PPI_START..SPI_START => IntId::ppi(irq - PPI_START),
             _ => IntId::spi(irq - SPI_START),
         };
         Self(id)

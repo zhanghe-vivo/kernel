@@ -32,7 +32,7 @@ impl IrqHandler for SystickIrq {
 
 impl Systick {
     pub fn init() -> Result<(), error::Error> {
-        Arch::register_handler(TIME_IRQ_NUM, Box::new(SystickIrq {}));
+        let _ = Arch::register_handler(TIME_IRQ_NUM, Box::new(SystickIrq {}));
         unsafe {
             STEP = CNTFRQ_EL0.get() / TICK_PER_SECOND;
             CNTP_TVAL_EL0.set(STEP as u64);

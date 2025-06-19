@@ -1,14 +1,69 @@
 #[cfg(procfs)]
-pub mod procfs;
-pub mod vfs_api;
-mod vfs_devfs;
-mod vfs_dirent;
-mod vfs_fd;
-mod vfs_manager;
-mod vfs_mnt;
-pub mod vfs_mode;
-mod vfs_node;
-mod vfs_path;
-pub mod vfs_posix;
-mod vfs_tmpfs;
-pub mod vfs_traits;
+use crate::vfs::procfs::ProcFileSystem;
+use crate::{
+    error::Error,
+    vfs::{
+        fd_manager::get_fd_manager,
+        inode_mode::{InodeFileType, InodeMode},
+        tmpfs::TmpFileSystem,
+    },
+};
+use log::{debug, warn};
+
+mod dcache;
+mod devfs;
+pub mod dirent;
+mod fd_manager;
+mod file;
+mod fs;
+mod inode;
+mod inode_mode;
+mod mount;
+mod path;
+pub mod posix;
+mod root;
+mod tmpfs;
+mod utils;
+pub use file::AccessMode;
+
+/// Initialize the virtual file system  
+pub fn vfs_init() -> Result<(), Error> {
+    debug!("Initializing VFS...");
+    root::init();
+    let root = root::get_root_dir();
+    let dev_dir = root.new_child("dev", InodeFileType::Directory, InodeMode::from(0o555))?;
+    // /dev is a temporary filesystem
+    let devfs = TmpFileSystem::new();
+    match dev_dir.mount(devfs) {
+        Ok(_) => debug!("Mounted devfs at '/dev'"),
+        Err(e) => {
+            warn!("Failed to mount devfs: {}", e);
+            return Err(e);
+        }
+    }
+    devfs::init()?;
+
+    debug!("init stdio");
+    let mut fd_manager = get_fd_manager().lock();
+    fd_manager.init_stdio()?;
+
+    #[cfg(procfs)]
+    {
+        use alloc::sync::Arc;
+        // Register procfs filesystem
+        let procfs = Arc::new(ProcFileSystem::new());
+        vfs_manager.register_fs("procfs", procfs.clone())?;
+        // Mount procfs to /proc
+        if vfs_posix::mount(None, "/proc", "procfs", 0, None) == 0 {
+            debug!("Mounted procfs at '/proc'");
+        } else {
+            warn!("Failed to mount procfs");
+            return Err(code::EAGAIN);
+        }
+
+        ProcFileSystem::init()?;
+    }
+
+    debug!("VFS initialized successfully");
+    Ok(())
+}

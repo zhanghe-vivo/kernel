@@ -214,6 +214,7 @@ impl TimerWheel {
 }
 
 /// The timer structure
+#[derive(Debug)]
 #[repr(C)]
 #[pin_data]
 pub struct Timer {

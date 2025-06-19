@@ -127,7 +127,6 @@ impl ThreadState {
 
     // R is running, S is sleeping, D is sleeping in an uninterruptible wait, Z is zombie, T is traced or stopped
     pub fn to_str(&self) -> &'static str {
-        let base = self.base_state();
         if self.is_suspended() {
             Self::STATE_S_STR
         } else if self.is_close() {
@@ -273,6 +272,7 @@ struct TimeSlice {
 
 // NOTE: pin_data conflicts with cfg.
 #[cfg(mutex)]
+#[derive(Debug)]
 #[repr(C)]
 #[pin_data]
 pub(crate) struct MutexInfo {
@@ -282,6 +282,7 @@ pub(crate) struct MutexInfo {
 }
 
 #[cfg(not(mutex))]
+#[derive(Debug)]
 #[repr(C)]
 pub(crate) struct MutexInfo {}
 
@@ -325,6 +326,7 @@ struct LockInfo {
 }
 
 /// cbindgen:field-names=[parent, tlist]
+#[derive(Debug)]
 #[repr(C)]
 #[pin_data(PinnedDrop)]
 pub struct Thread {

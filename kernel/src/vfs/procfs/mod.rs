@@ -1,5 +1,5 @@
-mod vfs_procfs;
-pub use vfs_procfs::*;
+mod fs;
+pub use fs::*;
 mod proc_meminfo;
 pub use proc_meminfo::*;
 mod proc_stat;

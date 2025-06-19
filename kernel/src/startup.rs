@@ -16,7 +16,7 @@ static mut MAIN_THREAD: Thread = Thread {};
 /// The system main thread. In this thread will call the components_init().
 #[no_mangle]
 pub extern "C" fn main_thread_entry(_parameter: *mut core::ffi::c_void) {
-    match crate::vfs::vfs_api::vfs_init() {
+    match crate::vfs::vfs_init() {
         Ok(_) => (),
         Err(e) => warn!("Failed to init vfs: {}", e),
     }

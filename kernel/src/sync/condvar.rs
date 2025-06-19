@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use crate::{
     clock::WAITING_FOREVER,
     cpu::Cpu,

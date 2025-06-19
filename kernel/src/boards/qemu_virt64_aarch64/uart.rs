@@ -2,7 +2,6 @@ use super::sys_config::{APBP_CLOCK, PL011_UART0_BASE, PL011_UART0_IRQ};
 use crate::{
     arch::{
         interrupt::{IrqHandler, IrqNumber, IrqTrigger},
-        registers::cntfrq_el0::CNTFRQ_EL0,
         Arch,
     },
     devices::{
@@ -15,9 +14,8 @@ use crate::{
     },
     irq::Irq,
     sync::lock::spinlock::SpinLock,
-    vfs::vfs_mode::AccessMode,
 };
-use alloc::{boxed::Box, sync::Arc};
+use alloc::{boxed::Box, string::String, sync::Arc};
 use core::ptr::NonNull;
 use embedded_io::{ErrorKind, ErrorType, Read, ReadReady, Write, WriteReady};
 use safe_mmio::UniqueMmioPointer;
@@ -89,7 +87,7 @@ impl UartDriver {
     fn new(base: u64, irq: IrqNumber) -> Self {
         let uart_address = unsafe { UniqueMmioPointer::new(NonNull::new(base as *mut _).unwrap()) };
         let mut inner = Uart::new(uart_address);
-        inner.enable(&_19200_8_N_1, APBP_CLOCK);
+        let _ = inner.enable(&_19200_8_N_1, APBP_CLOCK);
         Self { inner, irq }
     }
 }
@@ -103,7 +101,7 @@ impl Drop for UartDriver {
 impl UartOps for UartDriver {
     fn setup(&mut self, serial_config: &SerialConfig) -> Result<(), SerialError> {
         let uart = &mut self.inner;
-        uart.enable(serial_config, APBP_CLOCK);
+        let _ = uart.enable(serial_config, APBP_CLOCK);
         uart.clear_interrupts(ALL_INTERRUPTS);
         Arch::enable_irq(self.irq, 0);
         Ok(())
@@ -167,7 +165,7 @@ impl UartOps for UartDriver {
         match DeviceRequest::from(request) {
             DeviceRequest::Config => {
                 let config = unsafe { *(arg as *const SerialConfig) };
-                self.inner.enable(&config, APBP_CLOCK);
+                let _ = self.inner.enable(&config, APBP_CLOCK);
             }
             DeviceRequest::Close => {
                 self.inner.disable();
@@ -188,8 +186,7 @@ pub fn get_early_uart() -> &'static SpinLock<dyn UartOps> {
 pub fn get_serial0() -> &'static Arc<Serial> {
     SERIAL0.call_once(|| {
         Arc::new(Serial::new(
-            "ttyS0",
-            AccessMode::O_RDWR,
+            0,
             SerialConfig::default(),
             Arc::new(SpinLock::new(UartDriver::new(
                 PL011_UART0_BASE,
@@ -216,6 +213,6 @@ impl IrqHandler for Serial0Irq {
 pub fn uart_init() -> Result<(), ErrorKind> {
     let serial0 = get_serial0();
     Arch::set_trigger(PL011_UART0_IRQ, 0, IrqTrigger::Level);
-    Arch::register_handler(PL011_UART0_IRQ, Box::new(Serial0Irq {}));
-    DeviceManager::get().register_device("ttyS0", serial0.clone())
+    let _ = Arch::register_handler(PL011_UART0_IRQ, Box::new(Serial0Irq {}));
+    DeviceManager::get().register_device(String::from("ttyS0"), serial0.clone())
 }

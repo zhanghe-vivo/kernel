@@ -44,8 +44,9 @@ impl Arch {
         }
     }
 
+    #[no_mangle]
     #[naked]
-    pub fn context_switch(from: *const usize, to: *const usize) {
+    pub unsafe extern "C" fn context_switch(from: *const usize, to: *const usize) {
         // SAFETY: Safe bare metal assembly operations
         unsafe {
             naked_asm!(concat!(

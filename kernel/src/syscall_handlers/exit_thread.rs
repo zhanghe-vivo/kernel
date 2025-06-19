@@ -8,7 +8,7 @@ pub fn handle() -> c_long {
     return -1;
 }
 
-pub fn handle_context(ctx: &Context) -> c_long {
+pub fn handle_context(_ctx: &Context) -> c_long {
     let t = unsafe { crate::current_thread!().unwrap().as_mut() };
     t.detach();
     return 0;

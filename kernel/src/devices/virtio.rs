@@ -14,10 +14,6 @@ use virtio_drivers::{
     device::{blk::VirtIOBlk, console::VirtIOConsole, net::VirtIONetRaw},
     transport::{
         mmio::{MmioError, MmioTransport, VirtIOHeader},
-        pci::{
-            bus::{MmioCam, PciRoot},
-            virtio_device_type, PciTransport,
-        },
         DeviceType, DeviceTypeError, SomeTransport, Transport,
     },
     BufferDirection, Hal, PhysAddr, PAGE_SIZE,

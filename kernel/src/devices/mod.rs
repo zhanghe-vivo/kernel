@@ -1,15 +1,15 @@
-use crate::vfs::vfs_mode::AccessMode;
-use alloc::{collections::BTreeMap, sync::Arc};
-use core::sync::atomic::{AtomicU32, Ordering};
+use crate::error::Error;
+use alloc::{collections::BTreeMap, string::String, sync::Arc};
+use core::{
+    fmt::Debug,
+    sync::atomic::{AtomicU32, Ordering},
+};
 use embedded_io::ErrorKind;
 use libc::*;
-use safe_mmio::UniqueMmioPointer;
 use spin::{Once, RwLock as SpinRwLock};
 
 pub mod console;
 mod error;
-#[cfg(fdt)]
-pub mod fdt;
 mod null;
 pub mod serial;
 #[cfg(virtio)]
@@ -21,7 +21,7 @@ mod zero;
 pub enum DeviceClass {
     Char,
     Block,
-    Net,
+    Misc,
 }
 
 /// general device commands
@@ -36,11 +36,6 @@ pub enum DeviceRequest {
     Suspend = 0x02,      // suspend device
     Config = 0x03,       // configure device
     Close = 0x04,        // close device
-    NotifySet = 0x05,    // set notify func
-    SetInt = 0x06,       // set interrupt
-    ClrInt = 0x07,       // clear interrupt
-    GetInt = 0x08,       // get interrupt status
-    ConsoleOflag = 0x09, // get console open flag
     NotSupported = 0x00, // not supported
 }
 
@@ -51,11 +46,6 @@ impl From<u32> for DeviceRequest {
             0x02 => Self::Suspend,
             0x03 => Self::Config,
             0x04 => Self::Close,
-            0x05 => Self::NotifySet,
-            0x06 => Self::SetInt,
-            0x07 => Self::ClrInt,
-            0x08 => Self::GetInt,
-            0x09 => Self::ConsoleOflag,
             _ => Self::NotSupported,
         }
     }
@@ -66,32 +56,13 @@ pub const DEVICE_GENERAL_REQUEST_MASK: u32 = 0x1f;
 
 #[derive(Debug)]
 pub struct DeviceBase {
-    pub name: &'static str,
     pub open_count: AtomicU32,
-    pub class: DeviceClass,
-    pub access_mode: AccessMode,
 }
 
 impl DeviceBase {
-    pub fn new(name: &'static str, device_class: DeviceClass, access_mode: AccessMode) -> Self {
+    pub fn new() -> Self {
         Self {
-            name,
             open_count: AtomicU32::new(0),
-            class: device_class,
-            access_mode,
-        }
-    }
-
-    pub fn check_permission(&self, oflag: i32) -> Result<(), ErrorKind> {
-        let access_mode = AccessMode::from(oflag);
-
-        // Check if requested access mode is compatible with device's access mode
-        match (access_mode, self.access_mode) {
-            (AccessMode::O_RDONLY, AccessMode::O_WRONLY)
-            | (AccessMode::O_WRONLY, AccessMode::O_RDONLY)
-            | (AccessMode::O_RDWR, AccessMode::O_WRONLY)
-            | (AccessMode::O_RDWR, AccessMode::O_RDONLY) => Err(ErrorKind::PermissionDenied),
-            _ => Ok(()),
         }
     }
 
@@ -106,58 +77,57 @@ impl DeviceBase {
     pub fn is_opened(&self) -> bool {
         self.open_count.load(Ordering::Relaxed) > 0
     }
-
-    pub fn name(&self) -> &'static str {
-        self.name
-    }
-
-    pub fn class(&self) -> DeviceClass {
-        self.class
-    }
-
-    pub fn access_mode(&self) -> AccessMode {
-        self.access_mode
-    }
-
-    pub fn set_name(&mut self, name: &'static str) {
-        self.name = name;
-    }
-
-    pub fn set_access_mode(&mut self, access_mode: AccessMode) {
-        self.access_mode = access_mode;
-    }
 }
 
+#[allow(unused)]
 #[derive(Debug, Clone, Copy)]
 pub struct DeviceId {
     major: u32,
     minor: u32,
 }
 
+#[allow(unused_variables)]
 pub trait Device: Send + Sync {
-    fn name(&self) -> &'static str;
+    fn name(&self) -> String;
     fn class(&self) -> DeviceClass;
-    fn access_mode(&self) -> AccessMode;
     fn id(&self) -> DeviceId;
-    fn read(&self, pos: usize, buf: &mut [u8], is_blocking: bool) -> Result<usize, ErrorKind>;
-    fn write(&self, pos: usize, buf: &[u8], is_blocking: bool) -> Result<usize, ErrorKind>;
-    fn open(&self, oflag: i32) -> Result<(), ErrorKind>;
-    fn close(&self) -> Result<(), ErrorKind>;
-    fn ioctl(&self, _request: u32, _arg: usize) -> Result<(), ErrorKind> {
+    fn open(&self) -> Result<(), ErrorKind> {
+        Ok(())
+    }
+    fn close(&self) -> Result<(), ErrorKind> {
+        Ok(())
+    }
+    fn read(&self, pos: usize, buf: &mut [u8], is_nonblocking: bool) -> Result<usize, ErrorKind>;
+    fn write(&self, pos: usize, buf: &[u8], is_nonblocking: bool) -> Result<usize, ErrorKind>;
+    fn ioctl(&self, request: u32, arg: usize) -> Result<(), ErrorKind> {
         Err(ErrorKind::Unsupported)
+    }
+}
+
+impl Debug for dyn Device {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        f.debug_struct("Device")
+            .field("name", &self.name())
+            .field("class", &self.class())
+            .field("id", &self.id())
+            .finish()
     }
 }
 
 static DEVICE_MANAGER: Once<DeviceManager> = Once::new();
 
 pub struct DeviceManager {
-    pub devices: SpinRwLock<BTreeMap<&'static str, Arc<dyn Device>>>,
+    pub char_devices: SpinRwLock<BTreeMap<String, Arc<dyn Device>>>,
+    pub block_devices: SpinRwLock<BTreeMap<String, Arc<dyn Device>>>,
+    pub misc_devices: SpinRwLock<BTreeMap<String, Arc<dyn Device>>>,
 }
 
 impl DeviceManager {
     pub fn new() -> Self {
         Self {
-            devices: SpinRwLock::new(BTreeMap::new()),
+            char_devices: SpinRwLock::new(BTreeMap::new()),
+            block_devices: SpinRwLock::new(BTreeMap::new()),
+            misc_devices: SpinRwLock::new(BTreeMap::new()),
         }
     }
 
@@ -166,48 +136,75 @@ impl DeviceManager {
     }
 
     pub fn get_device_number(&self) -> usize {
-        self.devices.read().len()
+        self.char_devices.read().len()
+            + self.block_devices.read().len()
+            + self.misc_devices.read().len()
     }
 
-    pub fn find_device(&self, name: &str) -> Result<Arc<dyn Device>, ErrorKind> {
-        self.devices
-            .read()
-            .get(name)
-            .map_or(Err(ErrorKind::NotFound), |device| Ok(device.clone()))
-    }
-
-    pub fn register_device(
-        &self,
-        name: &'static str,
-        dev: Arc<dyn Device>,
-    ) -> Result<(), ErrorKind> {
-        let mut devices = self.devices.write();
-        if devices.contains_key(name) {
-            return Err(ErrorKind::AlreadyExists);
-        }
-        devices.insert(name, dev);
+    pub fn register_device(&self, name: String, dev: Arc<dyn Device>) -> Result<(), ErrorKind> {
+        match dev.class() {
+            DeviceClass::Char => {
+                let mut devices = self.char_devices.write();
+                devices
+                    .try_insert(name, dev)
+                    .map_err(|_| ErrorKind::AlreadyExists)?;
+            }
+            DeviceClass::Block => {
+                let mut devices = self.block_devices.write();
+                devices
+                    .try_insert(name, dev)
+                    .map_err(|_| ErrorKind::AlreadyExists)?;
+            }
+            DeviceClass::Misc => {
+                let mut devices = self.misc_devices.write();
+                devices
+                    .try_insert(name, dev)
+                    .map_err(|_| ErrorKind::AlreadyExists)?;
+            }
+        };
         Ok(())
     }
 
-    pub fn unregister_device(&self, name: &str) -> Result<(), ErrorKind> {
-        let mut devices = self.devices.write();
-        devices.remove(name);
-        Ok(())
+    pub fn get_block_device(&self, str: &str) -> Option<Arc<dyn Device>> {
+        self.block_devices.read().get(str).cloned()
     }
 
-    pub fn foreach<F>(&self, callback: F) -> Result<(), ErrorKind>
+    pub fn get_char_device(&self, str: &str) -> Option<Arc<dyn Device>> {
+        self.char_devices.read().get(str).cloned()
+    }
+
+    pub fn get_misc_device(&self, str: &str) -> Option<Arc<dyn Device>> {
+        self.misc_devices.read().get(str).cloned()
+    }
+
+    pub fn foreach<F>(&self, callback: F) -> Result<(), Error>
     where
-        F: Fn(&'static str, Arc<dyn Device>) -> Result<(), ErrorKind>,
+        F: Fn(&str, Arc<dyn Device>) -> Result<(), Error>,
     {
-        for (name, device) in self.devices.read().iter() {
-            callback(name, device.clone())?
+        {
+            let char_devices = self.char_devices.read();
+            for (name, device) in char_devices.iter() {
+                callback(name, device.clone())?
+            }
+        }
+        {
+            let block_devices = self.block_devices.read();
+            for (name, device) in block_devices.iter() {
+                callback(name, device.clone())?
+            }
+        }
+        {
+            let misc_devices = self.misc_devices.read();
+            for (name, device) in misc_devices.iter() {
+                callback(name, device.clone())?
+            }
         }
         Ok(())
     }
 }
 
-pub fn init() -> Result<(), ErrorKind> {
-    null::Null::register()?;
-    zero::Zero::register()?;
+pub fn init() -> Result<(), Error> {
+    null::Null::register().map_err(|e| Error::from(e))?;
+    zero::Zero::register().map_err(|e| Error::from(e))?;
     Ok(())
 }

@@ -10,6 +10,7 @@ pub const PL011_UART0_IRQ: IrqNumber = IrqNumber::new(33);
 
 pub const HEAP_SIZE: u64 = 16 * 1024 * 1024;
 
+#[allow(dead_code)]
 pub fn get_system_core_clock() -> u64 {
     CNTFRQ_EL0.get()
 }

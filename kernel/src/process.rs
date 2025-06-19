@@ -28,6 +28,8 @@ unsafe impl PinInit<Kprocess> for KprocessInit {
 #[pin_data]
 pub(crate) struct Kprocess {
     base: KObjectBase,
+    lock: RawSpin,
+    pid: u64,
     ///not use yet
     #[pin]
     sibling: LinkedListNode,
@@ -65,11 +67,6 @@ pub(crate) struct Kprocess {
     mempool: ListHead,
     #[pin]
     timer: ListHead,
-    #[cfg(heap)]
-    #[pin]
-    memory: ListHead,
-    pub(crate) pid: u64,
-    lock: RawSpin,
 }
 
 impl Kprocess {
@@ -105,8 +102,6 @@ impl Kprocess {
             #[cfg(mempool)]
             let _ = ListHead::new().__pinned_init(&mut cur_ref.mempool as *mut ListHead);
             let _ = ListHead::new().__pinned_init(&mut cur_ref.timer as *mut ListHead);
-            #[cfg(heap)]
-            let _ = ListHead::new().__pinned_init(&mut cur_ref.memory as *mut ListHead);
             cur_ref.pid = 0;
             cur_ref.lock = RawSpin::new();
             Ok(())
@@ -115,6 +110,7 @@ impl Kprocess {
     }
 
     #[inline(always)]
+    #[allow(dead_code)]
     pub(crate) fn aquire_lock(&self) -> RawSpinGuard<'_> {
         self.lock.acquire()
     }
@@ -144,8 +140,6 @@ impl Kprocess {
             #[cfg(mempool)]
             ObjectClassType::ObjectClassMemPool => &mut process.mempool,
             ObjectClassType::ObjectClassTimer => &mut process.timer,
-            #[cfg(heap)]
-            ObjectClassType::ObjectClassMemory => &mut process.memory,
             _ => unreachable!("not a kernel object type!"),
         }
     }
@@ -175,8 +169,6 @@ impl Kprocess {
             #[cfg(mempool)]
             ObjectClassType::ObjectClassMemPool => &process.mempool,
             ObjectClassType::ObjectClassTimer => &process.timer,
-            #[cfg(heap)]
-            ObjectClassType::ObjectClassMemory => &process.memory,
             _ => unreachable!("not a kernel object type!"),
         }
     }

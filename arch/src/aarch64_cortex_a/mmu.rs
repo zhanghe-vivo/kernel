@@ -150,11 +150,13 @@ impl PageTableManager {
     }
 
     fn init() {
-        let table = unsafe { &mut TABLE_MANAGER };
-        // 1 GiB of device memory.
-        table.0[0].set(0x0, MemAttributes::Device);
-        // 1 GiB of normal memory.
-        table.0[1].set(0x40080000, MemAttributes::Normal);
+        unsafe {
+            let table = &raw mut TABLE_MANAGER;
+            // 1 GiB of device memory.
+            (*table).0[0].set(0x0, MemAttributes::Device);
+            // 1 GiB of normal memory.
+            (*table).0[1].set(0x40080000, MemAttributes::Normal);
+        }
     }
 }
 

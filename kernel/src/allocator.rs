@@ -1,7 +1,6 @@
 //! Extensions to the [`alloc`] crate.
 
-#![warn(missing_docs)]
-use crate::{bluekernel_kconfig::ALIGN_SIZE, static_init::UnsafeStaticInit};
+use crate::bluekernel_kconfig::ALIGN_SIZE;
 use core::{
     alloc::{GlobalAlloc, Layout},
     ptr,
@@ -297,14 +296,4 @@ pub struct MemoryInfo {
     pub total: usize,
     pub used: usize,
     pub max_used: usize,
-}
-
-impl MemoryInfo {
-    pub(crate) fn new(total: usize, used: usize, max_used: usize) -> MemoryInfo {
-        MemoryInfo {
-            total,
-            used,
-            max_used,
-        }
-    }
 }

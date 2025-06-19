@@ -4,7 +4,7 @@ use bluekernel::{
     thread::{Thread, ThreadBuilder},
 };
 use bluekernel_test_macro::test;
-use core::{str, sync::atomic::AtomicUsize};
+use core::str;
 
 use smoltcp::{
     iface::{Config, Interface, SocketSet},
@@ -38,13 +38,13 @@ mod mock {
 
 // Run smoltcp socket test on loopback device.
 // WARNING: Do not run this test in the main thread to prevent stack overflow.
-extern "C" fn thread_entry(arg: *mut core::ffi::c_void) {
+extern "C" fn thread_entry(_arg: *mut core::ffi::c_void) {
     let clock = mock::Clock::new();
     let mut device = Loopback::new(Medium::Ethernet);
 
     println!("[smoltcp Tcp Socket Test]: Create interface with loopback device");
     // Create interface
-    let mut config = match device.capabilities().medium {
+    let config = match device.capabilities().medium {
         Medium::Ethernet => {
             Config::new(EthernetAddress([0x02, 0x00, 0x00, 0x00, 0x00, 0x01]).into())
         }
@@ -94,7 +94,7 @@ extern "C" fn thread_entry(arg: *mut core::ffi::c_void) {
     while !done && clock.elapsed() < Instant::from_millis(10_000) {
         iface.poll(clock.elapsed(), &mut device, &mut sockets);
 
-        let mut socket = sockets.get_mut::<tcp::Socket>(server_handle);
+        let socket = sockets.get_mut::<tcp::Socket>(server_handle);
         if !socket.is_active() && !socket.is_listening() {
             if !did_listen {
                 println!("[smoltcp Tcp Socket Test]: Socket listening");
@@ -112,7 +112,7 @@ extern "C" fn thread_entry(arg: *mut core::ffi::c_void) {
             done = true;
         }
 
-        let mut socket = sockets.get_mut::<tcp::Socket>(client_handle);
+        let socket = sockets.get_mut::<tcp::Socket>(client_handle);
         let cx = iface.context();
         if !socket.is_open() {
             if !did_connect {
