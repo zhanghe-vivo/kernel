@@ -5,7 +5,6 @@ use crate::{
     arch::Arch, bluekernel_kconfig::CPUS_NR, process, scheduler::Scheduler,
     static_init::UnsafeStaticInit, sync::RawSpin, thread,
 };
-
 use core::{
     ptr::NonNull,
     sync::atomic::{AtomicU32, Ordering},

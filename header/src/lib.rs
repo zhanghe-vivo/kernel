@@ -6,16 +6,13 @@ pub mod syscalls {
     #[repr(usize)]
     #[derive(Copy, Clone)]
     pub enum NR {
-        // For test only.
         Nop,
-        // For test only.
         Echo,
         GetTid,
         CreateThread,
         ExitThread,
         AtomicWait,
         AtomicWake,
-        // For test only
         ClockGetTime,
         AllocMem,
         FreeMem,
@@ -24,6 +21,7 @@ pub mod syscalls {
         Read,
         Open,
         Lseek,
+        SchedYield,
         LastNR,
     }
 }
@@ -33,9 +31,9 @@ pub mod thread {
     pub const DEFAULT_STACK_SIZE: usize = 16384; // 16 kb
     #[cfg(release)]
     pub const DEFAULT_STACK_SIZE: usize = 12288; // 12 kb
-    #[cfg(not(target_arch = "aarch64"))]
+    #[cfg(target_pointer_width = "32")]
     pub const STACK_ALIGN: usize = core::mem::size_of::<usize>();
-    #[cfg(target_arch = "aarch64")]
+    #[cfg(target_pointer_width = "64")]
     pub const STACK_ALIGN: usize = 16;
 
     #[repr(C)]

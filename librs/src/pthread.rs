@@ -11,7 +11,7 @@ use crate::{
 use alloc::{collections::btree_map::BTreeMap, sync::Arc, vec::Vec};
 #[allow(unused_imports)]
 use bluekernel_header::{
-    syscalls::NR::{CreateThread, ExitThread, GetTid},
+    syscalls::NR::{CreateThread, ExitThread, GetTid, SchedYield},
     thread::{CloneArgs, DEFAULT_STACK_SIZE, STACK_ALIGN},
 };
 use bluekernel_scal::bk_syscall;
@@ -253,7 +253,7 @@ pub extern "C" fn pthread_detach(t: pthread_t) -> c_int {
         .detached
         .compare_exchange(0, 1, Ordering::SeqCst, Ordering::Relaxed);
     if let Err(failed_val) = old_val {
-        if failed_val == -1 {
+        if failed_val != 1 {
             return EINVAL;
         } else {
             return 0;
@@ -264,7 +264,7 @@ pub extern "C" fn pthread_detach(t: pthread_t) -> c_int {
 }
 
 fn register_posix_tcb(tid: usize, clone_args: &CloneArgs) {
-    let tid = tid as pthread_t;
+    let tid: pthread_t = unsafe { core::mem::transmute(tid) };
     {
         let tcb = Arc::new(RwLock::new(PthreadTcb {
             kv: RwLock::new(BTreeMap::new()),
@@ -274,7 +274,8 @@ fn register_posix_tcb(tid: usize, clone_args: &CloneArgs) {
             waitval: Waitval::new(),
         }));
         let mut write = TCBS.write();
-        write.insert(tid, tcb);
+        let ret = write.insert(tid, tcb);
+        assert!(ret.is_none());
     }
 }
 
@@ -317,12 +318,12 @@ pub extern "C" fn pthread_create(
         stack_start: stack_start,
         stack_size: stack_size,
     };
-    let tid = bk_syscall!(CreateThread, &clone_args as *const CloneArgs) as c_int;
-    if tid == -1 {
+    let tid = bk_syscall!(CreateThread, &clone_args as *const CloneArgs) as pthread_t;
+    if tid == !0 {
         unsafe { free(stack_start as *mut libc::c_void) };
         return -1;
     }
-    unsafe { *thread = tid as pthread_t };
+    unsafe { thread.write_volatile(tid) };
     0
 }
 
@@ -419,7 +420,7 @@ pub extern "C" fn pthread_getspecific(key: pthread_key_t) -> *mut c_void {
     }
     let tid = pthread_self();
     let Some(tcb) = get_tcb(tid) else {
-        panic!("{:x}: My tcb is gone!", tid)
+        panic!("0x{:x}: My tcb is gone!", tid)
     };
     {
         let read_tcb = tcb.read();
@@ -913,5 +914,16 @@ mod tests {
         check_size!(sem_t, RsSemaphore);
         check_align!(pthread_spinlock_t, RsSpinlock);
         check_size!(pthread_spinlock_t, RsSpinlock);
+    }
+
+    #[test]
+    fn stress_sched_yield() {
+        {
+            let n = 16;
+            for i in 0..n {
+                #[cfg(target_arch = "riscv64")]
+                bk_syscall!(SchedYield);
+            }
+        }
     }
 }

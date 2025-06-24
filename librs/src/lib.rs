@@ -18,7 +18,10 @@
 #![feature(atomic_from_mut)]
 #![feature(c_variadic)]
 #![feature(array_ptr_get)]
+
 extern crate alloc;
+#[cfg(test)]
+extern crate rsrt;
 // We don't expose any interfaces or types externally, rust-lang/libc is doing that.
 pub mod c_str;
 pub mod ctype;
@@ -99,7 +102,7 @@ pub unsafe extern "C" fn _Unwind_GetIP(_context: *mut core::ffi::c_void) -> core
 }
 
 #[cfg(test)]
-use bluekernel::println;
+use semihosting::println;
 
 #[cfg(test)]
 pub fn librs_test_runner(tests: &[&dyn Fn()]) {
@@ -122,7 +125,7 @@ extern "C" fn posix_main(_: *mut core::ffi::c_void) -> *mut core::ffi::c_void {
 
 #[cfg(test)]
 #[no_mangle]
-fn main() -> i32 {
+extern "C" fn main() -> i32 {
     use libc::pthread_t;
     use pthread::{pthread_create, pthread_join};
     // We must enter POSIX subsystem first to perform pthread testing.

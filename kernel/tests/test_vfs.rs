@@ -4,15 +4,16 @@ use alloc::string::String;
 #[cfg(procfs)]
 use bluekernel::{error::code, libc::O_WRONLY, vfs::procfs::ProcFileSystem};
 use bluekernel::{
-    println,
+    error::{code, Error},
     vfs::{
         dirent::{Dirent, DirentType},
         posix::*,
     },
 };
 use bluekernel_test_macro::test;
-use core::ffi::{c_char, c_int};
-use libc::{mode_t, ENOSYS, O_CREAT, O_RDONLY, O_RDWR, SEEK_SET};
+use core::ffi::{c_char, c_int, CStr};
+use libc::{ENOSYS, O_CREAT, O_RDONLY, O_RDWR, O_WRONLY, SEEK_SET};
+use semihosting::println;
 
 #[test]
 fn vfs_test_uart() {
@@ -51,7 +52,7 @@ fn vfs_test_read_and_write() {
     let flags = O_CREAT | O_RDWR;
 
     // Default file permissions: 644
-    let mode: mode_t = 0o644;
+    let mode: libc::mode_t = 0o644;
 
     let fd = vfs_open(path_ptr, flags, mode);
     assert!(fd >= 0, "[VFS Test Read/Write]  Failed to open file");

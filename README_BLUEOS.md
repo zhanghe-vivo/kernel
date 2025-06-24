@@ -1,5 +1,5 @@
-# BlueOS
-BlueOS是vivo自研的实时操作系统。
+# BlueKernel
+BlueKernel是vivo用Rust语言自研的操作系统内核。
 
 ## 准备工作
 
@@ -10,8 +10,8 @@ BlueOS是vivo自研的实时操作系统。
 sudo apt update
 sudo apt install -y libclang-dev \
                     gcc-arm-none-eabi \
-										gcc-arm-linux-gnueabihf \
-										gcc-aarch64-linux-gnu
+                    gcc-arm-linux-gnueabihf \
+                    gcc-aarch64-linux-gnu
 ```
 #### 类Fedora发行版
 ```

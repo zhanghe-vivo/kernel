@@ -3,17 +3,17 @@
 // ASSERT-FAIL: Backtrace in Panic.*
 #![no_std]
 #![allow(internal_features)]
+#![feature(alloc_error_handler)]
+#![feature(alloc_layout_extra)]
+#![feature(allocator_api)]
+#![feature(c_size_t)]
+#![feature(c_variadic)]
 #![feature(core_intrinsics)]
+#![feature(coverage_attribute)]
 #![feature(link_llvm_intrinsics)]
 #![feature(linkage)]
-#![feature(allocator_api)]
-#![feature(alloc_layout_extra)]
-#![feature(c_size_t)]
-#![feature(alloc_error_handler)]
-#![feature(c_variadic)]
-#![feature(naked_functions)]
 #![feature(macro_metavar_expr)]
-#![feature(pointer_is_aligned_to)]
+#![feature(naked_functions)]
 #![feature(new_zeroed_alloc)]
 #![feature(coverage_attribute)]
 #![feature(map_try_insert)]
@@ -37,7 +37,6 @@ pub mod console;
 pub mod cpu;
 pub mod devices;
 pub mod error;
-mod ext_types;
 pub mod idle;
 pub mod irq;
 mod logger;

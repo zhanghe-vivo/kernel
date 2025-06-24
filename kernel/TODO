@@ -1,0 +1,7 @@
+- We should consider introducing a descriptive DSL to describe a board
+and orchestrate components together to make a functional board. Less
+code is better.
+
+- We have implemented QEMU checker to abort or exit a test, however
+it's not enough for validating functionalities. We might introduce
+`FileCheck` to validate output of tests.

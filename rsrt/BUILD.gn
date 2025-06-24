@@ -1,0 +1,26 @@
+import("//build/templates/build_template.gni")
+
+group("check_rsrt") {
+  testonly = true
+  deps = [
+    ":rsrt",
+    ":rsrt_std",
+  ]
+}
+
+build_rust("rsrt") {
+  crate_type = "rlib"
+  sources = [ "src/lib.rs" ]
+  deps = [
+    "//external/semihosting/v0.1.20:semihosting",
+    "//kernel/kernel:bluekernel",
+  ]
+}
+
+build_rust("rsrt_std") {
+  crate_type = "rlib"
+  crate_name = "rsrt"
+  cfgs = [ "feature=\"std\"" ]
+  sources = [ "src/lib.rs" ]
+  deps = [ "//kernel/kernel:bluekernel" ]
+}

@@ -570,6 +570,7 @@ mod tests {
     extern crate test;
 
     use alloc::boxed::Box;
+    use test::Bencher;
 
     use super::*;
 
@@ -836,6 +837,31 @@ mod tests {
 
         list.clear();
         assert!(list.is_empty());
+    }
+
+    #[bench]
+    fn bench_ops(b: &mut Bencher) {
+        b.iter(|| {
+            let mut list = LinkedList::new();
+            let operations = 1 << 16;
+
+            for i in 0..operations {
+                match i % 4 {
+                    0 => list.push_back(i),
+                    1 => list.push_front(i),
+                    2 => {
+                        let _ = list.pop_back();
+                    }
+                    3 => {
+                        let _ = list.pop_front();
+                    }
+                    _ => unreachable!(),
+                }
+            }
+
+            list.clear();
+            assert!(list.is_empty());
+        });
     }
 
     #[test]

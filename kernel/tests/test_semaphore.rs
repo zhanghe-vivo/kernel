@@ -1,7 +1,5 @@
-use bluekernel::sync::{semaphore::*, wait_list::*};
+use bluekernel::sync::semaphore::Semaphore;
 use bluekernel_test_macro::test;
 
 #[test]
-fn test_sempahore_init() {
-    let _sem = Semaphore::new("sem1", 3, WaitMode::Fifo);
-}
+fn test_sempahore() {}

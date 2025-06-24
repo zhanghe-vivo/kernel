@@ -1,4 +1,4 @@
-// NEWLINE-TIMEOUT: 10
+// TOTAL-TIMEOUT: 4
 // ASSERT-SUCC: Librs integration test ended
 // ASSERT-FAIL: Backtrace in Panic.*
 #![no_main]
@@ -10,16 +10,20 @@
 #![feature(thread_local)]
 #![feature(c_variadic)]
 
-use bluekernel::println;
+extern crate rsrt;
+
+use bluekernel::{allocator, thread::Thread};
 use core::ffi::c_void;
 use libc::pthread_t;
-use librs::pthread::{pthread_create, pthread_join};
+use librs::pthread::{pthread_create, pthread_join, pthread_self};
+use semihosting::println;
 
 mod ctype;
 mod pthread;
 mod scal;
 
-pub fn librs_test_runner(tests: &[&dyn Fn()]) {
+#[inline(never)]
+fn librs_test_runner(tests: &[&dyn Fn()]) {
     println!("Librs integration test started");
     println!("Running {} tests", tests.len());
     for test in tests {

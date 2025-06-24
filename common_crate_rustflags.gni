@@ -40,51 +40,24 @@ if (board == "qemu_mps2_an385") {
 }
 
 common_gcc_rustflags = [
-  "-C",
-  "link-arg=-nostartfiles",
-  "-C",
-  "link-arg=-lgcc",
-
-  # "-C",
-  # "linker=arm-none-eabi-ld",
-  "-C",
-  "link-arg=-Wl,--gc-sections",
-]
-
-common_lld_rustflags = [
-  # # use lld to link
-  # # Tell rustc to use the LLVM linker. This avoids needing GCC as a dependency
-  # # to build the kernel.
-  "-C",
-  "linker=rust-lld",
-
-  # # Use the LLVM lld executable with the `-flavor gnu` flag.
-  # "-C",
-  # "linker-flavor=ld.lld",
-  "-C",
-  "link-arg=--gc-sections",
+  "-Clink-arg=-nostartfiles",
+  "-Clink-arg=-lgcc",
 ]
 
 common_image_rustflags = [
-  "-C",
-  "panic=abort",
-  "-C",
-  "link-arg=--enable-non-contiguous-regions",
-
-  # Enable link-time-optimization
-  "-C",
-  "lto",
+  "-Cpanic=abort",
 
   # Have rustc generate stack sizes for analyzing the size of stack frames.
   "-Z",
   "emit-stack-sizes",
-
-  # custom link script
-  "-C",
-  "link-arg=-T" + rebase_path("//kernel/kernel/src/boards/$board/link.x"),
+  "-Clink-arg=-T" + rebase_path("//kernel/kernel/src/boards_ng/$board/link.x"),
 ]
 
-common_image_rustflags += common_crate_rustflags + common_gcc_rustflags
+if ("$board" == "qemu_riscv64") {
+  common_image_rustflags += common_crate_rustflags
+} else {
+  common_image_rustflags += common_crate_rustflags + common_gcc_rustflags
+}
 
 test_image_rustflags = [
   # unstable rust custom test framework
@@ -93,3 +66,11 @@ test_image_rustflags = [
   "panic-abort-tests",
 ]
 test_image_rustflags += common_image_rustflags
+
+qemu_riscv64_run_args = "-bios none -smp 32 "
+
+bluekernel_default_cfgs = [
+  "target_board=\"$board\"",
+  "scheduler=\"global\"",
+  "allocator=\"tlsf\"",
+]

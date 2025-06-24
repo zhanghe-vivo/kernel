@@ -62,6 +62,15 @@ fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
 #[no_mangle]
 #[repr(align(8))]
 pub extern "C" fn _start() {
+    // FIXME: Generally we need toolchains able to build static-pie,
+    // thus we have dynamic relocation entres to relocate .got
+    // entries. GNU's ld targeted bare-metal targets failed to
+    // generate static-pie ELF. That's to say, currently the ELF file
+    // is of type EXEC, however we need it to be DYN.
+    // Also libcore, liballoc should be built with -fpic
+    // enabled. Currently non-riscv targets just passes the test by
+    // luck.
+    #[cfg(not(any(target_arch = "riscv64", target_arch = "arm", target_arch = "aarch64")))]
     assert_eq!(main(42), 42);
 }
 

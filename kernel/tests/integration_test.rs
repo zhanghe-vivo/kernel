@@ -1,4 +1,4 @@
-// NEWLINE-TIMEOUT: 15
+// TOTAL-TIMEOUT: 4
 // ASSERT-SUCC: Kernel integration test end.
 // ASSERT-FAIL: Backtrace in Panic.*
 #![no_main]
@@ -8,7 +8,9 @@
 #![reexport_test_harness_main = "kernel_test_main"]
 
 extern crate alloc;
-use bluekernel::{allocator, println};
+extern crate rsrt;
+use bluekernel::allocator;
+use semihosting::println;
 
 mod test_futex;
 mod test_net_smoltcp;

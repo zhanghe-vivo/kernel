@@ -1,5 +1,5 @@
 //! Provides [`BinInteger`], a trait for types like `u8` and `u32`.
-#![allow(unstable_name_collisions)] // `$ty::BITS`
+#![allow(unstable_name_collisions)]
 #![allow(dead_code)]
 use core::{fmt, marker, ops};
 

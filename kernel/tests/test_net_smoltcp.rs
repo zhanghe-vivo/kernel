@@ -1,11 +1,14 @@
 use bluekernel::{
-    bluekernel_kconfig::MAIN_THREAD_PRIORITY,
-    println,
-    thread::{Thread, ThreadBuilder},
+    allocator, scheduler,
+    sync::atomic_wait as futex,
+    thread::{Builder as ThreadBuilder, Entry, Stack, Thread},
 };
 use bluekernel_test_macro::test;
-use core::str;
-
+use core::{
+    str,
+    sync::atomic::{AtomicUsize, Ordering},
+};
+use semihosting::println;
 use smoltcp::{
     iface::{Config, Interface, SocketSet},
     phy::{Device, Loopback, Medium},
@@ -35,6 +38,8 @@ mod mock {
         }
     }
 }
+
+static DONE: AtomicUsize = AtomicUsize::new(0);
 
 // Run smoltcp socket test on loopback device.
 // WARNING: Do not run this test in the main thread to prevent stack overflow.
@@ -148,24 +153,21 @@ extern "C" fn thread_entry(_arg: *mut core::ffi::c_void) {
         done,
         "[smoltcp Tcp Socket Test]: Bailing out: socket test took too long on loopback device"
     );
+    DONE.store(1, Ordering::Relaxed);
+    futex::atomic_wake(&DONE as *const _ as usize, 1);
 }
 
 #[test]
 fn test_smoltcp() {
     println!("[smoltcp Integration Test] Enter test_loopback_in_thread");
-
-    // Create new thread using ThreadBuilder
-    let thread = ThreadBuilder::default()
-        .name(unsafe { core::ffi::CStr::from_bytes_with_nul_unchecked(b"smoltcp\0") })
-        .entry_fn(thread_entry)
-        .stack_size(32768) // 32KB stack
-        .priority(MAIN_THREAD_PRIORITY.try_into().unwrap()) // share cpu time with main thread
-        .tick(50)
-        .build_from_heap()
-        .expect("Failed to create smoltcp test thread");
-
-    unsafe { (&mut *thread.as_ptr()).start() };
-
-    // Sleep a bit to ensure thread starts
-    let _ = Thread::msleep(1000);
+    let size = 32 << 10;
+    let base = allocator::malloc_align(size, 16);
+    let t = ThreadBuilder::new(Entry::Posix(thread_entry, core::ptr::null_mut()))
+        .set_stack(Stack::Raw {
+            base: base as usize,
+            size,
+        })
+        .start();
+    futex::atomic_wait(&DONE as *const _ as usize, 0, None);
+    allocator::free_align(base, 16);
 }

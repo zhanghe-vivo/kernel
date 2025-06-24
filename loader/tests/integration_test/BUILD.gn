@@ -13,13 +13,14 @@ build_rust("loader_integration_test") {
     "//kernel/librs:librs",
     "//kernel/loader:bluekernel_loader",
     "//kernel/loader/tests/inputs",
+    "//kernel/rsrt:rsrt",
     "//libc:libc",
   ]
   if (coverage || profile) {
     deps += [ "//kernel/loader:common_cov" ]
   }
   proc_macro_deps = [ "//kernel/test_harness:bluekernel_test_macro" ]
-  inputs = [ "//kernel/kernel/src/boards/$board/link.x" ]
+  inputs = [ "//kernel/kernel/src/boards_ng/$board/link.x" ]
   rustflags = test_image_rustflags
 }
 
@@ -31,6 +32,8 @@ gen_qemu_runner("loader_integration_test_runner") {
   semihosting = true
   if ("$board" == "qemu_virt64_aarch64") {
     qemu_args = "-cpu cortex-a53 -net none -chardev stdio,id=con,mux=on -serial chardev:con -mon chardev=con,mode=readline"
+  } else if ("$board" == "qemu_riscv64") {
+    qemu_args = qemu_riscv64_run_args
   }
 }
 

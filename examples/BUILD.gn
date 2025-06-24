@@ -4,8 +4,10 @@ import("//kernel/common_crate_rustflags.gni")
 
 group("run_examples") {
   deps = [ ":tty_loopback_runner($kernel_toolchain)" ]
-  # TODO: Fix the bug and reopen me!
-  # deps += [ ":run_std_thread_demo($libc_toolchain)" ]
+  # FIXME: We have plenty of symbols not implemented in librs.
+  # It worked with fake implementations, however we need canonical
+  # implementations.
+  #deps += [ ":run_std_thread_demo($libc_toolchain)" ]
 }
 
 common_deps = []
@@ -22,11 +24,12 @@ build_rust("tty_loopback") {
   deps = [
     "//external/log/v0.4.22:log",
     "//kernel/kernel:bluekernel",
+    "//kernel/rsrt:rsrt",
     "//libc:libc",
   ]
   deps += common_deps
 
-  inputs = [ "//kernel/kernel/src/boards/$board/link.x" ]
+  inputs = [ "//kernel/kernel/src/boards_ng/$board/link.x" ]
   rustflags = common_image_rustflags
   rustflags += common_crate_rustflags
 }
@@ -40,73 +43,29 @@ gen_qemu_runner("tty_loopback_runner") {
   }
 }
 
-if (direct_syscall_handler) {
-  executable("std_thread_demo") {
-    crate_name = "std_thread_demo"
-    crate_type = "bin"
-
-    sources = [ "std_thread/src/main.rs" ]
-    deps = [ "//kernel/librs:librs_static" ]
-    deps += common_deps
-    librs_out_dir = string_join(
-            "/",
-            [
-              get_label_info("//kernel/librs:librs_static", "target_out_dir"),
-              get_label_info("//kernel/librs:librs_static", "name"),
-            ])
-    inputs = [ "//kernel/kernel/src/boards/$board/link.x" ]
-    lib_dirs = [ rebase_path(librs_out_dir) ]
-    libs = [ "librs" ]
-    rustflags = []
-    rustflags += common_image_rustflags
-    rustflags += common_crate_rustflags
-  }
-} else {
-  # In SWI mode, neither librs nor this demo relies on the kernel directly, however
-  # we still need to link against the kernel.
-  executable("std_thread_demo") {
-    crate_name = "std_thread_demo"
-    crate_type = "bin"
-
-    sources = [ "std_thread/src/main.rs" ]
-    deps = [
-      "//kernel/kernel:bluekernel_std_static",
-      "//kernel/librs:librs",
-    ]
-    deps += common_deps
-    librs_out_dir =
-        string_join("/",
-                    [
-                      get_label_info("//kernel/librs:librs", "target_out_dir"),
-                      get_label_info("//kernel/librs:librs", "name"),
-                    ])
-    bluekernel_out_dir = string_join(
-            "/",
-            [
-              get_label_info("//kernel/kernel:bluekernel_std_static",
-                             "target_out_dir"),
-              get_label_info("//kernel/bluekernel:bluekernel_std_static",
-                             "name"),
-            ])
-    inputs = [ "//kernel/kernel/src/boards/$board/link.x" ]
-    lib_dirs = [
-      rebase_path(librs_out_dir),
-      rebase_path(bluekernel_out_dir),
-    ]
-    libs = [ "bluekernel" ]
-    rustflags = []
-    rustflags += [ "-Clink-arg=-l:liblibrs.rlib" ]
-    rustflags += common_image_rustflags
-    rustflags += common_crate_rustflags
-  }
+executable("std_thread_demo") {
+  crate_name = "std_thread_demo"
+  crate_type = "bin"
+  sources = [ "std_thread/src/main.rs" ]
+  deps = [
+    "//kernel/librs:librs",
+    "//kernel/rsrt:rsrt_std",
+  ]
+  deps += common_deps
+  rustflags = []
+  rustflags += common_image_rustflags
+  rustflags += common_crate_rustflags
 }
 
 gen_qemu_runner("std_thread_demo_runner") {
   img = ":std_thread_demo"
   qemu = "$qemu_exe"
   machine = "$machine"
+  semihosting = true
   if ("$board" == "qemu_virt64_aarch64") {
     qemu_args = "-cpu cortex-a53 -net none -chardev stdio,id=con,mux=on -serial chardev:con -mon chardev=con,mode=readline"
+  } else if ("$board" == "qemu_riscv64") {
+    qemu_args = qemu_riscv64_run_args
   }
 }
 

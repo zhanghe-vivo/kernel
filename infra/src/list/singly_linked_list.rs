@@ -368,9 +368,9 @@ mod tests {
 
     #[bench]
     fn bench_make_sequence_and_remove(b: &mut Bencher) {
-        let n = 1 << 16;
-        let mut head = Node::<i32>::new(0);
         b.iter(|| {
+            let n = 1 << 16;
+            let mut head = Node::<i32>::new(0);
             for i in 1..n {
                 black_box(head.insert(i));
             }
@@ -395,23 +395,23 @@ mod tests {
     // destroyed recursively.
     #[bench]
     fn bench_push(b: &mut Bencher) {
-        let n = 1usize << 16;
-        let mut l = List::<usize>::default();
-        let mut count = 0;
         b.iter(|| {
+            let n = 1usize << 16;
+            let mut l = List::<usize>::default();
+            let mut count = 0;
             count += 1;
             for i in 0..n {
                 black_box(l.push(i));
             }
+            assert_eq!(count * n, l.size());
         });
-        assert_eq!(count * n, l.size());
     }
 
     #[bench]
     fn bench_push_and_pop(b: &mut Bencher) {
-        let n = 1usize << 16;
-        let mut l = List::<usize>::default();
         b.iter(|| {
+            let n = 1usize << 16;
+            let mut l = List::<usize>::default();
             for i in 0..n {
                 black_box(l.push(i));
             }

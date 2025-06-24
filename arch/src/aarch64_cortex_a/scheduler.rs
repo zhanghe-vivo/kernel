@@ -48,23 +48,21 @@ impl Arch {
     #[naked]
     pub unsafe extern "C" fn context_switch(from: *const usize, to: *const usize) {
         // SAFETY: Safe bare metal assembly operations
-        unsafe {
-            naked_asm!(concat!(
-                crate::save_general_purpose_reg!(),
-                "mov x3, #((3 << 6) | 0x05)\n",
-                "mov x2, x30\n",
-                "stp x2, x3, [sp, #-16]!\n",
-                "mov x9, sp\n",
-                "str x9, [x0]\n",
-                "str x1, [sp, #-0x8]!\n",
-                "bl unlock_in_ctx_switch\n",
-                "ldr x1, [sp], #0x8\n",
-                "ldr x10, [x1]\n",
-                "mov sp, x10\n",
-                crate::restore_context!(),
-                "eret\n",
-            ),)
-        }
+        naked_asm!(concat!(
+            crate::save_general_purpose_reg!(),
+            "mov x3, #((3 << 6) | 0x05)\n",
+            "mov x2, x30\n",
+            "stp x2, x3, [sp, #-16]!\n",
+            "mov x9, sp\n",
+            "str x9, [x0]\n",
+            "str x1, [sp, #-0x8]!\n",
+            "bl unlock_in_ctx_switch\n",
+            "ldr x1, [sp], #0x8\n",
+            "ldr x10, [x1]\n",
+            "mov sp, x10\n",
+            crate::restore_context!(),
+            "eret\n",
+        ),)
     }
 
     pub fn get_cycle_count() -> u64 {

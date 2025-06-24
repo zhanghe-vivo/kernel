@@ -2,12 +2,14 @@
 #![no_std]
 
 extern crate alloc;
+extern crate rsrt;
 use bluekernel::{
-    libc,
+    scheduler,
     thread::Thread,
     vfs::posix::{vfs_open, vfs_read, vfs_write},
 };
 use core::ffi::c_char;
+use libc::*;
 use log::info;
 
 #[no_mangle]
@@ -23,6 +25,6 @@ fn main() -> i32 {
             let slice = &read_buf[..(read_size as usize)];
             let _ = vfs_write(file, slice.as_ptr(), slice.len());
         }
-        let _ = Thread::sleep(10);
+        scheduler::yield_me()
     }
 }

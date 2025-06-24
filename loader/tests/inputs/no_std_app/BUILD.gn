@@ -10,11 +10,16 @@ build_rust("everyting") {
     "//libc:libc",
   ]
   rustflags = [
-    "-Crelocation-model=pie",
-    "-Clink-arg=-nostartfiles",
     "-Cpanic=abort",
-    "-Clink-arg=-lgcc",
+    "-Crelocation-model=pie",
   ]
+  if ("$board" != "qemu_riscv64") {
+    rustflags += [
+      "-Clink-arg=-nostartfiles",
+      "-Clink-arg=-lgcc",
+    ]
+  }
+
   if (coverage) {
     deps += [ "//kernel/loader:common_cov" ]
     rustflags += [

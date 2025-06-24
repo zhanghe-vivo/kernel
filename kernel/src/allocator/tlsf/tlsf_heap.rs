@@ -3,7 +3,6 @@
 use const_default::ConstDefault;
 use core::{
     alloc::Layout,
-    debug_assert, debug_assert_eq, fmt,
     hint::unreachable_unchecked,
     marker::PhantomData,
     mem::{self, MaybeUninit},
@@ -1383,8 +1382,8 @@ pub struct BlockInfo<'a> {
     block_hdr: &'a BlockHdr,
 }
 
-impl fmt::Debug for BlockInfo<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl core::fmt::Debug for BlockInfo<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         f.debug_struct("BlockInfo")
             .field("ptr", &self.as_ptr_range())
             .field("size", &self.size())

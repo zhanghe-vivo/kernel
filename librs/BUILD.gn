@@ -7,6 +7,7 @@ build_rust("librs") {
   crate_name = "librs"
   sources = [ "src/lib.rs" ]
   deps = [
+    "//external/semihosting/v0.1.20:semihosting",
     "//external/spin/v0.9.8:spin",
     "//kernel/header:bluekernel_header",
     "//kernel/scal:bluekernel_scal",
@@ -47,6 +48,7 @@ build_rust("librs_test") {
   crate_name = "librs"
   sources = [ "src/lib.rs" ]
   deps = [
+    "//external/semihosting/v0.1.20:semihosting",
     "//external/spin/v0.9.8:spin",
     "//kernel/header:bluekernel_header",
     "//kernel/scal:bluekernel_scal_test",
@@ -62,14 +64,16 @@ build_rust("librs_unittest_image") {
   edition = "2021"
 
   deps = [
+    "//external/semihosting/v0.1.20:semihosting",
     "//external/spin/v0.9.8:spin",
     "//kernel/header:bluekernel_header",
     "//kernel/kernel:bluekernel",
+    "//kernel/rsrt:rsrt",
     "//kernel/scal:bluekernel_scal_test",
     "//libc:libc",
   ]
   proc_macro_deps = [ "//kernel/test_harness:bluekernel_test_macro" ]
-  inputs = [ "//kernel/kernel/src/boards/$board/link.x" ]
+  inputs = [ "//kernel/kernel/src/boards_ng/$board/link.x" ]
   rustflags = test_image_rustflags
   rustflags += common_crate_rustflags
 }
@@ -79,8 +83,11 @@ gen_qemu_runner("librs_unittest_runner") {
   img = ":librs_unittest_image"
   qemu = "$qemu_exe"
   machine = "$machine"
+  semihosting = true
   if ("$board" == "qemu_virt64_aarch64") {
     qemu_args = "-cpu cortex-a53 -net none -chardev stdio,id=con,mux=on -serial chardev:con -mon chardev=con,mode=readline"
+  } else if ("$board" == "qemu_riscv64") {
+    qemu_args = qemu_riscv64_run_args
   }
 }
 

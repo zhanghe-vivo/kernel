@@ -12,6 +12,7 @@
 #![feature(c_variadic)]
 
 extern crate alloc;
+extern crate rsrt;
 // Import it just for the global allocator.
 use alloc::vec::Vec;
 use bluekernel;

@@ -1,8 +1,8 @@
 // NEWLINE-TIMEOUT: 5
 // ASSERT-SUCC: Done rust-std demo
-
 #![feature(thread_id_value)]
-
+extern crate librs;
+extern crate rsrt;
 use std::thread;
 
 const NTHREADS: u32 = 4;
