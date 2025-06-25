@@ -10,6 +10,7 @@ use crate::{
     },
 };
 use alloc::{string::String, sync::Arc};
+use semihosting::println;
 use spin::{Mutex as SpinMutex, Once};
 
 // FIXME: move WORKING_DIR to FsEnv
@@ -18,7 +19,7 @@ static WORKING_DIR: Once<SpinMutex<Arc<Dcache>>> = Once::new();
 pub fn get_working_dir() -> Arc<Dcache> {
     WORKING_DIR
         .call_once(|| {
-            let dir = get_root_dir();
+            let dir: &'static Arc<Dcache> = get_root_dir();
             SpinMutex::new(dir.clone())
         })
         .lock()
@@ -73,6 +74,7 @@ pub fn find_parent_and_name(path: &str) -> Option<(Arc<Dcache>, &str)> {
 pub fn open_path(path: &str, flags: i32, mode: mode_t) -> Result<File, Error> {
     // TODO: add support for symlink
     let open_flags = OpenFlags::from_bits_truncate(flags);
+    let access_mode = AccessMode::from(flags);
     let dcache = match lookup_path(path) {
         Some(dcache) => {
             if open_flags.contains(OpenFlags::O_NOFOLLOW)
@@ -102,14 +104,14 @@ pub fn open_path(path: &str, flags: i32, mode: mode_t) -> Result<File, Error> {
                     return Err(code::EACCES);
                 }
 
-                parent.new_child(name, InodeFileType::Regular, InodeMode::from(mode))?
+                parent.new_child(name, InodeFileType::Regular, InodeMode::from(mode), || None)?
             } else {
                 return Err(code::ENOENT);
             }
         }
     };
     // resize to 0 if O_TRUNC is set
-    if open_flags.contains(OpenFlags::O_TRUNC) {
+    if open_flags.contains(OpenFlags::O_TRUNC) && access_mode.is_writable() {
         dcache.inode().resize(0)?;
     }
 

@@ -24,13 +24,13 @@ impl Device for Zero {
         DeviceId::new(1, 5)
     }
 
-    fn read(&self, _pos: usize, buf: &mut [u8], _is_blocking: bool) -> Result<usize, ErrorKind> {
+    fn read(&self, _pos: u64, buf: &mut [u8], _is_blocking: bool) -> Result<usize, ErrorKind> {
         // Fill buffer with zeros
         buf.fill(0);
         Ok(buf.len())
     }
 
-    fn write(&self, _pos: usize, buf: &[u8], _is_blocking: bool) -> Result<usize, ErrorKind> {
+    fn write(&self, _pos: u64, buf: &[u8], _is_blocking: bool) -> Result<usize, ErrorKind> {
         // Always succeed, but discard the data
         Ok(buf.len())
     }

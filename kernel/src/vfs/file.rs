@@ -135,6 +135,26 @@ impl FileAttr {
     }
 }
 
+impl Default for FileAttr {
+    fn default() -> Self {
+        Self {
+            dev: Default::default(),
+            ino: Default::default(),
+            size: Default::default(),
+            blk_size: Default::default(),
+            blocks: Default::default(),
+            atime: Default::default(),
+            mtime: Default::default(),
+            ctime: Default::default(),
+            mode: Default::default(),
+            nlinks: Default::default(),
+            uid: Default::default(),
+            gid: Default::default(),
+            rdev: Default::default(),
+        }
+    }
+}
+
 pub trait FileOps: Send + Sync + Any {
     fn read(&self, buf: &mut [u8]) -> Result<usize, Error> {
         warn!("read is not implemented");
@@ -239,7 +259,7 @@ impl File {
     }
 
     pub fn fs_info(&self) -> FileSystemInfo {
-        self.dcache.fs().fs_info()
+        self.dcache.fs_info()
     }
 
     delegate! {

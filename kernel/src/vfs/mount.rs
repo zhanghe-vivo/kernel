@@ -1,4 +1,6 @@
 #![allow(dead_code)]
+#[cfg(virtio)]
+use crate::vfs::fatfs::FatFileSystem;
 #[cfg(procfs)]
 use crate::vfs::procfs::ProcFileSystem;
 use crate::{
@@ -7,7 +9,7 @@ use crate::{
 };
 
 use alloc::{collections::BTreeMap, string::String, sync::Arc, vec::Vec};
-use log::{debug, warn};
+use log::{debug, error, warn};
 use spin::{Once, RwLock as SpinRwLock};
 
 /// Mount point information
@@ -77,16 +79,23 @@ pub fn get_mount_manager() -> &'static MountManager {
     MOUNT_MANAGER.call_once(|| MountManager::new())
 }
 
-pub fn get_fs(fs_type: &str, _device: &str) -> Option<Arc<dyn FileSystem>> {
+pub fn get_fs(fs_type: &str, device: &str) -> Option<Arc<dyn FileSystem>> {
     match fs_type {
         "tmpfs" => Some(TmpFileSystem::new()),
         "devfs" => Some(TmpFileSystem::new()),
+        #[cfg(virtio)]
+        "fatfs" => match FatFileSystem::new(device) {
+            Ok(fs) => Some(fs),
+            Err(error) => {
+                error!(
+                    "Fail to init fat file system with device {}, {}",
+                    device, error
+                );
+                None
+            }
+        },
         #[cfg(procfs)]
         "procfs" => Some(ProcFileSystem::new()),
-        // "fat32" => {
-        //     let device = DeviceManager::get().get_block_device(device)?;
-        //     Some(Arc::new(Fat32FileSystem::new())),
-        // }
         _ => None,
     }
 }

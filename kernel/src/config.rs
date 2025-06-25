@@ -25,6 +25,6 @@ pub const SYSTEM_THREAD_STACK_SIZE: usize = 4096;
 #[cfg(all(debug_assertions, target_pointer_width = "64"))]
 pub const DEFAULT_STACK_SIZE: usize = 16 << 10;
 #[cfg(all(not(debug_assertions), target_pointer_width = "64"))]
-pub const DEFAULT_STACK_SIZE: usize = 4096;
+pub const DEFAULT_STACK_SIZE: usize = 8 << 10;
 
 pub const SOFT_TIMER_THREAD_PRIORITY: ThreadPriority = MAX_THREAD_PRIORITY / 2;

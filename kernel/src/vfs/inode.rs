@@ -10,7 +10,7 @@ use crate::{
         inode_mode::{mode_t, InodeFileType, InodeMode},
     },
 };
-use alloc::sync::Arc;
+use alloc::{string::String, sync::Arc};
 use core::{any::Any, fmt::Debug, time::Duration};
 use log::warn;
 
@@ -41,11 +41,12 @@ impl InodeAttr {
         mode: InodeMode,
         uid: u32,
         gid: u32,
+        blk_size: usize,
     ) -> Self {
         Self {
             inode_no,
             size: 0,
-            blk_size: 0,
+            blk_size,
             blocks: 0,
             atime: Default::default(),
             mtime: Default::default(),
@@ -84,6 +85,9 @@ impl InodeAttr {
     }
     fn set_mtime(&mut self, time: Duration) {
         self.mtime = time;
+    }
+    pub fn set_size(&mut self, size: usize) {
+        self.size = size;
     }
 }
 
@@ -161,7 +165,7 @@ pub trait InodeOps: Any + Sync + Send {
         warn!("resize is not supported");
         Err(code::EINVAL)
     }
-    fn fs(&self) -> Arc<dyn FileSystem>;
+    fn fs(&self) -> Option<Arc<dyn FileSystem>>;
     fn inode_attr(&self) -> InodeAttr;
     fn file_attr(&self) -> FileAttr;
     fn type_(&self) -> InodeFileType;

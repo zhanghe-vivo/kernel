@@ -58,6 +58,7 @@ impl TmpFileSystem {
                         InodeMode::from_bits_truncate(0o755),
                         0,
                         0,
+                        0,
                     ),
                     data: TmpFileData::Directory(TmpDir::new(weak_root)),
                 }),
@@ -66,7 +67,7 @@ impl TmpFileSystem {
             }),
             next_inode_no: AtomicUsize::new(ROOT_INO + 1),
             is_mounted: AtomicBool::new(false),
-            fs_info: FileSystemInfo::new(MAGIC, 0, NAME_MAX, BLOCK_SIZE),
+            fs_info: FileSystemInfo::new(MAGIC, 0, NAME_MAX, BLOCK_SIZE, 0),
         })
     }
 
@@ -159,7 +160,7 @@ impl TmpInode {
     ) -> Arc<Self> {
         Arc::new_cyclic(|weak_inode| Self {
             inner: RwLock::new(InnerNode {
-                attr: InodeAttr::new(inode_no, InodeFileType::Regular, mode, uid, gid),
+                attr: InodeAttr::new(inode_no, InodeFileType::Regular, mode, uid, gid, 0),
                 data: TmpFileData::File(Vec::new()),
             }),
             this: weak_inode.clone(),
@@ -177,7 +178,7 @@ impl TmpInode {
     ) -> Arc<Self> {
         Arc::new_cyclic(|weak_inode| Self {
             inner: RwLock::new(InnerNode {
-                attr: InodeAttr::new(inode_no, InodeFileType::Directory, mode, uid, gid),
+                attr: InodeAttr::new(inode_no, InodeFileType::Directory, mode, uid, gid, 0),
                 data: TmpFileData::Directory(TmpDir::new(parent)),
             }),
             this: weak_inode.clone(),
@@ -201,6 +202,7 @@ impl TmpInode {
                     mode,
                     uid,
                     gid,
+                    0,
                 ),
                 data: TmpFileData::Device(device),
             }),
@@ -353,7 +355,7 @@ impl InodeOps for TmpInode {
         let inner = self.inner.read();
         if let Some(device) = inner.as_device() {
             return device
-                .read(offset, buf, nonblock)
+                .read(offset as u64, buf, nonblock)
                 .map_err(|e| Error::from(e));
         }
         let Some(data) = inner.as_file() else {
@@ -374,7 +376,7 @@ impl InodeOps for TmpInode {
         let mut inner = self.inner.write();
         if let Some(device) = inner.as_device() {
             return device
-                .write(offset, buf, nonblock)
+                .write(offset as u64, buf, nonblock)
                 .map_err(|e| Error::from(e));
         }
 
@@ -401,15 +403,23 @@ impl InodeOps for TmpInode {
     }
 
     fn link(&self, old: &Arc<dyn InodeOps>, name: &str) -> Result<(), Error> {
-        if !Arc::ptr_eq(&self.fs(), &old.fs()) {
-            debug!("link: cannot link across filesystems");
-            return Err(code::EXDEV);
+        if let Some(fs) = self.fs() {
+            if let Some(old_fs) = old.fs() {
+                if !Arc::ptr_eq(&fs, &old_fs) {
+                    debug!("link: cannot link across filesystems");
+                    return Err(code::EXDEV);
+                }
+            } else {
+                return Err(code::EAGAIN);
+            }
+        } else {
+            return Err(code::EAGAIN);
         }
 
         let mut inner = self.inner.write();
         let Some(dir) = inner.as_dir_mut() else {
             debug!("link: inode is not a directory");
-            return Err(code::EISDIR);
+            return Err(code::ENOTDIR);
         };
 
         if name == "." || name == ".." {
@@ -442,7 +452,7 @@ impl InodeOps for TmpInode {
         let mut inner = self.inner.write();
         let Some(dir) = inner.as_dir_mut() else {
             debug!("unlink: inode is not a directory");
-            return Err(code::EISDIR);
+            return Err(code::ENOTDIR);
         };
 
         let inode = dir.find(name).ok_or(code::ENOENT)?;
@@ -465,8 +475,8 @@ impl InodeOps for TmpInode {
 
         let mut inner = self.inner.write();
         let Some(dir) = inner.as_dir_mut() else {
-            debug!("link: inode is not a directory");
-            return Err(code::EISDIR);
+            debug!("rmdir: inode is not a directory");
+            return Err(code::ENOTDIR);
         };
 
         let inode = dir.find(name).ok_or(code::ENOENT)?;
@@ -559,14 +569,19 @@ impl InodeOps for TmpInode {
     }
 
     fn file_attr(&self) -> FileAttr {
-        let inner = self.inner.read();
-        let dev = self.fs.upgrade().unwrap().fs_info.dev;
-        let rdev: usize = if let Some(device) = inner.as_device() {
-            device.id().into()
-        } else {
-            0
-        };
-        FileAttr::new(dev, rdev, &inner.attr)
+        match self.fs() {
+            Some(fs) => {
+                let inner = self.inner.read();
+                let dev = fs.fs_info().dev;
+                let rdev: usize = if let Some(device) = inner.as_device() {
+                    device.id().into()
+                } else {
+                    0
+                };
+                FileAttr::new(dev, rdev, &inner.attr)
+            }
+            None => FileAttr::default(),
+        }
     }
 
     fn lookup(&self, name: &str) -> Result<Arc<dyn InodeOps>, Error> {
@@ -577,7 +592,7 @@ impl InodeOps for TmpInode {
         let inner = self.inner.read();
         let Some(dir) = inner.as_dir() else {
             debug!("lookup: inode is not a directory");
-            return Err(code::EISDIR);
+            return Err(code::ENOTDIR);
         };
 
         if name == ".." {
@@ -587,8 +602,11 @@ impl InodeOps for TmpInode {
         Ok(inode)
     }
 
-    fn fs(&self) -> Arc<dyn FileSystem> {
-        self.fs.upgrade().unwrap()
+    fn fs(&self) -> Option<Arc<dyn FileSystem>> {
+        match self.fs.upgrade() {
+            Some(fs) => Some(fs),
+            None => None,
+        }
     }
 
     fn type_(&self) -> InodeFileType {

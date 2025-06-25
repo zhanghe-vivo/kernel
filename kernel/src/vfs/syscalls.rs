@@ -3,6 +3,7 @@ use crate::{
     devices::DeviceId,
     error::code,
     vfs::{
+        dcache::Dcache,
         dirent::DirBufferReader,
         fd_manager::get_fd_manager,
         file::{File, FileAttr, FileOps, OpenFlags},
@@ -20,7 +21,7 @@ use core::{
     time::Duration,
 };
 use libc;
-use log::{debug, warn};
+use log::{debug, error, warn};
 
 #[no_mangle]
 pub extern "C" fn vfs_mount(
@@ -54,12 +55,12 @@ pub extern "C" fn vfs_mount(
     };
 
     let Some(dir) = path::lookup_path(&target) else {
-        warn!("Invalid target path: {}", target);
+        warn!("[mount] Invalid target path: {}", target);
         return -libc::EINVAL;
     };
 
     if dir.inode().type_() != InodeFileType::Directory {
-        warn!("Target path is not a directory: {}", target);
+        warn!("[mount] Target path is not a directory: {}", target);
         return -libc::ENOTDIR;
     }
 
@@ -71,20 +72,20 @@ pub extern "C" fn vfs_mount(
     let fs = match mount::get_fs(fs_type, device.unwrap_or("")) {
         Some(fs) => fs,
         None => {
-            warn!("Invalid filesystem type: {}", fs_type);
+            warn!("[mount] Invalid filesystem type: {}", fs_type);
             return -libc::EINVAL;
         }
     };
 
-    match dir.mount(fs.clone()) {
+    let root_dcache = Dcache::new(
+        fs.root_inode(),
+        dir.name(),
+        dir.parent().unwrap().get_weak_ref(),
+    );
+    match root_dcache.mount(fs) {
         Ok(_) => {
             debug!("[mount] Successfully mounted {} at {}", fs_type, target);
-
-            let mount_manager = mount::get_mount_manager();
-            match mount_manager.add_mount(&dir.get_full_path(), dir.clone(), fs.clone()) {
-                Ok(_) => code::EOK.to_errno(),
-                Err(e) => e.to_errno(),
-            }
+            code::EOK.to_errno()
         }
         Err(e) => e.to_errno(),
     }
@@ -103,20 +104,14 @@ pub extern "C" fn vfs_umount(path: *const c_char) -> c_int {
     };
 
     let Some(dir) = path::lookup_path(&target) else {
-        warn!("Invalid target path: {}", target);
+        warn!("[unmount] Invalid target path: {}", target);
         return -libc::EINVAL;
     };
 
     match dir.unmount() {
         Ok(_) => {
             debug!("[unmount] Successfully unmounted {}", target);
-
-            // find mount point
-            let mount_manager = mount::get_mount_manager();
-            match mount_manager.remove_mount(&dir.get_full_path()) {
-                Ok(_) => 0,
-                Err(e) => e.to_errno(),
-            }
+            code::EOK.to_errno()
         }
         Err(e) => e.to_errno(),
     }
@@ -134,7 +129,7 @@ pub extern "C" fn vfs_open(path: *const c_char, flags: c_int, mode: libc::mode_t
         Err(_) => return -libc::EINVAL,
     };
     debug!(
-        "vfs_open: path = {}, flags = {}, mode = {}",
+        "[open] path = {}, flags = {}, mode = {:o}",
         file_path,
         flags_to_string(flags),
         mode
@@ -402,12 +397,12 @@ pub extern "C" fn vfs_link(old_path: *const c_char, new_path: *const c_char) -> 
     };
 
     if old_path.ends_with('/') {
-        warn!("Cannot link to a directory: {}", old_path);
+        warn!("[link] Cannot link to a directory: {}", old_path);
         return -libc::EPERM;
     }
 
     if new_path.ends_with('/') {
-        warn!("new path is a directory: {}", new_path);
+        warn!("[link] new path is a directory: {}", new_path);
         return -libc::ENOENT;
     }
 
@@ -438,14 +433,16 @@ pub extern "C" fn vfs_unlink(path: *const c_char) -> c_int {
     };
 
     if file_path.ends_with('/') {
-        warn!("Cannot unlink a directory: {}", file_path);
+        warn!("[unlink] Cannot unlink a directory: {}", file_path);
         return -libc::EISDIR;
     }
 
     let Some((dir, name)) = path::find_parent_and_name(file_path) else {
-        warn!("Invalid path: {}", file_path);
+        warn!("[unlink] Invalid path: {}", file_path);
         return -libc::EINVAL;
     };
+
+    debug!("[unlink] file_path = {}", file_path);
 
     match dir.unlink(name) {
         Ok(_) => 0,
@@ -469,7 +466,12 @@ pub extern "C" fn vfs_mkdir(path: *const c_char, mode: libc::mode_t) -> i32 {
         None => return -libc::EINVAL,
     };
 
-    match dir.new_child(name, InodeFileType::Directory, InodeMode::from(mode)) {
+    match dir.new_child(
+        name,
+        InodeFileType::Directory,
+        InodeMode::from(mode),
+        || None,
+    ) {
         Ok(_) => 0,
         Err(e) => e.to_errno(),
     }
@@ -690,7 +692,11 @@ pub extern "C" fn vfs_statfs(path: *const c_char, buf: *mut Statfs) -> c_int {
         Some(entry) => entry,
         None => return -libc::EINVAL,
     };
-    let fs_info = dir_entry.fs().fs_info();
+    let fs_info = if let Some(fs) = dir_entry.fs() {
+        fs.fs_info()
+    } else {
+        return -libc::EAGAIN;
+    };
 
     let statvfs = Statfs::from(fs_info);
     unsafe {

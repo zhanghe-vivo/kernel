@@ -31,7 +31,7 @@ pub fn kernel_test_runner(tests: &[&dyn Fn()]) {
 
 #[no_mangle]
 fn main() -> i32 {
-    println!("Hello, Blue Kernel!");
+    println!("Hello, BlueKernel!");
 
     let memory_info = allocator::memory_info();
     println!("Kernel memory statistics: ");

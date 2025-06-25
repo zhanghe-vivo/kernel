@@ -2,16 +2,17 @@
 // This project is dual-licensed under Apache 2.0 and MIT terms.
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
+use crate::devices::block::init_virtio_block;
 use alloc::{
     alloc::{alloc_zeroed, dealloc, handle_alloc_error},
     vec::Vec,
 };
 use core::{alloc::Layout, mem::size_of, ptr::NonNull};
 use flat_device_tree::{node::FdtNode, Fdt};
-use log::debug;
+use log::{debug, error};
 use spin::{Once, RwLock};
 use virtio_drivers::{
-    device::{blk::VirtIOBlk, console::VirtIOConsole, net::VirtIONetRaw},
+    device::blk::VirtIOBlk,
     transport::{
         mmio::{MmioError, MmioTransport, VirtIOHeader},
         DeviceType, DeviceTypeError, SomeTransport, Transport,
@@ -20,37 +21,16 @@ use virtio_drivers::{
 };
 
 const VIRTIO_MMIO_COMPATIBLE: &str = "virtio,mmio";
-const NET_QUEUE_SIZE: usize = 16;
-
-static DEVICES: Once<RwLock<VirtDevices>> = Once::new();
-
-pub struct VirtDevices {
-    pub block: Vec<VirtIOBlk<VirtioHal, SomeTransport<'static>>>,
-    pub console: Vec<VirtIOConsole<VirtioHal, SomeTransport<'static>>>,
-    pub net: Vec<VirtIONetRaw<VirtioHal, SomeTransport<'static>, NET_QUEUE_SIZE>>,
-}
-
-impl VirtDevices {
-    pub fn new() -> Self {
-        Self {
-            block: Vec::new(),
-            console: Vec::new(),
-            net: Vec::new(),
-        }
-    }
-}
 
 pub fn init_virtio(fdt: &Fdt) {
-    DEVICES.call_once(|| RwLock::new(VirtDevices::new()));
-    let mut devices = DEVICES.get().unwrap().write();
-    unsafe { find_virtio_mmio_devices(fdt, &mut devices) };
+    unsafe { find_virtio_mmio_devices(fdt) };
 }
 
 /// # Safety
 ///
 /// Any VirtIO MMIO devices in the given device tree must exist and be mapped appropriately, and
 /// must not be constructed anywhere else.
-pub unsafe fn find_virtio_mmio_devices(fdt: &Fdt, devices: &mut VirtDevices) {
+pub unsafe fn find_virtio_mmio_devices(fdt: &Fdt) {
     for node in fdt.all_nodes() {
         if is_compatible(&node, &[VIRTIO_MMIO_COMPATIBLE]) {
             debug!("Found VirtIO MMIO device {}", node.name);
@@ -83,7 +63,7 @@ pub unsafe fn find_virtio_mmio_devices(fdt: &Fdt, devices: &mut VirtDevices) {
                                 transport.version(),
                                 transport.read_device_features(),
                             );
-                            init_virtio_device(transport.into(), devices);
+                            init_virtio_device(transport.into());
                         }
                     }
                 }
@@ -102,17 +82,15 @@ fn is_compatible(node: &FdtNode, with: &[&str]) -> bool {
     }
 }
 
-fn init_virtio_device(transport: SomeTransport<'static>, devices: &mut VirtDevices) {
+fn init_virtio_device(transport: SomeTransport<'static>) {
     match transport.device_type() {
-        DeviceType::Network => {
-            devices.net.push(VirtIONetRaw::new(transport).unwrap());
-        }
+        DeviceType::Network => {}
         DeviceType::Block => {
-            devices.block.push(VirtIOBlk::new(transport).unwrap());
+            if let Err(e) = init_virtio_block(VirtIOBlk::new(transport).unwrap()) {
+                error!("Failed to init virtio blk, {:?}", e);
+            }
         }
-        DeviceType::Console => {
-            devices.console.push(VirtIOConsole::new(transport).unwrap());
-        }
+        DeviceType::Console => {}
         t => {
             debug!("Ignoring unsupported VirtIO device type {:?}", t);
         }

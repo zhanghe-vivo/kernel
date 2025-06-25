@@ -37,7 +37,12 @@ gen_qemu_runner("librs_integration_test_runner") {
   machine = "$machine"
   semihosting = true
   if ("$board" == "qemu_virt64_aarch64") {
-    qemu_args = "-cpu cortex-a53 -net none -chardev stdio,id=con,mux=on -serial chardev:con -mon chardev=con,mode=readline"
+    qemu_args =
+        "-cpu cortex-a53" + " -chardev stdio,id=con,mux=on" +
+        " -serial chardev:con" + " -global virtio-mmio.force-legacy=false" +
+        " -device virtio-rng-device,bus=virtio-mmio-bus.1" +
+        " -mon chardev=con,mode=readline"
+    block_img = "test.img"
   } else if ("$board" == "qemu_riscv64") {
     qemu_args = qemu_riscv64_run_args
   }

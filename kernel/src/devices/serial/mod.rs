@@ -335,11 +335,11 @@ impl Device for Serial {
         Ok(())
     }
 
-    fn read(&self, _pos: usize, buf: &mut [u8], is_nonblocking: bool) -> Result<usize, ErrorKind> {
+    fn read(&self, _pos: u64, buf: &mut [u8], is_nonblocking: bool) -> Result<usize, ErrorKind> {
         self.fifo_rx(buf, is_nonblocking).map_err(|e| e.into())
     }
 
-    fn write(&self, _pos: usize, buf: &[u8], is_nonblocking: bool) -> Result<usize, ErrorKind> {
+    fn write(&self, _pos: u64, buf: &[u8], is_nonblocking: bool) -> Result<usize, ErrorKind> {
         self.fifo_tx(buf, is_nonblocking).map_err(|e| e.into())
     }
 

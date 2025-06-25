@@ -25,13 +25,33 @@ pub struct FileSystemInfo {
 }
 
 impl FileSystemInfo {
-    pub fn new(magic: usize, dev: usize, name_max_len: usize, block_size: usize) -> Self {
+    pub fn new(
+        magic: usize,
+        dev: usize,
+        name_max_len: usize,
+        block_size: usize,
+        block_num: usize,
+    ) -> Self {
         Self {
             dev,
             magic,
             namelen: name_max_len,
             bsize: block_size,
             frsize: block_size,
+            blocks: block_num,
+            ..Default::default()
+        }
+    }
+}
+
+impl Default for FileSystemInfo {
+    fn default() -> Self {
+        FileSystemInfo {
+            dev: 0,
+            magic: 0,
+            namelen: 0,
+            bsize: 0,
+            frsize: 0,
             blocks: 0,
             bfree: 0,
             bavail: 0,

@@ -23,12 +23,12 @@ impl Device for Null {
         DeviceId::new(1, 3)
     }
 
-    fn read(&self, _pos: usize, _buf: &mut [u8], _is_blocking: bool) -> Result<usize, ErrorKind> {
+    fn read(&self, _pos: u64, _buf: &mut [u8], _is_blocking: bool) -> Result<usize, ErrorKind> {
         // Always return EOF (0 bytes read)
         Ok(0)
     }
 
-    fn write(&self, _pos: usize, buf: &[u8], _is_blocking: bool) -> Result<usize, ErrorKind> {
+    fn write(&self, _pos: u64, buf: &[u8], _is_blocking: bool) -> Result<usize, ErrorKind> {
         // Always succeed, but discard the data
         Ok(buf.len())
     }

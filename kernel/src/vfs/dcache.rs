@@ -6,6 +6,7 @@ use crate::{
         fs::{FileSystem, FileSystemInfo},
         inode::InodeOps,
         inode_mode::{InodeFileType, InodeMode},
+        mount::get_mount_manager,
         utils::NAME_MAX,
     },
 };
@@ -22,7 +23,7 @@ use core::{
     time::Duration,
 };
 use delegate::delegate;
-use log::{debug, warn};
+use log::{debug, error, trace};
 use spin::RwLock;
 
 /// File system lookup cache
@@ -30,8 +31,10 @@ pub struct Dcache {
     // inode will never change after creation
     inode: Arc<dyn InodeOps>,
     // name and parent may change by rename, None means root directory
-    name_and_parent: RwLock<Option<(String, Arc<Dcache>)>>,
+    name_and_parent: RwLock<Option<(String, Weak<Dcache>)>>,
     children: RwLock<BTreeMap<String, Arc<Dcache>>>,
+    // When a child path becomes a mount point of other fs, it will be cached here
+    overrided_children: RwLock<Option<BTreeMap<String, Arc<Dcache>>>>,
     // use to set parent in children
     this: Weak<Dcache>,
     is_mount_point: AtomicBool,
@@ -39,13 +42,14 @@ pub struct Dcache {
 
 impl Dcache {
     /// Create new directory node
-    pub fn new(inode: Arc<dyn InodeOps>, name: String, parent: Arc<Dcache>) -> Arc<Self> {
+    pub fn new(inode: Arc<dyn InodeOps>, name: String, parent: Weak<Dcache>) -> Arc<Self> {
         Arc::new_cyclic(|weak_self| Self {
             inode,
             name_and_parent: RwLock::new(Some((name, parent))),
             children: RwLock::new(BTreeMap::new()),
             this: weak_self.clone(),
             is_mount_point: AtomicBool::new(false),
+            overrided_children: RwLock::new(None),
         })
     }
 
@@ -56,15 +60,20 @@ impl Dcache {
             children: RwLock::new(BTreeMap::new()),
             this: weak_self.clone(),
             is_mount_point: AtomicBool::new(false),
+            overrided_children: RwLock::new(None),
         })
     }
 
-    pub fn new_child(
+    pub fn new_child<F>(
         &self,
         name: &str,
         type_: InodeFileType,
         mode: InodeMode,
-    ) -> Result<Arc<Self>, Error> {
+        inode_creator: F,
+    ) -> Result<Arc<Self>, Error>
+    where
+        F: FnOnce() -> Option<Arc<dyn InodeOps>>,
+    {
         if self.inode.type_() != InodeFileType::Directory {
             return Err(code::ENOTDIR);
         }
@@ -75,9 +84,9 @@ impl Dcache {
         if children.contains_key(name) {
             return Err(code::EEXIST);
         }
-
-        let inode = self.inode.create(name, type_, mode)?;
-        let child = Self::new(inode, String::from(name), self.this.upgrade().unwrap());
+        let inode =
+            inode_creator().unwrap_or_else(|| self.inode.create(name, type_, mode).unwrap());
+        let child = Self::new(inode, String::from(name), self.get_weak_ref());
         children.insert(String::from(name), child.clone());
         Ok(child)
     }
@@ -98,7 +107,7 @@ impl Dcache {
 
         let inode = self.inode.create_device(name, mode, dev)?;
         let name_str = String::from(name);
-        let child = Self::new(inode, name_str.clone(), self.this.upgrade().unwrap());
+        let child = Self::new(inode, name_str.clone(), self.get_weak_ref());
         children.insert(name_str, child.clone());
         Ok(child)
     }
@@ -127,7 +136,7 @@ impl Dcache {
                     None => {
                         // lookup in filesystem
                         let inode = self.inode.lookup(name)?;
-                        let entry = Dcache::new(inode, String::from(name), this.clone());
+                        let entry = Dcache::new(inode, String::from(name), self.get_weak_ref());
                         self.add_child(String::from(name), &entry);
                         entry
                     }
@@ -157,20 +166,23 @@ impl Dcache {
         }
     }
 
-    fn set_name_and_parent(&self, name: &str, parent: Arc<Self>) {
+    fn set_name_and_parent(&self, name: &str, parent: Weak<Self>) {
         let mut name_and_parent = self.name_and_parent.write();
         *name_and_parent = Some((String::from(name), parent));
     }
 
-    fn name(&self) -> String {
+    pub fn name(&self) -> String {
         match self.name_and_parent.read().as_ref() {
             Some(x) => x.0.clone(),
             None => String::from("/"),
         }
     }
 
-    fn parent(&self) -> Option<Arc<Dcache>> {
-        self.name_and_parent.read().as_ref().map(|x| x.1.clone())
+    pub fn parent(&self) -> Option<Arc<Dcache>> {
+        match self.name_and_parent.read().as_ref() {
+            Some((_, parent)) => parent.upgrade(),
+            None => None,
+        }
     }
 
     pub fn inode(&self) -> &Arc<dyn InodeOps> {
@@ -178,11 +190,14 @@ impl Dcache {
     }
 
     pub fn fs_info(&self) -> FileSystemInfo {
-        self.inode.fs().fs_info()
+        match self.inode.fs() {
+            Some(fs) => fs.fs_info(),
+            None => FileSystemInfo::default(),
+        }
     }
 
     pub fn is_mount_point(&self) -> bool {
-        self.is_mount_point.load(Ordering::Relaxed)
+        self.is_mount_point.load(Ordering::Acquire)
     }
 
     /// Get full path
@@ -212,24 +227,49 @@ impl Dcache {
         }
 
         if self.is_mount_point() {
-            warn!("Directory is already a mount point");
+            error!("Directory is already a mount point");
             return Err(code::EBUSY);
         }
 
         fs.mount(self.this.upgrade().unwrap())?;
-        self.is_mount_point.store(true, Ordering::Relaxed);
-        Ok(())
+        let name_and_parent = self.name_and_parent.read();
+        if let Some((name, parent)) = name_and_parent.as_ref() {
+            if let Some(parent) = parent.upgrade() {
+                parent.add_mount_point(self.name(), self.this.upgrade().unwrap())?;
+            }
+        } else {
+            error!("The root directory is not allowed to mount");
+            return Err(code::ENOTSUP);
+        }
+
+        self.is_mount_point.store(true, Ordering::Release);
+
+        let mount_manager = get_mount_manager();
+        mount_manager.add_mount(&self.get_full_path(), self.this.upgrade().unwrap(), fs)
     }
 
     pub fn unmount(&self) -> Result<(), Error> {
         if !self.is_mount_point() {
-            warn!("Directory is not a mount point");
+            error!("Directory is not a mount point");
             return Err(code::EINVAL);
         }
 
-        self.inode.fs().unmount()?;
-        self.is_mount_point.store(false, Ordering::Relaxed);
-        Ok(())
+        self.inode.fs().unwrap().unmount()?;
+
+        let name_and_parent = self.name_and_parent.read();
+        if let Some((name, parent)) = name_and_parent.as_ref() {
+            if let Some(parent) = parent.upgrade() {
+                parent.remove_mount_point(self.name())?;
+            }
+        } else {
+            error!("The root directory is not allowed to unmount");
+            return Err(code::ENOTSUP);
+        }
+
+        self.is_mount_point.store(false, Ordering::Release);
+
+        let mount_manager = get_mount_manager();
+        mount_manager.remove_mount(&self.get_full_path())
     }
 
     pub fn link(&self, old: &Arc<Dcache>, new_name: &str) -> Result<(), Error> {
@@ -243,11 +283,7 @@ impl Dcache {
 
         self.inode.link(&old.inode, new_name)?;
         let new_name_str = String::from(new_name);
-        let new_child = Self::new(
-            old.inode.clone(),
-            new_name_str.clone(),
-            self.this.upgrade().unwrap(),
-        );
+        let new_child = Self::new(old.inode.clone(), new_name_str.clone(), self.get_weak_ref());
         children.insert(new_name_str, new_child);
         Ok(())
     }
@@ -299,7 +335,7 @@ impl Dcache {
         }
 
         if old_name == "." || old_name == ".." || new_name == "." || new_name == ".." {
-            warn!("Invalid name: {} to {}", old_name, new_name);
+            error!("Invalid name: {} to {}", old_name, new_name);
             return Err(code::EINVAL);
         }
 
@@ -333,16 +369,60 @@ impl Dcache {
             }
             self.inode.rename(old_name, &new_dir.inode, new_name)?;
             children.remove(old_name);
-            child.set_name_and_parent(new_name, new_dir.clone());
+            child.set_name_and_parent(new_name, new_dir.this.clone());
             new_children.insert(String::from(new_name), child);
         }
 
         Ok(())
     }
 
+    fn add_mount_point(&self, name: String, mount_point: Arc<Dcache>) -> Result<(), Error> {
+        trace!("Add mount point: {} , {:?}", name, mount_point);
+        let mut overrided_children = self.overrided_children.write();
+        if overrided_children.is_none() {
+            *overrided_children = Some(BTreeMap::new());
+        }
+        let mut children = self.children.write();
+        if let Some(overrided_child) = children.remove(&name) {
+            if let Some(overrided_children) = overrided_children.as_mut() {
+                overrided_children.insert(overrided_child.name(), overrided_child);
+            }
+        }
+        children.insert(name, mount_point);
+        Ok(())
+    }
+
+    fn remove_mount_point(&self, name: String) -> Result<(), Error> {
+        let mut children = self.children.write();
+        trace!(
+            "Remove mount point: {} , {:?}",
+            name,
+            children.remove(&name).unwrap()
+        );
+
+        let mut overrided_children = self.overrided_children.write();
+        let overrided_point = overrided_children.as_mut().unwrap().remove(&name);
+        if let Some(overrided_point) = overrided_point {
+            trace!(
+                "Reinsert overrided directory: {} , {:?}",
+                name,
+                overrided_point
+            );
+            children.insert(name, overrided_point);
+        }
+
+        Ok(())
+    }
+
+    /// Get a copy of its own weak reference
+    #[inline(always)]
+    pub(crate) fn get_weak_ref(&self) -> Weak<Self> {
+        self.this.clone()
+    }
+
     delegate! {
         to self.inode {
-            pub fn fs(&self) -> Arc<dyn FileSystem>;
+            pub fn fs(&self) -> Option<Arc<dyn FileSystem>>;
             pub fn fsync(&self) -> Result<(), Error>;
             pub fn size(&self) -> usize;
             pub fn resize(&self, size: usize) -> Result<(), Error>;
@@ -360,9 +440,19 @@ impl Debug for Dcache {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "Dcache {{ inode: {:p}, name: {} }}",
+            "Dcache {{ inode: {:p}, name: {}, fs {} }}",
             self.inode,
-            self.name()
+            self.get_full_path(),
+            match self.inode.fs() {
+                Some(fs) => String::from(fs.fs_type()),
+                None => String::from("unknown"),
+            },
         )
+    }
+}
+
+impl Drop for Dcache {
+    fn drop(&mut self) {
+        trace!("Drop {:?}", self);
     }
 }

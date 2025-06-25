@@ -32,6 +32,8 @@ pub mod code {
     pub const EOVERFLOW: super::Error = super::Error(-libc::EOVERFLOW);
     pub const ELOOP: super::Error = super::Error(-libc::ELOOP);
     pub const EXDEV: super::Error = super::Error(-libc::EXDEV);
+    pub const EILSEQ: super::Error = super::Error(-libc::EILSEQ);
+    pub const ENOTSUP: super::Error = super::Error(-libc::ENOTSUP);
 }
 
 const UNKNOW_STR: &'static CStr = c"EUNKNOW ";
@@ -50,7 +52,7 @@ const ENOENT_STR: &'static CStr = c"No such file or directory  ";
 const EPERM_STR: &'static CStr = c"Operation not permitted  ";
 const ENODEV_STR: &'static CStr = c"No Such Device  ";
 const EAGAIN_STR: &'static CStr = c"Try again  ";
-const EBADFD_STR: &'static CStr = c"File descriptor in bad state  ";
+const EBADF_STR: &'static CStr = c"File descriptor in bad state  ";
 const EEXIST_STR: &'static CStr = c"File exists ";
 const ENOTDIR_STR: &'static CStr = c"Not a directory ";
 const EISDIR_STR: &'static CStr = c"Is a directory ";
@@ -60,6 +62,8 @@ const ESPIPE_STR: &'static CStr = c"Invalid seek";
 const EOVERFLOW_STR: &'static CStr = c"Value too large to be stored in data type";
 const ELOOP_STR: &'static CStr = c"Too many symbolic links encountered";
 const EXDEV_STR: &'static CStr = c"Cross-device link";
+const EILSEQ_STR: &'static CStr = c"Invalid data";
+const ENOTSUP_STR: &'static CStr = c"Not supported";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
@@ -90,12 +94,20 @@ impl Error {
             &code::EINVAL => EINVAL_STR,
             &code::ENOENT => ENOENT_STR,
             &code::EPERM => EPERM_STR,
+            &code::EAGAIN => EAGAIN_STR,
+            &code::EBADF => EBADF_STR,
+            &code::EEXIST => EEXIST_STR,
+            &code::ENOTDIR => ENOTDIR_STR,
+            &code::EISDIR => EISDIR_STR,
+            &code::ENOTEMPTY => ENOTEMPTY_STR,
             &code::ENODEV => ENODEV_STR,
             &code::ENAMETOOLONG => ENAMETOOLONG_STR,
             &code::ESPIPE => ESPIPE_STR,
             &code::EOVERFLOW => EOVERFLOW_STR,
             &code::ELOOP => ELOOP_STR,
             &code::EXDEV => EXDEV_STR,
+            &code::EILSEQ => EILSEQ_STR,
+            &code::ENOTSUP => ENOTSUP_STR,
             _ => UNKNOW_STR,
         }
     }
@@ -134,6 +146,25 @@ impl From<core::fmt::Error> for Error {
 impl From<core::convert::Infallible> for Error {
     fn from(e: core::convert::Infallible) -> Error {
         match e {}
+    }
+}
+
+impl<T> From<fatfs::Error<T>> for Error {
+    fn from(value: fatfs::Error<T>) -> Self {
+        match value {
+            fatfs::Error::Io(_) => code::EIO,
+            fatfs::Error::UnexpectedEof => code::EIO,
+            fatfs::Error::WriteZero => code::EIO,
+            fatfs::Error::InvalidInput => code::EINVAL,
+            fatfs::Error::NotFound => code::ENOENT,
+            fatfs::Error::AlreadyExists => code::EEXIST,
+            fatfs::Error::DirectoryIsNotEmpty => code::ENOTEMPTY,
+            fatfs::Error::CorruptedFileSystem => code::EIO,
+            fatfs::Error::NotEnoughSpace => code::ENOSPC,
+            fatfs::Error::InvalidFileNameLength => code::EINVAL,
+            fatfs::Error::UnsupportedFileNameCharacter => code::EILSEQ,
+            _ => code::EIO,
+        }
     }
 }
 

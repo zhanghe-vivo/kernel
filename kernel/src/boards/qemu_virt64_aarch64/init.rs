@@ -1,7 +1,11 @@
 use super::{config, uart};
+#[cfg(virtio)]
+use crate::devices::virtio;
+
 use crate::{arch, devices::console, error::Error, time};
 use bluekernel_kconfig::NUM_CORES;
-
+#[cfg(virtio)]
+use flat_device_tree::Fdt;
 pub(crate) fn init() {
     crate::boot::init_runtime();
     unsafe { crate::boot::init_heap() };
@@ -18,5 +22,15 @@ pub(crate) fn init() {
     match console::init_console(&uart) {
         Ok(_) => (),
         Err(e) => panic!("Failed to init console: {}", Error::from(e)),
+    }
+
+    #[cfg(virtio)]
+    {
+        // initialize fdt
+        // SAFETY: We trust that the FDT pointer we were given is valid, and this is the only time we
+        // use it.
+        let fdt = unsafe { Fdt::from_ptr(config::DRAM_BASE as *const u8).unwrap() };
+        // initialize virtio
+        virtio::init_virtio(&fdt);
     }
 }

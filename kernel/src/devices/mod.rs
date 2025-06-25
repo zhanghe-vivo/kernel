@@ -7,7 +7,8 @@ use core::{
 use embedded_io::ErrorKind;
 use libc::*;
 use spin::{Once, RwLock as SpinRwLock};
-
+#[cfg(virtio)]
+pub mod block;
 pub mod console;
 pub(crate) mod dumb;
 mod error;
@@ -169,9 +170,20 @@ pub trait Device: Send + Sync {
     fn close(&self) -> Result<(), ErrorKind> {
         Ok(())
     }
-    fn read(&self, pos: usize, buf: &mut [u8], is_nonblocking: bool) -> Result<usize, ErrorKind>;
-    fn write(&self, pos: usize, buf: &[u8], is_nonblocking: bool) -> Result<usize, ErrorKind>;
+    fn read(&self, pos: u64, buf: &mut [u8], is_nonblocking: bool) -> Result<usize, ErrorKind>;
+    fn write(&self, pos: u64, buf: &[u8], is_nonblocking: bool) -> Result<usize, ErrorKind>;
     fn ioctl(&self, request: u32, arg: usize) -> Result<(), ErrorKind> {
+        Err(ErrorKind::Unsupported)
+    }
+    /// Returns the device capacity.
+    /// For block devices, returns the number of sectors
+    fn capacity(&self) -> Result<u64, ErrorKind> {
+        Err(ErrorKind::Unsupported)
+    }
+    fn sector_size(&self) -> Result<u16, ErrorKind> {
+        Err(ErrorKind::Unsupported)
+    }
+    fn sync(&self) -> Result<(), ErrorKind> {
         Err(ErrorKind::Unsupported)
     }
 }

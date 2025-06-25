@@ -14,7 +14,7 @@ use log::info;
 
 #[no_mangle]
 fn main() -> i32 {
-    info!("Hello, Blue Kernel!");
+    info!("Hello, BlueKernel!");
 
     let path = b"/dev/ttyS0\0".as_ptr() as *const c_char;
     let file = vfs_open(path, libc::O_RDWR | libc::O_NONBLOCK, 0);

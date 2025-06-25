@@ -1,18 +1,24 @@
 #![allow(dead_code)]
-
-use alloc::string::String;
+use alloc::{ffi::CString, string::String, vec};
 #[cfg(procfs)]
 use bluekernel::{error::code, libc::O_WRONLY, vfs::procfs::ProcFileSystem};
 use bluekernel::{
-    error::{code, Error},
+    error::{
+        code::{EEXIST, ENOENT, ENOTEMPTY},
+        Error,
+    },
     vfs::{
         dirent::{Dirent, DirentType},
         syscalls::*,
     },
 };
 use bluekernel_test_macro::test;
-use core::ffi::{c_char, c_int, CStr};
-use libc::{ENOSYS, O_CREAT, O_RDONLY, O_RDWR, O_WRONLY, SEEK_SET};
+use core::{
+    cmp::min,
+    ffi::{c_char, c_int, CStr},
+    fmt::Write,
+};
+use libc::{ENOSYS, O_CREAT, O_RDONLY, O_RDWR, O_TRUNC, O_WRONLY, SEEK_SET};
 use semihosting::println;
 
 #[test]
@@ -44,20 +50,35 @@ fn vfs_test_uart() {
 
 #[test]
 fn vfs_test_read_and_write() {
-    // Test file path
-    let test_path = b"/test.txt\0";
-    let path_ptr = test_path.as_ptr() as *const c_char;
+    println!("[VFS Test Read/Write] Test the tmpfs mounted at /");
+    test_read_and_write(String::from("/"), 30);
+    test_read_and_write(String::from("/"), 2000);
 
-    // Open flags: create and read/write
-    let flags = O_CREAT | O_RDWR;
+    #[cfg(virtio)]
+    {
+        println!("[VFS Test Read/Write] Test the fatfs mounted at /fat");
+        test_read_and_write(String::from("/fat/"), 30);
+        test_read_and_write(String::from("/fat/"), 2_000);
+        // Test: file size over a block size (default 4096 bytes)
+        test_read_and_write(String::from("/fat/"), 6_000);
+        test_read_and_write(String::from("/fat/"), 12_000);
+        test_read_and_write(String::from("/fat/"), 24_000);
+    }
+}
+
+fn test_read_and_write(path_prefix: String, test_data_len: usize) {
+    // Test file path
+    let mut test_path = path_prefix.clone();
+    test_path.push_str("test.txt");
+    let test_path = CString::new(test_path).expect("Failed to create CString");
 
     // Default file permissions: 644
     let mode: libc::mode_t = 0o644;
 
-    let fd = vfs_open(path_ptr, flags, mode);
+    let fd = vfs_open(test_path.as_ptr() as *const c_char, O_CREAT | O_RDWR, mode);
     assert!(fd >= 0, "[VFS Test Read/Write]  Failed to open file");
 
-    let test_data = b"Hello, Blue Kernel!\n";
+    let test_data = b"1".repeat(test_data_len);
     let write_size = vfs_write(fd, test_data.as_ptr(), test_data.len());
     if write_size != test_data.len() as isize {
         vfs_close(fd);
@@ -79,7 +100,7 @@ fn vfs_test_read_and_write() {
     }
 
     // Read data and verify
-    let mut read_buf = [0u8; 64];
+    let mut read_buf = vec![0u8; test_data.len()];
     let read_size = vfs_read(fd, read_buf.as_mut_ptr(), test_data.len());
     if read_size != test_data.len() as isize {
         vfs_close(fd);
@@ -91,7 +112,7 @@ fn vfs_test_read_and_write() {
     }
 
     // Verify read data
-    let read_data = &read_buf[..test_data.len()];
+    let read_data = &read_buf[..min(test_data.len(), read_buf.len())];
     if read_data != test_data {
         vfs_close(fd);
         unreachable!(
@@ -99,14 +120,31 @@ fn vfs_test_read_and_write() {
             test_data, read_data
         );
     }
+    vfs_close(fd);
 
+    // Open file with O_TRUNC
+    let fd = vfs_open(test_path.as_ptr() as *const c_char, O_RDWR | O_TRUNC, mode);
+    assert!(fd >= 0);
     vfs_close(fd);
 }
 
 #[test]
 fn vfs_test_multiple_open() {
+    println!("Test the tmpfs mounted at /");
+    test_multiple_open(String::from("/"));
+
+    #[cfg(virtio)]
+    {
+        println!("Test the fatfs mounted at /fat");
+        test_multiple_open(String::from("/fat/"));
+    }
+}
+
+fn test_multiple_open(path_prefix: String) {
     // Test file path
-    let test_path = b"/test_multi.txt\0";
+    let mut test_path = path_prefix.clone();
+    test_path.push_str("test_multi.txt");
+    let test_path = CString::new(test_path).expect("Failed to create CString");
     let path_ptr = test_path.as_ptr() as *const c_char;
 
     // First open for writing
@@ -166,6 +204,17 @@ fn vfs_test_multiple_open() {
 
 #[test]
 fn vfs_test_directory_tree() {
+    println!("[VFS Test DirctoryTree] Test the tmpfs mounted at /");
+    test_directory_tree(String::from("/"));
+
+    #[cfg(virtio)]
+    {
+        println!("[VFS Test DirctoryTree] Test the fatfs mounted at /fat");
+        test_directory_tree(String::from("/fat/"));
+    }
+}
+
+fn test_directory_tree(path_prefix: String) {
     // Create test directory structure:
     // /test_dir
     // /test_dir/dir1
@@ -174,7 +223,9 @@ fn vfs_test_directory_tree() {
     // /test_dir/dir1/file1.txt
 
     // Create root test directory
-    let root_dir = b"/test_dir\0";
+    let mut root_dir = path_prefix.clone();
+    root_dir.push_str("test_dir");
+    let root_dir = CString::new(root_dir).expect("Failed to create CString");
     let result = vfs_mkdir(root_dir.as_ptr() as *const c_char, 0o755);
     assert!(
         result >= 0,
@@ -182,7 +233,9 @@ fn vfs_test_directory_tree() {
     );
 
     // Create subdirectory dir1
-    let dir1 = b"/test_dir/dir1\0";
+    let mut dir1 = path_prefix.clone();
+    dir1.push_str("test_dir/dir1");
+    let dir1 = CString::new(dir1).expect("Failed to create CString");
     let result = vfs_mkdir(dir1.as_ptr() as *const c_char, 0o755);
     if result < 0 {
         vfs_rmdir(root_dir.as_ptr() as *const c_char);
@@ -193,7 +246,9 @@ fn vfs_test_directory_tree() {
     }
 
     // Create subdirectory dir2
-    let dir2 = b"/test_dir/dir2\0";
+    let mut dir2 = path_prefix.clone();
+    dir2.push_str("test_dir/dir2");
+    let dir2 = CString::new(dir2).expect("Failed to create CString");
     let result = vfs_mkdir(dir2.as_ptr() as *const c_char, 0o755);
     if result < 0 {
         vfs_rmdir(dir1.as_ptr() as *const c_char);
@@ -205,7 +260,9 @@ fn vfs_test_directory_tree() {
     }
 
     // Create subdirectory subdir1
-    let subdir1 = b"/test_dir/dir1/subdir1\0";
+    let mut subdir1 = path_prefix.clone();
+    subdir1.push_str("test_dir/dir1/subdir1");
+    let subdir1 = CString::new(subdir1).expect("Failed to create CString");
     let result = vfs_mkdir(subdir1.as_ptr() as *const c_char, 0o755);
     if result < 0 {
         vfs_rmdir(dir1.as_ptr() as *const c_char);
@@ -218,11 +275,10 @@ fn vfs_test_directory_tree() {
     }
 
     // Create test file
-    let fd = vfs_open(
-        b"/test_dir/dir1/file1.txt\0".as_ptr() as *const c_char,
-        O_CREAT | O_RDWR,
-        0o755,
-    );
+    let mut file1 = path_prefix.clone();
+    file1.push_str("test_dir/dir1/file1.txt");
+    let file1 = CString::new(file1).expect("Failed to create CString");
+    let fd = vfs_open(file1.as_ptr() as *const c_char, O_CREAT | O_RDWR, 0o755);
     if fd < 0 {
         vfs_rmdir(subdir1.as_ptr() as *const c_char);
         vfs_rmdir(dir1.as_ptr() as *const c_char);
@@ -236,7 +292,50 @@ fn vfs_test_directory_tree() {
     vfs_close(fd);
 
     // Verify directory structure
-    match verify_directory(b"/test_dir/dir1\0".as_ptr() as *const c_char) {
+    println!(
+        "[VFS Test DirctoryTree] Verify {}",
+        root_dir.to_str().unwrap()
+    );
+    match verify_directory(root_dir.as_ptr() as *const c_char) {
+        Ok(_) => {}
+        Err(err) => {
+            unreachable!(
+                "[VFS Test DirctoryTree]:  Verification failed with error {}",
+                err
+            );
+        }
+    }
+
+    // Delete 1 file and 2 dirs, the final directory structure should be:
+    // /test_dir
+    // /test_dir/dir2
+
+    // Delete file /test_dir/dir1/file1.txt
+    assert_eq!(vfs_unlink(file1.as_ptr() as *const c_char), 0);
+
+    // Delete directory /test_dir/dir1, expected to fail because the directory is not empty
+    assert_eq!(
+        vfs_rmdir(dir1.as_ptr() as *const c_char),
+        ENOTEMPTY.to_errno()
+    );
+
+    // Delete directory /test_dir/dir1/file1.txt
+    assert_eq!(vfs_rmdir(subdir1.as_ptr() as *const c_char), 0);
+
+    // Delete directory /test_dir/dir1
+    assert_eq!(vfs_rmdir(dir1.as_ptr() as *const c_char), 0);
+
+    // Verify the deleted directory
+    let fd = vfs_open(subdir1.as_ptr() as *const c_char, O_RDWR, 0o755);
+    assert!(fd == ENOENT.to_errno());
+    vfs_close(fd);
+
+    // Verify directory structure
+    println!(
+        "[VFS Test DirctoryTree] Verify {}",
+        root_dir.to_str().unwrap()
+    );
+    match verify_directory(root_dir.as_ptr() as *const c_char) {
         Ok(_) => {}
         Err(err) => {
             unreachable!(
@@ -248,11 +347,12 @@ fn vfs_test_directory_tree() {
 }
 
 fn verify_directory(path: *const c_char) -> Result<(), c_int> {
+    let path_str = unsafe { CStr::from_ptr(path).to_str().unwrap() };
     let dir = vfs_open(path, O_RDONLY, 0o755);
     if dir < 0 {
+        println!("[VFS Test DirctoryTree] open fail,  fd: {}", dir);
         return Err(-ENOSYS);
     };
-
     let mut buf = [0u8; 512];
     // Print return value of each readdir call
     let len = vfs_getdents(dir, buf.as_mut_ptr() as *mut u8, buf.len());
@@ -263,24 +363,33 @@ fn verify_directory(path: *const c_char) -> Result<(), c_int> {
     let mut next_entry = 0;
     while next_entry < len as usize {
         let entry = unsafe { Dirent::from_buf_ref(&buf[next_entry..]) };
+        let name = entry.name().unwrap().to_string_lossy();
+        let mut dir_full_path = String::with_capacity(name.len() + 1 + path_str.len());
+        write!(dir_full_path, "{}/{}", path_str, name);
         if entry.type_() == DirentType::Dir {
             println!(
-                "[VFS Test DirctoryTree]: Found directory: {} {} {}",
+                "\t[VFS Test DirctoryTree]: Found directory: {}, {}, {}",
                 entry.ino(),
                 entry.off(),
-                entry.name().unwrap().to_string_lossy()
+                dir_full_path
             );
+            if name.as_ref() != "." && name.as_ref() != ".." {
+                verify_directory(
+                    CString::new(dir_full_path.as_str())
+                        .expect("Invalid string")
+                        .as_ptr(),
+                )?;
+            }
         } else {
             println!(
-                "[VFS Test DirctoryTree]: Found file: {} {} {}",
+                "\t[VFS Test DirctoryTree]: Found file     : {}, {}, {}",
                 entry.ino(),
                 entry.off(),
-                entry.name().unwrap().to_string_lossy()
+                dir_full_path
             );
         }
         next_entry += entry.reclen() as usize;
     }
-
     // Close directory
     vfs_close(dir);
     Ok(())
@@ -311,6 +420,70 @@ fn vfs_test_std_fds() {
         );
         assert!(false);
     }
+}
+
+#[test]
+#[cfg(virtio)]
+fn vfs_test_fatfs_mount_unmount() {
+    let mode: libc::mode_t = 0o644;
+    let mount_path_1 = b"/fat\0".as_ptr() as *const c_char;
+    let mount_path_2 = b"/fat2\0".as_ptr() as *const c_char;
+
+    // Unmount /fat
+    assert_eq!(vfs_umount(mount_path_1), 0);
+
+    // Mount the fatfs using the virt-storage device to /fat2
+    assert!(vfs_mkdir(mount_path_2, mode) == 0);
+    assert_eq!(
+        vfs_mount(
+            b"virt-storage\0".as_ptr() as *const c_char,
+            mount_path_2,
+            b"fatfs\0".as_ptr() as *const c_char,
+            0,
+            core::ptr::null(),
+        ),
+        0
+    );
+
+    // Create a file and write something
+    let fd = vfs_open(
+        b"/fat2/test.txt\0".as_ptr() as *const c_char,
+        O_CREAT | O_RDWR,
+        mode,
+    );
+    assert!(fd >= 0);
+    let test_data = b"Hello, BlueKernel!\n";
+    let write_size = vfs_write(fd, test_data.as_ptr(), test_data.len());
+    assert!(write_size == test_data.len() as isize);
+    vfs_close(fd);
+
+    // Unmount /fat2
+    assert_eq!(vfs_umount(mount_path_2), 0);
+
+    // Trying to create the directory /fat, expected failure because the path exists
+    assert_eq!(vfs_mkdir(mount_path_1, mode), EEXIST.to_errno());
+    // Mount the fatfs using the virt-storage device to /fat
+    assert_eq!(
+        vfs_mount(
+            b"virt-storage\0".as_ptr() as *const c_char,
+            mount_path_1,
+            b"fatfs\0".as_ptr() as *const c_char,
+            0,
+            core::ptr::null(),
+        ),
+        0
+    );
+
+    // Read the file and check content
+    let fd = vfs_open(b"/fat/test.txt\0".as_ptr() as *const c_char, O_RDONLY, mode);
+    assert!(fd >= 0);
+    let mut read_buf = [0u8; 64];
+    let read_size = vfs_read(fd, read_buf.as_mut_ptr(), test_data.len());
+    assert!(read_size == test_data.len() as isize);
+    // Verify read data
+    let read_data = &read_buf[..test_data.len()];
+    assert!(read_data == test_data);
+    vfs_close(fd);
 }
 
 #[test]
