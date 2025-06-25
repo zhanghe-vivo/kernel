@@ -7,7 +7,7 @@ use bluekernel::{
     error::{code, Error},
     vfs::{
         dirent::{Dirent, DirentType},
-        posix::*,
+        syscalls::*,
     },
 };
 use bluekernel_test_macro::test;
@@ -253,28 +253,32 @@ fn verify_directory(path: *const c_char) -> Result<(), c_int> {
         return Err(-ENOSYS);
     };
 
-    let mut buf = [0u8; Dirent::SIZE * 4];
+    let mut buf = [0u8; 512];
     // Print return value of each readdir call
-    let count = vfs_getdents(dir, buf.as_mut_ptr() as *mut u8, buf.len());
-    if count < 0 {
+    let len = vfs_getdents(dir, buf.as_mut_ptr() as *mut u8, buf.len());
+    if len < 0 {
         vfs_close(dir);
-        return Err(count);
+        return Err(len);
     }
-    for i in 0..count {
-        let entry = unsafe { Dirent::from_buf(&buf[i as usize * Dirent::SIZE..]) };
+    let mut next_entry = 0;
+    while next_entry < len as usize {
+        let entry = unsafe { Dirent::from_buf_ref(&buf[next_entry..]) };
         if entry.type_() == DirentType::Dir {
             println!(
-                "[VFS Test DirctoryTree]: Found directory: {} {}",
+                "[VFS Test DirctoryTree]: Found directory: {} {} {}",
                 entry.ino(),
-                entry.name()
+                entry.off(),
+                entry.name().unwrap().to_string_lossy()
             );
         } else {
             println!(
-                "[VFS Test DirctoryTree]: Found file: {} {}",
+                "[VFS Test DirctoryTree]: Found file: {} {} {}",
                 entry.ino(),
-                entry.name()
+                entry.off(),
+                entry.name().unwrap().to_string_lossy()
             );
         }
+        next_entry += entry.reclen() as usize;
     }
 
     // Close directory

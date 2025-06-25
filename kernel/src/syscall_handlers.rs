@@ -5,7 +5,7 @@ use crate::{
     cpu::Cpu,
     sync::futex,
     thread::{ThreadBuilder, THREAD_DEFAULT_TICK},
-    vfs::posix,
+    vfs::syscalls,
 };
 use bluekernel_header::{syscalls::NR, thread::CloneArgs};
 use libc::{c_char, c_int, c_void, clockid_t, mode_t, size_t, timespec};
@@ -158,29 +158,29 @@ define_syscall_handler!(
 
 define_syscall_handler!(
     write(fd: i32, buf: *const u8, size: usize) -> c_long {
-        posix::vfs_write(fd, buf, size) as c_long
+        syscalls::vfs_write(fd, buf, size) as c_long
     }
 );
 
 define_syscall_handler!(
     open(path: *const c_char, flags: c_int, mode: mode_t) -> c_int {
-        posix::vfs_open(path, flags, mode)
+        syscalls::vfs_open(path, flags, mode)
     }
 );
 define_syscall_handler!(
     close(fd: c_int) -> c_int {
-        posix::vfs_close(fd)
+        syscalls::vfs_close(fd)
     }
 );
 define_syscall_handler!(
     read(fd: c_int, buf: *mut c_void, count: size_t) -> isize {
-        posix::vfs_read(fd, buf as *mut u8, count as usize)
+        syscalls::vfs_read(fd, buf as *mut u8, count as usize)
     }
 );
 
 define_syscall_handler!(
     lseek(fildes: c_int, offset: usize, whence: c_int) -> c_int {
-        posix::vfs_lseek(fildes, offset as i64, whence) as c_int
+        syscalls::vfs_lseek(fildes, offset as i64, whence) as c_int
     }
 );
 

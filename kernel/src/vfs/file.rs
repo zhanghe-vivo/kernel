@@ -260,6 +260,13 @@ impl FileOps for File {
         self.dcache.inode().close()
     }
 
+    fn resize(&self, new_size: usize) -> Result<(), Error> {
+        if !self.access_mode().is_writable() {
+            return Err(code::EACCES);
+        }
+        self.dcache.inode().resize(new_size)
+    }
+
     fn dup(&self, close_on_exec: bool) -> Result<Arc<dyn FileOps>, Error> {
         let flags = self.open_flags();
         let flags = if close_on_exec {

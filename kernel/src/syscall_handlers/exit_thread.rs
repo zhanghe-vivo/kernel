@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use super::Context;
 use core::ffi::c_long;
 

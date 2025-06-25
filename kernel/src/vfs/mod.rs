@@ -20,8 +20,8 @@ mod inode;
 mod inode_mode;
 mod mount;
 mod path;
-pub mod posix;
 mod root;
+pub mod syscalls;
 mod tmpfs;
 mod utils;
 pub use file::AccessMode;
@@ -30,8 +30,8 @@ pub use file::AccessMode;
 pub fn vfs_init() -> Result<(), Error> {
     debug!("Initializing VFS...");
     root::init();
-    let root = root::get_root_dir();
-    let dev_dir = root.new_child("dev", InodeFileType::Directory, InodeMode::from(0o555))?;
+    let cwd = path::get_working_dir();
+    let dev_dir = cwd.new_child("dev", InodeFileType::Directory, InodeMode::from(0o555))?;
     // /dev is a temporary filesystem
     let devfs = TmpFileSystem::new();
     match dev_dir.mount(devfs) {

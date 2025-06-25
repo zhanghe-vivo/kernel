@@ -89,7 +89,7 @@ impl MemoryMapper {
 
     #[inline]
     pub fn real_entry(&self) -> Option<*const u8> {
-        self.mem.as_ref().map(|mem| {
+        self.mem.as_ref().map(|_| {
             let offset = (self.entry - self.start) as isize;
             unsafe { self.real_start().unwrap().offset(offset) }
         })

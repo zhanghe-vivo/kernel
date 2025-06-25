@@ -1,4 +1,4 @@
-use crate::arch::{reset_handler_inner, interrupt::Vector};
+use crate::arch::{interrupt::Vector, reset_handler_inner};
 use core::arch::naked_asm;
 use cortex_m::asm;
 

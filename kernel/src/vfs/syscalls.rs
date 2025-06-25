@@ -4,7 +4,7 @@ use crate::{
     vfs::{
         dirent::DirBufferReader,
         fd_manager::get_fd_manager,
-        file::{File, OpenFlags},
+        file::{File, FileOps, OpenFlags},
         inode_mode::{InodeFileType, InodeMode},
         mount, path,
         utils::SeekFrom,
@@ -256,6 +256,46 @@ pub extern "C" fn vfs_lseek(fd: i32, offset: i64, whence: i32) -> i64 {
 }
 
 #[no_mangle]
+pub extern "C" fn vfs_truncate(path: *const c_char, length: libc::off_t) -> c_int {
+    if path.is_null() {
+        return -libc::EINVAL;
+    }
+
+    let file_path = match unsafe { CStr::from_ptr(path).to_str() } {
+        Ok(s) => s,
+        Err(_) => return -libc::EINVAL,
+    };
+    debug!("vfs_truncate: path = {}, length = {}", file_path, length);
+
+    let file = match path::lookup_path(file_path) {
+        Some(entry) => entry,
+        None => return -libc::EINVAL,
+    };
+    match file.resize(length as usize) {
+        Ok(_) => 0,
+        Err(e) => e.to_errno(),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn vfs_ftruncate(fd: i32, length: libc::off_t) -> c_int {
+    debug!("vfs_ftruncate: fd = {}, length = {}", fd, length);
+
+    let file_ops = {
+        let fd_manager = get_fd_manager().lock();
+        match fd_manager.get_file_ops(fd) {
+            Some(ops) => ops,
+            None => return -libc::EBADF,
+        }
+    };
+
+    match file_ops.resize(length as usize) {
+        Ok(_) => 0,
+        Err(e) => e.to_errno(),
+    }
+}
+
+#[no_mangle]
 pub extern "C" fn vfs_fcntl(fd: i32, cmd: c_int, args: usize) -> c_int {
     debug!("fcntl: fd = {}, cmd = {}, args = {}", fd, cmd, args);
     const FD_CLOEXEC: c_int = 1;
@@ -481,13 +521,13 @@ pub extern "C" fn vfs_getdents(fd: i32, buf: *mut u8, buf_len: usize) -> c_int {
     let mut reader = DirBufferReader::new(buf);
 
     match file.getdents(&mut reader) {
-        Ok(count) => count as c_int,
+        Ok(_) => reader.recv_len() as c_int,
         Err(e) => e.to_errno(),
     }
 }
 
 #[no_mangle]
-pub extern "C" fn vfs_statvfs(path: *const c_char, buf: *mut libc::statvfs) -> c_int {
+pub extern "C" fn vfs_stat(path: *const c_char, buf: *mut libc::statvfs) -> c_int {
     if path.is_null() || buf.is_null() {
         return -libc::EINVAL;
     }
@@ -518,6 +558,47 @@ pub extern "C" fn vfs_statvfs(path: *const c_char, buf: *mut libc::statvfs) -> c
     }
 
     return 0;
+}
+
+#[no_mangle]
+pub extern "C" fn vfs_chdir(path: *const c_char) -> c_int {
+    if path.is_null() {
+        return -libc::EINVAL;
+    }
+
+    let path_str = match unsafe { CStr::from_ptr(path).to_str() } {
+        Ok(s) => s,
+        Err(_) => return -libc::EINVAL,
+    };
+
+    let dir_entry = match path::lookup_path(path_str) {
+        Some(entry) => entry,
+        None => return -libc::EINVAL,
+    };
+
+    match path::set_working_dir(dir_entry.clone()) {
+        Ok(_) => 0,
+        Err(e) => e.to_errno(),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn vfs_getcwd(buf: *mut c_char, len: usize) -> c_int {
+    if buf.is_null() || len == 0 {
+        return -libc::EINVAL;
+    }
+
+    let cwd = path::get_working_dir();
+    let cwd_str = cwd.get_full_path();
+    let cwd_str_len = cwd_str.len();
+    if cwd_str_len > len - 1 {
+        return -libc::ERANGE;
+    }
+    unsafe {
+        core::ptr::copy_nonoverlapping(cwd_str.as_ptr(), buf as *mut u8, cwd_str_len);
+        *(buf as *mut u8).add(cwd_str_len) = 0;
+    }
+    return cwd_str_len as c_int;
 }
 
 /// Convert open flags to readable string for debugging
@@ -567,6 +648,7 @@ fn flags_to_string(flags: c_int) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::vfs::dirent::{Dirent, DirentType};
     use bluekernel_test_macro::test;
     use libc;
 
@@ -689,9 +771,9 @@ mod tests {
         let dir = vfs_open(TEST_SUB_DIR, libc::O_RDONLY, 0o755);
         assert!(dir > 0);
 
-        let mut buf = [0u8; 1024];
-        let count = vfs_getdents(dir, buf.as_mut_ptr() as *mut u8, buf.len());
-        assert_eq!(count, 2);
+        let mut buf = [0u8; 256];
+        let len = vfs_getdents(dir, buf.as_mut_ptr() as *mut u8, buf.len());
+        assert!(len > 0);
 
         let result = vfs_close(dir);
         assert_eq!(result, code::EOK.to_errno());
@@ -747,5 +829,291 @@ mod tests {
             core::ptr::null(),
         );
         assert_eq!(result, code::EINVAL.to_errno());
+    }
+
+    #[test]
+    fn test_getdents_current_dir() {
+        let dir = vfs_open(b".\0".as_ptr() as *const c_char, libc::O_RDONLY, 0o755);
+        assert!(dir > 0);
+
+        let mut buf = [0u8; 512];
+        // Print return value of each readdir call
+        let len = vfs_getdents(dir, buf.as_mut_ptr() as *mut u8, buf.len());
+        assert!(len > 0);
+        let mut next_entry = 0;
+        while next_entry < len as usize {
+            let entry = unsafe { Dirent::from_buf_ref(&buf[next_entry..]) };
+            if entry.type_() == DirentType::Dir {
+                println!(
+                    "[VFS Test DirctoryTree]: Found directory: {} {} {}",
+                    entry.ino(),
+                    entry.off(),
+                    entry.name().unwrap().to_string_lossy()
+                );
+            } else {
+                println!(
+                    "[VFS Test DirctoryTree]: Found file: {} {} {}",
+                    entry.ino(),
+                    entry.off(),
+                    entry.name().unwrap().to_string_lossy()
+                );
+            }
+            next_entry += entry.reclen() as usize;
+        }
+
+        // Close directory
+        vfs_close(dir);
+    }
+
+    #[test]
+    fn test_getdents_parent_dir() {
+        let dir = vfs_open(b"..\0".as_ptr() as *const c_char, libc::O_RDONLY, 0o755);
+        assert!(dir > 0);
+
+        let mut buf = [0u8; 512];
+        // Print return value of each readdir call
+        let len = vfs_getdents(dir, buf.as_mut_ptr() as *mut u8, buf.len());
+        assert!(len > 0);
+        let mut next_entry = 0;
+        while next_entry < len as usize {
+            let entry = unsafe { Dirent::from_buf_ref(&buf[next_entry..]) };
+            if entry.type_() == DirentType::Dir {
+                println!(
+                    "[VFS Test DirctoryTree]: Found directory: {} {} {}",
+                    entry.ino(),
+                    entry.off(),
+                    entry.name().unwrap().to_string_lossy()
+                );
+            } else {
+                println!(
+                    "[VFS Test DirctoryTree]: Found file: {} {} {}",
+                    entry.ino(),
+                    entry.off(),
+                    entry.name().unwrap().to_string_lossy()
+                );
+            }
+            next_entry += entry.reclen() as usize;
+        }
+
+        // Close directory
+        vfs_close(dir);
+    }
+
+    #[test]
+    fn test_chdir() {
+        let result = vfs_mkdir(TEST_DIR, 0o755);
+        assert_eq!(result, code::EOK.to_errno());
+
+        let result = vfs_chdir(TEST_DIR);
+        assert_eq!(result, code::EOK.to_errno());
+        let mut buf = [0u8; 256];
+        let result = vfs_getcwd(buf.as_mut_ptr() as *mut c_char, buf.len());
+        assert!(result > 0);
+        unsafe {
+            let path = CStr::from_ptr(buf.as_ptr() as *const c_char);
+            assert_eq!(path, CStr::from_ptr(TEST_DIR));
+        }
+
+        let result = vfs_chdir(TEST_SUB_DIR);
+        assert_eq!(result, code::EINVAL.to_errno());
+
+        let result = vfs_rmdir(TEST_DIR);
+        assert_eq!(result, code::EOK.to_errno());
+    }
+
+    #[test]
+    fn test_truncate_invalid_params() {
+        // Test with null path
+        let result = vfs_truncate(core::ptr::null(), 100);
+        assert_eq!(result, code::EINVAL.to_errno());
+
+        // Test with non-existent path
+        let result = vfs_truncate(TEST_PATH, 100);
+        assert_eq!(result, code::EINVAL.to_errno());
+    }
+
+    #[test]
+    fn test_truncate_file() {
+        // Create directory and file
+        let result = vfs_mkdir(TEST_DIR, 0o755);
+        assert_eq!(result, code::EOK.to_errno());
+
+        let fd = vfs_open(TEST_PATH, libc::O_CREAT | libc::O_WRONLY, 0o644);
+        assert!(fd > 0);
+
+        // Write some data to file
+        let test_data = b"Hello, World!";
+        let write_result = vfs_write(fd, test_data.as_ptr() as *const u8, test_data.len());
+        assert_eq!(write_result, test_data.len() as isize);
+
+        // Close file
+        let result = vfs_close(fd);
+        assert_eq!(result, code::EOK.to_errno());
+
+        // Test truncate to smaller size
+        let result = vfs_truncate(TEST_PATH, 5);
+        assert_eq!(result, code::EOK.to_errno());
+
+        // Open file and read to verify truncation
+        let fd = vfs_open(TEST_PATH, libc::O_RDONLY, 0o644);
+        assert!(fd > 0);
+
+        let mut buffer = [0u8; 20];
+        let read_result = vfs_read(fd, buffer.as_mut_ptr() as *mut u8, buffer.len());
+        assert_eq!(read_result, 5);
+
+        // Verify content is truncated
+        assert_eq!(&buffer[0..5], b"Hello");
+
+        // Close file
+        let result = vfs_close(fd);
+        assert_eq!(result, code::EOK.to_errno());
+
+        // Test truncate to larger size
+        let result = vfs_truncate(TEST_PATH, 20);
+        assert_eq!(result, code::EOK.to_errno());
+
+        // Open file and read to verify expansion
+        let fd = vfs_open(TEST_PATH, libc::O_RDONLY, 0o644);
+        assert!(fd > 0);
+
+        let mut buffer = [0u8; 25];
+        let read_result = vfs_read(fd, buffer.as_mut_ptr() as *mut u8, buffer.len());
+        assert_eq!(read_result, 20);
+
+        // Verify original content is preserved, rest is zero-filled
+        assert_eq!(&buffer[0..5], b"Hello");
+        assert_eq!(&buffer[5..20], &[0u8; 15]);
+
+        // Close file
+        let result = vfs_close(fd);
+        assert_eq!(result, code::EOK.to_errno());
+
+        // Cleanup
+        let result = vfs_unlink(TEST_PATH);
+        assert_eq!(result, code::EOK.to_errno());
+
+        let result = vfs_rmdir(TEST_DIR);
+        assert_eq!(result, code::EOK.to_errno());
+    }
+
+    #[test]
+    fn test_ftruncate_invalid_params() {
+        // Test with invalid file descriptor
+        let result = vfs_ftruncate(-1, 100);
+        assert_eq!(result, code::EBADF.to_errno());
+
+        let result = vfs_ftruncate(1000, 100);
+        assert_eq!(result, code::EBADF.to_errno());
+    }
+
+    #[test]
+    fn test_ftruncate_file() {
+        // Create directory and file
+        let result = vfs_mkdir(TEST_DIR, 0o755);
+        assert_eq!(result, code::EOK.to_errno());
+
+        let fd = vfs_open(TEST_PATH, libc::O_CREAT | libc::O_RDWR, 0o644);
+        assert!(fd > 0);
+
+        // Write some data to file
+        let test_data = b"Hello, World!";
+        let write_result = vfs_write(fd, test_data.as_ptr() as *const u8, test_data.len());
+        assert_eq!(write_result, test_data.len() as isize);
+
+        // Test ftruncate to smaller size
+        let result = vfs_ftruncate(fd, 5);
+        assert_eq!(result, code::EOK.to_errno());
+
+        // Seek to beginning and read to verify truncation
+        let seek_result = vfs_lseek(fd, 0, libc::SEEK_SET);
+        assert_eq!(seek_result, 0);
+
+        let mut buffer = [0u8; 20];
+        let read_result = vfs_read(fd, buffer.as_mut_ptr() as *mut u8, buffer.len());
+        assert_eq!(read_result, 5);
+
+        // Verify content is truncated
+        assert_eq!(&buffer[0..5], b"Hello");
+
+        // Test ftruncate to larger size
+        let result = vfs_ftruncate(fd, 20);
+        assert_eq!(result, code::EOK.to_errno());
+
+        // Seek to beginning and read to verify expansion
+        let seek_result = vfs_lseek(fd, 0, libc::SEEK_SET);
+        assert_eq!(seek_result, 0);
+
+        let mut buffer = [0u8; 25];
+        let read_result = vfs_read(fd, buffer.as_mut_ptr() as *mut u8, buffer.len());
+        assert_eq!(read_result, 20);
+
+        // Verify original content is preserved, rest is zero-filled
+        assert_eq!(&buffer[0..5], b"Hello");
+        assert_eq!(&buffer[5..20], &[0u8; 15]);
+
+        // Close file
+        let result = vfs_close(fd);
+        assert_eq!(result, code::EOK.to_errno());
+
+        // Cleanup
+        let result = vfs_unlink(TEST_PATH);
+        assert_eq!(result, code::EOK.to_errno());
+
+        let result = vfs_rmdir(TEST_DIR);
+        assert_eq!(result, code::EOK.to_errno());
+    }
+
+    #[test]
+    fn test_truncate_directory() {
+        // Create directory
+        let result = vfs_mkdir(TEST_DIR, 0o755);
+        assert_eq!(result, code::EOK.to_errno());
+
+        // Try to truncate directory (should fail)
+        let result = vfs_truncate(TEST_DIR, 100);
+        assert_eq!(result, code::EISDIR.to_errno());
+
+        // Cleanup
+        let result = vfs_rmdir(TEST_DIR);
+        assert_eq!(result, code::EOK.to_errno());
+    }
+
+    #[test]
+    fn test_ftruncate_readonly_file() {
+        // Create directory and file
+        let result = vfs_mkdir(TEST_DIR, 0o755);
+        assert_eq!(result, code::EOK.to_errno());
+
+        let fd = vfs_open(TEST_PATH, libc::O_CREAT | libc::O_WRONLY, 0o644);
+        assert!(fd > 0);
+
+        // Write some data
+        let test_data = b"Hello, World!";
+        let write_result = vfs_write(fd, test_data.as_ptr() as *const u8, test_data.len());
+        assert_eq!(write_result, test_data.len() as isize);
+
+        // Close file
+        let result = vfs_close(fd);
+        assert_eq!(result, code::EOK.to_errno());
+
+        // Open file as read-only
+        let fd = vfs_open(TEST_PATH, libc::O_RDONLY, 0o644);
+        assert!(fd > 0);
+
+        // Try to truncate read-only file (should fail)
+        let result = vfs_ftruncate(fd, 5);
+        assert_eq!(result, code::EACCES.to_errno());
+
+        // Close file
+        let result = vfs_close(fd);
+        assert_eq!(result, code::EOK.to_errno());
+
+        // Cleanup
+        let result = vfs_unlink(TEST_PATH);
+        assert_eq!(result, code::EOK.to_errno());
+
+        let result = vfs_rmdir(TEST_DIR);
+        assert_eq!(result, code::EOK.to_errno());
     }
 }

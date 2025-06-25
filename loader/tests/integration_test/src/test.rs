@@ -14,7 +14,6 @@
 extern crate alloc;
 extern crate rsrt;
 // Import it just for the global allocator.
-use alloc::vec::Vec;
 use bluekernel;
 use bluekernel_loader as loader;
 use libc::{c_char, pthread_t};
@@ -38,7 +37,7 @@ mod test_everyting {
             unsafe { core::ffi::CStr::from_ptr(EVERYTHING_ELF_PATH as *const core::ffi::c_char) };
         let mut f = semihosting::fs::File::open(&path).unwrap();
         let mut tmp = [0u8; 64];
-        let mut buf = Vec::new();
+        let mut buf = alloc::vec::Vec::new();
         loop {
             let size = f.read(&mut tmp).unwrap();
             if size == 0 {

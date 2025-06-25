@@ -2,11 +2,15 @@
 #![allow(dead_code)]
 
 use crate::{
+    allocator::align_up_size,
     error::{code, Error},
     vfs::inode_mode::InodeFileType,
 };
-use alloc::string::String;
-use core::mem::{size_of, transmute};
+use core::{
+    ffi::{CStr, FromBytesUntilNulError},
+    marker::PhantomData,
+    mem::{align_of, offset_of, transmute},
+};
 
 /// File type enum
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -44,40 +48,41 @@ impl From<u8> for DirentType {
     }
 }
 
-/// struct Directory as libc dirent, we only support newlib for now
 #[derive(Debug, Clone)]
 #[repr(C)]
 pub struct Dirent {
-    d_ino: u32,
+    d_ino: usize,
+    d_off: usize,
+    /// The length of the dirent
+    d_reclen: u16,
     /// The type of the file  
     d_type: u8,
-    /// The file name  
-    name: [u8; 256],
+    // The file name - flexible array member
+    d_name: [u8; 0],
 }
 
 impl Dirent {
-    pub const SIZE: usize = size_of::<Self>();
+    pub const NAME_OFFSET: usize = offset_of!(Self, d_name);
 
     /// Create a new Dirent instance
-    pub fn new(ino: u32, type_: DirentType, name: &str) -> Self {
-        crate::static_assert!(Dirent::SIZE == size_of::<libc::dirent>());
-        let mut dirent = Self {
+    pub const fn new(ino: usize, off: usize, type_: DirentType, reclen: u16) -> Self {
+        Self {
             d_ino: ino,
+            d_off: off,
+            d_reclen: reclen,
             d_type: type_ as u8,
-            name: [0u8; 256],
-        };
-
-        let name_bytes = name.as_bytes();
-        let name_len = name_bytes.len().min(255);
-        dirent.name[..name_len].copy_from_slice(&name_bytes[..name_len]);
-        dirent.name[name_len] = 0;
-
-        dirent
+            d_name: [],
+        }
     }
 
     /// Get the inode number
-    pub fn ino(&self) -> u32 {
+    pub fn ino(&self) -> usize {
         self.d_ino
+    }
+
+    /// Get the offset
+    pub fn off(&self) -> usize {
+        self.d_off
     }
 
     /// Get the file type
@@ -85,41 +90,75 @@ impl Dirent {
         unsafe { transmute(self.d_type) }
     }
 
-    /// Get the file name as a string
-    pub fn name(&self) -> String {
-        let null_pos = self.name.iter().position(|&b| b == 0).unwrap_or(256);
-        String::from_utf8_lossy(&self.name[..null_pos]).into_owned()
+    /// Get the length of the dirent
+    pub fn reclen(&self) -> u16 {
+        self.d_reclen
     }
 
-    /// Create a Dirent from a raw buffer
-    pub unsafe fn from_buf(buf: &[u8]) -> Self {
+    /// Get the file name as a CStr
+    pub fn name(&self) -> Result<&CStr, FromBytesUntilNulError> {
+        let name_slice = unsafe {
+            core::slice::from_raw_parts(
+                (self as *const Self as *const u8).add(Self::NAME_OFFSET),
+                256,
+            )
+        };
+        CStr::from_bytes_until_nul(name_slice)
+    }
+
+    /// Get a reference to Dirent from a raw buffer
+    pub unsafe fn from_buf_ref(buf: &[u8]) -> &Self {
         let ptr = buf.as_ptr() as *const Self;
-        ptr.read_unaligned()
+        &*ptr
     }
 }
 
 pub struct DirBufferReader<'a> {
     buf: &'a mut [u8],
     read_pos: usize,
+    _marker: PhantomData<&'a mut [u8]>,
 }
 
 impl<'a> DirBufferReader<'a> {
     pub fn new(buf: &'a mut [u8]) -> Self {
-        Self { buf, read_pos: 0 }
+        Self {
+            buf,
+            read_pos: 0,
+            _marker: PhantomData,
+        }
     }
 
-    pub fn write_node(&mut self, ino: u32, type_: InodeFileType, name: &str) -> Result<(), Error> {
-        if self.read_pos + Dirent::SIZE > self.buf.len() {
+    pub fn write_node(
+        &mut self,
+        ino: usize,
+        off: usize,
+        type_: InodeFileType,
+        name: &str,
+    ) -> Result<(), Error> {
+        let name_len = name.len().min(255);
+        let dirent_size = align_up_size(Dirent::NAME_OFFSET + name_len + 1, align_of::<Self>());
+        if self.read_pos + dirent_size > self.buf.len() {
             return Err(code::ENOMEM);
         }
-
-        let dir = Dirent::new(ino, DirentType::from(type_), name);
+        // write dirent
+        let dir = Dirent::new(ino, off, DirentType::from(type_), dirent_size as u16);
         let dir_bytes: &[u8] = unsafe {
-            core::slice::from_raw_parts(&dir as *const Dirent as *const u8, Dirent::SIZE)
+            core::slice::from_raw_parts(&dir as *const Dirent as *const u8, Dirent::NAME_OFFSET)
         };
-        self.buf[self.read_pos..self.read_pos + Dirent::SIZE].copy_from_slice(dir_bytes);
-        self.read_pos += Dirent::SIZE;
+        self.buf[self.read_pos..self.read_pos + Dirent::NAME_OFFSET].copy_from_slice(dir_bytes);
+
+        let name_bytes = name.as_bytes();
+        self.buf
+            [self.read_pos + Dirent::NAME_OFFSET..self.read_pos + Dirent::NAME_OFFSET + name_len]
+            .copy_from_slice(&name_bytes[..name_len]);
+        self.buf[self.read_pos + Dirent::NAME_OFFSET + name_len] = 0;
+        self.read_pos += dirent_size;
+
         Ok(())
+    }
+
+    pub fn recv_len(&self) -> usize {
+        self.read_pos
     }
 }
 
@@ -130,17 +169,35 @@ mod tests {
 
     #[test]
     fn test_dirent() {
-        let dirent = Dirent::new(1, DirentType::Reg, "test.txt");
+        let mut buf = [0u8; 256];
+        let mut reader = DirBufferReader::new(&mut buf);
+        assert!(reader
+            .write_node(1, 0, InodeFileType::Regular, "test.txt")
+            .is_ok());
+        let dirent = unsafe { Dirent::from_buf_ref(&buf) };
         assert_eq!(dirent.ino(), 1);
+        assert_eq!(dirent.off(), 0);
         assert_eq!(dirent.type_(), DirentType::Reg);
-        assert_eq!(dirent.name(), "test.txt");
+        assert_eq!(
+            dirent.reclen(),
+            align_up_size(
+                Dirent::NAME_OFFSET + "test.txt".len() + 1,
+                align_of::<Dirent>()
+            ) as u16
+        );
+        assert_eq!(dirent.name().unwrap().to_string_lossy(), "test.txt");
     }
 
     #[test]
     fn test_dirent_long_name() {
+        let mut buf = [0u8; 1024];
+        let mut reader = DirBufferReader::new(&mut buf);
         let long_name = "a".repeat(300);
-        let dirent = Dirent::new(1, DirentType::Reg, &long_name);
-        assert_eq!(dirent.name().len(), 255);
+        assert!(reader
+            .write_node(1, 0, InodeFileType::Regular, &long_name)
+            .is_ok());
+        let dirent = unsafe { Dirent::from_buf_ref(&buf) };
+        assert_eq!(dirent.name().unwrap().to_string_lossy().len(), 255);
     }
 
     #[test]
@@ -149,17 +206,17 @@ mod tests {
         let mut reader = DirBufferReader::new(&mut buf);
 
         assert!(reader
-            .write_node(1, InodeFileType::Regular, "test.txt")
+            .write_node(1, 0, InodeFileType::Regular, "test.txt")
             .is_ok());
         assert!(reader
-            .write_node(2, InodeFileType::Directory, "dir")
+            .write_node(2, 1, InodeFileType::Directory, "dir")
             .is_ok());
 
         // Test buffer overflow
         let mut small_buf = [0u8; 1];
         let mut reader = DirBufferReader::new(&mut small_buf);
         assert!(reader
-            .write_node(1, InodeFileType::Regular, "test.txt")
+            .write_node(1, 2, InodeFileType::Regular, "test.txt")
             .is_err());
     }
 }

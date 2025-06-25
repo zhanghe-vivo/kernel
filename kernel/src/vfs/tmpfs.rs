@@ -500,7 +500,7 @@ impl InodeOps for TmpInode {
 
         // Handle special entries (., ..)
         if current_offset == 0 {
-            match reader.write_node(inner.attr.ino() as u32, inner.attr.type_(), ".") {
+            match reader.write_node(inner.attr.ino(), current_offset, inner.attr.type_(), ".") {
                 Ok(_) => {
                     count += 1;
                     current_offset += 1;
@@ -510,7 +510,9 @@ impl InodeOps for TmpInode {
         }
 
         if current_offset == 1 {
-            if let Err(e) = reader.write_node(inner.attr.ino() as u32, inner.attr.type_(), "..") {
+            if let Err(e) =
+                reader.write_node(inner.attr.ino(), current_offset, inner.attr.type_(), "..")
+            {
                 if count == 0 {
                     return Err(e);
                 }
@@ -522,8 +524,16 @@ impl InodeOps for TmpInode {
 
         let start_idx = current_offset.saturating_sub(2);
         for (name, inode) in dir.children.iter().skip(start_idx) {
-            match reader.write_node(inode.attr().ino() as u32, inode.attr().type_(), name) {
-                Ok(_) => count += 1,
+            match reader.write_node(
+                inode.attr().ino(),
+                current_offset,
+                inode.attr().type_(),
+                name,
+            ) {
+                Ok(_) => {
+                    count += 1;
+                    current_offset += 1;
+                }
                 Err(e) => {
                     if count == 0 {
                         return Err(e);

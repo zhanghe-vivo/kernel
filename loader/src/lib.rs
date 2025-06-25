@@ -24,7 +24,7 @@ fn build_memory_layout(binary: &Elf, mapper: &mut MemoryMapper) -> Result {
     Ok(())
 }
 
-fn allocate_memory_for_segments(binary: &Elf, mapper: &mut MemoryMapper) -> Result {
+fn allocate_memory_for_segments(_binary: &Elf, mapper: &mut MemoryMapper) -> Result {
     mapper.allocate_memory();
     Ok(())
 }
@@ -34,7 +34,6 @@ fn copy_content_to_memory(buffer: &[u8], binary: &Elf, mapper: &mut MemoryMapper
     // filesize) bits are .bss. I need to read more about ELF spec to
     // find out exceptions. Currently, it just works.
     let base = mapper.real_start_mut().unwrap();
-    let mut offset = 0isize;
     for ph in &binary.program_headers {
         match ph.p_type {
             goblin::elf::program_header::PT_LOAD => {

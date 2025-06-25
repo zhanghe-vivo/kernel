@@ -12,27 +12,23 @@ use crate::{
 use alloc::{string::String, sync::Arc};
 use spin::{Mutex as SpinMutex, Once};
 
-struct WorkingDir {
-    path: String,
-    dir: Arc<Dcache>,
-}
-
 // FIXME: move WORKING_DIR to FsEnv
-static WORKING_DIR: Once<SpinMutex<WorkingDir>> = Once::new();
+static WORKING_DIR: Once<SpinMutex<Arc<Dcache>>> = Once::new();
 
 pub fn get_working_dir() -> Arc<Dcache> {
     WORKING_DIR
         .call_once(|| {
             let dir = get_root_dir();
-            let path = String::from("/");
-            SpinMutex::new(WorkingDir {
-                path,
-                dir: dir.clone(),
-            })
+            SpinMutex::new(dir.clone())
         })
         .lock()
-        .dir
         .clone()
+}
+
+pub fn set_working_dir(dir: Arc<Dcache>) -> Result<(), Error> {
+    let mut working_dir = WORKING_DIR.get().unwrap().lock();
+    *working_dir = dir;
+    Ok(())
 }
 
 enum FilePath<'a> {

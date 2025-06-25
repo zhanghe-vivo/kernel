@@ -6,7 +6,7 @@ extern crate rsrt;
 use bluekernel::{
     scheduler,
     thread::Thread,
-    vfs::posix::{vfs_open, vfs_read, vfs_write},
+    vfs::syscalls::{vfs_open, vfs_read, vfs_write},
 };
 use core::ffi::c_char;
 use libc::*;
