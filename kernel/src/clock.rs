@@ -1,8 +1,10 @@
-#![allow(dead_code)]
-
-#[cfg(not(cortex_m))]
-use crate::boards::systick::BOOT_CYCLE_COUNT;
-use crate::{arch::Arch, bluekernel_kconfig::TICK_PER_SECOND, boards::sys_config, cpu::Cpu, timer};
+use crate::{
+    arch,
+    bluekernel_kconfig::TICK_PER_SECOND,
+    boards::{boot_time, config},
+    clock, timer,
+};
+use core::sync::atomic::Ordering;
 
 pub const WAITING_FOREVER: u32 = u32::MAX;
 
@@ -15,7 +17,7 @@ pub fn get_tick() -> u32 {
 /// Return the cycle counts since the boot.
 pub(crate) fn get_clock_cycle() -> u64 {
     let systick_val = Arch::get_systick_value();
-    let tick = crate::clock::get_tick() as u64;
+    let tick = clock::get_tick() as u64;
     let systick_reload = Arch::get_systick_reload();
     (systick_reload + 1) * tick + systick_reload.saturating_sub(systick_val)
 }
@@ -24,7 +26,7 @@ pub(crate) fn get_clock_cycle() -> u64 {
 /// Return the cycle counts since the boot.
 pub(crate) fn get_clock_cycle() -> u64 {
     let current_cycle_count: u64 = Arch::get_cycle_count();
-    let boot_cycle_count: u64 = BOOT_CYCLE_COUNT.load(core::sync::atomic::Ordering::Relaxed);
+    let boot_cycle_count: u64 = BOOT_CYCLE_COUNT.load(Ordering::Relaxed);
     current_cycle_count.saturating_sub(boot_cycle_count)
 }
 

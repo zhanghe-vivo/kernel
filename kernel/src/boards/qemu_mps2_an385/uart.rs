@@ -1,18 +1,20 @@
-use super::{
-    irq::{UART0RX_IRQn, UART0TX_IRQn},
-    sys_config::{SYSTEM_CORE_CLOCK, UART0_BASE},
-};
+// TODO: We have too much duplicated code involving UART, try to make
+// them a shared module.
+use super::config::{memory_map::UART0_BASE, UART0RX_IRQn, UART0TX_IRQn, SYSTEM_CORE_CLOCK};
 use crate::{
-    arch::{interrupt::IrqNumber, Arch},
+    arch,
     devices::{
+        nvic,
+        nvic::IrqNumber,
         serial::{cmsdk_uart::Uart, config::SerialConfig, Serial, SerialError, UartOps},
         DeviceManager, DeviceRequest,
     },
-    irq::Irq,
     sync::SpinLock,
+    vfs::AccessMode,
 };
-use alloc::{string::String, sync::Arc};
+use alloc::{string::ToString, sync::Arc};
 use core::hint::spin_loop;
+use cortex_m::interrupt::InterruptNumber;
 use embedded_io::{ErrorKind, ErrorType, Read, ReadReady, Write, WriteReady};
 use spin::Once;
 
@@ -106,14 +108,14 @@ impl UartOps for UartDriver {
         let uart = &mut self.inner;
         uart.enable(SYSTEM_CORE_CLOCK, serial_config.baudrate);
         uart.clear_interrupt();
-        Arch::enable_irq(self.rx_irq);
-        Arch::enable_irq(self.tx_irq);
+        nvic::enable(self.rx_irq);
+        nvic::enable(self.tx_irq);
         Ok(())
     }
 
     fn shutdown(&mut self) -> Result<(), SerialError> {
-        Arch::disable_irq(self.rx_irq);
-        Arch::disable_irq(self.tx_irq);
+        nvic::disable(self.rx_irq);
+        nvic::disable(self.tx_irq);
         self.inner.disable();
         Ok(())
     }
@@ -192,33 +194,23 @@ pub fn get_serial0() -> &'static Arc<Serial> {
 
 pub fn uart_init() -> Result<(), ErrorKind> {
     let serial0 = get_serial0();
-    DeviceManager::get().register_device(String::from("ttyS0"), serial0.clone())
+    DeviceManager::get().register_device("ttyS0".to_string(), serial0.clone())
 }
 
-#[link_section = ".text.vector_handlers"]
 #[coverage(off)]
-#[no_mangle]
-pub unsafe extern "C" fn UART0RX_Handler() {
-    Irq::enter(UART0RX_IRQn);
+pub unsafe extern "C" fn uart0rx_handler() {
     let uart = get_serial0();
-    uart.uart_ops.lock_irqsave().clear_rx_interrupt();
-
+    uart.uart_ops.irqsave_lock().clear_rx_interrupt();
     if let Err(_e) = uart.recvchars() {
         // println!("UART RX error: {:?}", e);
     }
-    Irq::leave();
 }
 
-#[link_section = ".text.vector_handlers"]
 #[coverage(off)]
-#[no_mangle]
-pub unsafe extern "C" fn UART0TX_Handler() {
-    Irq::enter(UART0TX_IRQn);
+pub unsafe extern "C" fn uart0tx_handler() {
     let uart = get_serial0();
-    uart.uart_ops.lock_irqsave().clear_tx_interrupt();
-
+    uart.uart_ops.irqsave_lock().clear_tx_interrupt();
     if let Err(_e) = uart.xmitchars() {
         // println!("UART TX error: {:?}", e);
     }
-    Irq::leave();
 }

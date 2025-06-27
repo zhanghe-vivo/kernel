@@ -1,6 +1,4 @@
 #![allow(dead_code)]
-
-use crate::cpu::Cpu;
 use alloc::alloc::{AllocError, LayoutError};
 use core::{ffi::CStr, num::TryFromIntError, ptr, str::Utf8Error};
 
@@ -27,8 +25,8 @@ pub mod code {
     pub const EEXIST: super::Error = super::Error(-libc::EEXIST);
     pub const ENOTDIR: super::Error = super::Error(-libc::ENOTDIR);
     pub const EISDIR: super::Error = super::Error(-libc::EISDIR);
-    pub const ENAMETOOLONG: super::Error = super::Error(-libc::ENAMETOOLONG);
     pub const ENOTEMPTY: super::Error = super::Error(-libc::ENOTEMPTY);
+    pub const ENAMETOOLONG: super::Error = super::Error(-libc::ENAMETOOLONG);
     pub const EACCES: super::Error = super::Error(-libc::EACCES);
     pub const ESPIPE: super::Error = super::Error(-libc::ESPIPE);
     pub const EOVERFLOW: super::Error = super::Error(-libc::EOVERFLOW);
@@ -36,32 +34,32 @@ pub mod code {
     pub const EXDEV: super::Error = super::Error(-libc::EXDEV);
 }
 
-const UNKNOW_STR: &'static CStr = crate::c_str!("EUNKNOW ");
-const EOK_STR: &'static CStr = crate::c_str!("OK ");
-const ERROR_STR: &'static CStr = crate::c_str!("ERROR ");
-const ETIMEDOUT_STR: &'static CStr = crate::c_str!("Timedout ");
-const ENOSPC_STR: &'static CStr = crate::c_str!("No space left on device ");
-const ENODATA_STR: &'static CStr = crate::c_str!("No data available ");
-const ENOMEM_STR: &'static CStr = crate::c_str!("Cannot allocate memory ");
-const ENOSYS_STR: &'static CStr = crate::c_str!("Function not implemented ");
-const EBUSY_STR: &'static CStr = crate::c_str!("Device or resource busy ");
-const EIO_STR: &'static CStr = crate::c_str!("Input/output error ");
-const EINTR_STR: &'static CStr = crate::c_str!("Interrupted system call ");
-const EINVAL_STR: &'static CStr = crate::c_str!("Invalid argument ");
-const ENOENT_STR: &'static CStr = crate::c_str!("No such file or directory ");
-const EPERM_STR: &'static CStr = crate::c_str!("Operation not permitted ");
-const ENODEV_STR: &'static CStr = crate::c_str!("No Such Device ");
-const EAGAIN_STR: &'static CStr = crate::c_str!("Try again ");
-const EBADFD_STR: &'static CStr = crate::c_str!("File descriptor in bad state ");
-const EEXIST_STR: &'static CStr = crate::c_str!("File exists");
-const ENOTDIR_STR: &'static CStr = crate::c_str!("Not a directory");
-const EISDIR_STR: &'static CStr = crate::c_str!("Is a directory");
-const ENOTEMPTY_STR: &'static CStr = crate::c_str!("Directory not empty");
-const ENAMETOOLONG_STR: &'static CStr = crate::c_str!("File name too long");
-const ESPIPE_STR: &'static CStr = crate::c_str!("Invalid seek");
-const EOVERFLOW_STR: &'static CStr = crate::c_str!("Value too large to be stored in data type");
-const ELOOP_STR: &'static CStr = crate::c_str!("Too many symbolic links encountered");
-const EXDEV_STR: &'static CStr = crate::c_str!("Cross-device link");
+const UNKNOW_STR: &'static CStr = c"EUNKNOW ";
+const EOK_STR: &'static CStr = c"OK  ";
+const ERROR_STR: &'static CStr = c"ERROR  ";
+const ETIMEDOUT_STR: &'static CStr = c"Timedout  ";
+const ENOSPC_STR: &'static CStr = c"No space left on device  ";
+const ENODATA_STR: &'static CStr = c"No data available  ";
+const ENOMEM_STR: &'static CStr = c"Cannot allocate memory  ";
+const ENOSYS_STR: &'static CStr = c"Function not implemented  ";
+const EBUSY_STR: &'static CStr = c"Device or resource busy  ";
+const EIO_STR: &'static CStr = c"Input/output error  ";
+const EINTR_STR: &'static CStr = c"Interrupted system call  ";
+const EINVAL_STR: &'static CStr = c"Invalid argument  ";
+const ENOENT_STR: &'static CStr = c"No such file or directory  ";
+const EPERM_STR: &'static CStr = c"Operation not permitted  ";
+const ENODEV_STR: &'static CStr = c"No Such Device  ";
+const EAGAIN_STR: &'static CStr = c"Try again  ";
+const EBADFD_STR: &'static CStr = c"File descriptor in bad state  ";
+const EEXIST_STR: &'static CStr = c"File exists ";
+const ENOTDIR_STR: &'static CStr = c"Not a directory ";
+const EISDIR_STR: &'static CStr = c"Is a directory ";
+const ENOTEMPTY_STR: &'static CStr = c"Directory not empty ";
+const ENAMETOOLONG_STR: &'static CStr = c"File name too long";
+const ESPIPE_STR: &'static CStr = c"Invalid seek";
+const EOVERFLOW_STR: &'static CStr = c"Value too large to be stored in data type";
+const ELOOP_STR: &'static CStr = c"Too many symbolic links encountered";
+const EXDEV_STR: &'static CStr = c"Cross-device link";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
@@ -93,11 +91,6 @@ impl Error {
             &code::ENOENT => ENOENT_STR,
             &code::EPERM => EPERM_STR,
             &code::ENODEV => ENODEV_STR,
-            &code::ENAMETOOLONG => ENAMETOOLONG_STR,
-            &code::ESPIPE => ESPIPE_STR,
-            &code::EOVERFLOW => EOVERFLOW_STR,
-            &code::ELOOP => ELOOP_STR,
-            &code::EXDEV => EXDEV_STR,
             _ => UNKNOW_STR,
         }
     }
@@ -141,50 +134,6 @@ impl From<core::convert::Infallible> for Error {
 
 pub fn strerror(error: i32) -> *const core::ffi::c_char {
     Error(error).name().as_ptr()
-}
-
-pub unsafe fn get_errno() -> i32 {
-    let nest = Cpu::interrupt_nest_load();
-    if nest != 0 {
-        return ERRNO.to_errno();
-    }
-
-    let tid = Cpu::get_current_thread().map_or(ptr::null_mut(), |thread| thread.as_ptr());
-    if tid.is_null() {
-        return ERRNO.to_errno();
-    }
-
-    (*tid).error.to_errno()
-}
-
-pub unsafe fn set_errno(error: i32) {
-    let nest = Cpu::interrupt_nest_load();
-    if nest != 0 {
-        ERRNO = Error::from_errno(error);
-        return;
-    }
-
-    let tid = Cpu::get_current_thread().map_or(ptr::null_mut(), |thread| thread.as_ptr());
-    if tid.is_null() {
-        ERRNO = Error::from_errno(error);
-        return;
-    }
-
-    (*tid).error = Error::from_errno(error);
-}
-
-pub unsafe fn _errno() -> *mut i32 {
-    let nest = Cpu::interrupt_nest_load();
-    if nest != 0 {
-        return &raw const ERRNO.0 as *const i32 as *mut i32;
-    }
-
-    let tid = Cpu::get_current_thread().map_or(ptr::null_mut(), |thread| thread.as_ptr());
-    if tid.is_null() {
-        return &raw const ERRNO.0 as *const i32 as *mut i32;
-    }
-
-    &mut (*tid).error.0
 }
 
 impl core::fmt::Display for Error {

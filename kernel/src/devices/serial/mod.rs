@@ -1,10 +1,9 @@
 use crate::{
-    clock::WAITING_FOREVER,
-    cpu::Cpu,
+    arch,
     devices::{Device, DeviceBase, DeviceClass, DeviceId, DeviceRequest},
     sync::{
-        futex::{atomic_wait, atomic_wake},
-        lock::spinlock::SpinLock,
+        atomic_wait::{atomic_wait, atomic_wake},
+        spinlock::SpinLock,
     },
 };
 use alloc::{format, string::String, sync::Arc};
@@ -144,13 +143,13 @@ impl Serial {
 
     fn rx_disable(&self) -> Result<(), SerialError> {
         let _ = atomic_wake(&self.rx_fifo.futex as *const AtomicUsize as usize, 1);
-        self.uart_ops.lock_irqsave().set_rx_interrupt(false);
+        self.uart_ops.irqsave_lock().set_rx_interrupt(false);
         Ok(())
     }
 
     fn tx_disable(&self) -> Result<(), SerialError> {
         let _ = atomic_wake(&self.tx_fifo.futex as *const AtomicUsize as usize, 1);
-        self.uart_ops.lock_irqsave().set_tx_interrupt(false);
+        self.uart_ops.irqsave_lock().set_tx_interrupt(false);
         // send all data in tx fifo
         self.xmitchars()?;
         Ok(())
@@ -176,12 +175,8 @@ impl Serial {
             if !is_nonblocking {
                 // if the available data is less than the requested data, wait for data
                 if n == 0 {
-                    atomic_wait(
-                        &self.rx_fifo.futex as *const AtomicUsize as usize,
-                        0,
-                        WAITING_FOREVER,
-                    )
-                    .map_err(|_| SerialError::TimedOut)?;
+                    atomic_wait(&self.rx_fifo.futex as *const AtomicUsize as usize, 0, None)
+                        .map_err(|_| SerialError::TimedOut)?;
                 } else {
                     break;
                 }
@@ -213,23 +208,19 @@ impl Serial {
             }
             if n > 0 {
                 writer.push_done(n);
-                self.uart_ops.lock_irqsave().set_tx_interrupt(true);
+                self.uart_ops.irqsave_lock().set_tx_interrupt(true);
                 // write some data to uart to trigger interrupt
-                if !Cpu::is_in_interrupt() {
+                if !arch::is_in_interrupt() {
                     let _ = self.xmitchars();
                 }
             }
 
-            if !is_nonblocking && !Cpu::is_in_interrupt() {
+            if !is_nonblocking && !arch::is_in_interrupt() {
                 if !writer.is_empty() {
                     // wait for data to be written
-                    atomic_wait(
-                        &self.tx_fifo.futex as *const AtomicUsize as usize,
-                        0,
-                        WAITING_FOREVER,
-                    )
-                    .map_err(|_| SerialError::TimedOut)?;
-                    self.uart_ops.lock_irqsave().set_tx_interrupt(false);
+                    atomic_wait(&self.tx_fifo.futex as *const AtomicUsize as usize, 0, None)
+                        .map_err(|_| SerialError::TimedOut)?;
+                    self.uart_ops.irqsave_lock().set_tx_interrupt(false);
                 } else if count >= len {
                     break;
                 }
@@ -247,7 +238,7 @@ impl Serial {
     pub fn xmitchars(&self) -> Result<usize, SerialError> {
         let mut nbytes: usize = 0;
         {
-            let mut uart_ops = self.uart_ops.lock_irqsave();
+            let mut uart_ops = self.uart_ops.irqsave_lock();
             // Safety: tx_fifo reader is only accessed in the UART interrupt handler
             let mut reader = unsafe { self.tx_fifo.rb.reader() };
             while !reader.is_empty() && uart_ops.write_ready()? {
@@ -279,7 +270,7 @@ impl Serial {
     pub fn recvchars(&self) -> Result<usize, SerialError> {
         let mut nbytes: usize = 0;
         {
-            let mut uart_ops = self.uart_ops.lock_irqsave();
+            let mut uart_ops = self.uart_ops.irqsave_lock();
             // Safety: rx_fifo writer is only accessed in the UART interrupt handler
             let mut writer = unsafe { self.rx_fifo.rb.writer() };
             while !writer.is_full() && uart_ops.read_ready()? {
@@ -321,7 +312,7 @@ impl Device for Serial {
 
     fn open(&self) -> Result<(), ErrorKind> {
         if !self.is_opened() {
-            let mut uart_ops = self.uart_ops.lock_irqsave();
+            let mut uart_ops = self.uart_ops.irqsave_lock();
             uart_ops.setup(&self.config)?;
             uart_ops.set_rx_interrupt(true);
         }
@@ -340,7 +331,7 @@ impl Device for Serial {
             self.rx_disable()?;
             self.tx_disable()?;
 
-            let mut uart_ops = self.uart_ops.lock_irqsave();
+            let mut uart_ops = self.uart_ops.irqsave_lock();
             uart_ops.ioctl(DeviceRequest::Close as u32, 0)?;
         }
 
@@ -356,7 +347,7 @@ impl Device for Serial {
     }
 
     fn ioctl(&self, request: u32, arg: usize) -> Result<(), ErrorKind> {
-        let mut uart_ops = self.uart_ops.lock_irqsave();
+        let mut uart_ops = self.uart_ops.irqsave_lock();
         uart_ops.ioctl(request, arg).map_err(|e| e.into())
     }
 }

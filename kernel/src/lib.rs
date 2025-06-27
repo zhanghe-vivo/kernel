@@ -1,194 +1,449 @@
-// NEWLINE-TIMEOUT: 15
-// ASSERT-SUCC: Kernel unit test end.
-// ASSERT-FAIL: Backtrace in Panic.*
+// TOTAL-TIMEOUT: 4
+// ASSERT-SUCC: Done kernel unittests
+// ASSERT-FAIL: Oops:
+
 #![no_std]
 #![allow(internal_features)]
 #![feature(alloc_error_handler)]
 #![feature(alloc_layout_extra)]
 #![feature(allocator_api)]
+#![feature(box_as_ptr)]
 #![feature(c_size_t)]
 #![feature(c_variadic)]
 #![feature(core_intrinsics)]
 #![feature(coverage_attribute)]
+#![feature(fn_align)]
+#![feature(inherent_associated_types)]
+#![feature(lazy_get)]
 #![feature(link_llvm_intrinsics)]
 #![feature(linkage)]
 #![feature(macro_metavar_expr)]
-#![feature(naked_functions)]
-#![feature(new_zeroed_alloc)]
-#![feature(coverage_attribute)]
 #![feature(map_try_insert)]
+#![feature(naked_functions)]
+#![feature(negative_impls)]
+#![feature(new_zeroed_alloc)]
+#![feature(noop_waker)]
+#![feature(pointer_is_aligned_to)]
 #![feature(trait_upcasting)]
-#![no_main]
-#![feature(custom_test_frameworks)]
-#![test_runner(kernel_utest_runner)]
-#![reexport_test_harness_main = "kernel_utest_main"]
+// Attributes applied when we're testing the kernel.
+#![cfg_attr(test, no_main)]
+#![cfg_attr(test, feature(custom_test_frameworks))]
+#![cfg_attr(test, test_runner(tests::kernel_unittest_runner))]
+#![cfg_attr(test, reexport_test_harness_main = "run_kernel_unittests")]
 
-pub extern crate alloc;
-pub use bluekernel_arch::arch;
-pub use bluekernel_kconfig;
-pub use libc;
-#[cfg(os_adapter)]
-pub use os_bindings;
+extern crate alloc;
+
+pub mod ffi {
+    #[no_mangle]
+    pub extern "C" fn disable_local_irq_save() -> usize {
+        crate::arch::disable_local_irq_save()
+    }
+
+    #[no_mangle]
+    pub extern "C" fn enable_local_irq_restore(val: usize) {
+        crate::arch::enable_local_irq_restore(val)
+    }
+}
 
 pub mod allocator;
-mod boards;
-pub mod clock;
-pub mod console;
-pub mod cpu;
-pub mod devices;
-pub mod error;
-pub mod idle;
-pub mod irq;
-mod logger;
-mod macros;
-pub mod object;
-pub mod process;
-pub mod scheduler;
-mod stack;
-mod startup;
-mod static_init;
-pub mod sync;
-#[cfg(not(direct_syscall_handler))]
-mod syscall_handlers;
-#[cfg(direct_syscall_handler)]
+pub(crate) mod arch;
+pub mod asynk;
+pub(crate) mod boards;
+pub(crate) mod boot;
 pub mod syscall_handlers;
+//pub(crate) mod clock;
+pub(crate) mod config;
+pub(crate) mod devices;
+pub mod emballoc;
+pub mod error;
+pub mod scheduler;
+pub mod support;
+pub mod sync;
 pub mod thread;
-pub mod timer;
+pub mod types;
 pub mod vfs;
-mod zombie;
 
-#[cfg(coverage)]
-pub mod cov;
-#[cfg(coverage)]
-pub use minicov;
+pub use syscall_handlers as syscalls;
 
-// #[link_section] is only usable from the root crate.
-// See https://github.com/rust-lang/rust/issues/67209.
-#[cfg(target_board = "qemu_mps2_an385")]
-include!("boards/qemu_mps2_an385/handlers.rs");
-#[cfg(target_board = "qemu_mps3_an547")]
-include!("boards/qemu_mps3_an547/handlers.rs");
-
-#[panic_handler]
-fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
-    if cpu::Cpus::is_inited() {
-        cpu::Cpus::lock_cpus();
-    }
-    early_println!("{}", info);
-    early_println!("Backtrace in Panic: {}", arch::Arch::backtrace());
-
-    if let Some(thread) = crate::cpu::Cpu::get_current_thread() {
-        early_println!("current thread: {:?}", unsafe { thread.as_ref() });
-    }
-
-    #[cfg(debug_assertions)]
-    loop {
-        use core::sync::atomic::{self, Ordering};
-        atomic::compiler_fence(Ordering::SeqCst);
-    }
-    #[cfg(not(debug_assertions))]
-    {
-        arch::Arch::sys_reset()
-    }
-}
-
-/// Macro to check current context.
-#[cfg(debugging_context)]
+#[cfg(test)]
 #[macro_export]
-macro_rules! debug_not_in_interrupt {
-    () => {
-        use crate::cpu;
-
-        let level = arch::Arch::disable_interrupts();
-        if cpu::Cpu::interrupt_nest_load() != 0 {
-            unreachable!(
-                "Function[{}] shall not be used in ISR",
-                crate::function_name!()
-            );
-        }
-        arch::Arch::enable_interrupts(level);
-    };
-}
-
-///  "In thread context" means:
-///    1) the scheduler has been started
-///    2) not in interrupt context.
-#[cfg(debugging_context)]
-#[macro_export]
-macro_rules! debug_in_thread_context {
-    () => {
-        let level = arch::Arch::disable_interrupts();
-        if cpu::Cpu::get_current_thread().is_none() {
-            unreachable!("current_thread is none!");
-        }
-        kernel::debug_not_in_interrupt!();
-        arch::Arch::enable_interrupts(level);
-    };
-}
-
-/// "scheduler available" means:
-/// 1) the scheduler has been started.
-/// 2) not in interrupt context.
-/// 3) scheduler is not locked.
-/// 4) interrupt is not disabled.
-#[cfg(debugging_context)]
-#[macro_export]
-macro_rules! debug_scheduler_available {
-    ($need_check:expr) => {{
-        if $need_check {
-            use crate::irq;
-
-            let interrupt_disabled = !arch::Arch::is_interrupts_active();
-            let level = arch::Arch::disable_interrupts();
-            if cpu::Cpu::get_current_scheduler().get_sched_lock_level() != 0 {
-                unreachable!(
-                    "Function[{}] scheduler is not available",
-                    crate::function_name!()
-                );
-            }
-            if interrupt_disabled {
-                unreachable!(
-                    "Function[{}] interrupt is disabled",
-                    crate::function_name!()
-                );
-            }
-            kernel::debug_in_thread_context!();
-            arch::Arch::enable_interrupts(level);
-        }
+macro_rules! debug {
+    ($($tt:tt)*) => {{
+        //        use crate::arch;
+        //        use crate::thread::{Thread,ThreadNode};
+        //        use crate::scheduler;
+        //        let dig = $crate::support::DisableInterruptGuard::new();
+        //        let l = $crate::tests::DEBUGGER.lock();
+        //        semihosting::eprintln!($($tt)*);
+        //        drop(l);
+        //        drop(dig);
     }};
 }
 
-#[cfg(not(debugging_context))]
+pub(crate) static TRACER: spin::Mutex<()> = spin::Mutex::new(());
+
+#[cfg(not(test))]
 #[macro_export]
-macro_rules! debug_not_in_interrupt {
-    () => {};
-}
-#[cfg(not(debugging_context))]
-#[macro_export]
-macro_rules! debug_in_thread_context {
-    () => {};
-}
-#[cfg(not(debugging_context))]
-#[macro_export]
-macro_rules! debug_scheduler_available {
-    ($need_check:expr) => {};
+macro_rules! trace {
+    ($($tt:tt)*) => {{
+        let dig = $crate::support::DisableInterruptGuard::new();
+        let l = $crate::TRACER.lock();
+        semihosting::eprintln!("[C#{}] sp: 0x{:x}",
+                               $crate::arch::current_cpu_id(),
+                               $crate::arch::current_sp());
+        semihosting::eprintln!($($tt)*);
+        drop(l);
+        drop(dig);
+    }};
 }
 
 #[cfg(test)]
-pub fn utest_main() {
-    #[cfg(test)]
-    kernel_utest_main();
-
-    #[cfg(coverage)]
-    crate::cov::write_coverage_data();
+#[macro_export]
+macro_rules! trace {
+    ($($tt:tt)*) => {{
+        let dig = $crate::support::DisableInterruptGuard::new();
+        let l = $crate::tests::DEBUGGER.lock();
+        semihosting::eprintln!("[C#{}] sp: 0x{:x}",
+                               arch::current_cpu_id(),
+                               arch::current_sp());
+        semihosting::eprintln!($($tt)*);
+        drop(l);
+        drop(dig);
+    }};
 }
 
 #[cfg(test)]
-pub fn kernel_utest_runner(tests: &[&dyn Fn()]) {
-    println!("Kernel unit test start...");
-    println!("Running {} tests", tests.len());
-    for test in tests {
-        test();
+#[macro_export]
+macro_rules! println {
+    ($($tt:tt)*) => {
+        {
+            let dig = $crate::support::DisableInterruptGuard::new();
+            let l = $crate::tests::DEBUGGER.lock();
+            semihosting::println!($($tt)*);
+            drop(l);
+            drop(dig);
+        }
+    };
+}
+
+#[cfg(not(test))]
+#[macro_export]
+macro_rules! debug {
+    ($($tt:tt)*) => {};
+}
+
+#[cfg(test)]
+mod tests {
+    extern crate alloc;
+    use super::*;
+    use crate::{
+        allocator, allocator::KernelAllocator, config, emballoc, support::DisableInterruptGuard,
+        sync,
+    };
+    use bluekernel_header::syscalls::NR::Nop;
+    use bluekernel_test_macro::test;
+    use config::NUM_CORES;
+    use core::{
+        mem::MaybeUninit,
+        panic::PanicInfo,
+        sync::atomic::{AtomicUsize, Ordering},
+    };
+    use spin::Mutex;
+    use thread::{Entry, SystemThreadStorage, Thread, ThreadNode};
+
+    pub static DEBUGGER: Mutex<()> = Mutex::new(());
+
+    #[used]
+    #[link_section = ".bk_app_array"]
+    static INIT_TEST: extern "C" fn() = init_test;
+
+    extern "C" fn test_main() {
+        run_kernel_unittests();
     }
-    println!("Kernel unit test end.");
+
+    #[cfg(target_pointer_width = "32")]
+    const K: usize = 1;
+
+    #[cfg(all(debug_assertions, target_pointer_width = "64"))]
+    pub const K: usize = 1;
+    #[cfg(all(not(debug_assertions), target_pointer_width = "64"))]
+    pub const K: usize = 64;
+
+    static TEST_THREAD_STORAGES: [SystemThreadStorage; NUM_CORES * K] =
+        [const { SystemThreadStorage::new() }; NUM_CORES * K];
+    static mut TEST_THREADS: [MaybeUninit<ThreadNode>; NUM_CORES * K] =
+        [const { MaybeUninit::zeroed() }; NUM_CORES * K];
+
+    static MAIN_THREAD_STORAGE: SystemThreadStorage = SystemThreadStorage::new();
+    static mut MAIN_THREAD: MaybeUninit<ThreadNode> = MaybeUninit::zeroed();
+
+    fn reset_and_queue_test_thread(i: usize, entry: extern "C" fn()) {
+        unsafe {
+            let t = TEST_THREADS[i].assume_init_ref();
+            let mut w = t.lock();
+            let stack = &TEST_THREAD_STORAGES[i].stack;
+            let stack = thread::Stack::Raw {
+                base: stack.rep.as_ptr() as usize,
+                size: stack.rep.len(),
+            };
+            w.init(stack, thread::Entry::C(entry));
+            let ok = scheduler::queue_ready_thread(w.state(), t.clone());
+            assert!(ok);
+        }
+    }
+
+    fn reset_and_queue_test_threads(entry: extern "C" fn()) {
+        unsafe {
+            for i in 0..TEST_THREADS.len() {
+                reset_and_queue_test_thread(i, entry);
+            }
+        }
+    }
+
+    fn init_test_thread(i: usize) {
+        let t = thread::build_static_thread(
+            unsafe { &mut TEST_THREADS[i] },
+            &TEST_THREAD_STORAGES[i],
+            config::MAX_THREAD_PRIORITY / 2,
+            thread::CREATED,
+            Entry::C(test_main),
+        );
+    }
+
+    extern "C" fn init_test() {
+        let t = thread::build_static_thread(
+            unsafe { &mut MAIN_THREAD },
+            &MAIN_THREAD_STORAGE,
+            config::MAX_THREAD_PRIORITY / 2,
+            thread::CREATED,
+            Entry::C(test_main),
+        );
+        let ok = scheduler::queue_ready_thread(thread::CREATED, t.clone());
+        assert!(ok);
+        let l = unsafe { TEST_THREADS.len() };
+        debug!("Total test threads: {}", l);
+        for i in 0..l {
+            init_test_thread(i);
+        }
+    }
+
+    #[cfg(target_pointer_width = "64")]
+    const EMBALLOC_SIZE: usize = 8 << 20;
+    #[cfg(target_pointer_width = "32")]
+    const EMBALLOC_SIZE: usize = 2 << 20;
+
+    #[global_allocator]
+    static ALLOCATOR: KernelAllocator = KernelAllocator;
+    // Emballoc is for correctness reference.
+    //static ALLOCATOR: emballoc::Allocator<{ EMBALLOC_SIZE }> = emballoc::Allocator::new();
+
+    #[panic_handler]
+    fn oops(info: &PanicInfo) -> ! {
+        let _ = DisableInterruptGuard::new();
+        println!("{}", info);
+        println!("Oops: {}", info.message());
+        loop {}
+    }
+
+    ////#[test]
+    fn test_timer() {
+        debug!("Waiting for timer...");
+        #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
+        arch::idle();
+        debug!("Returned from timer...");
+    }
+
+    #[test]
+    fn test_local_irq() {
+        assert!(arch::local_irq_enabled());
+    }
+
+    #[test]
+    fn stress_trap() {
+        #[cfg(target_pointer_width = "32")]
+        let n = 16;
+        #[cfg(target_pointer_width = "64")]
+        let n = 256;
+        for _i in 0..n {
+            #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
+            unsafe {
+                core::arch::asm!(
+                    "ecall",
+                    in("a7") Nop as usize,
+                    inlateout("a0") 0 => _,
+                    options(nostack),
+                );
+            };
+        }
+    }
+
+    static mut SEMA_COUNTER: usize = 0usize;
+    static SEMA: sync::semaphore::Semaphore = sync::semaphore::Semaphore::new(1);
+
+    extern "C" fn test_semaphore() {
+        SEMA.acquire_notimeout();
+        let n = unsafe { SEMA_COUNTER };
+        unsafe { SEMA_COUNTER += 1 };
+        SEMA.release();
+    }
+
+    #[test]
+    fn stress_semaphore() {
+        SEMA.init();
+        reset_and_queue_test_threads(test_semaphore);
+        let l = unsafe { TEST_THREADS.len() };
+        loop {
+            SEMA.acquire_notimeout();
+            let n = unsafe { SEMA_COUNTER };
+            if n == l {
+                SEMA.release();
+                break;
+            }
+            SEMA.release();
+            scheduler::yield_me();
+        }
+    }
+
+    static TEST_ATOMIC_WAIT: AtomicUsize = AtomicUsize::new(0);
+
+    extern "C" fn test_atomic_wait() {
+        TEST_ATOMIC_WAIT.fetch_add(1, Ordering::Release);
+        sync::atomic_wait::atomic_wake(&TEST_ATOMIC_WAIT as *const _ as usize, 1);
+    }
+
+    #[test]
+    fn stress_atomic_wait() {
+        reset_and_queue_test_threads(test_atomic_wait);
+        let l = unsafe { TEST_THREADS.len() };
+        loop {
+            let n = TEST_ATOMIC_WAIT.load(Ordering::Acquire);
+            if n == l {
+                break;
+            }
+            sync::atomic_wait::atomic_wait(&TEST_ATOMIC_WAIT as *const _ as usize, n, None);
+        }
+    }
+
+    static TEST_SWITCH_CONTEXT: AtomicUsize = AtomicUsize::new(0);
+
+    extern "C" fn test_switch_context() {
+        let n = 4;
+        for _i in 0..n {
+            assert!(scheduler::current_thread().validate_sp());
+            scheduler::yield_me();
+            assert!(scheduler::current_thread().validate_sp());
+        }
+        TEST_SWITCH_CONTEXT.fetch_add(1, Ordering::Relaxed);
+    }
+
+    #[test]
+    fn stress_context_switch() {
+        reset_and_queue_test_threads(test_switch_context);
+        loop {
+            let n = TEST_SWITCH_CONTEXT.load(Ordering::Relaxed);
+            if n == unsafe { TEST_THREADS.len() } {
+                break;
+            }
+            assert!(scheduler::current_thread().validate_sp());
+            scheduler::yield_me();
+            assert!(scheduler::current_thread().validate_sp());
+        }
+    }
+
+    static BUILT_THREADS: AtomicUsize = AtomicUsize::new(0);
+
+    extern "C" fn do_it() {
+        BUILT_THREADS.fetch_add(1, Ordering::Relaxed);
+    }
+
+    #[test]
+    fn stress_build_threads() {
+        #[cfg(target_pointer_width = "32")]
+        let n = 128;
+        #[cfg(all(debug_assertions, target_pointer_width = "64"))]
+        let n = 128;
+        #[cfg(all(not(debug_assertions), target_pointer_width = "64"))]
+        let n = 512;
+        for _i in 0..n {
+            let t = thread::Builder::new(thread::Entry::C(do_it)).build();
+            let ok = scheduler::queue_ready_thread(t.state(), t);
+            assert!(ok);
+        }
+        loop {
+            let m = BUILT_THREADS.load(Ordering::Relaxed);
+            if m == n {
+                break;
+            }
+            scheduler::yield_me();
+        }
+    }
+
+    static SPAWNED_THREADS: AtomicUsize = AtomicUsize::new(0);
+    #[test]
+    fn stress_spawn_threads() {
+        #[cfg(target_pointer_width = "32")]
+        let n = 32;
+        #[cfg(all(debug_assertions, target_pointer_width = "64"))]
+        let n = 32;
+        #[cfg(all(not(debug_assertions), target_pointer_width = "64"))]
+        let n = 512;
+        for _i in 0..n {
+            thread::spawn(move || {
+                SPAWNED_THREADS.fetch_add(1, Ordering::Relaxed);
+            });
+        }
+        loop {
+            let m = SPAWNED_THREADS.load(Ordering::Relaxed);
+            if m == n {
+                break;
+            }
+            scheduler::yield_me();
+        }
+    }
+
+    async fn foo(i: usize) -> usize {
+        i
+    }
+
+    async fn bar() -> usize {
+        42
+    }
+
+    async fn is_asynk_working() {
+        let a = foo(42).await;
+        let b = bar().await;
+        assert_eq!(a - b, 0);
+    }
+
+    // FIXME: asynk runtime not stable yet.
+    #[test]
+    fn stress_async_basic() {
+        let n = 1024;
+        for _i in 0..n {
+            asynk::block_on(is_asynk_working());
+        }
+    }
+
+    #[inline(never)]
+    pub fn kernel_unittest_runner(tests: &[&dyn Fn()]) {
+        let t = scheduler::current_thread();
+        println!("---- Running {} kernel unittests...", tests.len());
+        println!(
+            "Before test, thread 0x{:x}, rc: {}, heap status: {:?}, sp: 0x{:x}",
+            Thread::id(&t),
+            ThreadNode::strong_count(&t),
+            ALLOCATOR.memory_info(),
+            arch::current_sp(),
+        );
+        for test in tests {
+            test();
+        }
+        println!(
+            "After test, thread 0x{:x}, heap status: {:?}, sp: 0x{:x}",
+            Thread::id(&t),
+            ALLOCATOR.memory_info(),
+            arch::current_sp()
+        );
+        println!("---- Done kernel unittests.");
+    }
 }

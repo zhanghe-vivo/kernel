@@ -1,11 +1,5 @@
-/******************************************************************************
- * @file     gcc_arm.ld
- * @brief    GNU Linker Script for Cortex-M based device
- * @version  V2.2.0
- * @date     16. December 2020
- ******************************************************************************/
 /*
- * Copyright (c) 2009-2020 Arm Limited. All rights reserved.
+ * Copyright (c) 2009-2019 Arm Limited. All rights reserved.
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -22,196 +16,45 @@
  * limitations under the License.
  */
 
-/*
- *-------- <<< Use Configuration Wizard in Context Menu >>> -------------------
- */
-
-/*
- * https://developer.arm.com/-/media/Arm%20Developer%20Community/PDF/DAI0547B_SSE300_PLUS_U55_FPGA_for_mps3.pdf
- */
-
-/*---------------------- Flash Configuration ----------------------------------
-  <h> Flash Configuration
-    <o0> Flash Base Address <0x0-0xFFFFFFFF:8>
-    <o1> Flash Size (in Bytes) <0x0-0xFFFFFFFF:8>
-  </h>
-  -----------------------------------------------------------------------------*/
-__ROM_BASE = 0x00000000;
-__ROM_SIZE = 0x00080000; /* 512K */
-
-__ROM_EXT_BASE = 0x01000000;
-__ROM_EXT_SIZE = 0x00200000; /* 2M */
-
-/*--------------------- Embedded RAM Configuration ----------------------------
-  <h> RAM Configuration
-    <o0> RAM Base Address    <0x0-0xFFFFFFFF:8>
-    <o1> RAM Size (in Bytes) <0x0-0xFFFFFFFF:8>
-  </h>
- -----------------------------------------------------------------------------*/
-__RAM_BASE = 0x21000000;
-__RAM_SIZE = 0x00400000;
-
-/*--------------------- Stack / Heap Configuration ----------------------------
-  <h> Stack / Heap Configuration
-    <o0> Stack Size (in Bytes) <0x0-0xFFFFFFFF:8>
-    <o1> Heap Size (in Bytes) <0x0-0xFFFFFFFF:8>
-  </h>
-  -----------------------------------------------------------------------------*/
-__STACK_SIZE = 0x00010000; /* 64K */
-
-/*
- *-------------------- <<< end of configuration section >>> -------------------
- */
-
-/* ARMv8-M stack sealing:
-   to use ARMv8-M stack sealing set __STACKSEAL_SIZE to 8 otherwise keep 0
- */
-__STACKSEAL_SIZE = 8;
-
+ROM_BASE = 0x00000000;
+ROM_SIZE = 0x00080000;
+RAM_BASE = 0x21000000;
+RAM_SIZE = 0x00400000;
+STACK_SIZE = 0x00001000;
 
 MEMORY
 {
-  FLASH (rx)  : ORIGIN = __ROM_BASE, LENGTH = __ROM_SIZE
-  FLASH_EXT (rx)  : ORIGIN = __ROM_EXT_BASE, LENGTH = __ROM_EXT_SIZE
-  RAM   (rwx) : ORIGIN = __RAM_BASE, LENGTH = __RAM_SIZE
+  FLASH (rx) : ORIGIN = ROM_BASE, LENGTH = ROM_SIZE
+  RAM (rwx) : ORIGIN = RAM_BASE, LENGTH = RAM_SIZE
 }
 
-/* Linker script to place sections and symbol values. Should be used together
- * with other linker script that defines memory regions FLASH and RAM.
- * It references following symbols, which must be defined in code:
- *   Reset_Handler : Entry of reset handler
- *
- * It defines following symbols, which code can use without definition:
- *   __exidx_start
- *   __exidx_end
- *   __copy_table_start__
- *   __copy_table_end__
- *   __zero_table_start__
- *   __zero_table_end__
- *   __etext
- *   __data_start__
- *   __preinit_array_start
- *   __preinit_array_end
- *   __init_array_start
- *   __init_array_end
- *   __fini_array_start
- *   __fini_array_end
- *   __data_end__
- *   __bss_start__
- *   __bss_end__
- *   __end__
- *   end
- *   __HeapLimit
- *   __StackLimit
- *   __StackTop
- *   __stack
- *   __StackSeal      (only if ARMv8-M stack sealing is used)
- */
-ENTRY(Reset_Handler)
-
-/* # Exception vectors */
-EXTERN(__EXCEPTIONS);
-/* # Default exception handler */
-EXTERN(Default_Handler);
-/* # Interrupt vectors */
-EXTERN(__INTERRUPTS);
+ENTRY(_start)
+EXTERN(__EXCEPTION_HANDLERS__)
+EXTERN(__INTERRUPT_HANDLERS__)
 
 SECTIONS
 {
-  /* ## Sections in FLASH */
-  /* ### Vector table */
   .vector_table ORIGIN(FLASH) :
   {
-    __vector_table = .;
-
-    /* Initial Stack Pointer (SP) value */
-    LONG(__stack);
-
-    /* Exceptions */
-    __exceptions = .; /* start of exceptions */
-    KEEP(*(.vector_table.exceptions)); /* this is the `__EXCEPTIONS` symbol */
-    __eexceptions = .; /* end of exceptions */
-
-    /* Device specific interrupts */
-    KEEP(*(.vector_table.interrupts)); /* this is the `__INTERRUPTS` symbol */
+    __vector_table_start = .;
+    LONG(__init_msp);
+    /* We have to put reference of _start in vector.exceptions. */
+    KEEP(*(.exception.handlers));
+    KEEP(*(.interrupt.handlers));
+    __vector_table_end = .;
   } > FLASH
 
   .text :
   {
     . = ALIGN(4);
-    _stext = .;
     *(.text*)
-
-    /* section information for utest */
-    . = ALIGN(4);
-    __rt_utest_tc_tab_start = .;
-    KEEP(*(UtestTcTab))
-    __rt_utest_tc_tab_end = .;
-
-    /* section information for finsh shell */
-    . = ALIGN(4);
-    __fsymtab_start = .;
-    KEEP(*(FSymTab))
-    __fsymtab_end = .;
-    . = ALIGN(4);
-    __vsymtab_start = .;
-    KEEP(*(VSymTab))
-    __vsymtab_end = .;
-
-    /* section information for var export */
-    . = ALIGN(4);
-    __ve_table_start = .;
-    KEEP(*(SORT(*.VarExpTab.*)))
-    __ve_table_end = .;
-
-    /* section information for modules */
-    . = ALIGN(4);
-    __rtmsymtab_start = .;
-    KEEP(*(RTMSymTab))
-    __rtmsymtab_end = .;
-
-    /* section information for initialization */
-    . = ALIGN(4);
-    __rt_init_start = .;
-    KEEP(*(SORT(.rti_fn*)))
-    __rt_init_end = .;
-  } > FLASH_EXT
+  } > FLASH
 
   . = ALIGN(4);
   __rodata_start = .;
   .rodata : { *(.rodata*) } > FLASH
   __rodata_end = .;
 
-  . = ALIGN(4);
-  .ctors :
-  {
-      PROVIDE(__ctors_start__ = .);
-      /* new GCC version uses .init_array */
-      KEEP(*(SORT(.init_array.*)))
-      KEEP(*(.init_array))
-      PROVIDE(__ctors_end__ = .);
-  } > FLASH
-
-  .dtors :
-  {
-      PROVIDE(__dtors_start__ = .);
-      KEEP(*(SORT(.fini_array.*)))
-      KEEP(*(.fini_array))
-      PROVIDE(__dtors_end__ = .);
-  } > FLASH
-
-  /*
-   * SG veneers:
-   * All SG veneers are placed in the special output section .gnu.sgstubs. Its start address
-   * must be set, either with the command line option '--section-start' or in a linker script,
-   * to indicate where to place these veneers in memory.
-   */
-/*
-  .gnu.sgstubs :
-  {
-    . = ALIGN(32);
-  } > FLASH
-*/
   .ARM.extab :
   {
     *(.ARM.extab* .gnu.linkonce.armextab.*)
@@ -224,162 +67,96 @@ SECTIONS
   } > FLASH
   __exidx_end = .;
 
-  .copy.table :
-  {
-    . = ALIGN(4);
-    __copy_table_start__ = .;
-/* not need to copy data when LMA is same as VMA.
-    LONG (__etext)
-    LONG (__data_start__)
-    LONG ((__data_end__ - __data_start__) / 4)
-*/
-    /* Add each additional data section here */
-/*
-    LONG (__etext2)
-    LONG (__data2_start__)
-    LONG ((__data2_end__ - __data2_start__) / 4)
-*/
-    __copy_table_end__ = .;
-  } > FLASH
-
+  /* Put .bss to RAM */
   .zero.table :
   {
     . = ALIGN(4);
-    __zero_table_start__ = .;
-    /* Add each additional bss section here */
-    LONG (__bss_start__)
-    LONG ((__bss_end__ - __bss_start__) / 4)
-    __zero_table_end__ = .;
+    __zero_table_start = .;
+    LONG (__bss_start)
+    LONG ((__bss_end - __bss_start) / 4)
+    __zero_table_end = .;
   } > FLASH
 
-  /**
-   * Location counter can end up 2byte aligned with narrow Thumb code but
-   * __etext is assumed by startup code to be the LMA of a section in RAM
-   * which must be 4byte aligned
-   */
+  /* Put .data to RAM */
+  .copy.table :
+  {
+    . = ALIGN(4);
+    __copy_table_start = .;
+    LONG (__etext)
+    LONG (__data_start)
+    LONG ((__data_end - __data_start) / 4)
+    __copy_table_end = .;
+  } > FLASH
+
   __etext = ALIGN (4);
 
-  /* mps3 qemu boot image can not bigger than 512K, we set LMA same as VMA,
-   * and boot with elf
-   */
-  .data : /* AT (__etext) */
+  .data : AT (__etext)
   {
-    __data_start__ = .;
+    __data_start = .;
     . = ALIGN(4);
     *(vtable)
     *(.data)
     *(.data.*)
 
     . = ALIGN(4);
-    /* preinit data */
     PROVIDE_HIDDEN (__preinit_array_start = .);
     KEEP(*(.preinit_array))
     PROVIDE_HIDDEN (__preinit_array_end = .);
 
     . = ALIGN(4);
-    /* init data */
     PROVIDE_HIDDEN (__init_array_start = .);
     KEEP(*(SORT(.init_array.*)))
     KEEP(*(.init_array))
     PROVIDE_HIDDEN (__init_array_end = .);
 
     . = ALIGN(4);
-    /* finit data */
     PROVIDE_HIDDEN (__fini_array_start = .);
     KEEP(*(SORT(.fini_array.*)))
     KEEP(*(.fini_array))
     PROVIDE_HIDDEN (__fini_array_end = .);
 
+    . = ALIGN(4);
+    PROVIDE_HIDDEN (__bk_app_array_start = .);
+    KEEP(*(SORT(.bk_app_array.*)))
+    KEEP(*(.bk_app_array))
+    PROVIDE_HIDDEN (__bk_app_array_end = .);
+
     KEEP(*(.jcr*))
     . = ALIGN(4);
-    /* All data end */
-    __data_end__ = .;
+    __data_end = .;
 
   } > RAM
-
-  /*
-   * Secondary data section, optional
-   *
-   * Remember to add each additional data section
-   * to the .copy.table above to asure proper
-   * initialization during startup.
-   */
-/*
-  __etext2 = ALIGN (4);
-
-  .data2 : AT (__etext2)
-  {
-    . = ALIGN(4);
-    __data2_start__ = .;
-    *(.data2)
-    *(.data2.*)
-    . = ALIGN(4);
-    __data2_end__ = .;
-
-  } > RAM2
-*/
 
   .bss :
   {
     . = ALIGN(4);
-    __bss_start__ = .;
+    __bss_start = .;
     *(.bss)
     *(.bss.*)
     *(COMMON)
     . = ALIGN(4);
-    __bss_end__ = .;
+    __bss_end = .;
   } > RAM AT > RAM
-
-  /*
-   * Secondary bss section, optional
-   *
-   * Remember to add each additional bss section
-   * to the .zero.table above to asure proper
-   * initialization during startup.
-   */
-/*
-  .bss2 :
-  {
-    . = ALIGN(4);
-    __bss2_start__ = .;
-    *(.bss2)
-    *(.bss2.*)
-    . = ALIGN(4);
-    __bss2_end__ = .;
-  } > RAM2 AT > RAM2
-*/
 
   .heap (COPY) :
   {
     . = ALIGN(8);
-    __end__ = .;
-    PROVIDE(end = .);
-    . = ORIGIN(RAM) + LENGTH(RAM) - __STACK_SIZE - __STACKSEAL_SIZE;
+    PROVIDE(_end = .);
+    __heap_start = .;
+    . = ORIGIN(RAM) + LENGTH(RAM) - STACK_SIZE;
     . = ALIGN(8);
-    __HeapLimit = .;
+    __heap_end = .;
   } > RAM
 
-  .stack (ORIGIN(RAM) + LENGTH(RAM) - __STACK_SIZE - __STACKSEAL_SIZE) (COPY) :
+  .stack (ORIGIN(RAM) + LENGTH(RAM) - STACK_SIZE) (COPY) :
   {
     . = ALIGN(8);
-    __StackLimit = .;
-    . = . + __STACK_SIZE;
+    __sys_stack_start = .;
+    . = . + STACK_SIZE;
     . = ALIGN(8);
-    __StackTop = .;
+    __sys_stack_end = .;
   } > RAM
-  PROVIDE(__stack = __StackTop);
-  
-  /* ARMv8-M stack sealing:
-     to use ARMv8-M stack sealing uncomment '.stackseal' section
-   */
-  .stackseal (ORIGIN(RAM) + LENGTH(RAM) - __STACKSEAL_SIZE) (COPY) :
-  {
-    . = ALIGN(8);
-    __StackSeal = .;
-    . = . + __STACKSEAL_SIZE;
-    . = ALIGN(8);
-  } > RAM
+  PROVIDE(__init_msp = __sys_stack_end);
 
-  /* Check if data + heap + stack exceeds RAM limit */
-  ASSERT(__StackLimit >= __HeapLimit, "region RAM overflowed with stack")
+  ASSERT(__sys_stack_start >= __heap_end, "Stack and heap overlap each other!")
 }

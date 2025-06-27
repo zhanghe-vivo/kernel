@@ -5,8 +5,7 @@ STACK_SIZE = 64 * 1024;
 
 MEMORY
 {
-	/* dram ORIGIN start addr need to bigger than ram_base + fdt_size */
-	dram : ORIGIN = 0x40100000, LENGTH = 2M
+	DRAM : ORIGIN = 0x40280000, LENGTH = 32M
 }
 
 PHDRS
@@ -31,45 +30,56 @@ SECTIONS
         KEEP(*(.text._exception))
         *(.text*)
         __text_end = .;
-    } > dram :text
+    } > DRAM :text
 
     .rodata : ALIGN(4096)
     {
         __rodata_start = .;
         *(.rodata*)
         __rodata_end = .;
-    } > dram :rodata
+    } > DRAM :rodata
 
     .data : ALIGN(4096)
     {
         __data_start = .;
         *(.data*)
         __data_end = .;
-    } > dram :data
+    } > DRAM :data
 
     .bss : ALIGN(4096)
     {
         __bss_start = .;
         *(.bss*)
         __bss_end = .;
-    } > dram :data
+    } > DRAM :data
+
+    .init_array : {
+      . = ALIGN(16);
+      PROVIDE_HIDDEN (__init_array_start = .);
+      KEEP (*(SORT_BY_INIT_PRIORITY(.init_array.*)))
+      KEEP (*(.init_array))
+      PROVIDE_HIDDEN (__init_array_end = .);
+    } > DRAM :data
+
+    .bk_app_array : {
+      . = ALIGN(16);
+      PROVIDE_HIDDEN (__bk_app_array_start = .);
+      KEEP (*(SORT_BY_INIT_PRIORITY(.bk_app_array.*)))
+      KEEP (*(.bk_app_array))
+      PROVIDE_HIDDEN (__bk_app_array_end = .);
+    } > DRAM :data
 
     .stack : ALIGN(4096)
     {
         __sys_stack_start = .;
         . += STACK_SIZE;
         __sys_stack_end = .;
-    } > dram :data
+    } > DRAM :data
+
 
     . = ALIGN(4096);
     __heap_start = .;
+    . += 0x800000;
+    __heap_end = .;
     _end = .;
-
-    .stab 0 : { *(.stab) }
-    .stabstr 0 : { *(.stabstr) }
-    .stab.excl 0 : { *(.stab.excl) }
-    .stab.exclstr 0 : { *(.stab.exclstr) }
-    .stab.index 0 : { *(.stab.index) }
-    .stab.indexstr 0 : { *(.stab.indexstr) }
-    .comment 0 : { *(.comment) }
 }

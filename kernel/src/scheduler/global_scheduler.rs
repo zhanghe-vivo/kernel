@@ -3,7 +3,7 @@ use crate::{
     debug,
     sync::spinlock::SpinLock,
     thread,
-    thread_ng::{Thread, ThreadNode},
+    thread::{Thread, ThreadNode},
     types::{ArcList, ThreadPriority, Uint},
 };
 use core::mem::MaybeUninit;

@@ -9,8 +9,13 @@ use libc::*;
 use spin::{Once, RwLock as SpinRwLock};
 
 pub mod console;
+pub(crate) mod dumb;
 mod error;
 mod null;
+#[cfg(target_arch = "arm")]
+pub(crate) mod nvic;
+#[cfg(target_arch = "riscv64")]
+pub(crate) mod plic;
 pub mod serial;
 #[cfg(virtio)]
 pub mod virtio;

@@ -1,148 +1,175 @@
-use crate::arch::interrupt::{InterruptTable, Vector, INTERRUPT_TABLE_LEN};
+use super::uart::{uart0rx_handler, uart0tx_handler};
+use crate::{
+    arch,
+    boot::_start,
+    devices::nvic::{InterruptTable, Vector, INTERRUPT_TABLE_LEN},
+};
+
+unsafe extern "C" fn do_nothing() {}
+
+unsafe extern "C" fn busy() {
+    loop {}
+}
+
+#[used]
+#[link_section = ".exception.vectors"]
+#[no_mangle]
+pub static __EXCEPTION_HANDLERS__: [Vector; 15] = build_exception_handlers();
+
+// See https://documentation-service.arm.com/static/5ea823e69931941038df1b02?token=.
+const fn build_exception_handlers() -> [Vector; 15] {
+    let mut tbl = [Vector { reserved: 0 }; 15];
+    tbl[0] = Vector { handler: _start };
+    tbl[1] = Vector { handler: busy };
+    tbl[2] = Vector { handler: busy };
+    tbl[10] = Vector {
+        handler: arch::arm::handle_svc,
+    };
+    tbl[13] = Vector {
+        handler: arch::arm::handle_pendsv,
+    };
+    return tbl;
+}
 
 macro_rules! default_irq_handler {
     ($handler_name:ident) => {
-        #[link_section = ".text.vector_handlers"]
-        #[linkage = "weak"]
-        #[no_mangle]
-        pub unsafe extern "C" fn $handler_name() {
-            crate::println!("{}", stringify!($handler_name));
+        unsafe extern "C" fn $handler_name() {
+            $crate::debug!("{}", stringify!($handler_name));
         }
     };
 }
 
-use crate::boards::uart::{UART0RX_Handler, UART0TX_Handler};
-default_irq_handler!(UART1RX_Handler);
-default_irq_handler!(UART1TX_Handler);
-default_irq_handler!(UART2RX_Handler);
-default_irq_handler!(UART2TX_Handler);
-default_irq_handler!(GPIO0ALL_Handler);
-default_irq_handler!(GPIO1ALL_Handler);
-default_irq_handler!(TIMER0_Handler);
-default_irq_handler!(TIMER1_Handler);
-default_irq_handler!(DUALTIMER_Handler);
-default_irq_handler!(SPI_0_1_Handler);
-default_irq_handler!(UART_0_1_2_OVF_Handler);
-default_irq_handler!(ETHERNET_Handler);
-default_irq_handler!(I2S_Handler);
-default_irq_handler!(TOUCHSCREEN_Handler);
-default_irq_handler!(GPIO2_Handler);
-default_irq_handler!(GPIO3_Handler);
-default_irq_handler!(UART3RX_Handler);
-default_irq_handler!(UART3TX_Handler);
-default_irq_handler!(UART4RX_Handler);
-default_irq_handler!(UART4TX_Handler);
-default_irq_handler!(SPI_2_Handler);
-default_irq_handler!(SPI_3_4_Handler);
-default_irq_handler!(GPIO0_0_Handler);
-default_irq_handler!(GPIO0_1_Handler);
-default_irq_handler!(GPIO0_2_Handler);
-default_irq_handler!(GPIO0_3_Handler);
-default_irq_handler!(GPIO0_4_Handler);
-default_irq_handler!(GPIO0_5_Handler);
-default_irq_handler!(GPIO0_6_Handler);
-default_irq_handler!(GPIO0_7_Handler);
+default_irq_handler!(uart1rx_handler);
+default_irq_handler!(uart1tx_handler);
+default_irq_handler!(uart2rx_handler);
+default_irq_handler!(uart2tx_handler);
+default_irq_handler!(gpio0all_handler);
+default_irq_handler!(gpio1all_handler);
+default_irq_handler!(timer0_handler);
+default_irq_handler!(timer1_handler);
+default_irq_handler!(dualtimer_handler);
+default_irq_handler!(spi_0_1_handler);
+default_irq_handler!(uart_0_1_2_ovf_handler);
+default_irq_handler!(ethernet_handler);
+default_irq_handler!(i2s_handler);
+default_irq_handler!(touchscreen_handler);
+default_irq_handler!(gpio2_handler);
+default_irq_handler!(gpio3_handler);
+default_irq_handler!(uart3rx_handler);
+default_irq_handler!(uart3tx_handler);
+default_irq_handler!(uart4rx_handler);
+default_irq_handler!(uart4tx_handler);
+default_irq_handler!(spi_2_handler);
+default_irq_handler!(spi_3_4_handler);
+default_irq_handler!(gpio0_0_handler);
+default_irq_handler!(gpio0_1_handler);
+default_irq_handler!(gpio0_2_handler);
+default_irq_handler!(gpio0_3_handler);
+default_irq_handler!(gpio0_4_handler);
+default_irq_handler!(gpio0_5_handler);
+default_irq_handler!(gpio0_6_handler);
+default_irq_handler!(gpio0_7_handler);
 
-#[doc(hidden)]
-#[link_section = ".vector_table.interrupts"]
+#[used]
+#[link_section = ".interrupt.vectors"]
 #[no_mangle]
-static __INTERRUPTS: InterruptTable = {
-    let mut arr = [Vector { reserved: 0 }; INTERRUPT_TABLE_LEN];
-    arr[0] = Vector {
-        handler: UART0RX_Handler,
-    }; /*   0 UART 0 receive interrupt */
-    arr[1] = Vector {
-        handler: UART0TX_Handler,
-    }; /*   1 UART 0 transmit interrupt */
-    arr[2] = Vector {
-        handler: UART1RX_Handler,
-    }; /*   2 UART 1 receive interrupt */
-    arr[3] = Vector {
-        handler: UART1TX_Handler,
-    }; /*   3 UART 1 transmit interrupt */
-    arr[4] = Vector {
-        handler: UART2RX_Handler,
-    }; /*   4 UART 2 receive interrupt */
-    arr[5] = Vector {
-        handler: UART2TX_Handler,
-    }; /*   5 UART 2 transmit interrupt */
-    arr[6] = Vector {
-        handler: GPIO0ALL_Handler,
-    }; /*   6 GPIO 0 combined interrupt */
-    arr[7] = Vector {
-        handler: GPIO1ALL_Handler,
-    }; /*   7 GPIO 1 combined interrupt */
-    arr[8] = Vector {
-        handler: TIMER0_Handler,
-    }; /*   8 Timer 0 interrupt */
-    arr[9] = Vector {
-        handler: TIMER1_Handler,
-    }; /*   9 Timer 1 interrupt */
-    arr[10] = Vector {
-        handler: DUALTIMER_Handler,
-    }; /*  10 Dual Timer interrupt */
-    arr[11] = Vector {
-        handler: SPI_0_1_Handler,
-    }; /*  11 SPI 0, SPI 1 interrupt */
-    arr[12] = Vector {
-        handler: UART_0_1_2_OVF_Handler,
-    }; /*  12 UART overflow (0, 1 & 2) interrupt */
-    arr[13] = Vector {
-        handler: ETHERNET_Handler,
-    }; /*  13 Ethernet interrupt */
-    arr[14] = Vector {
-        handler: I2S_Handler,
-    }; /*  14 Audio I2S interrupt */
-    arr[15] = Vector {
-        handler: TOUCHSCREEN_Handler,
-    }; /*  15 Touch Screen interrupt */
-    arr[16] = Vector {
-        handler: GPIO2_Handler,
-    }; /*  16 GPIO 2 combined interrupt */
-    arr[17] = Vector {
-        handler: GPIO3_Handler,
-    }; /*  17 GPIO 3 combined interrupt */
-    arr[18] = Vector {
-        handler: UART3RX_Handler,
-    }; /*  18 UART 3 receive interrupt */
-    arr[19] = Vector {
-        handler: UART3TX_Handler,
-    }; /*  19 UART 3 transmit interrupt */
-    arr[20] = Vector {
-        handler: UART4RX_Handler,
-    }; /*  20 UART 4 receive interrupt */
-    arr[21] = Vector {
-        handler: UART4TX_Handler,
-    }; /*  21 UART 4 transmit interrupt */
-    arr[22] = Vector {
-        handler: SPI_2_Handler,
-    }; /*  22 SPI 2 interrupt */
-    arr[23] = Vector {
-        handler: SPI_3_4_Handler,
-    }; /*  23 SPI 3, SPI 4 interrupt */
-    arr[24] = Vector {
-        handler: GPIO0_0_Handler,
-    }; /*  24 GPIO 0 individual interrupt ( 0) */
-    arr[25] = Vector {
-        handler: GPIO0_1_Handler,
-    }; /*  25 GPIO 0 individual interrupt ( 1) */
-    arr[26] = Vector {
-        handler: GPIO0_2_Handler,
-    }; /*  26 GPIO 0 individual interrupt ( 2) */
-    arr[27] = Vector {
-        handler: GPIO0_3_Handler,
-    }; /*  27 GPIO 0 individual interrupt ( 3) */
-    arr[28] = Vector {
-        handler: GPIO0_4_Handler,
-    }; /*  28 GPIO 0 individual interrupt ( 4) */
-    arr[29] = Vector {
-        handler: GPIO0_5_Handler,
-    }; /*  29 GPIO 0 individual interrupt ( 5) */
-    arr[30] = Vector {
-        handler: GPIO0_6_Handler,
-    }; /*  30 GPIO 0 individual interrupt ( 6) */
-    arr[31] = Vector {
-        handler: GPIO0_7_Handler,
-    }; /*  31 GPIO 0 individual interrupt ( 7) */
-    arr
+pub static __INTERRUPT_HANDLERS__: InterruptTable = {
+    let mut tbl = [Vector { reserved: 0 }; INTERRUPT_TABLE_LEN];
+    tbl[0] = Vector {
+        handler: uart0rx_handler,
+    };
+    tbl[1] = Vector {
+        handler: uart0tx_handler,
+    };
+    tbl[2] = Vector {
+        handler: uart1rx_handler,
+    };
+    tbl[3] = Vector {
+        handler: uart1tx_handler,
+    };
+    tbl[4] = Vector {
+        handler: uart2rx_handler,
+    };
+    tbl[5] = Vector {
+        handler: uart2tx_handler,
+    };
+    tbl[6] = Vector {
+        handler: gpio0all_handler,
+    };
+    tbl[7] = Vector {
+        handler: gpio1all_handler,
+    };
+    tbl[8] = Vector {
+        handler: timer0_handler,
+    };
+    tbl[9] = Vector {
+        handler: timer1_handler,
+    };
+    tbl[10] = Vector {
+        handler: dualtimer_handler,
+    };
+    tbl[11] = Vector {
+        handler: spi_0_1_handler,
+    };
+    tbl[12] = Vector {
+        handler: uart_0_1_2_ovf_handler,
+    };
+    tbl[13] = Vector {
+        handler: ethernet_handler,
+    };
+    tbl[14] = Vector {
+        handler: i2s_handler,
+    };
+    tbl[15] = Vector {
+        handler: touchscreen_handler,
+    };
+    tbl[16] = Vector {
+        handler: gpio2_handler,
+    };
+    tbl[17] = Vector {
+        handler: gpio3_handler,
+    };
+    tbl[18] = Vector {
+        handler: uart3rx_handler,
+    };
+    tbl[19] = Vector {
+        handler: uart3tx_handler,
+    };
+    tbl[20] = Vector {
+        handler: uart4rx_handler,
+    };
+    tbl[21] = Vector {
+        handler: uart4tx_handler,
+    };
+    tbl[22] = Vector {
+        handler: spi_2_handler,
+    };
+    tbl[23] = Vector {
+        handler: spi_3_4_handler,
+    };
+    tbl[24] = Vector {
+        handler: gpio0_0_handler,
+    };
+    tbl[25] = Vector {
+        handler: gpio0_1_handler,
+    };
+    tbl[26] = Vector {
+        handler: gpio0_2_handler,
+    };
+    tbl[27] = Vector {
+        handler: gpio0_3_handler,
+    };
+    tbl[28] = Vector {
+        handler: gpio0_4_handler,
+    };
+    tbl[29] = Vector {
+        handler: gpio0_5_handler,
+    };
+    tbl[30] = Vector {
+        handler: gpio0_6_handler,
+    };
+    tbl[31] = Vector {
+        handler: gpio0_7_handler,
+    };
+    tbl
 };

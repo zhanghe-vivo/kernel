@@ -29,7 +29,7 @@ build_rust("tty_loopback") {
   ]
   deps += common_deps
 
-  inputs = [ "//kernel/kernel/src/boards_ng/$board/link.x" ]
+  inputs = [ "//kernel/kernel/src/boards/$board/link.x" ]
   rustflags = common_image_rustflags
   rustflags += common_crate_rustflags
 }

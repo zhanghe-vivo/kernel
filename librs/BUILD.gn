@@ -73,7 +73,7 @@ build_rust("librs_unittest_image") {
     "//libc:libc",
   ]
   proc_macro_deps = [ "//kernel/test_harness:bluekernel_test_macro" ]
-  inputs = [ "//kernel/kernel/src/boards_ng/$board/link.x" ]
+  inputs = [ "//kernel/kernel/src/boards/$board/link.x" ]
   rustflags = test_image_rustflags
   rustflags += common_crate_rustflags
 }

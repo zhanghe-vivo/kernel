@@ -23,7 +23,6 @@ shared_deps = [
   "//external/thiserror/v2.0.9:thiserror",
   "//external/tock-registers/v0.9.0:tock_registers",
   "//external/zerocopy/v0.8.25:zerocopy",
-  "//kernel/arch:bluekernel_arch",
   "//kernel/header:bluekernel_header",
   "//kernel/infra:bluekernel_infra",
   "//kernel/kconfig:bluekernel_kconfig",
@@ -67,7 +66,7 @@ build_rust("kernel_unittest") {
   testonly = true
   crate_name = "kernel_unittest"
   crate_type = "bin"
-  sources = [ "src/lib_ng.rs" ]
+  sources = [ "src/lib.rs" ]
   edition = "2021"
   proc_macro_deps = [
     "//external/paste/v1.0.15:paste",
@@ -76,7 +75,7 @@ build_rust("kernel_unittest") {
   ]
   cfgs = bluekernel_default_cfgs
   deps = shared_deps
-  inputs = [ "//kernel/kernel/src/boards_ng/$board/link.x" ]
+  inputs = [ "//kernel/kernel/src/boards/$board/link.x" ]
   rustflags = shared_rust_build_flags
   rustflags += test_image_rustflags
 }
@@ -99,13 +98,13 @@ build_rust("kernel_integration_test") {
     deps += [ "//external/minicov/v0.3.7:minicov" ]
   }
   cfgs = bluekernel_default_cfgs
-  inputs = [ "//kernel/kernel/src/boards_ng/$board/link.x" ]
+  inputs = [ "//kernel/kernel/src/boards/$board/link.x" ]
   rustflags = test_image_rustflags
 }
 
 build_rust("bluekernel") {
   crate_type = "rlib"
-  sources = [ "src/lib_ng.rs" ]
+  sources = [ "src/lib.rs" ]
   edition = "2021"
   proc_macro_deps = [
     "//external/paste/v1.0.15:paste",
@@ -120,7 +119,7 @@ build_rust("bluekernel") {
 build_rust("bluekernel_std_static") {
   crate_name = "bluekernel"
   crate_type = "staticlib"
-  sources = [ "src/lib_ng.rs" ]
+  sources = [ "src/lib.rs" ]
   edition = "2021"
   proc_macro_deps = [
     "//external/paste/v1.0.15:paste",
@@ -139,7 +138,7 @@ build_rust("bluekernel_std_static") {
 build_rust("bluekernel_std") {
   crate_name = "bluekernel"
   crate_type = "rlib"
-  sources = [ "src/lib_ng.rs" ]
+  sources = [ "src/lib.rs" ]
   edition = "2021"
   proc_macro_deps = [
     "//external/paste/v1.0.15:paste",
@@ -159,7 +158,7 @@ build_rust("bluekernel_posixtestsuite") {
   testonly = true
   crate_name = "bluekernel"
   crate_type = "rlib"
-  sources = [ "src/lib_ng.rs" ]
+  sources = [ "src/lib.rs" ]
   edition = "2021"
   proc_macro_deps = [
     "//external/paste/v1.0.15:paste",
@@ -240,10 +239,10 @@ run_qemu_check("run_unittest") {
     img = ":kernel_unittest"
     checker = "src/cov.rs"
   } else {
-    checker = "src/lib_ng.rs"
+    checker = "src/lib.rs"
   }
 }
 
 static_library("atomic") {
-  sources = [ "src/sync_ng/libatomic/atomic.c" ]
+  sources = [ "src/sync/libatomic/atomic.c" ]
 }

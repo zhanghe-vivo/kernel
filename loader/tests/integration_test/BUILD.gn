@@ -20,7 +20,7 @@ build_rust("loader_integration_test") {
     deps += [ "//kernel/loader:common_cov" ]
   }
   proc_macro_deps = [ "//kernel/test_harness:bluekernel_test_macro" ]
-  inputs = [ "//kernel/kernel/src/boards_ng/$board/link.x" ]
+  inputs = [ "//kernel/kernel/src/boards/$board/link.x" ]
   rustflags = test_image_rustflags
 }
 

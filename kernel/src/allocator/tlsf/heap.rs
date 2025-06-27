@@ -1,9 +1,9 @@
-use crate::sync::SpinLock;
+use super::Tlsf;
+use crate::{allocator, sync::spinlock::SpinLock};
 use const_default::ConstDefault;
 use core::{alloc::Layout, ptr::NonNull};
-pub mod tlsf_heap;
-use crate::allocator::MemoryInfo;
-use tlsf_heap::Tlsf;
+
+use allocator::MemoryInfo;
 
 type TlsfHeap = Tlsf<'static, usize, usize, { usize::BITS as usize }, { usize::BITS as usize }>;
 
@@ -49,26 +49,26 @@ impl Heap {
     /// - `size > 0`
     pub unsafe fn init(&self, start_addr: usize, size: usize) {
         let block: &[u8] = core::slice::from_raw_parts(start_addr as *const u8, size);
-        let mut heap = self.heap.lock_irqsave();
-        (*heap).insert_free_block_ptr(block.into());
+        let mut heap = self.heap.irqsave_lock();
+        heap.insert_free_block_ptr(block.into());
     }
 
     /// try to allocate memory with the given layout
     pub fn alloc(&self, layout: Layout) -> Option<NonNull<u8>> {
-        let mut heap = self.heap.lock_irqsave();
-        let ptr = (*heap).allocate(&layout);
+        let mut heap = self.heap.irqsave_lock();
+        let ptr = heap.allocate(&layout);
         ptr
     }
 
     /// deallocate the memory pointed by ptr with the given layout
     pub unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        let mut heap = self.heap.lock_irqsave();
-        (*heap).deallocate(NonNull::new_unchecked(ptr), layout.align());
+        let mut heap = self.heap.irqsave_lock();
+        heap.deallocate(NonNull::new_unchecked(ptr), layout.align());
     }
 
     pub unsafe fn deallocate_unknown_align(&self, ptr: *mut u8) {
-        let mut heap = self.heap.lock_irqsave();
-        (*heap).deallocate_unknown_align(NonNull::new_unchecked(ptr));
+        let mut heap = self.heap.irqsave_lock();
+        heap.deallocate_unknown_align(NonNull::new_unchecked(ptr));
     }
 
     /// reallocate memory with the given size and layout
@@ -79,8 +79,8 @@ impl Heap {
         new_size: usize,
     ) -> Option<NonNull<u8>> {
         let new_layout = Layout::from_size_align_unchecked(new_size, layout.align());
-        let mut heap = self.heap.lock_irqsave();
-        let new_ptr = (*heap).reallocate(NonNull::new_unchecked(ptr), &new_layout);
+        let mut heap = self.heap.irqsave_lock();
+        let new_ptr = heap.reallocate(NonNull::new_unchecked(ptr), &new_layout);
         new_ptr
     }
 
@@ -90,8 +90,8 @@ impl Heap {
         ptr: *mut u8,
         new_size: usize,
     ) -> Option<NonNull<u8>> {
-        let mut heap = self.heap.lock_irqsave();
-        let new_ptr = (*heap).reallocate_unknown_align(NonNull::new_unchecked(ptr), new_size);
+        let mut heap = self.heap.irqsave_lock();
+        let new_ptr = heap.reallocate_unknown_align(NonNull::new_unchecked(ptr), new_size);
         new_ptr
     }
 
@@ -103,11 +103,11 @@ impl Heap {
     /// * `used` - Output parameter containing the currently used memory on the heap.
     /// * `max_used` - Output parameter containing the largest amount of memory ever used during execution.
     pub fn memory_info(&self) -> MemoryInfo {
-        let heap = self.heap.lock_irqsave();
+        let heap = self.heap.irqsave_lock();
         MemoryInfo {
-            total: (*heap).total(),
-            used: (*heap).allocated(),
-            max_used: (*heap).maximum(),
+            total: heap.total(),
+            used: heap.allocated(),
+            max_used: heap.maximum(),
         }
     }
 }

@@ -19,5 +19,5 @@ pub fn get_console() -> Arc<dyn Device> {
 }
 
 pub fn get_early_uart() -> &'static SpinLock<dyn UartOps> {
-    crate::boards::uart::get_early_uart()
+    crate::boards::get_early_uart()
 }

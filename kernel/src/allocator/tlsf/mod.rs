@@ -1,5 +1,14 @@
-#![allow(dead_code)]
-//! The TLSF allocator core
+// This code is derived from https://github.com/yvt/rlsf/blob/main/crates/rlsf/src/tlsf.rs.
+// Copyright 2021 yvt
+// SPDX-LICENSE: MIT
+
+pub mod heap;
+pub mod int;
+
+use crate::{
+    allocator::block::*,
+    support::{nonnull_slice_from_raw_parts, nonnull_slice_len, nonnull_slice_start},
+};
 use const_default::ConstDefault;
 use core::{
     alloc::Layout,
@@ -9,12 +18,7 @@ use core::{
     num::NonZeroUsize,
     ptr::NonNull,
 };
-
-use crate::allocator::{
-    block_hdr::*,
-    int::BinInteger,
-    utils::{nonnull_slice_from_raw_parts, nonnull_slice_len, nonnull_slice_start},
-};
+use int::BinInteger;
 
 /// The TLSF header (top-level) data structure.
 ///
@@ -70,11 +74,9 @@ pub struct Tlsf<'pool, FLBitmap, SLBitmap, const FLLEN: usize, const SLLEN: usiz
     /// `sl_bitmap[fl].get_bit(sl)` is set if `first_free[fl][sl].is_some()`
     sl_bitmap: [SLBitmap; FLLEN],
     first_free: [[Option<NonNull<FreeBlockHdr>>; SLLEN]; FLLEN],
-    // statistics
     allocated: usize,
     maximum: usize,
     total: usize,
-
     _phantom: PhantomData<&'pool ()>,
 }
 

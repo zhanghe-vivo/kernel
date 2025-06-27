@@ -1,150 +1,177 @@
-use crate::arch::interrupt::{InterruptTable, Vector, INTERRUPT_TABLE_LEN};
+use crate::{
+    arch,
+    boot::_start,
+    devices::nvic::{InterruptTable, Vector, INTERRUPT_TABLE_LEN},
+};
+
+unsafe extern "C" fn do_nothing() {}
+
+unsafe extern "C" fn busy() {
+    loop {}
+}
+
+#[used]
+#[link_section = ".exception.handlers"]
+#[no_mangle]
+pub static __EXCEPTION_HANDLERS__: [Vector; 15] = build_exception_handlers();
+
+// See https://documentation-service.arm.com/static/5ea823e69931941038df1b02?token=.
+const fn build_exception_handlers() -> [Vector; 15] {
+    let mut tbl = [Vector { reserved: 0 }; 15];
+    tbl[0] = Vector { handler: _start };
+    tbl[1] = Vector { handler: busy };
+    tbl[2] = Vector { handler: busy };
+    tbl[10] = Vector {
+        handler: arch::arm::handle_svc,
+    };
+    tbl[13] = Vector {
+        handler: arch::arm::handle_pendsv,
+    };
+    return tbl;
+}
 
 macro_rules! default_irq_handler {
     ($handler_name:ident) => {
-        #[link_section = ".text.vector_handlers"]
-        #[linkage = "weak"]
-        #[no_mangle]
-        pub unsafe extern "C" fn $handler_name() {
-            crate::println!("{}", stringify!($handler_name));
+        unsafe extern "C" fn $handler_name() {
+            $crate::debug!("{}", stringify!($handler_name));
         }
     };
 }
 
-use crate::boards::uart::{UARTRX0_Handler, UARTTX0_Handler};
-default_irq_handler!(NONSEC_WATCHDOG_RESET_REQ_Handler);
-default_irq_handler!(NONSEC_WATCHDOG_Handler);
-default_irq_handler!(SLOWCLK_Timer_Handler);
-default_irq_handler!(TFM_TIMER0_IRQ_Handler);
-default_irq_handler!(TIMER1_Handler);
-default_irq_handler!(TIMER2_Handler);
-default_irq_handler!(MPC_Handler);
-default_irq_handler!(PPC_Handler);
-default_irq_handler!(MSC_Handler);
-default_irq_handler!(BRIDGE_ERROR_Handler);
-default_irq_handler!(MGMT_PPU_Handler);
-default_irq_handler!(SYS_PPU_Handler);
-default_irq_handler!(CPU0_PPU_Handler);
-default_irq_handler!(DEBUG_PPU_Handler);
-default_irq_handler!(TIMER3_AON_Handler);
-default_irq_handler!(CPU0_CTI_0_Handler);
-default_irq_handler!(CPU0_CTI_1_Handler);
-default_irq_handler!(System_Timestamp_Counter_Handler);
-default_irq_handler!(UARTRX1_Handler);
-default_irq_handler!(UARTTX1_Handler);
-default_irq_handler!(UARTRX2_Handler);
-default_irq_handler!(UARTTX2_Handler);
-default_irq_handler!(UARTRX3_Handler);
-default_irq_handler!(UARTTX3_Handler);
-default_irq_handler!(UARTRX4_Handler);
-default_irq_handler!(UARTTX4_Handler);
+use super::uart::{uartrx0_handler, uarttx0_handler};
+default_irq_handler!(nonsec_watchdog_reset_req_handler);
+default_irq_handler!(nonsec_watchdog_handler);
+default_irq_handler!(slowclk_timer_handler);
+default_irq_handler!(tfm_timer0_irq_handler);
+default_irq_handler!(timer1_handler);
+default_irq_handler!(timer2_handler);
+default_irq_handler!(mpc_handler);
+default_irq_handler!(ppc_handler);
+default_irq_handler!(msc_handler);
+default_irq_handler!(bridge_error_handler);
+default_irq_handler!(mgmt_ppu_handler);
+default_irq_handler!(sys_ppu_handler);
+default_irq_handler!(cpu0_ppu_handler);
+default_irq_handler!(debug_ppu_handler);
+default_irq_handler!(timer3_aon_handler);
+default_irq_handler!(cpu0_cti_0_handler);
+default_irq_handler!(cpu0_cti_1_handler);
+default_irq_handler!(system_timestamp_counter_handler);
+default_irq_handler!(uartrx1_handler);
+default_irq_handler!(uarttx1_handler);
+default_irq_handler!(uartrx2_handler);
+default_irq_handler!(uarttx2_handler);
+default_irq_handler!(uartrx3_handler);
+default_irq_handler!(uarttx3_handler);
+default_irq_handler!(uartrx4_handler);
+default_irq_handler!(uarttx4_handler);
 
 #[doc(hidden)]
-#[link_section = ".vector_table.interrupts"]
+#[link_section = ".interrupt.handlers"]
 #[no_mangle]
-static __INTERRUPTS: InterruptTable = {
-    let mut arr = [Vector { reserved: 0 }; INTERRUPT_TABLE_LEN];
-    arr[0] = Vector {
-        handler: NONSEC_WATCHDOG_RESET_REQ_Handler,
+static __INTERRUPT_HANDLERS__: InterruptTable = {
+    let mut tbl = [Vector { reserved: 0 }; INTERRUPT_TABLE_LEN];
+    tbl[0] = Vector {
+        handler: nonsec_watchdog_reset_req_handler,
     };
-    arr[1] = Vector {
-        handler: NONSEC_WATCHDOG_Handler,
+    tbl[1] = Vector {
+        handler: nonsec_watchdog_handler,
     };
-    arr[2] = Vector {
-        handler: SLOWCLK_Timer_Handler,
+    tbl[2] = Vector {
+        handler: slowclk_timer_handler,
     };
-    arr[3] = Vector {
-        handler: TFM_TIMER0_IRQ_Handler,
+    tbl[3] = Vector {
+        handler: tfm_timer0_irq_handler,
     };
-    arr[4] = Vector {
-        handler: TIMER1_Handler,
+    tbl[4] = Vector {
+        handler: timer1_handler,
     };
-    arr[5] = Vector {
-        handler: TIMER2_Handler,
+    tbl[5] = Vector {
+        handler: timer2_handler,
     };
-    arr[6] = Vector { reserved: 0 };
-    arr[7] = Vector { reserved: 0 };
-    arr[8] = Vector { reserved: 0 };
-    arr[9] = Vector {
-        handler: MPC_Handler,
+    tbl[6] = Vector { reserved: 0 };
+    tbl[7] = Vector { reserved: 0 };
+    tbl[8] = Vector { reserved: 0 };
+    tbl[9] = Vector {
+        handler: mpc_handler,
     };
-    arr[10] = Vector {
-        handler: PPC_Handler,
+    tbl[10] = Vector {
+        handler: ppc_handler,
     };
-    arr[11] = Vector {
-        handler: MSC_Handler,
+    tbl[11] = Vector {
+        handler: msc_handler,
     };
-    arr[12] = Vector {
-        handler: BRIDGE_ERROR_Handler,
+    tbl[12] = Vector {
+        handler: bridge_error_handler,
     };
-    arr[13] = Vector { reserved: 0 };
-    arr[14] = Vector {
-        handler: MGMT_PPU_Handler,
+    tbl[13] = Vector { reserved: 0 };
+    tbl[14] = Vector {
+        handler: mgmt_ppu_handler,
     };
-    arr[15] = Vector {
-        handler: SYS_PPU_Handler,
+    tbl[15] = Vector {
+        handler: sys_ppu_handler,
     };
-    arr[16] = Vector {
-        handler: CPU0_PPU_Handler,
+    tbl[16] = Vector {
+        handler: cpu0_ppu_handler,
     };
-    arr[17] = Vector { reserved: 0 };
-    arr[18] = Vector { reserved: 0 };
-    arr[19] = Vector { reserved: 0 };
-    arr[20] = Vector { reserved: 0 };
-    arr[21] = Vector { reserved: 0 };
-    arr[22] = Vector { reserved: 0 };
-    arr[23] = Vector { reserved: 0 };
-    arr[24] = Vector { reserved: 0 };
-    arr[25] = Vector {
-        handler: DEBUG_PPU_Handler,
+    tbl[17] = Vector { reserved: 0 };
+    tbl[18] = Vector { reserved: 0 };
+    tbl[19] = Vector { reserved: 0 };
+    tbl[20] = Vector { reserved: 0 };
+    tbl[21] = Vector { reserved: 0 };
+    tbl[22] = Vector { reserved: 0 };
+    tbl[23] = Vector { reserved: 0 };
+    tbl[24] = Vector { reserved: 0 };
+    tbl[25] = Vector {
+        handler: debug_ppu_handler,
     };
-    arr[27] = Vector {
-        handler: TIMER3_AON_Handler,
+    tbl[27] = Vector {
+        handler: timer3_aon_handler,
     };
-    arr[28] = Vector {
-        handler: CPU0_CTI_0_Handler,
+    tbl[28] = Vector {
+        handler: cpu0_cti_0_handler,
     };
-    arr[29] = Vector {
-        handler: CPU0_CTI_1_Handler,
+    tbl[29] = Vector {
+        handler: cpu0_cti_1_handler,
     };
-    arr[30] = Vector { reserved: 0 };
-    arr[31] = Vector { reserved: 0 };
-    arr[32] = Vector {
-        handler: System_Timestamp_Counter_Handler,
+    tbl[30] = Vector { reserved: 0 };
+    tbl[31] = Vector { reserved: 0 };
+    tbl[32] = Vector {
+        handler: system_timestamp_counter_handler,
     };
     // In the new version of QEMU (9.20), the UART RX interrupt and TX interrupt have been swapped.
     // For details, see `fix RX/TX interrupts order <https://github.com/qemu/qemu/commit/5a558be93ad628e5bed6e0ee062870f49251725c>`_
     // default set as new version of QEMU
-    arr[33] = Vector {
-        handler: UARTRX0_Handler,
+    tbl[33] = Vector {
+        handler: uartrx0_handler,
     };
-    arr[34] = Vector {
-        handler: UARTTX0_Handler,
+    tbl[34] = Vector {
+        handler: uarttx0_handler,
     };
-    arr[35] = Vector {
-        handler: UARTRX1_Handler,
+    tbl[35] = Vector {
+        handler: uartrx1_handler,
     };
-    arr[36] = Vector {
-        handler: UARTTX1_Handler,
+    tbl[36] = Vector {
+        handler: uarttx1_handler,
     };
-    arr[37] = Vector {
-        handler: UARTRX2_Handler,
+    tbl[37] = Vector {
+        handler: uartrx2_handler,
     };
-    arr[38] = Vector {
-        handler: UARTTX2_Handler,
+    tbl[38] = Vector {
+        handler: uarttx2_handler,
     };
-    arr[39] = Vector {
-        handler: UARTRX3_Handler,
+    tbl[39] = Vector {
+        handler: uartrx3_handler,
     };
-    arr[40] = Vector {
-        handler: UARTTX3_Handler,
+    tbl[40] = Vector {
+        handler: uarttx3_handler,
     };
-    arr[41] = Vector {
-        handler: UARTRX4_Handler,
+    tbl[41] = Vector {
+        handler: uartrx4_handler,
     };
-    arr[42] = Vector {
-        handler: UARTTX4_Handler,
+    tbl[42] = Vector {
+        handler: uarttx4_handler,
     };
 
-    arr
+    tbl
 };
