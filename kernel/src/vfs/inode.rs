@@ -5,6 +5,7 @@ use crate::{
     error::{code, Error},
     vfs::{
         dirent::DirBufferReader,
+        file::FileAttr,
         fs::FileSystem,
         inode_mode::{mode_t, InodeFileType, InodeMode},
     },
@@ -161,7 +162,8 @@ pub trait InodeOps: Any + Sync + Send {
         Err(code::EINVAL)
     }
     fn fs(&self) -> Arc<dyn FileSystem>;
-    fn attr(&self) -> InodeAttr;
+    fn inode_attr(&self) -> InodeAttr;
+    fn file_attr(&self) -> FileAttr;
     fn type_(&self) -> InodeFileType;
     fn mode(&self) -> InodeMode;
     fn size(&self) -> usize;
@@ -180,7 +182,7 @@ impl dyn InodeOps {
 impl Debug for dyn InodeOps {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         f.debug_struct("InodeOps")
-            .field("attr", &self.attr())
+            .field("attr", &self.inode_attr())
             .field("fs", &self.fs())
             .finish()
     }

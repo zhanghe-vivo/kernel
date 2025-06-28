@@ -1,17 +1,24 @@
 //! C API for VFS operations  
 use crate::{
+    devices::DeviceId,
     error::code,
     vfs::{
         dirent::DirBufferReader,
         fd_manager::get_fd_manager,
-        file::{File, FileOps, OpenFlags},
+        file::{File, FileAttr, FileOps, OpenFlags},
+        fs::FileSystemInfo,
         inode_mode::{InodeFileType, InodeMode},
         mount, path,
         utils::SeekFrom,
     },
 };
 use alloc::{slice, string::String, sync::Arc};
-use core::ffi::{c_char, c_int, c_ulong, c_void, CStr};
+use core::{
+    ffi::{c_char, c_int, c_ulong, c_void, CStr},
+    mem::size_of,
+    ptr::copy_nonoverlapping,
+    time::Duration,
+};
 use libc;
 use log::{debug, warn};
 
@@ -526,8 +533,154 @@ pub extern "C" fn vfs_getdents(fd: i32, buf: *mut u8, buf_len: usize) -> c_int {
     }
 }
 
+#[repr(C)]
+pub struct Timespec {
+    pub tv_sec: libc::time_t,
+    pub tv_nsec: libc::c_long,
+}
+
+crate::static_assert!(size_of::<Timespec>() == size_of::<libc::timespec>());
+
+impl From<Duration> for Timespec {
+    fn from(duration: Duration) -> Timespec {
+        let sec = duration.as_secs() as libc::time_t;
+        let nsec = duration.subsec_nanos() as libc::c_long;
+        debug_assert!(sec >= 0); // nsec >= 0 always holds
+        Timespec {
+            tv_sec: sec,
+            tv_nsec: nsec,
+        }
+    }
+}
+
+impl From<Timespec> for Duration {
+    fn from(timespec: Timespec) -> Self {
+        Duration::new(timespec.tv_sec as u64, timespec.tv_nsec as u32)
+    }
+}
+
+#[repr(C)]
+pub struct Stat {
+    pub st_dev: libc::dev_t,
+    pub st_ino: libc::ino_t,
+    pub st_mode: libc::mode_t,
+    pub st_nlink: libc::nlink_t,
+    pub st_uid: libc::uid_t,
+    pub st_gid: libc::gid_t,
+    pub st_rdev: libc::dev_t,
+    pub st_size: libc::off_t,
+    pub st_atime: Timespec,
+    pub st_mtime: Timespec,
+    pub st_ctime: Timespec,
+    pub st_blksize: libc::blksize_t,
+    pub st_blocks: libc::blkcnt_t,
+    pub st_spare4: [libc::c_long; 2usize],
+}
+
+impl From<FileAttr> for Stat {
+    fn from(attr: FileAttr) -> Self {
+        Self {
+            st_dev: attr.dev as libc::dev_t,
+            st_ino: attr.ino as libc::ino_t,
+            st_nlink: attr.nlinks as libc::nlink_t,
+            st_mode: attr.mode as libc::mode_t,
+            st_uid: attr.uid as libc::uid_t,
+            st_gid: attr.gid as libc::gid_t,
+            st_rdev: attr.rdev as libc::dev_t,
+            st_size: attr.size as libc::off_t,
+            st_blksize: attr.blk_size as libc::blksize_t,
+            st_blocks: (attr.blocks * (attr.blk_size / 512)) as libc::blkcnt_t,
+            st_atime: attr.atime.into(),
+            st_mtime: attr.mtime.into(),
+            st_ctime: attr.ctime.into(),
+            st_spare4: [0; 2],
+        }
+    }
+}
+crate::static_assert!(size_of::<Stat>() == size_of::<libc::stat>());
+
 #[no_mangle]
-pub extern "C" fn vfs_stat(path: *const c_char, buf: *mut libc::statvfs) -> c_int {
+pub extern "C" fn vfs_stat(path: *const c_char, buf: *mut Stat) -> c_int {
+    if path.is_null() || buf.is_null() {
+        return -libc::EINVAL;
+    }
+
+    let path_str = match unsafe { CStr::from_ptr(path).to_str() } {
+        Ok(s) => s,
+        Err(_) => return -libc::EINVAL,
+    };
+
+    let dir_entry = match path::lookup_path(path_str) {
+        Some(entry) => entry,
+        None => return -libc::EINVAL,
+    };
+    let file_attr = dir_entry.inode().file_attr();
+
+    let stat = Stat::from(file_attr);
+    unsafe {
+        copy_nonoverlapping(&stat, buf, size_of::<Stat>());
+    }
+    return 0;
+}
+
+#[no_mangle]
+pub extern "C" fn vfs_fstat(fd: i32, buf: *mut Stat) -> c_int {
+    debug!("vfs_fstat: fd = {}", fd);
+
+    let file_ops = {
+        let fd_manager = get_fd_manager().lock();
+        match fd_manager.get_file_ops(fd) {
+            Some(ops) => ops,
+            None => return -libc::EBADF,
+        }
+    };
+
+    let file_attr = file_ops.stat();
+    let stat = Stat::from(file_attr);
+    unsafe {
+        copy_nonoverlapping(&stat, buf, size_of::<Stat>());
+    }
+    return 0;
+}
+
+#[repr(C)]
+pub struct Statfs {
+    pub f_type: libc::c_ulong,
+    pub f_bsize: libc::c_ulong,
+    pub f_blocks: libc::fsblkcnt_t,
+    pub f_bfree: libc::fsblkcnt_t,
+    pub f_bavail: libc::fsblkcnt_t,
+    pub f_files: libc::fsfilcnt_t,
+    pub f_ffree: libc::fsfilcnt_t,
+    pub f_fsid: u64,
+    pub f_namelen: libc::c_ulong,
+    pub f_frsize: libc::c_ulong,
+    pub f_flags: libc::c_ulong,
+    pub f_spare: [libc::c_ulong; 4],
+}
+
+impl From<FileSystemInfo> for Statfs {
+    fn from(info: FileSystemInfo) -> Self {
+        Self {
+            f_type: info.magic as libc::c_ulong,
+            f_bsize: info.bsize as libc::c_ulong,
+            f_frsize: info.frsize as libc::c_ulong,
+            f_blocks: info.blocks as libc::fsblkcnt_t,
+            f_bfree: info.bfree as libc::fsblkcnt_t,
+            f_bavail: info.bavail as libc::fsblkcnt_t,
+            f_files: info.files as libc::fsfilcnt_t,
+            f_ffree: info.ffree as libc::fsfilcnt_t,
+            f_fsid: info.fsid,
+            f_namelen: info.namelen as libc::c_ulong,
+            f_flags: info.flags as libc::c_ulong,
+            f_spare: [0; 4],
+        }
+    }
+}
+crate::static_assert!(size_of::<Statfs>() == size_of::<libc::statfs>());
+
+#[no_mangle]
+pub extern "C" fn vfs_statfs(path: *const c_char, buf: *mut Statfs) -> c_int {
     if path.is_null() || buf.is_null() {
         return -libc::EINVAL;
     }
@@ -543,20 +696,34 @@ pub extern "C" fn vfs_stat(path: *const c_char, buf: *mut libc::statvfs) -> c_in
     };
     let fs_info = dir_entry.fs().fs_info();
 
+    let statvfs = Statfs::from(fs_info);
     unsafe {
-        (*buf).f_bsize = fs_info.bsize as u32;
-        (*buf).f_frsize = fs_info.frsize as u32;
-        (*buf).f_blocks = fs_info.blocks as u64;
-        (*buf).f_bfree = fs_info.bfree as u64;
-        (*buf).f_bavail = fs_info.bavail as u64;
-        (*buf).f_files = fs_info.files as u32;
-        (*buf).f_ffree = fs_info.ffree as u32;
-        (*buf).f_favail = fs_info.bavail as u32;
-        (*buf).f_fsid = fs_info.fsid as u32;
-        (*buf).f_flag = fs_info.flags as u32;
-        (*buf).f_namemax = fs_info.namelen as u32;
+        copy_nonoverlapping(&statvfs, buf, size_of::<Statfs>());
     }
+    return 0;
+}
 
+#[no_mangle]
+pub extern "C" fn vfs_fstatfs(fd: i32, buf: *mut Statfs) -> c_int {
+    debug!("vfs_fstat: fd = {}", fd);
+
+    let file_ops = {
+        let fd_manager = get_fd_manager().lock();
+        match fd_manager.get_file_ops(fd) {
+            Some(ops) => ops,
+            None => return -libc::EBADF,
+        }
+    };
+    let file = match file_ops.downcast_ref::<File>() {
+        Some(file) => file,
+        None => return -libc::EBADF,
+    };
+
+    let fs_info = file.fs_info();
+    let statvfs = Statfs::from(fs_info);
+    unsafe {
+        copy_nonoverlapping(&statvfs, buf, size_of::<Statfs>());
+    }
     return 0;
 }
 

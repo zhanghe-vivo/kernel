@@ -304,10 +304,7 @@ impl Device for Serial {
     }
 
     fn id(&self) -> DeviceId {
-        DeviceId {
-            major: 4, // 4 is the minor number for /dev/tty
-            minor: 64 + self.index,
-        }
+        DeviceId::new(4, 64 + self.index as usize)
     }
 
     fn open(&self) -> Result<(), ErrorKind> {

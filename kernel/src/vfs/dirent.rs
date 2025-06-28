@@ -9,7 +9,7 @@ use crate::{
 use core::{
     ffi::{CStr, FromBytesUntilNulError},
     marker::PhantomData,
-    mem::{align_of, offset_of, transmute},
+    mem::{align_of, offset_of, size_of, transmute},
 };
 
 /// File type enum

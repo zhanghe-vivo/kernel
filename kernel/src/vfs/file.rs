@@ -2,12 +2,20 @@
 #![allow(dead_code)]
 use crate::{
     error::{code, Error},
-    vfs::{dcache::Dcache, dirent::DirBufferReader, inode_mode::InodeFileType, utils::SeekFrom},
+    vfs::{
+        dcache::Dcache,
+        dirent::DirBufferReader,
+        fs::FileSystemInfo,
+        inode::{InodeAttr, InodeNo},
+        inode_mode::{mode_t, InodeFileType},
+        utils::SeekFrom,
+    },
 };
 use alloc::sync::Arc;
 use core::{
     any::Any,
     sync::atomic::{AtomicI32, Ordering},
+    time::Duration,
 };
 use log::warn;
 // TODO: use os mutex
@@ -82,6 +90,51 @@ impl From<i32> for OpenFlags {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct FileAttr {
+    pub dev: usize,
+    pub ino: InodeNo,
+    pub size: usize,
+    pub blk_size: usize,
+    pub blocks: usize,
+    pub atime: Duration,
+    pub mtime: Duration,
+    pub ctime: Duration,
+    pub mode: mode_t,
+    pub nlinks: u32,
+    pub uid: u32,
+    pub gid: u32,
+    pub rdev: usize,
+}
+
+impl FileAttr {
+    pub fn new(dev: usize, rdev: usize, inode: &InodeAttr) -> Self {
+        Self {
+            dev,
+            ino: inode.inode_no,
+            size: inode.size,
+            blk_size: inode.blk_size,
+            blocks: inode.blocks,
+            atime: inode.atime,
+            mtime: inode.mtime,
+            ctime: inode.ctime,
+            mode: inode.mode,
+            nlinks: inode.nlinks,
+            uid: inode.uid,
+            gid: inode.gid,
+            rdev,
+        }
+    }
+
+    pub fn ino(&self) -> InodeNo {
+        self.ino
+    }
+
+    pub fn type_(&self) -> InodeFileType {
+        InodeFileType::from(self.mode)
+    }
+}
+
 pub trait FileOps: Send + Sync + Any {
     fn read(&self, buf: &mut [u8]) -> Result<usize, Error> {
         warn!("read is not implemented");
@@ -113,6 +166,7 @@ pub trait FileOps: Send + Sync + Any {
         warn!("dup is not implemented");
         Err(code::EINVAL)
     }
+    fn stat(&self) -> FileAttr;
     fn flags(&self) -> OpenFlags;
     fn set_flags(&self, flags: OpenFlags);
 }
@@ -182,6 +236,10 @@ impl File {
         let cnt = self.dcache.inode().getdents_at(*offset, reader)?;
         *offset += cnt;
         Ok(cnt)
+    }
+
+    pub fn fs_info(&self) -> FileSystemInfo {
+        self.dcache.fs().fs_info()
     }
 
     delegate! {
@@ -279,6 +337,11 @@ impl FileOps for File {
             self.access_mode(),
             flags,
         )?))
+    }
+
+    fn stat(&self) -> FileAttr {
+        let inode = self.dcache.inode();
+        inode.file_attr()
     }
 
     fn flags(&self) -> OpenFlags {

@@ -84,11 +84,80 @@ impl DeviceBase {
     }
 }
 
-#[allow(unused)]
-#[derive(Debug, Clone, Copy)]
-pub struct DeviceId {
-    major: u32,
-    minor: u32,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DeviceId(usize);
+
+impl DeviceId {
+    /// Create a new DeviceId from major and minor numbers
+    pub fn new(major: usize, minor: usize) -> Self {
+        #[cfg(target_pointer_width = "32")]
+        {
+            // On 32-bit platforms: major in high 12 bits, minor in low 20 bits
+            let major_part = major << 20;
+            let minor_part = minor & 0xFFFFF; // 20 bits
+            Self(major_part | minor_part)
+        }
+
+        #[cfg(target_pointer_width = "64")]
+        {
+            // On 64-bit platforms: major in high 20 bits, minor in low 44 bits
+            let major_part = major << 44;
+            let minor_part = minor & 0xFFFFFFFFFFF; // 44 bits
+            Self(major_part | minor_part)
+        }
+    }
+
+    /// Get the major device number
+    pub fn major(&self) -> usize {
+        #[cfg(target_pointer_width = "32")]
+        {
+            // Extract high 12 bits
+            ((self.0 >> 20) & 0xFFF)
+        }
+
+        #[cfg(target_pointer_width = "64")]
+        {
+            // Extract high 20 bits
+            ((self.0 >> 44) & 0xFFFFF)
+        }
+    }
+
+    /// Get the minor device number
+    pub fn minor(&self) -> usize {
+        #[cfg(target_pointer_width = "32")]
+        {
+            // Extract low 20 bits
+            (self.0 & 0xFFFFF)
+        }
+
+        #[cfg(target_pointer_width = "64")]
+        {
+            // Extract low 44 bits
+            (self.0 & 0xFFFFFFFFFFF)
+        }
+    }
+
+    /// Get the raw usize value
+    pub fn raw(&self) -> usize {
+        self.0
+    }
+
+    /// Create from raw usize value
+    pub fn from_raw(raw: usize) -> Self {
+        Self(raw)
+    }
+}
+
+impl From<usize> for DeviceId {
+    fn from(raw: usize) -> Self {
+        Self::from_raw(raw)
+    }
+}
+
+impl From<DeviceId> for usize {
+    fn from(device_id: DeviceId) -> Self {
+        device_id.raw()
+    }
 }
 
 #[allow(unused_variables)]
@@ -212,4 +281,65 @@ pub fn init() -> Result<(), Error> {
     null::Null::register().map_err(|e| Error::from(e))?;
     zero::Zero::register().map_err(|e| Error::from(e))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bluekernel_test_macro::test;
+
+    #[test]
+    fn test_device_id_creation() {
+        let device_id = DeviceId::new(123, 456);
+        assert_eq!(device_id.major(), 123);
+        assert_eq!(device_id.minor(), 456);
+    }
+
+    #[test]
+    fn test_device_id_from_usize() {
+        let device_id = DeviceId::new(123, 456);
+        let raw_value = device_id.raw();
+        let device_id_from_raw = DeviceId::from_raw(raw_value);
+        assert_eq!(device_id.major(), device_id_from_raw.major());
+        assert_eq!(device_id.minor(), device_id_from_raw.minor());
+    }
+
+    #[test]
+    fn test_device_id_conversion() {
+        let device_id = DeviceId::new(123, 456);
+        let raw_value: usize = device_id.into();
+        let device_id_from_raw = DeviceId::from(raw_value);
+        assert_eq!(device_id.major(), device_id_from_raw.major());
+        assert_eq!(device_id.minor(), device_id_from_raw.minor());
+    }
+
+    #[test]
+    fn test_device_id_bit_allocation() {
+        // Test maximum values for each platform
+        #[cfg(target_pointer_width = "32")]
+        {
+            // On 32-bit: major (12 bits max), minor (20 bits max)
+            let device_id = DeviceId::new(0xFFF, 0xFFFFF);
+            assert_eq!(device_id.major(), 0xFFF);
+            assert_eq!(device_id.minor(), 0xFFFFF);
+
+            // Test overflow handling
+            let device_id = DeviceId::new(0x1FFF, 0x1FFFFF); // Values larger than bit fields
+            assert_eq!(device_id.major(), 0xFFF); // Should be truncated to 12 bits
+            assert_eq!(device_id.minor(), 0xFFFFF); // Should be truncated to 20 bits
+        }
+
+        #[cfg(target_pointer_width = "64")]
+        {
+            // On 64-bit: major (20 bits max), minor (44 bits max)
+            let device_id = DeviceId::new(0xFFFFF, 0xFFFFFFFFFFF);
+            assert_eq!(device_id.major(), 0xFFFFF);
+            assert_eq!(device_id.minor(), 0xFFFFFFFFFFF);
+
+            // Test overflow handling
+            let device_id = DeviceId::new(0x1FFFFF, 0x1FFFFFFFFFFF); // Values larger than bit fields
+            assert_eq!(device_id.major(), 0xFFFFF); // Should be truncated to 20 bits
+            assert_eq!(device_id.minor(), 0xFFFFFFFFFFF); // Should be truncated to 44 bits
+        }
+    }
 }

@@ -4,6 +4,7 @@ use crate::{
     vfs::{
         dcache::Dcache,
         dirent::DirBufferReader,
+        file::FileAttr,
         fs::{FileSystem, FileSystemInfo},
         inode::{InodeAttr, InodeNo, InodeOps},
         inode_mode::{InodeFileType, InodeMode},
@@ -65,7 +66,7 @@ impl TmpFileSystem {
             }),
             next_inode_no: AtomicUsize::new(ROOT_INO + 1),
             is_mounted: AtomicBool::new(false),
-            fs_info: FileSystemInfo::new(MAGIC, NAME_MAX, BLOCK_SIZE),
+            fs_info: FileSystemInfo::new(MAGIC, 0, NAME_MAX, BLOCK_SIZE),
         })
     }
 
@@ -524,12 +525,8 @@ impl InodeOps for TmpInode {
 
         let start_idx = current_offset.saturating_sub(2);
         for (name, inode) in dir.children.iter().skip(start_idx) {
-            match reader.write_node(
-                inode.attr().ino(),
-                current_offset,
-                inode.attr().type_(),
-                name,
-            ) {
+            let attr = inode.inode_attr();
+            match reader.write_node(attr.ino(), current_offset, attr.type_(), name) {
                 Ok(_) => {
                     count += 1;
                     current_offset += 1;
@@ -557,8 +554,19 @@ impl InodeOps for TmpInode {
         Ok(())
     }
 
-    fn attr(&self) -> InodeAttr {
+    fn inode_attr(&self) -> InodeAttr {
         self.inner.read().attr.clone()
+    }
+
+    fn file_attr(&self) -> FileAttr {
+        let inner = self.inner.read();
+        let dev = self.fs.upgrade().unwrap().fs_info.dev;
+        let rdev: usize = if let Some(device) = inner.as_device() {
+            device.id().into()
+        } else {
+            0
+        };
+        FileAttr::new(dev, rdev, &inner.attr)
     }
 
     fn lookup(&self, name: &str) -> Result<Arc<dyn InodeOps>, Error> {

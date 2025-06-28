@@ -21,10 +21,7 @@ impl Device for Zero {
     }
 
     fn id(&self) -> DeviceId {
-        DeviceId {
-            major: 1, // 1 is the major number for char devices
-            minor: 5, // 5 is the minor number for /dev/zero
-        }
+        DeviceId::new(1, 5)
     }
 
     fn read(&self, _pos: usize, buf: &mut [u8], _is_blocking: bool) -> Result<usize, ErrorKind> {
@@ -85,7 +82,7 @@ mod tests {
         let zero = Zero;
         let id = zero.id();
 
-        assert_eq!(id.major, 1);
-        assert_eq!(id.minor, 5);
+        assert_eq!(id.major(), 1);
+        assert_eq!(id.minor(), 5);
     }
 }

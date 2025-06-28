@@ -10,6 +10,7 @@ use core::{any::Any, fmt::Debug};
 #[derive(Debug, Clone)]
 pub struct FileSystemInfo {
     pub magic: usize,
+    pub dev: usize,
     pub namelen: usize,
     pub bsize: usize,
     pub frsize: usize,
@@ -20,12 +21,13 @@ pub struct FileSystemInfo {
     pub ffree: usize,
     pub favail: usize,
     pub fsid: u64,
-    pub flags: u64,
+    pub flags: usize,
 }
 
 impl FileSystemInfo {
-    pub fn new(magic: usize, name_max_len: usize, block_size: usize) -> Self {
+    pub fn new(magic: usize, dev: usize, name_max_len: usize, block_size: usize) -> Self {
         Self {
+            dev,
             magic,
             namelen: name_max_len,
             bsize: block_size,
