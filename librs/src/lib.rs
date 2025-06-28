@@ -19,19 +19,24 @@
 #![feature(c_variadic)]
 #![feature(array_ptr_get)]
 
+#[macro_use]
 extern crate alloc;
 #[cfg(test)]
 extern crate rsrt;
 // We don't expose any interfaces or types externally, rust-lang/libc is doing that.
 pub mod c_str;
 pub mod ctype;
+pub mod direct;
 pub mod errno;
+pub mod fcntl;
+pub mod io;
 pub mod iter;
 pub mod misc;
 pub mod mqueue;
 pub mod pthread;
 pub mod sched;
 pub mod semaphore;
+pub mod signal;
 pub mod stat;
 pub mod stdio;
 pub mod stdlib;

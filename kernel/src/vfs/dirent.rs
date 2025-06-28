@@ -55,7 +55,7 @@ pub struct Dirent {
     d_off: usize,
     /// The length of the dirent
     d_reclen: u16,
-    /// The type of the file  
+    /// The type of the file
     d_type: u8,
     // The file name - flexible array member
     d_name: [u8; 0],

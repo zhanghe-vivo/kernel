@@ -920,7 +920,7 @@ mod tests {
     fn stress_sched_yield() {
         {
             let n = 16;
-            for i in 0..n {
+            for _i in 0..n {
                 #[cfg(target_arch = "riscv64")]
                 bk_syscall!(SchedYield);
             }

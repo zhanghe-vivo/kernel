@@ -28,9 +28,11 @@ pub trait Syscall {
     fn close(fildes: c_int) -> Result<()>;
     fn open(path: CStr, oflag: c_int, mode: mode_t) -> c_int;
     fn access(path: CStr, mode: c_int) -> Result<()>;
-    fn chdir(path: CStr) -> Result<()>;
+    fn chdir(path: CStr) -> Result<usize>;
+    fn getcwd(buf: *mut c_char, size: size_t) -> Result<()>;
     fn chmod(path: CStr, mode: mode_t) -> Result<()>;
     fn fchmod(fildes: c_int, mode: mode_t) -> Result<()>;
+    fn getdents(fildes: c_int, buf: &mut [u8]) -> Result<usize>;
     fn fdatasync(fildes: c_int) -> Result<()>;
     unsafe fn fstat(fildes: c_int, buf: *mut c_char) -> Result<()>;
     unsafe fn statfs(path: CStr, buf: *mut c_char) -> Result<()>;

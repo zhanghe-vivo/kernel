@@ -92,7 +92,7 @@ pub extern "C" fn vfs_mount(
 
 /// unmount a path
 #[no_mangle]
-pub extern "C" fn vfs_unmount(path: *const c_char) -> c_int {
+pub extern "C" fn vfs_umount(path: *const c_char) -> c_int {
     if path.is_null() {
         return -libc::EINVAL;
     }
@@ -386,11 +386,7 @@ pub extern "C" fn vfs_fcntl(fd: i32, cmd: c_int, args: usize) -> c_int {
 }
 
 #[no_mangle]
-pub extern "C" fn vfs_link(
-    old_path: *const c_char,
-    new_path: *const c_char,
-    _flags: c_int,
-) -> c_int {
+pub extern "C" fn vfs_link(old_path: *const c_char, new_path: *const c_char) -> c_int {
     if old_path.is_null() || new_path.is_null() {
         return -libc::EINVAL;
     }

@@ -48,3 +48,5 @@ pub const SYS_SCHED_RR_GET_INTERVAL: i32 = 161;
 pub const SYS_PIPE2: i32 = 359;
 pub const SYS_PREAD: i32 = 180;
 pub const SYS_PWRITE: i32 = 181;
+pub const SYS_GETDENTS: i32 = 141;
+pub const SYS_GETCWD: i32 = 183;

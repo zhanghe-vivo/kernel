@@ -1,55 +1,15 @@
-use crate::c_str::CStr;
+use crate::{
+    c_str::CStr,
+    stdio::{stderr, stdin, stdout},
+};
 use bluekernel::{println, thread::Thread};
 use core::str;
 use libc::{c_char, c_int, c_uint, pthread_t};
-// todo: printf is a very complex function, the call environment need stdout/va_args ,and  file system syscall implementation,
-// and many other things. for now, we just stub it out. posix testsuite use it for output test information. we have
-// [test] attribute do same things
-#[no_mangle]
-pub unsafe extern "C" fn printf(format: *const c_char, mut __valist: ...) -> c_int {
-    perror(format);
-    0
-}
-
-// for posix testsuite, we need to implement a stub for perror
-#[no_mangle]
-pub unsafe extern "C" fn perror(s: *const c_char) {
-    // todo : perror output to stderr
-    match CStr::from_nullable_ptr(s).and_then(|s_cstr| str::from_utf8(s_cstr.to_bytes()).ok()) {
-        Some(s_str) if !s_str.is_empty() => {
-            println!("{}", s_str)
-        }
-        _ => {
-            println!("{}", "Unknown error")
-        }
-    }
-}
 
 #[no_mangle]
 pub extern "C" fn sleep(seconds: c_uint) -> c_uint {
     const TICK_PER_SECOND: u32 = 100;
     Thread::sleep(seconds * TICK_PER_SECOND);
-    0
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn fprintf(
-    _stream: *mut core::ffi::c_void,
-    format: *const c_char,
-    mut __valist: ...
-) -> c_int {
-    // don't use it, only check printf output
-    0
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn fwrite(
-    _ptr: *const core::ffi::c_void,
-    _size: usize,
-    _nmemb: usize,
-    _stream: *mut core::ffi::c_void,
-) -> usize {
-    // don't use it, only check printf output
     0
 }
 
@@ -62,7 +22,11 @@ extern "C" fn posix_testsuite_main(_: *mut core::ffi::c_void) -> *mut core::ffi:
     extern "C" {
         fn main() -> i32;
     }
-    unsafe { main() };
+    unsafe {
+        // TODO: move to c runtime?
+        io_init();
+        main();
+    }
     core::ptr::null_mut()
 }
 
@@ -96,12 +60,10 @@ pub unsafe extern "C" fn exit(status: c_int) -> ! {
     pthread_exit(0 as *mut core::ffi::c_void);
 }
 
-#[no_mangle]
-#[link_name = "stdin"]
-pub static stdin: i32 = 0;
-#[no_mangle]
-#[link_name = "stdout"]
-pub static stdout: i32 = 1;
-#[no_mangle]
-#[link_name = "stderr"]
-pub static stderr: i32 = 2;
+fn io_init() {
+    unsafe {
+        stdin = crate::stdio::default_stdin().get();
+        stdout = crate::stdio::default_stdout().get();
+        stderr = crate::stdio::default_stderr().get();
+    }
+}

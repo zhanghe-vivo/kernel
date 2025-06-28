@@ -5,7 +5,10 @@ use crate::{
     mqueue::mq_attr,
 };
 #[allow(unused_imports)]
-use bluekernel_header::syscalls::NR::{ClockGetTime, Close, Lseek, Open, Write};
+use bluekernel_header::syscalls::NR::{
+    Chdir, ClockGetTime, Close, FStat, Ftruncate, GetDents, Getcwd, Link, Lseek, Mkdir, Open,
+    Statfs, Unlink, Write,
+};
 use bluekernel_scal::bk_syscall;
 use libc::{
     c_char, c_int, c_uint, c_void, clockid_t, dev_t, mode_t, off_t, size_t, ssize_t, statvfs,
@@ -75,13 +78,21 @@ impl Syscall for Sys {
         // blueos is not valid for this syscall now
         Ok(())
     }
-    fn chdir(_path: CStr) -> Result<()> {
+    fn chdir(_path: CStr) -> Result<usize> {
         // blueos is not valid for this syscall now
-        Ok(())
+        to_result(bk_syscall!(Chdir, _path.as_ptr()) as usize)
+    }
+    fn getcwd(buf: *mut c_char, size: size_t) -> Result<()> {
+        to_result(bk_syscall!(Getcwd, buf, size) as usize).map(|_| ())
     }
     fn chmod(_path: CStr, _mode: mode_t) -> Result<()> {
         // blueos is not valid for this syscall now
         Ok(())
+    }
+    fn getdents(fildes: c_int, buf: &mut [u8]) -> Result<usize> {
+        to_result(
+            bk_syscall!(GetDents, fildes, buf.as_mut_ptr() as *mut c_void, buf.len()) as usize,
+        )
     }
     fn fchmod(_fildes: c_int, _mode: mode_t) -> Result<()> {
         // blueos is not valid for this syscall now
@@ -93,19 +104,22 @@ impl Syscall for Sys {
     }
     unsafe fn fstat(_fildes: c_int, _buf: *mut c_char) -> Result<()> {
         // blueos is not valid for this syscall now
-        Ok(())
+        to_result(bk_syscall!(FStat, _fildes, _buf) as usize).map(|_| ())
     }
     unsafe fn fstatvfs(_fildes: c_int, _buf: *mut statvfs) -> Result<()> {
         // blueos is not valid for this syscall now
         Ok(())
+    }
+    fn link(path1: CStr, path2: CStr) -> Result<()> {
+        // blueos is not valid for this syscall now
+        to_result(bk_syscall!(Link, path1.as_ptr(), path2.as_ptr()) as usize).map(|_| ())
     }
     fn fsync(_fildes: c_int) -> Result<()> {
         // blueos is not valid for this syscall now
         Ok(())
     }
     fn ftruncate(_fildes: c_int, _length: off_t) -> Result<()> {
-        // blueos is not valid for this syscall now
-        Ok(())
+        to_result(bk_syscall!(Ftruncate, _fildes, _length) as usize).map(|_| ())
     }
     fn dup(_fildes: c_int) -> Result<c_int> {
         // blueos is not valid for this syscall now
@@ -124,15 +138,11 @@ impl Syscall for Sys {
     }
     unsafe fn statfs(_path: CStr, _buf: *mut c_char) -> Result<()> {
         // blueos is not valid for this syscall now
-        Ok(())
-    }
-    fn link(_path1: CStr, _path2: CStr) -> Result<()> {
-        // blueos is not valid for this syscall now
-        Ok(())
+        to_result(bk_syscall!(Statfs, _path.as_ptr(), _buf) as usize).map(|_| ())
     }
     fn mkdir(_path: CStr, _mode: mode_t) -> Result<()> {
         // blueos is not valid for this syscall now
-        Ok(())
+        to_result(bk_syscall!(Mkdir, _path.as_ptr(), _mode) as usize).map(|_| ())
     }
     fn mkfifo(_path: CStr, _mode: mode_t) -> Result<()> {
         // blueos is not valid for this syscall now
@@ -168,7 +178,7 @@ impl Syscall for Sys {
     }
     fn unlink(_path: CStr) -> Result<()> {
         // blueos is not valid for this syscall now
-        Ok(())
+        to_result(bk_syscall!(Unlink, _path.as_ptr()) as usize).map(|_| ())
     }
     fn symlink(_path1: CStr, _path2: CStr) -> Result<()> {
         // blueos is not valid for this syscall now

@@ -5,51 +5,14 @@
 use crate::{
     errno::STR_ERROR,
     iter::{NullTerminated, NullTerminatedInclusive},
+    stdio::StringWriter,
 };
 use core::{
     ffi::{c_char, c_int, c_long, c_longlong, c_size_t, c_void},
-    fmt, ptr, slice,
+    fmt::Write,
+    ptr, slice,
 };
 use libc::ERANGE;
-pub struct StringWriter(pub *mut u8, pub usize);
-
-impl StringWriter {
-    pub fn write(&mut self, buf: &[u8]) -> Result<usize, ()> {
-        if self.1 > 1 {
-            let copy_size = buf.len().min(self.1 - 1);
-            unsafe {
-                ptr::copy_nonoverlapping(buf.as_ptr(), self.0, copy_size);
-                self.1 -= copy_size;
-
-                self.0 = self.0.add(copy_size);
-                *self.0 = 0;
-            }
-        }
-
-        // Pretend the entire slice was written. This is because many functions
-        // (like snprintf) expects a return value that reflects how many bytes
-        // *would have* been written. So keeping track of this information is
-        // good, and then if we want the *actual* written size we can just go
-        // `cmp::min(written, maxlen)`.
-        Ok(buf.len())
-    }
-
-    pub fn write_str(&mut self, s: &str) -> fmt::Result {
-        // can't fail
-        self.write(s.as_bytes()).unwrap();
-        Ok(())
-    }
-
-    pub fn write_u8(&mut self, byte: u8) -> fmt::Result {
-        // can't fail
-        self.write(&[byte]).unwrap();
-        Ok(())
-    }
-
-    pub fn flush(&mut self) -> Result<(), ()> {
-        Ok(())
-    }
-}
 
 /// See <https://pubs.opengroup.org/onlinepubs/9799919799/functions/memccpy.html>.
 #[linkage = "weak"]

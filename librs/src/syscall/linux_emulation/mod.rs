@@ -55,7 +55,7 @@ impl Syscall for Sys {
         to_result(bk_syscall!(CLOCK_SETTIME, clk_id, tp)).map(|_| ())
     }
     unsafe fn nanosleep(rqtp: *const timespec, rmtp: *mut timespec) -> Result<()> {
-        to_result(unsafe { bk_syscall!(NANOSLEEP, rqtp, rmtp) }).map(|_| ())
+        to_result(bk_syscall!(NANOSLEEP, rqtp, rmtp)).map(|_| ())
     }
     unsafe fn clock_nanosleep(
         clk_id: clockid_t,
@@ -68,8 +68,14 @@ impl Syscall for Sys {
     fn access(path: CStr, mode: c_int) -> Result<()> {
         to_result(bk_syscall!(SYS_ACCESS, path.as_ptr(), mode)).map(|_| ())
     }
-    fn chdir(path: CStr) -> Result<()> {
-        to_result(unsafe { bk_syscall!(SYS_CHDIR, path.as_ptr()) }).map(|_| ())
+    fn chdir(path: CStr) -> Result<usize> {
+        to_result(unsafe { bk_syscall!(SYS_CHDIR, path.as_ptr()) })
+    }
+    fn getcwd(buf: *mut c_char, size: size_t) -> Result<()> {
+        to_result(unsafe { bk_syscall!(SYS_GETCWD, buf, size) }).map(|_| ())
+    }
+    fn getdents(fildes: c_int, buf: &mut [u8]) -> Result<usize> {
+        to_result(unsafe { bk_syscall!(SYS_GETDENTS, fildes, buf.as_mut_ptr(), buf.len()) })
     }
     fn chmod(path: CStr, mode: mode_t) -> Result<()> {
         to_result(unsafe { bk_syscall!(SYS_CHMOD, path.as_ptr(), mode) }).map(|_| ())

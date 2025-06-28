@@ -1,10 +1,10 @@
 use crate::{
     c_str::CStr,
-    errno::SysCallFailed,
+    errno::{Errno, SysCallFailed, ERRNO},
     syscall::{Sys, Syscall},
 };
-use core::slice;
-use libc::{c_char, c_int, c_void, gid_t, mode_t, off_t, pid_t, size_t, ssize_t, uid_t};
+use core::{ptr, slice};
+use libc::{c_char, c_int, c_void, gid_t, mode_t, off_t, pid_t, size_t, ssize_t, uid_t, EINVAL};
 pub mod io;
 pub mod sysconf;
 pub use io::*;
@@ -15,18 +15,26 @@ pub use sysconf::*;
 pub const O_PATH: c_int = 0o10000000;
 pub const O_NOFOLLOW: c_int = 0o2000000;
 
+/// See <https://pubs.opengroup.org/onlinepubs/9799919799/functions/getcwd.html>.
 #[no_mangle]
-#[linkage = "weak"]
-pub extern "C" fn getcwd(buf: *mut i8, size: usize) -> *mut i8 {
-    if size >= 2 {
-        unsafe {
-            core::ptr::write(buf, b'/' as i8);
-            core::ptr::write(buf.add(1), b'\0' as i8);
-        }
+#[allow(unused_mut)]
+pub unsafe extern "C" fn getcwd(mut buf: *mut c_char, mut size: size_t) -> *mut c_char {
+    if buf.is_null() || size == 0 {
+        // a little different behavior from posix, we don't alloc memory here
+        ERRNO.set(EINVAL);
+        return ptr::null_mut();
     }
-    buf
-}
 
+    let ret = match Sys::getcwd(buf, size) {
+        Ok(()) => buf,
+        Err(Errno(errno)) => {
+            ERRNO.set(errno);
+            return ptr::null_mut();
+        }
+    };
+
+    ret
+}
 /// See <https://pubs.opengroup.org/onlinepubs/9799919799/functions/access.html>.
 #[no_mangle]
 pub unsafe extern "C" fn access(path: *const c_char, mode: c_int) -> c_int {
@@ -38,7 +46,7 @@ pub unsafe extern "C" fn access(path: *const c_char, mode: c_int) -> c_int {
 #[no_mangle]
 pub unsafe extern "C" fn chdir(path: *const c_char) -> c_int {
     let path = CStr::from_ptr(path);
-    Sys::chdir(path).map(|()| 0).syscall_failed()
+    Sys::chdir(path).map(|_| 0).syscall_failed()
 }
 
 /// See <https://pubs.opengroup.org/onlinepubs/9799919799/functions/fdatasync.html>.

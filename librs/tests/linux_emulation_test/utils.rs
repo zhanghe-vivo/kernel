@@ -7,19 +7,6 @@ use core::{
     ffi::c_void,
     ptr, str,
 };
-use libc::{c_char, c_int, c_uint, pthread_t};
-#[no_mangle]
-pub unsafe extern "C" fn perror(s: *const c_char) {
-    // todo : perror output to stderr
-    match CStr::from_nullable_ptr(s).and_then(|s_cstr| str::from_utf8(s_cstr.to_bytes()).ok()) {
-        Some(s_str) if !s_str.is_empty() => {
-            // println!("{}", s_str)
-        }
-        _ => {
-            // println!("{}", "Unknown error")
-        }
-    }
-}
 
 struct SimpleAllocator;
 

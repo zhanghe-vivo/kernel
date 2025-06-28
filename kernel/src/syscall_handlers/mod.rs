@@ -7,13 +7,51 @@ use crate::{
     vfs::syscalls as vfs_syscalls,
 };
 use bluekernel_header::{syscalls::NR, thread::CloneArgs};
-use libc::{c_char, c_int, c_void, clockid_t, mode_t, size_t, timespec, EINVAL};
+use libc::{
+    c_char, c_int, c_ulong, c_void, clockid_t, mode_t, off_t, sigset_t, size_t, timespec, EINVAL,
+};
 
 #[repr(C)]
 #[derive(Default)]
 pub struct Context {
     pub nr: usize,
     pub args: [usize; 6],
+}
+
+pub use crate::vfs::syscalls::{Stat, Statfs as StatFs};
+/// this signal data structure will be used in signal handling
+/// now add attributes to disable warnings
+/// copy from librs/signal/mod.rs
+#[allow(non_camel_case_types)]
+#[allow(dead_code)]
+#[repr(C)]
+#[derive(Clone)]
+pub struct sigaltstack {
+    pub ss_sp: *mut c_void,
+    pub ss_flags: c_int,
+    pub ss_size: size_t,
+}
+
+/// copy from librs/signal/mod.rs
+#[allow(non_camel_case_types)]
+#[allow(dead_code)]
+#[repr(align(8))]
+pub struct siginfo_t {
+    pub si_signo: c_int,
+    pub si_errno: c_int,
+    pub si_code: c_int,
+    _pad: [c_int; 29],
+    _align: [usize; 0],
+}
+
+/// copy from librs/signal/mod.rs
+#[allow(non_camel_case_types)]
+#[allow(dead_code)]
+pub struct sigaction {
+    pub sa_handler: Option<extern "C" fn(c_int)>,
+    pub sa_flags: c_ulong,
+    pub sa_restorer: Option<unsafe extern "C" fn()>,
+    pub sa_mask: sigset_t,
 }
 
 // For every syscall number in NR, we have to define a module to
@@ -178,7 +216,132 @@ define_syscall_handler!(sched_yield() -> c_long {
     scheduler::yield_me();
     0
 });
+define_syscall_handler!(
+    rmdir(path: *const c_char) -> c_int {
+        vfs_syscalls::vfs_rmdir(path)
+    }
+);
+define_syscall_handler!(
+    link(oldpath: *const c_char, newpath: *const c_char) -> c_int {
+        vfs_syscalls::vfs_link(oldpath, newpath)
+    }
+);
+define_syscall_handler!(
+    unlink(path: *const c_char) -> c_int {
+        vfs_syscalls::vfs_unlink(path)
+    }
+);
+define_syscall_handler!(
+    fcntl(fildes: c_int, cmd: c_int, arg: usize) -> c_int {
+        vfs_syscalls::vfs_fcntl(fildes, cmd, arg)
+    }
+);
+define_syscall_handler!(
+    stat(path: *const c_char, buf: *mut c_char) -> c_int {
+        vfs_syscalls::vfs_stat(path, buf as *mut Stat) as c_int
+    }
+);
 
+define_syscall_handler!(
+    fstat(fd: c_int, buf: *mut c_char) -> c_int {
+        vfs_syscalls::vfs_fstat(fd, buf as *mut Stat) as c_int
+    }
+);
+define_syscall_handler!(
+    mkdir(path: *const c_char, mode: mode_t) -> c_int {
+        vfs_syscalls::vfs_mkdir(path, mode)
+    }
+);
+define_syscall_handler!(
+    statfs(path: *const c_char, buf: *mut c_char) -> c_int {
+        vfs_syscalls::vfs_statfs(path, buf as *mut StatFs) as c_int
+    }
+);
+
+define_syscall_handler!(
+    fstatfs(fd: c_int, buf: *mut c_char) -> c_int {
+        vfs_syscalls::vfs_fstatfs(fd, buf as *mut StatFs) as c_int
+    }
+);
+
+define_syscall_handler!(
+    getdents(fd: c_int, buf: *mut c_void, size: usize) -> isize {
+        vfs_syscalls::vfs_getdents(fd, buf as *mut u8, size as usize) as isize
+    }
+);
+define_syscall_handler!(
+    chdir(path: *const c_char) -> c_int {
+        vfs_syscalls::vfs_chdir(path)
+    }
+);
+define_syscall_handler!(
+    getcwd(buf: *mut c_char, size: size_t) -> c_int {
+        vfs_syscalls::vfs_getcwd(buf, size as usize) as c_int
+    }
+);
+define_syscall_handler!(
+    ftruncate(fd: c_int, length: off_t) -> c_int {
+        vfs_syscalls::vfs_ftruncate(fd, length)
+    }
+);
+define_syscall_handler!(
+    mount(
+        source: *const c_char,
+        target: *const c_char,
+        fstype: *const c_char,
+        flags: c_ulong,
+        data: *const c_void
+    ) -> c_int {
+        vfs_syscalls::vfs_mount(
+            source,
+            target,
+            fstype,
+            flags as core::ffi::c_ulong,
+            data as *const core::ffi::c_void
+        )
+    }
+);
+define_syscall_handler!(
+    umount(target: *const c_char) -> c_int {
+        vfs_syscalls::vfs_umount(target)
+    }
+);
+define_syscall_handler!(
+    signalaction(_signum: c_int, _act: *const c_void, _oact: *mut c_void) -> c_int {
+        // TODO: implement signalaction
+        0
+    }
+);
+define_syscall_handler!(
+    signaltstack(_ss: *const c_void, _old_ss: *mut c_void) -> c_int {
+        0
+    }
+);
+define_syscall_handler!(
+    sigpending(_set: *mut libc::sigset_t) -> c_int {
+        0
+    }
+);
+define_syscall_handler!(
+    sigprocmask(_how: c_int, _set: *const libc::sigset_t, _oldset: *mut libc::sigset_t) -> c_int {
+        0
+    }
+);
+define_syscall_handler!(
+    sigqueueinfo(_pid: c_int, _sig: c_int, _info: *const c_void) -> c_int {
+        0
+    }
+);
+define_syscall_handler!(
+    sigsuspend(_set: *const libc::sigset_t) -> c_int {
+        0
+    }
+);
+define_syscall_handler!(
+    sigtimedwait(_set: *const sigset_t, _info: *mut c_void, _timeout: *const timespec) -> c_int {
+        0
+    }
+);
 syscall_table! {
     (Echo, echo),
     (Nop, nop),
@@ -197,6 +360,28 @@ syscall_table! {
     (Open, open),
     (Lseek, lseek),
     (SchedYield, sched_yield),
+    (Rmdir, rmdir),
+    (Link, link),
+    (Unlink, unlink),
+    (Fcntl, fcntl),
+    (Stat, stat),
+    (FStat, fstat),
+    (Statfs, statfs),
+    (FStatfs, fstatfs),
+    (Mkdir, mkdir),
+    (GetDents, getdents),
+    (Chdir, chdir),
+    (Getcwd, getcwd),
+    (Ftruncate, ftruncate),
+    (Mount, mount),
+    (Umount, umount),
+    (RtSigAction, signalaction),
+    (SigAltStack, signaltstack),
+    (RtSigPending, sigpending),
+    (RtSigProcmask, sigprocmask),
+    (RtSigQueueInfo, sigqueueinfo),
+    (RtSigSuspend, sigsuspend),
+    (RtSigTimedWait, sigtimedwait),
 }
 
 // Begin syscall modules.
