@@ -12,7 +12,7 @@ use alloc::{collections::btree_map::BTreeMap, sync::Arc, vec::Vec};
 #[allow(unused_imports)]
 use bluekernel_header::{
     syscalls::NR::{CreateThread, ExitThread, GetTid, SchedYield},
-    thread::{CloneArgs, DEFAULT_STACK_SIZE, STACK_ALIGN},
+    thread::{ExitArgs, SpawnArgs, DEFAULT_STACK_SIZE, STACK_ALIGN},
 };
 use bluekernel_scal::bk_syscall;
 use core::{
@@ -264,7 +264,7 @@ pub extern "C" fn pthread_detach(t: pthread_t) -> c_int {
     }
 }
 
-fn register_posix_tcb(tid: usize, clone_args: &CloneArgs) {
+fn register_posix_tcb(tid: usize, clone_args: &SpawnArgs) {
     let tid: pthread_t = unsafe { core::mem::transmute(tid) };
     {
         let tcb = Arc::new(RwLock::new(PthreadTcb {
@@ -279,6 +279,10 @@ fn register_posix_tcb(tid: usize, clone_args: &CloneArgs) {
         let ret = write.insert(tid, tcb);
         assert!(ret.is_none());
     }
+}
+
+fn cleanup_on_exiting(tid: usize, exit_args: &ExitArgs) {
+    unsafe { free(exit_args.stack_start as *mut libc::c_void) }
 }
 
 #[linkage = "weak"]
@@ -313,14 +317,14 @@ pub extern "C" fn pthread_create(
     let posix_routine_info = unsafe { &mut *(posix_routine_info_ptr as *mut PosixRoutineInfo) };
     posix_routine_info.entry = start_routine;
     posix_routine_info.arg = arg;
-    let clone_args = CloneArgs {
-        clone_hook: Some(register_posix_tcb),
+    let spawn_args = SpawnArgs {
+        spawn_hook: Some(register_posix_tcb),
         entry: posix_start_routine,
         arg: posix_routine_info_ptr,
         stack_start: stack_start,
         stack_size: stack_size,
     };
-    let tid = bk_syscall!(CreateThread, &clone_args as *const CloneArgs) as pthread_t;
+    let tid = bk_syscall!(CreateThread, &spawn_args as *const SpawnArgs) as pthread_t;
     if tid == !0 {
         unsafe { free(stack_start as *mut libc::c_void) };
         return -1;
@@ -382,18 +386,19 @@ pub extern "C" fn pthread_exit(retval: *mut c_void) -> ! {
             dtors[i](vals[i].1);
         }
     }
-    unsafe {
-        free(transmute::<usize, *mut libc::c_void>(
-            tcb.read().stack_start,
-        ));
-    }
 
-    if detached != 1 {
+    if detached == 0 {
         tcb.read().waitexit.wait();
     }
+
     drop_my_tcb();
 
-    bk_syscall!(ExitThread);
+    let exit_args = ExitArgs {
+        exit_hook: Some(cleanup_on_exiting),
+        stack_start: tcb.read().stack_start as *mut u8,
+    };
+
+    bk_syscall!(ExitThread, &exit_args as *const _);
     unreachable!("We have called system call to exit this thread, so should not reach here");
 }
 

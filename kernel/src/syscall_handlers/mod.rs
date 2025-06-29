@@ -6,7 +6,10 @@ use crate::{
     time,
     vfs::syscalls as vfs_syscalls,
 };
-use bluekernel_header::{syscalls::NR, thread::CloneArgs};
+use bluekernel_header::{
+    syscalls::NR,
+    thread::{ExitArgs, SpawnArgs},
+};
 use libc::{
     c_char, c_int, c_ulong, c_void, clockid_t, mode_t, off_t, sigset_t, size_t, timespec, EINVAL,
 };
@@ -120,14 +123,14 @@ get_tid() -> c_long {
 });
 
 define_syscall_handler!(
-create_thread(clone_args_ptr: *const CloneArgs) -> c_long {
-    let clone_args = unsafe {&*clone_args_ptr};
-    let t = thread::Builder::new(Entry::Posix(clone_args.entry, clone_args.arg))
-        .set_stack(Stack::Raw{base:clone_args.stack_start as usize, size: clone_args.stack_size})
+create_thread(spawn_args_ptr: *const SpawnArgs) -> c_long {
+    let spawn_args = unsafe {&*spawn_args_ptr};
+    let t = thread::Builder::new(Entry::Posix(spawn_args.entry, spawn_args.arg))
+        .set_stack(Stack::Raw{base:spawn_args.stack_start as usize, size: spawn_args.stack_size})
         .build();
     let handle = Thread::id(&t);
-    clone_args.clone_hook.map(|f| {
-        f(handle, clone_args);
+    spawn_args.spawn_hook.map(|f| {
+        f(handle, spawn_args);
     });
     let ok = scheduler::queue_ready_thread(thread::CREATED, t);
     // We don't increment the rc of the created thread since it's also
@@ -209,8 +212,21 @@ define_syscall_handler!(
     }
 );
 
-define_syscall_handler!(exit_thread() -> c_long {
-    scheduler::retire_me();
+define_syscall_handler!(exit_thread(exit_args: *const ExitArgs) -> c_long {
+    if exit_args.is_null() {
+        scheduler::retire_me();
+        return -1;
+    }
+    let exit_args = unsafe{ &*exit_args };
+    if let Some(ref hook) = exit_args.exit_hook {
+        let hook = || {
+            hook(scheduler::current_thread_id(), exit_args);
+        };
+        scheduler::retire_me_with_hook(hook);
+    } else {
+        scheduler::retire_me();
+    }
+    return -1;
 });
 
 define_syscall_handler!(sched_yield() -> c_long {

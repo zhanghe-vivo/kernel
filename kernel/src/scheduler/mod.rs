@@ -192,6 +192,19 @@ pub fn retire_me() -> ! {
     arch::restore_context_with_hook(to_sp, &mut hooks as *mut _);
 }
 
+pub fn retire_me_with_hook(hook: impl FnOnce() + 'static) {
+    let next = next_ready_thread().map_or_else(|| idle::current_idle_thread().clone(), |v| v);
+    let to_sp = next.saved_sp();
+    // FIXME: Some WaitQueue might still share the ownership of
+    // the `old`, shall we record which WaitQueue the `old`
+    // belongs to? Weak reference might not help to reduce memory
+    // usage.
+    let mut hooks = ContextSwitchHookHolder::new(next);
+    hooks.set_retiring_thread(current_thread());
+    hooks.set_closure(Box::new(hook));
+    arch::restore_context_with_hook(to_sp, &mut hooks as *mut _);
+}
+
 pub fn yield_me() {
     // We don't allow thread yielding with irq disabled.
     // The scheduler assumes every thread should be resumed with local
@@ -394,6 +407,14 @@ pub fn current_thread() -> ThreadNode {
     let my_id = arch::current_cpu_id();
     let t = unsafe { RUNNING_THREADS[my_id].assume_init_ref().clone() };
     return t;
+}
+
+#[inline]
+pub fn current_thread_id() -> usize {
+    let _ = DisableInterruptGuard::new();
+    let my_id = arch::current_cpu_id();
+    let t = unsafe { RUNNING_THREADS[my_id].assume_init_ref() };
+    return Thread::id(t);
 }
 
 pub(crate) fn handle_tick_increment(escape_tick: usize) -> bool {

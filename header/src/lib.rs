@@ -59,11 +59,17 @@ pub mod thread {
     pub const STACK_ALIGN: usize = 16;
 
     #[repr(C)]
-    pub struct CloneArgs {
-        pub clone_hook: Option<fn(tid: usize, clone_args: &CloneArgs)>,
+    pub struct SpawnArgs {
+        pub spawn_hook: Option<fn(tid: usize, spawn_args: &SpawnArgs)>,
         pub entry: extern "C" fn(*mut core::ffi::c_void),
         pub arg: *mut core::ffi::c_void,
         pub stack_start: *mut u8,
         pub stack_size: usize,
+    }
+
+    #[repr(C)]
+    pub struct ExitArgs {
+        pub exit_hook: Option<fn(tid: usize, exit_args: &ExitArgs)>,
+        pub stack_start: *mut u8,
     }
 }

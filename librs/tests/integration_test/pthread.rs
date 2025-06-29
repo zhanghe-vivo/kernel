@@ -150,7 +150,7 @@ extern "C" fn increase_counter(arg: *mut c_void) -> *mut c_void {
     core::ptr::null_mut()
 }
 
-//#[test]
+#[test]
 fn test_pthread_create_and_join() {
     #[cfg(target_pointer_width = "32")]
     let num_threads = 4;
@@ -187,7 +187,7 @@ extern "C" fn detach_and_increase_counter(arg: *mut c_void) -> *mut c_void {
     core::ptr::null_mut()
 }
 
-//#[test]
+#[test]
 fn test_pthread_create_and_detach() {
     #[cfg(target_pointer_width = "32")]
     let num_threads = 4;
