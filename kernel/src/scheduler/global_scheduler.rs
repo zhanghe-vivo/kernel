@@ -1,6 +1,5 @@
 use crate::{
     config::MAX_THREAD_PRIORITY,
-    debug,
     sync::spinlock::SpinLock,
     thread,
     thread::{Thread, ThreadNode},

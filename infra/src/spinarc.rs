@@ -5,7 +5,7 @@ extern crate alloc;
 
 use crate::{
     tinyarc::TinyArc as Arc,
-    tinyrwlock::{RwLock, RwLockReadGuard as ReadGuard, RwLockWriteGuard as WriteGuard},
+    tinyrwlock::{RwLock, RwLockWriteGuard as WriteGuard},
 };
 use alloc::boxed::Box;
 use core::{
@@ -180,7 +180,7 @@ impl<T> IlistNode<T> {
             let prev = core::mem::replace(&mut write_other_guard.prev, Some(me.clone()));
             let _ = core::mem::replace(&mut write_me_guard.prev, prev);
             if let Some(mut guard) = write_prev_guard {
-                core::mem::replace(&mut guard.next, Some(me.clone()));
+                let _ = core::mem::replace(&mut guard.next, Some(me.clone()));
             };
             drop(write_other_guard);
             let _ = core::mem::replace(&mut write_me_guard.next, Some(other.clone()));
@@ -232,7 +232,7 @@ impl<T> IlistNode<T> {
             let next = core::mem::replace(&mut write_other_guard.next, Some(me.clone()));
             let _ = core::mem::replace(&mut write_me_guard.next, next);
             if let Some(mut guard) = write_next_guard {
-                core::mem::replace(&mut guard.prev, Some(me.clone()));
+                let _ = core::mem::replace(&mut guard.prev, Some(me.clone()));
             };
             drop(write_other_guard);
             let _ = core::mem::replace(&mut write_me_guard.prev, Some(other.clone()));
@@ -293,6 +293,7 @@ impl<T> Drop for IlistNode<T> {
     }
 }
 
+#[allow(unused)]
 pub struct MutexIter<'a, T> {
     mutex: WriteGuard<'a, IlistNode<T>>,
     current: Option<SpinArc<IlistNode<T>>>,

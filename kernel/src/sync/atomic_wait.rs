@@ -1,14 +1,16 @@
 extern crate alloc;
 use crate::{
-    arch, debug, scheduler, static_arc, support,
+    arch, debug,
+    error::{code, Error},
+    scheduler, static_arc, support,
     sync::SpinLock,
     thread,
     thread::{Thread, ThreadNode},
+    time::WAITING_FOREVER,
     trace,
     types::{impl_simple_intrusive_adapter, Arc, ArcList, ArcListIterator, IlistHead as ListHead},
 };
 use core::sync::atomic::{AtomicUsize, Ordering};
-use libc::EAGAIN;
 use scheduler::WaitQueue;
 use support::PerCpu;
 
@@ -27,7 +29,7 @@ pub struct AtomicWaitEntry {
 
 impl AtomicWaitEntry {
     pub fn init(&self) -> bool {
-        return self.pending.lock().init();
+        return self.pending.irqsave_lock().init();
     }
 
     pub fn addr(&self) -> usize {
@@ -47,18 +49,18 @@ static_arc! {
     SYNC_ENTRIES(SpinLock<Head>, SpinLock::new(Head::new())),
 }
 
-pub fn atomic_wait(addr: usize, val: usize, _timeout: Option<u64>) -> Result<(), i32> {
+pub fn atomic_wait(addr: usize, val: usize, timeout: Option<usize>) -> Result<(), Error> {
     let ptr = addr as *const AtomicUsize;
     let fetched = unsafe { &*ptr }.load(Ordering::Acquire);
     if fetched != val {
-        return Err(EAGAIN);
+        return Err(code::EAGAIN);
     }
     // We should not wait in IRQ.
-    let mut w = SYNC_ENTRIES.lock();
+    let mut w = SYNC_ENTRIES.irqsave_lock();
     // Make the second check.
     let fetched = unsafe { &*ptr }.load(Ordering::Acquire);
     if fetched != val {
-        return Err(EAGAIN);
+        return Err(code::EAGAIN);
     }
     let mut entry = None;
     for e in ArcListIterator::new(&*w, None) {
@@ -87,9 +89,17 @@ pub fn atomic_wait(addr: usize, val: usize, _timeout: Option<u64>) -> Result<(),
         t.stack_usage(),
         *t,
     );
-    let we = entry.pending.lock();
+    let we = entry.pending.irqsave_lock();
+    w.forget_irq();
     drop(w);
-    scheduler::suspend_me(we);
+    if let Some(timeout) = timeout {
+        let res = scheduler::suspend_me_timed_wait(we, timeout);
+        if res == true {
+            return Err(code::ETIMEDOUT);
+        }
+    } else {
+        let _ = scheduler::suspend_me_timed_wait(we, WAITING_FOREVER);
+    }
     debug!(
         "Woken by someone @ 0x{:x}, entry rc: {}",
         addr,
@@ -109,7 +119,7 @@ pub fn atomic_wake(addr: usize, how_many: usize) -> Result<usize, ()> {
         if e.addr() != addr {
             continue;
         }
-        let mut we = e.pending.lock();
+        let mut we = e.pending.irqsave_lock();
         while let Some(next) = we.pop_front() {
             if scheduler::queue_ready_thread(thread::SUSPENDED, next.thread.clone()) {
                 woken += 1;
@@ -128,4 +138,21 @@ pub fn atomic_wake(addr: usize, how_many: usize) -> Result<usize, ()> {
     drop(w);
     scheduler::yield_me_now_or_later();
     return Ok(woken);
+}
+
+#[cfg(cortex_m)]
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bluekernel_test_macro::test;
+    use core::sync::atomic::{AtomicUsize, Ordering};
+
+    #[test]
+    fn test_atomic_wait_timeout() {
+        let atomic_var = AtomicUsize::new(0);
+        let addr = &atomic_var as *const AtomicUsize as usize;
+        let result = atomic_wait(addr, 0, Some(10));
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), code::ETIMEDOUT);
+    }
 }

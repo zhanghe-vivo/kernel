@@ -44,6 +44,13 @@ impl<'a, const N: usize> WaitQueueGuardDropper<'a, N> {
         self.num_active_guards += 1;
         return true;
     }
+
+    #[inline]
+    pub fn forget_irq(&mut self) {
+        for i in 0..self.num_active_guards {
+            self.guards[i].as_mut().map(|v| v.forget_irq());
+        }
+    }
 }
 
 pub(crate) type DefaultWaitQueueGuardDropper<'a> = WaitQueueGuardDropper<'a, 2>;

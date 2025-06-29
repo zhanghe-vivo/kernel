@@ -8,8 +8,7 @@ use libc::{c_char, c_int, c_uint, pthread_t};
 
 #[no_mangle]
 pub extern "C" fn sleep(seconds: c_uint) -> c_uint {
-    const TICK_PER_SECOND: u32 = 100;
-    Thread::sleep(seconds * TICK_PER_SECOND);
+    Thread::sleep(seconds * TICKS_PER_SECOND);
     0
 }
 

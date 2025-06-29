@@ -75,6 +75,7 @@ build_rust("kernel_unittest") {
   ]
   cfgs = bluekernel_default_cfgs
   deps = shared_deps
+  configs += [ "//kernel/kconfig:kconfigs" ]
   inputs = [ "//kernel/kernel/src/boards/$board/link.x" ]
   rustflags = shared_rust_build_flags
   rustflags += test_image_rustflags
@@ -112,6 +113,7 @@ build_rust("bluekernel") {
   ]
   cfgs = bluekernel_default_cfgs
   deps = shared_deps
+  configs += [ "//kernel/kconfig:kconfigs" ]
   rustflags = shared_rust_build_flags
   rustflags += common_crate_rustflags
 }
@@ -126,6 +128,7 @@ build_rust("bluekernel_std_static") {
     "//external/rust-delegate/v0.13.3:delegate",
   ]
   deps = shared_deps
+  configs += [ "//kernel/kconfig:kconfigs" ]
   cfgs = bluekernel_default_cfgs
   rustflags = shared_rust_build_flags
   rustflags += common_crate_rustflags

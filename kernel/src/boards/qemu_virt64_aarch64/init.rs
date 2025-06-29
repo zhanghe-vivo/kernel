@@ -1,22 +1,22 @@
-// use super::{sys_config, systick::Systick};
-use super::uart;
-use crate::devices::{console, dumb, DeviceManager};
-use alloc::string::ToString;
-use core::ptr::addr_of_mut;
-
-pub const NUM_CORES: usize = 1;
-
-pub fn current_ticks() -> u64 {
-    0
-}
+use super::{config, uart};
+use crate::{arch, devices::console, error::Error, time};
+use bluekernel_kconfig::NUM_CORES;
 
 pub(crate) fn init() {
     crate::boot::init_runtime();
     unsafe { crate::boot::init_heap() };
-    register_devices_in_vfs();
-}
 
-fn register_devices_in_vfs() {
-    console::init_console(dumb::get_serial0());
-    DeviceManager::get().register_device("ttyS0".to_string(), dumb::get_serial0().clone());
+    // arch::vector::init();
+    unsafe { arch::irq::init(config::GICD as u64, config::GICR as u64, NUM_CORES, false) };
+
+    // time::systick_init(0);
+    match uart::uart_init() {
+        Ok(_) => (),
+        Err(e) => panic!("Failed to init uart: {}", Error::from(e)),
+    }
+    let uart = uart::get_serial0();
+    match console::init_console(&uart) {
+        Ok(_) => (),
+        Err(e) => panic!("Failed to init console: {}", Error::from(e)),
+    }
 }

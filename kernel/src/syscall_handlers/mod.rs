@@ -3,7 +3,7 @@ use crate::{
     sync::atomic_wait as futex,
     thread,
     thread::{Builder, Entry, Stack, Thread, ThreadNode},
-    trace,
+    time,
     vfs::syscalls as vfs_syscalls,
 };
 use bluekernel_header::{syscalls::NR, thread::CloneArgs};
@@ -142,9 +142,10 @@ atomic_wait(addr: usize, val: usize, timeout: *const timespec) -> c_long {
     let timeout = if timeout.is_null() {
         None
     } else {
-        unsafe { Some(&*timeout) }
+        let timeout = unsafe { &*timeout };
+        Some(time::tick_from_millisecond((timeout.tv_sec * 1000 + timeout.tv_nsec / 1000000) as usize))
     };
-    futex::atomic_wait(addr, val, None).map_or_else(|e|e as c_long, |_| 0)
+    futex::atomic_wait(addr, val, timeout).map_or_else(|e|e.to_errno() as c_long, |_| 0)
 });
 
 define_syscall_handler!(

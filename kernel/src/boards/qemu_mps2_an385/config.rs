@@ -1,4 +1,6 @@
-use crate::devices::nvic::IrqNumber;
+#![allow(non_upper_case_globals)]
+#![allow(unused)]
+use crate::arch::irq::IrqNumber;
 use core::ffi::CStr;
 
 pub const UART0RX_IRQn: IrqNumber = IrqNumber::new(0);
@@ -61,7 +63,6 @@ pub mod memory_map {
 }
 
 pub const SYSTEM_CORE_CLOCK: u32 = 25000000;
-pub const TICKS_PER_SECOND: u32 = 100;
 
 pub const UART0_NAME: &CStr = c"uart0";
 pub const UART1_NAME: &CStr = c"uart1";

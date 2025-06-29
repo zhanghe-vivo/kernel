@@ -22,8 +22,8 @@ impl Plic {
         unsafe { self.base.offset(irq as isize).write_volatile(prio) };
     }
 
-    pub fn enable(&self, irq: u32) {
-        let hart = riscv64::current_cpu_id() as isize;
+    pub fn enable(&self, cpu_id: usize, irq: u32) {
+        let hart = cpu_id as isize;
         unsafe {
             let ptr = self
                 .base
@@ -35,8 +35,8 @@ impl Plic {
         }
     }
 
-    pub fn disable(&self, irq: u32) {
-        let hart = riscv64::current_cpu_id() as isize;
+    pub fn disable(&self, cpu_id: usize, irq: u32) {
+        let hart = cpu_id as isize;
         unsafe {
             let ptr = self
                 .base
@@ -48,8 +48,8 @@ impl Plic {
         }
     }
 
-    pub fn claim(&self) -> u32 {
-        let hart = riscv64::current_cpu_id() as isize;
+    pub fn claim(&self, cpu_id: usize) -> u32 {
+        let hart = cpu_id as isize;
         unsafe {
             self.base
                 .byte_offset(0x20_0004)
@@ -58,8 +58,8 @@ impl Plic {
         }
     }
 
-    pub fn complete(&self, irq: u32) {
-        let hart = riscv64::current_cpu_id() as isize;
+    pub fn complete(&self, cpu_id: usize, irq: u32) {
+        let hart = cpu_id as isize;
         unsafe {
             self.base
                 .byte_offset(0x20_0004)
@@ -68,8 +68,8 @@ impl Plic {
         }
     }
 
-    pub fn set_threshold(&self, val: u32) {
-        let hart = riscv64::current_cpu_id() as isize;
+    pub fn set_threshold(&self, cpu_id: usize, val: u32) {
+        let hart = cpu_id as isize;
         unsafe {
             self.base
                 .byte_offset(0x20_0000)

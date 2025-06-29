@@ -36,6 +36,10 @@ config("kconfigs") {
     "--build_type",
     "$build_type",
   ]
+  inputs = [
+    "config/Kconfig",
+    "config/$board/$build_type/defconfig",
+  ]
   parse_configs = rebase_path("//kernel/kconfig/src/parse_rustflags.py")
   kernel_configs = exec_script(parse_configs, args, "list lines")
   rustflags = []

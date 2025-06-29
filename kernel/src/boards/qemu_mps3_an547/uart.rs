@@ -1,18 +1,18 @@
 use super::config::{memory_map::UART0_BASE_S, UARTRX0_IRQn, UARTTX0_IRQn, SYSTEM_CORE_CLOCK};
 use crate::{
-    arch,
+    arch::{
+        self,
+        irq::{IrqNumber, Priority},
+    },
     devices::{
-        nvic,
-        nvic::IrqNumber,
         serial::{cmsdk_uart::Uart, config::SerialConfig, Serial, SerialError, UartOps},
         DeviceManager, DeviceRequest,
     },
+    irq::IrqTrace,
     sync::SpinLock,
-    vfs::AccessMode,
 };
 use alloc::{string::ToString, sync::Arc};
 use core::hint::spin_loop;
-use cortex_m::interrupt::InterruptNumber;
 use embedded_io::{ErrorKind, ErrorType, Read, ReadReady, Write, WriteReady};
 use spin::Once;
 
@@ -106,14 +106,14 @@ impl UartOps for UartDriver {
         let uart = &mut self.inner;
         uart.enable(SYSTEM_CORE_CLOCK, serial_config.baudrate);
         uart.clear_interrupt();
-        nvic::enable(self.rx_irq);
-        nvic::enable(self.tx_irq);
+        arch::irq::enable_irq_with_priority(self.rx_irq, Priority::Normal);
+        arch::irq::enable_irq_with_priority(self.tx_irq, Priority::Normal);
         Ok(())
     }
 
     fn shutdown(&mut self) -> Result<(), SerialError> {
-        nvic::disable(self.rx_irq);
-        nvic::disable(self.tx_irq);
+        arch::irq::disable_irq(self.rx_irq);
+        arch::irq::disable_irq(self.tx_irq);
         self.inner.disable();
         Ok(())
     }
@@ -197,6 +197,7 @@ pub fn uart_init() -> Result<(), ErrorKind> {
 
 #[coverage(off)]
 pub unsafe extern "C" fn uartrx0_handler() {
+    let _ = IrqTrace::new(UARTRX0_IRQn);
     let uart = get_serial0();
     uart.uart_ops.irqsave_lock().clear_rx_interrupt();
     if let Err(_e) = uart.recvchars() {
@@ -206,6 +207,7 @@ pub unsafe extern "C" fn uartrx0_handler() {
 
 #[coverage(off)]
 pub unsafe extern "C" fn uarttx0_handler() {
+    let _ = IrqTrace::new(UARTTX0_IRQn);
     let uart = get_serial0();
     uart.uart_ops.irqsave_lock().clear_tx_interrupt();
     if let Err(_e) = uart.xmitchars() {

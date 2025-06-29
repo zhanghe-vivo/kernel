@@ -187,10 +187,16 @@ extern "C" fn might_switch(from: &Context, to: &Context, mcause: usize) -> usize
             scheduler::save_context_finish_hook(Some(&mut *hook));
         }
     }
+    // Clear MPIE, since we assumes every thread should be resumed
+    // with local irq enabled.
+    unsafe {
+        core::arch::asm!(
+            "csrs mstatus, {val}",
+            val = in(reg) super::MSTATUS_MPIE,
+        )
+    }
     return from.a1;
 }
-
-const NS_PER_TIMER: usize = 100_000_000;
 
 extern "C" fn handle_trap(ctx: &mut Context, mcause: usize, mtval: usize) -> usize {
     let sp = ctx as *const _ as usize;
@@ -200,7 +206,7 @@ extern "C" fn handle_trap(ctx: &mut Context, mcause: usize, mtval: usize) -> usi
             return sp;
         }
         TIMER_INT => {
-            set_timeout_after(NS_PER_TIMER);
+            crate::time::handle_tick_increment();
             return sp;
         }
         ECALL => {

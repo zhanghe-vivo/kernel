@@ -1,13 +1,18 @@
 // pub(crate) mod asm;
 // pub(crate) mod mmu;
+pub(crate) mod irq;
 pub(crate) mod registers;
+// pub(crate) mod vector;
+// mod exception;
 
-use crate::{scheduler, thread};
+use crate::{arch::registers::mpidr_el1::MPIDR_EL1, scheduler};
 use core::{
+    fmt,
     mem::offset_of,
     sync::{atomic, atomic::Ordering},
 };
 use scheduler::ContextSwitchHookHolder;
+use tock_registers::interfaces::Readable;
 
 macro_rules! disable_interrupt {
     () => {
@@ -228,6 +233,46 @@ impl Context {
     }
 }
 
+impl fmt::Display for Context {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Context {{")?;
+        write!(f, "x0: {:?}", self.x0)?;
+        write!(f, "x1: {:?}", self.x1)?;
+        write!(f, "x2: {:?}", self.x2)?;
+        write!(f, "x3: {:?}", self.x3)?;
+        write!(f, "x4: {:?}", self.x4)?;
+        write!(f, "x5: {:?}", self.x5)?;
+        write!(f, "x6: {:?}", self.x6)?;
+        write!(f, "x7: {:?}", self.x7)?;
+        write!(f, "x8: {:?}", self.x8)?;
+        write!(f, "x9: {:?}", self.x9)?;
+        write!(f, "x10: {:?}", self.x10)?;
+        write!(f, "x11: {:?}", self.x11)?;
+        write!(f, "x12: {:?}", self.x12)?;
+        write!(f, "x13: {:?}", self.x13)?;
+        write!(f, "x14: {:?}", self.x14)?;
+        write!(f, "x15: {:?}", self.x15)?;
+        write!(f, "x16: {:?}", self.x16)?;
+        write!(f, "x17: {:?}", self.x17)?;
+        write!(f, "x18: {:?}", self.x18)?;
+        write!(f, "x19: {:?}", self.x19)?;
+        write!(f, "x20: {:?}", self.x20)?;
+        write!(f, "x21: {:?}", self.x21)?;
+        write!(f, "x22: {:?}", self.x22)?;
+        write!(f, "x23: {:?}", self.x23)?;
+        write!(f, "x24: {:?}", self.x24)?;
+        write!(f, "x25: {:?}", self.x25)?;
+        write!(f, "x26: {:?}", self.x26)?;
+        write!(f, "x27: {:?}", self.x27)?;
+        write!(f, "x28: {:?}", self.x28)?;
+        write!(f, "fp: {:?}", self.fp)?;
+        write!(f, "lr: {:?}", self.lr)?;
+        write!(f, "elr: {:?}", self.elr)?;
+        write!(f, "spsr: {:?}", self.spsr)?;
+        write!(f, "}}")
+    }
+}
+
 // FIXME: Use counter to record ISR level.
 pub(crate) extern "C" fn is_in_interrupt() -> bool {
     false
@@ -352,7 +397,7 @@ pub extern "C" fn enable_local_irq() {
 
 #[inline]
 pub extern "C" fn current_cpu_id() -> usize {
-    0
+    (MPIDR_EL1.get() & 0b11) as usize
 }
 
 #[inline(always)]

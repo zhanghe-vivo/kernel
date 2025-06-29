@@ -1,5 +1,8 @@
+pub(crate) mod irq;
 mod trap;
-use crate::{config::NUM_CORES, scheduler, scheduler::ContextSwitchHookHolder};
+
+use crate::{scheduler, scheduler::ContextSwitchHookHolder};
+use bluekernel_kconfig::NUM_CORES;
 use core::{
     mem::offset_of,
     sync::atomic::{compiler_fence, AtomicU8, Ordering},

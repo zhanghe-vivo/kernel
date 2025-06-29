@@ -119,11 +119,11 @@ impl<T, A: Adapter> ListHead<T, A> {
                 return false;
             }
             let next = core::mem::replace(&mut head.next, Some(me));
-            core::mem::replace(&mut me.as_mut().next, next);
+            let _ = core::mem::replace(&mut me.as_mut().next, next);
             let prev = next.map_or(Some(NonNull::from_mut(head)), |mut v| {
                 core::mem::replace(&mut v.as_mut().prev, Some(me))
             });
-            core::mem::replace(&mut me.as_mut().prev, prev);
+            let _ = core::mem::replace(&mut me.as_mut().prev, prev);
             return true;
         }
     }
@@ -134,11 +134,11 @@ impl<T, A: Adapter> ListHead<T, A> {
                 return false;
             }
             let prev = core::mem::replace(&mut tail.prev, Some(me));
-            core::mem::replace(&mut me.as_mut().prev, prev);
+            let _ = core::mem::replace(&mut me.as_mut().prev, prev);
             let next = prev.map_or(Some(NonNull::from_mut(tail)), |mut v| {
                 core::mem::replace(&mut v.as_mut().next, Some(me))
             });
-            core::mem::replace(&mut me.as_mut().next, next);
+            let _ = core::mem::replace(&mut me.as_mut().next, next);
             return true;
         }
     }
@@ -162,10 +162,10 @@ impl<T, A: Adapter> ListHead<T, A> {
                 return false;
             }
             if let Some(mut prev) = me_mut.prev {
-                core::mem::replace(&mut prev.as_mut().next, me_mut.next);
+                let _ = core::mem::replace(&mut prev.as_mut().next, me_mut.next);
             };
             if let Some(mut next) = me_mut.next {
-                core::mem::replace(&mut next.as_mut().prev, me_mut.prev);
+                let _ = core::mem::replace(&mut next.as_mut().prev, me_mut.prev);
             };
             me_mut.prev = None;
             me_mut.next = None;

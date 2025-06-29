@@ -1,4 +1,4 @@
-use crate::{allocator, arch, asynk, boards, scheduler, trace, vfs};
+use crate::{allocator, arch, asynk, boards, logger, scheduler, time, vfs};
 use core::ptr::{addr_of, addr_of_mut};
 
 pub(crate) static mut INIT_BSS_DONE: bool = false;
@@ -34,9 +34,15 @@ extern "C" fn init() {
     boards::init();
     init_runtime();
     init_heap();
-    init_vfs();
+
+    // FIXME: remove this after aarch64 and riscv64 is supported
+    #[cfg(cortex_m)]
+    logger::logger_init();
+
+    time::timer::system_timer_init();
     scheduler::init();
     asynk::init();
+    init_vfs();
     init_apps();
     arch::start_schedule(scheduler::schedule);
     unreachable!("We should have jumped to the schedule loop!");

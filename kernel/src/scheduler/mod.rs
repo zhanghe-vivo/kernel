@@ -1,19 +1,18 @@
 extern crate alloc;
 use crate::{
     arch,
-    config::NUM_CORES,
-    debug,
     support::DisableInterruptGuard,
-    sync::SpinLockGuard,
+    sync::{SpinLock, SpinLockGuard},
     thread,
     thread::{GlobalQueueVisitor, Thread, ThreadNode},
-    trace,
+    time::{timer::Timer, WAITING_FOREVER},
     types::{Arc, IlistHead},
 };
 use alloc::boxed::Box;
+use bluekernel_kconfig::NUM_CORES;
 use core::{
     mem::MaybeUninit,
-    sync::atomic::{compiler_fence, Ordering},
+    sync::atomic::{compiler_fence, AtomicBool, Ordering},
 };
 
 #[cfg(scheduler = "fifo")]
@@ -106,7 +105,7 @@ pub(crate) extern "C" fn save_context_finish_hook(hook: Option<&mut ContextSwitc
     let retiring_thread = hook.retiring_thread.take();
     let closure = hook.closure.take();
     let pending_thread = hook.pending_thread.take();
-    let dropper = hook.dropper.take();
+    let mut dropper = hook.dropper.take();
     let next = hook.next_thread.take();
     compiler_fence(Ordering::SeqCst);
     let Some(next) = next else {
@@ -115,7 +114,15 @@ pub(crate) extern "C" fn save_context_finish_hook(hook: Option<&mut ContextSwitc
     {
         let ok = next.transfer_state(thread::READY, thread::RUNNING);
         assert!(ok);
-        set_current_thread(next);
+        let old = set_current_thread(next.clone());
+        #[cfg(debugging_scheduler)]
+        crate::trace!(
+            "Switching from 0x{:x}: 0x{:x} to 0x{:x}: 0x{:x}",
+            Thread::id(&old),
+            old.saved_sp(),
+            Thread::id(&next),
+            next.saved_sp(),
+        );
     }
     compiler_fence(Ordering::SeqCst);
     ready_thread.map(|t| {
@@ -128,6 +135,9 @@ pub(crate) extern "C" fn save_context_finish_hook(hook: Option<&mut ContextSwitc
         assert!(ok);
     });
     compiler_fence(Ordering::SeqCst);
+    // Local irq is disabled by arch and the scheduler assumes every
+    // thread should be resumed with local irq enabled.
+    dropper.as_mut().map(|v| v.forget_irq());
     drop(dropper);
     compiler_fence(Ordering::SeqCst);
     closure.map(|f| f());
@@ -147,12 +157,23 @@ pub(crate) extern "C" fn save_context_finish_hook(hook: Option<&mut ContextSwitc
 pub(crate) extern "C" fn yield_me_and_return_next_sp(old_sp: usize) -> usize {
     let dig = DisableInterruptGuard::new();
     let Some(next) = next_ready_thread() else {
+        #[cfg(debugging_scheduler)]
+        crate::trace!("0x{:x} keeps running", Thread::id(&current_thread()));
+
         return old_sp;
     };
     let to_sp = next.saved_sp();
     let ok = next.transfer_state(thread::READY, thread::RUNNING);
     assert!(ok);
-    let old = set_current_thread(next);
+    let old = set_current_thread(next.clone());
+    #[cfg(debugging_scheduler)]
+    crate::trace!(
+        "Switching from 0x{:x}: 0x{:x} to 0x{:x}: 0x{:x}",
+        Thread::id(&old),
+        old.saved_sp(),
+        Thread::id(&next),
+        next.saved_sp(),
+    );
     old.lock().set_saved_sp(old_sp);
     let ok = queue_ready_thread(thread::RUNNING, old);
     assert!(ok);
@@ -172,6 +193,10 @@ pub fn retire_me() -> ! {
 }
 
 pub fn yield_me() {
+    // We don't allow thread yielding with irq disabled.
+    // The scheduler assumes every thread should be resumed with local
+    // irq enabled.
+    assert!(arch::local_irq_enabled());
     let pg = thread::Thread::try_preempt_me();
     if !pg.preemptable() {
         arch::idle();
@@ -182,6 +207,7 @@ pub fn yield_me() {
 }
 
 fn yield_unconditionally() {
+    assert!(arch::local_irq_enabled());
     let Some(next) = next_ready_thread() else {
         arch::idle();
         return;
@@ -200,6 +226,7 @@ fn yield_unconditionally() {
         hook_holder.set_ready_thread(old);
         arch::switch_context_with_hook(from_sp_ptr as *mut u8, to_sp, &mut hook_holder as *mut _);
     }
+    assert!(arch::local_irq_enabled());
 }
 
 pub(crate) fn suspend_me_with_hook(hook: impl FnOnce() + 'static) {
@@ -211,6 +238,7 @@ pub(crate) fn suspend_me_with_hook(hook: impl FnOnce() + 'static) {
     let hook = Box::new(hook);
     hook_holder.set_closure(hook);
     arch::switch_context_with_hook(from_sp_ptr as *mut u8, to_sp, &mut hook_holder as *mut _);
+    assert!(arch::local_irq_enabled());
 }
 
 // Sometimes we need to queue the thread into two queues
@@ -239,9 +267,48 @@ pub(crate) fn suspend_me_2<'a>(
     hook_holder.set_dropper(dropper);
     hook_holder.set_pending_thread(old);
     arch::switch_context_with_hook(from_sp_ptr as *mut u8, to_sp, &mut hook_holder as *mut _);
+    assert!(arch::local_irq_enabled());
 }
 
-pub(crate) fn suspend_me<'a>(mut w: SpinLockGuard<'a, WaitQueue>) {
+pub(crate) fn suspend_me_for(tick: usize) {
+    assert!(tick != 0);
+    let next = next_ready_thread().map_or_else(|| idle::current_idle_thread().clone(), |v| v);
+    let to_sp = next.saved_sp();
+    let old = current_thread();
+    let from_sp_ptr = old.saved_sp_ptr();
+    let mut hook_holder = ContextSwitchHookHolder::new(next);
+    hook_holder.set_pending_thread(old.clone());
+
+    if tick != WAITING_FOREVER {
+        let th = old.clone();
+        let timer_callback = Box::new(move || {
+            #[cfg(debugging_scheduler)]
+            crate::trace!("add thread to ready queue after timeout");
+            let _ = queue_ready_thread(thread::SUSPENDED, th.clone());
+        });
+        let hook = Box::new(move || {
+            match &old.timer {
+                Some(t) => {
+                    t.set_callback(timer_callback);
+                    t.start_new_interval(tick);
+                }
+                None => {
+                    let timer = Timer::new_hard_oneshot(tick, timer_callback);
+                    old.lock().timer = Some(timer.clone());
+                    compiler_fence(Ordering::SeqCst);
+                    timer.start();
+                }
+            };
+        });
+        hook_holder.set_closure(hook);
+    }
+
+    arch::switch_context_with_hook(from_sp_ptr as *mut u8, to_sp, &mut hook_holder as *mut _);
+    assert!(arch::local_irq_enabled());
+}
+
+pub(crate) fn suspend_me_timed_wait<'a>(mut w: SpinLockGuard<'a, WaitQueue>, tick: usize) -> bool {
+    assert!(tick != 0);
     let next = next_ready_thread().map_or_else(|| idle::current_idle_thread().clone(), |v| v);
     // FIXME: Ideally, we should defer state transfer to context switch hook.
     let to_sp = next.saved_sp();
@@ -267,8 +334,38 @@ pub(crate) fn suspend_me<'a>(mut w: SpinLockGuard<'a, WaitQueue>) {
     dropper.add(w);
     let mut hook_holder = ContextSwitchHookHolder::new(next);
     hook_holder.set_dropper(dropper);
-    hook_holder.set_pending_thread(old);
+    hook_holder.set_pending_thread(old.clone());
+    let timed_out = Arc::new(AtomicBool::new(false));
+    let timed_out_clone = timed_out.clone();
+
+    if tick != WAITING_FOREVER {
+        let th = old.clone();
+        let timer_callback = Box::new(move || {
+            #[cfg(debugging_scheduler)]
+            crate::trace!("add thread to ready queue after timeout");
+            let _ = queue_ready_thread(thread::SUSPENDED, th.clone());
+            timed_out_clone.store(true, Ordering::SeqCst);
+        });
+        let hook = Box::new(move || {
+            match &old.timer {
+                Some(t) => {
+                    t.set_callback(timer_callback);
+                    t.start_new_interval(tick);
+                }
+                None => {
+                    let timer = Timer::new_hard_oneshot(tick, timer_callback);
+                    old.lock().timer = Some(timer.clone());
+                    compiler_fence(Ordering::SeqCst);
+                    timer.start();
+                }
+            };
+        });
+        hook_holder.set_closure(hook);
+    }
+
     arch::switch_context_with_hook(from_sp_ptr as *mut u8, to_sp, &mut hook_holder as *mut _);
+    assert!(arch::local_irq_enabled());
+    return timed_out.load(Ordering::SeqCst);
 }
 
 // Yield me immediately if not in ISR, otherwise switch context on
@@ -281,6 +378,9 @@ pub(crate) fn yield_me_now_or_later() {
 
 // Entry of system idle threads.
 pub(crate) extern "C" fn schedule() -> ! {
+    #[cfg(debugging_scheduler)]
+    crate::trace!("Start scheduling");
+
     arch::enable_local_irq();
     assert!(arch::local_irq_enabled());
     loop {
@@ -294,6 +394,21 @@ pub fn current_thread() -> ThreadNode {
     let my_id = arch::current_cpu_id();
     let t = unsafe { RUNNING_THREADS[my_id].assume_init_ref().clone() };
     return t;
+}
+
+pub(crate) fn handle_tick_increment(escape_tick: usize) -> bool {
+    #[cfg(robin_scheduler)]
+    {
+        let th = current_thread();
+        if Thread::id(&th) != Thread::id(idle::current_idle_thread())
+            && th.round_robin(escape_tick) <= 0
+            && th.is_preemptable()
+        {
+            th.reset_robin();
+            return true;
+        }
+    }
+    false
 }
 
 fn set_current_thread(t: ThreadNode) -> ThreadNode {

@@ -1,5 +1,4 @@
 // FIXME: We should use kconfig to generate this file.
-pub(crate) use crate::boards::NUM_CORES;
 use crate::types::ThreadPriority;
 
 pub const MAX_THREAD_PRIORITY: ThreadPriority = (ThreadPriority::BITS - 1) as ThreadPriority;

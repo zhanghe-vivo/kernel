@@ -1,6 +1,6 @@
 use crate::{
-    arch,
     devices::{Device, DeviceBase, DeviceClass, DeviceId, DeviceRequest},
+    irq,
     sync::{
         atomic_wait::{atomic_wait, atomic_wake},
         spinlock::SpinLock,
@@ -210,12 +210,12 @@ impl Serial {
                 writer.push_done(n);
                 self.uart_ops.irqsave_lock().set_tx_interrupt(true);
                 // write some data to uart to trigger interrupt
-                if !arch::is_in_interrupt() {
+                if !irq::is_in_irq() {
                     let _ = self.xmitchars();
                 }
             }
 
-            if !is_nonblocking && !arch::is_in_interrupt() {
+            if !is_nonblocking && !irq::is_in_irq() {
                 if !writer.is_empty() {
                     // wait for data to be written
                     atomic_wait(&self.tx_fifo.futex as *const AtomicUsize as usize, 0, None)

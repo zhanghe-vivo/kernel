@@ -104,7 +104,7 @@ impl Builder {
         return thread;
     }
 
-    pub fn start(mut self) -> ThreadNode {
+    pub fn start(self) -> ThreadNode {
         let t = self.build();
         scheduler::queue_ready_thread(super::CREATED, t.clone());
         return t;
@@ -151,7 +151,7 @@ pub(crate) fn build_static_thread(
     let stack = &s.stack;
     let arc = unsafe { ThreadNode::const_new(inner) };
     assert_eq!(ThreadNode::strong_count(&arc), 1);
-    let id = Thread::id(&arc);
+    let _id = Thread::id(&arc);
     let mut w = arc.lock();
     w.init(
         Stack::Raw {

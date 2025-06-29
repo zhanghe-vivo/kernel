@@ -18,6 +18,8 @@
 
 ROM_BASE = 0x00000000;
 ROM_SIZE = 0x00080000;
+ROM_EXT_BASE = 0x01000000;
+ROM_EXT_SIZE = 0x00200000;
 RAM_BASE = 0x21000000;
 RAM_SIZE = 0x00400000;
 STACK_SIZE = 0x00001000;
@@ -25,6 +27,7 @@ STACK_SIZE = 0x00001000;
 MEMORY
 {
   FLASH (rx) : ORIGIN = ROM_BASE, LENGTH = ROM_SIZE
+  FLASH_EXT (rx) : ORIGIN = ROM_EXT_BASE, LENGTH = ROM_EXT_SIZE
   RAM (rwx) : ORIGIN = RAM_BASE, LENGTH = RAM_SIZE
 }
 
@@ -50,11 +53,6 @@ SECTIONS
     *(.text*)
   } > FLASH
 
-  . = ALIGN(4);
-  __rodata_start = .;
-  .rodata : { *(.rodata*) } > FLASH
-  __rodata_end = .;
-
   .ARM.extab :
   {
     *(.ARM.extab* .gnu.linkonce.armextab.*)
@@ -77,23 +75,33 @@ SECTIONS
     __zero_table_end = .;
   } > FLASH
 
+  /* mps3 qemu boot image can not bigger than 512K, we set LMA same as VMA,
+   * and not need to copy data.
+   */
   /* Put .data to RAM */
   .copy.table :
   {
     . = ALIGN(4);
     __copy_table_start = .;
-    LONG (__etext)
-    LONG (__data_start)
-    LONG ((__data_end - __data_start) / 4)
     __copy_table_end = .;
   } > FLASH
 
   __etext = ALIGN (4);
 
-  .data : AT (__etext)
+  .rodata :
   {
-    __data_start = .;
     . = ALIGN(4);
+    __rodata_start = .;
+    *(.rodata*)
+    __rodata_end = .;
+  } > FLASH_EXT
+  
+  __erodata = ALIGN (4);
+
+  .data :
+  {
+    . = ALIGN(4);
+    __data_start = .;
     *(vtable)
     *(.data)
     *(.data.*)

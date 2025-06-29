@@ -5,6 +5,7 @@
 
 use super::PLIC;
 use crate::{
+    arch,
     devices::serial::{config::SerialConfig, Serial, SerialError, UartOps},
     sync::SpinLock,
     vfs::AccessMode,
@@ -88,7 +89,7 @@ pub(super) fn init() {
     // Enable transmit and receive interrupts.
     write_reg(IER, IER_TX_ENABLE | IER_RX_ENABLE);
     // Enable UART0 in PLIC.
-    PLIC.enable(UART0_IRQ as u32);
+    PLIC.enable(arch::current_cpu_id(), UART0_IRQ as u32);
     // Set UART0 priority in PLIC.
     PLIC.set_priority(UART0_IRQ as u32, 1);
 }

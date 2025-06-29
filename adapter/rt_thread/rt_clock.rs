@@ -15,7 +15,7 @@ pub extern "C" fn rt_tick_set(tick: u32) {
 #[doc = "This function will notify kernel there is one tick passed."]
 #[no_mangle]
 pub extern "C" fn rt_tick_increase() {
-    clock::handle_tick_increase();
+    clock::handle_tick_increment();
 }
 
 #[doc = "This function will calculate the tick from millisecond."]

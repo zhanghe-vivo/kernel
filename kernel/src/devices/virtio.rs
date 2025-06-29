@@ -2,13 +2,13 @@
 // This project is dual-licensed under Apache 2.0 and MIT terms.
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-use crate::println;
 use alloc::{
     alloc::{alloc_zeroed, dealloc, handle_alloc_error},
     vec::Vec,
 };
 use core::{alloc::Layout, mem::size_of, ptr::NonNull};
 use flat_device_tree::{node::FdtNode, Fdt};
+use log::debug;
 use spin::{Once, RwLock};
 use virtio_drivers::{
     device::{blk::VirtIOBlk, console::VirtIOConsole, net::VirtIONetRaw},
@@ -53,11 +53,11 @@ pub fn init_virtio(fdt: &Fdt) {
 pub unsafe fn find_virtio_mmio_devices(fdt: &Fdt, devices: &mut VirtDevices) {
     for node in fdt.all_nodes() {
         if is_compatible(&node, &[VIRTIO_MMIO_COMPATIBLE]) {
-            println!("Found VirtIO MMIO device {}", node.name);
+            debug!("Found VirtIO MMIO device {}", node.name);
             if let Some(region) = node.reg().next() {
                 let region_size = region.size.unwrap_or(0);
                 if region_size < size_of::<VirtIOHeader>() {
-                    println!(
+                    debug!(
                         "VirtIO MMIO device {} region smaller than VirtIO header size ({} < {})",
                         node.name,
                         region_size,
@@ -70,13 +70,13 @@ pub unsafe fn find_virtio_mmio_devices(fdt: &Fdt, devices: &mut VirtDevices) {
                     // devices are mapped, and no aliases are constructed to the MMIO region.
                     match unsafe { MmioTransport::new(header, region_size) } {
                         Err(MmioError::InvalidDeviceID(DeviceTypeError::InvalidDeviceType(0))) => {
-                            println!("Ignoring VirtIO device with zero device ID.");
+                            debug!("Ignoring VirtIO device with zero device ID.");
                         }
                         Err(e) => {
-                            println!("Error creating VirtIO transport: {}", e);
+                            debug!("Error creating VirtIO transport: {}", e);
                         }
                         Ok(mut transport) => {
-                            println!(
+                            debug!(
                                 "Detected virtio MMIO device with device type {:?}, vendor ID {:#x}, version {:?}, features {:#018x}",
                                 transport.device_type(),
                                 transport.vendor_id(),
@@ -88,7 +88,7 @@ pub unsafe fn find_virtio_mmio_devices(fdt: &Fdt, devices: &mut VirtDevices) {
                     }
                 }
             } else {
-                println!("VirtIO MMIO device {} missing region", node.name);
+                debug!("VirtIO MMIO device {} missing region", node.name);
             }
         }
     }
@@ -114,7 +114,7 @@ fn init_virtio_device(transport: SomeTransport<'static>, devices: &mut VirtDevic
             devices.console.push(VirtIOConsole::new(transport).unwrap());
         }
         t => {
-            println!("Ignoring unsupported VirtIO device type {:?}", t);
+            debug!("Ignoring unsupported VirtIO device type {:?}", t);
         }
     }
 }

@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 use alloc::alloc::{AllocError, LayoutError};
-use core::{ffi::CStr, num::TryFromIntError, ptr, str::Utf8Error};
+use core::{ffi::CStr, num::TryFromIntError, str::Utf8Error};
 
 pub mod code {
     use libc;
@@ -91,6 +91,11 @@ impl Error {
             &code::ENOENT => ENOENT_STR,
             &code::EPERM => EPERM_STR,
             &code::ENODEV => ENODEV_STR,
+            &code::ENAMETOOLONG => ENAMETOOLONG_STR,
+            &code::ESPIPE => ESPIPE_STR,
+            &code::EOVERFLOW => EOVERFLOW_STR,
+            &code::ELOOP => ELOOP_STR,
+            &code::EXDEV => EXDEV_STR,
             _ => UNKNOW_STR,
         }
     }

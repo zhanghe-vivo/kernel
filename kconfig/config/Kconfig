@@ -6,7 +6,7 @@ config ALIGN_SIZE
     default 8
     int "Alignment size for CPU architecture data access"
 
-config TICK_PER_SECOND
+config TICKS_PER_SECOND
     default 100
     int "Tick frequency, Hz"
 
@@ -14,7 +14,7 @@ config SMP
     default n
     bool "Enable Symmetric multiprocessing"
 
-config CPUS_NR
+config NUM_CORES
     default 4 if SMP
     default 1 if !SMP
     int "Number of CPUs"
@@ -78,85 +78,26 @@ config ALLOCATOR
     default "llff" if ALLOCATOR_LLFF
     default "buddy" if ALLOCATOR_BUDDY
 
+config ROBIN_SCHEDULER
+    default y
+    bool "Enable robin scheduler"
+
+config ROBIN_SLICE
+    default 10
+    int "The tick slice of robin scheduler"
+    depends on ROBIN_SCHEDULER
+
 config OVERFLOW_CHECK
     default y
     bool "Using stack overflow checking"
-
-config IDLE_HOOK
-    default y
-    bool "Enable system hook"
-
-config HEAP
-    default y
-    bool "Using heap"
-
-config HEAP_ISR
-    default y
-    bool "Using heap in ISR"
-
-config DEBUGGING_INIT
-    default y
-    bool "Enable debugging of components initialization"
-
-config EVENT
-    default y
-    bool "Enable event flag"
-
-config MESSAGEQUEUE
-    default y
-    bool "Enable message queue"
-
-config MAILBOX
-    default y
-    bool "Enable mailbox"
-
-config MUTEX
-    default y
-    bool "Enable mutex"
-
-config SEMAPHORE
-    default y
-    bool "Enable semaphore"
-
-config RWLOCK
-    default y
-    bool "Enable rwlock"
-
-config CONDVAR
-    default y
-    bool "Enable condvar"
-
-config COMPAT_NEWLIBC
-    default y
-    bool "Enable newlibc"
-
-config SCHEDULE_WITH_TIME_SLICE
-    default y
-    bool "Enable schedule with time_slice"
 
 config STACK_HIGHWATER_CHECK
     default y
     bool "Enable stack overflow checking"
 
-config DEBUGGING_OBJECT
-    default n
-    bool "Enable debugging of object"
-
 config DEBUGGING_SCHEDULER
     default n
     bool "Enable debugging of scheduler"
-
-config DEBUGGING_CONTEXT
-    default n
-    bool "Enable debugging of context switch"
-
-config MEMPOOL
-    default n
-    bool "Enable mempool"
-
-config MEMHEAP
-    default n
-    bool "Enable memheap"
 
 config MAIN_THREAD_STACK_SIZE
     default 12288

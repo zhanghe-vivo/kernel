@@ -2,12 +2,10 @@ mod config;
 mod handlers;
 mod uart;
 
-use crate::{allocator, boot, devices::console, error::Error};
+use crate::{arch, boot, devices::console, error::Error, time};
 use boot::INIT_BSS_DONE;
 use core::ptr::addr_of;
 pub use uart::get_early_uart;
-
-pub const NUM_CORES: usize = 1;
 
 #[repr(C)]
 struct CopyTable {
@@ -58,10 +56,11 @@ unsafe fn copy_data() {
 pub(crate) fn init() {
     unsafe {
         copy_data();
-        // TODO: Init timer and UART.
     }
     boot::init_runtime();
     unsafe { boot::init_heap() };
+    arch::irq::init();
+    time::systick_init(config::SYSTEM_CORE_CLOCK);
     match uart::uart_init() {
         Ok(_) => (),
         Err(e) => panic!("Failed to init uart: {}", Error::from(e)),
@@ -71,8 +70,4 @@ pub(crate) fn init() {
         Ok(_) => (),
         Err(e) => panic!("Failed to init console: {}", Error::from(e)),
     }
-}
-
-pub(crate) fn current_ticks() -> usize {
-    0
 }

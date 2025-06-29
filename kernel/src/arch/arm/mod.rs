@@ -1,5 +1,9 @@
+#![allow(unused)]
 pub(crate) mod hardfault;
+pub(crate) mod irq;
 pub(crate) mod xpsr;
+
+pub(crate) use hardfault::handle_hardfault;
 
 use crate::{
     scheduler,
@@ -9,11 +13,7 @@ use crate::{
 use core::{
     fmt,
     mem::offset_of,
-    ptr::addr_of,
-    sync::{
-        atomic,
-        atomic::{compiler_fence, fence, Ordering},
-    },
+    sync::{atomic, atomic::Ordering},
 };
 use cortex_m::peripheral::SCB;
 use scheduler::ContextSwitchHookHolder;
@@ -22,6 +22,7 @@ pub const EXCEPTION_LR: usize = 0xFFFFFFFD;
 pub const CONTROL: usize = 0x2;
 pub const THUMB_MODE: usize = 0x01000000;
 pub const NR_SWITCH: usize = !0;
+pub const DISABLE_LOCAL_IRQ_BASEPRI: u8 = irq::IRQ_PRIORITY_FOR_SCHEDULER;
 
 #[macro_export]
 macro_rules! arch_bootstrap {
@@ -79,6 +80,7 @@ pub(crate) extern "C" fn start_schedule(cont: extern "C" fn() -> !) {
             "msr control, r12",
             "ldr lr, =0",
             "isb",
+            "cpsie i",
             "bx r0",
             thumb = const THUMB_MODE,
             ctrl = const CONTROL,
@@ -113,7 +115,7 @@ pub struct Context {
 }
 
 #[repr(C, align(4))]
-#[derive(Default, Debug)]
+#[derive(Default)]
 pub struct IsrContext {
     pub r0: usize,
     pub r1: usize,
@@ -123,6 +125,22 @@ pub struct IsrContext {
     pub lr: usize,
     pub pc: usize,
     pub xpsr: usize,
+}
+
+impl fmt::Debug for IsrContext {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "IsrContext {{")?;
+        write!(f, "r0: 0x{:x} ", self.r0)?;
+        write!(f, "r1: 0x{:x} ", self.r1)?;
+        write!(f, "r2: 0x{:x} ", self.r2)?;
+        write!(f, "r3: 0x{:x} ", self.r3)?;
+        write!(f, "r12: 0x{:x} ", self.r12)?;
+        write!(f, "lr: 0x{:x} ", self.lr)?;
+        write!(f, "pc: 0x{:x} ", self.pc)?;
+        write!(f, "xpsr: 0x{:x} ", self.xpsr)?;
+        write!(f, "}}")?;
+        Ok(())
+    }
 }
 
 // FIXME: We need to pass a scratch register to perform saving.
@@ -155,8 +173,8 @@ pub(crate) unsafe extern "C" fn handle_svc() {
     core::arch::naked_asm!(
         concat!(
             "
-            mrs r3, PRIMASK
-            cpsid i
+            ldr r12, ={basepri}
+            msr basepri, r12
             ",
             store_callee_saved_regs!(),
             "
@@ -168,11 +186,13 @@ pub(crate) unsafe extern "C" fn handle_svc() {
             ",
             load_callee_saved_regs!(),
             "
-            msr PRIMASK, r3
+            ldr r12, =0
+            msr basepri, r12
             bx lr
             ",
         ),
         syscall_handler = sym handle_syscall,
+        basepri = const DISABLE_LOCAL_IRQ_BASEPRI,
     )
 }
 
@@ -270,8 +290,8 @@ pub unsafe extern "C" fn handle_pendsv() {
     core::arch::naked_asm!(
         concat!(
             "
-            mrs r3, PRIMASK
-            cpsid i
+            ldr r12, ={basepri}
+            msr basepri, r12
             ",
             store_callee_saved_regs!(),
             "
@@ -283,11 +303,13 @@ pub unsafe extern "C" fn handle_pendsv() {
             ",
             load_callee_saved_regs!(),
             "
-            msr PRIMASK, r3
+            ldr r12, =0
+            msr basepri, r12
             bx lr
             "
         ),
         next_thread_sp = sym scheduler::yield_me_and_return_next_sp,
+        basepri = const DISABLE_LOCAL_IRQ_BASEPRI,
     )
 }
 
@@ -324,12 +346,24 @@ impl Context {
 
 #[inline]
 pub extern "C" fn enable_local_irq() {
-    unsafe { core::arch::asm!(enable_interrupt!(), options(nostack)) }
+    unsafe {
+        core::arch::asm!(
+            "msr basepri, {}",
+            in(reg) 0,
+            options(nostack)
+        )
+    }
 }
 
 #[inline]
 pub extern "C" fn disable_local_irq() {
-    unsafe { core::arch::asm!(disable_interrupt!(), options(nostack)) }
+    unsafe {
+        core::arch::asm!(
+            "msr basepri, {}",
+            in(reg) DISABLE_LOCAL_IRQ_BASEPRI,
+            options(nostack),
+        )
+    }
 }
 
 #[inline]
@@ -338,10 +372,14 @@ pub extern "C" fn disable_local_irq_save() -> usize {
     unsafe {
         core::arch::asm!(
             concat!(
-                "mrs {}, PRIMASK",
-                disable_interrupt!(),
+                "
+                mrs {old}, basepri
+                msr basepri, {val}
+                ",
             ),
-            out(reg) old, options(nostack)
+            old = out(reg) old,
+            val = in(reg) DISABLE_LOCAL_IRQ_BASEPRI,
+            options(nostack)
         )
     }
     atomic::compiler_fence(Ordering::SeqCst);
@@ -351,7 +389,12 @@ pub extern "C" fn disable_local_irq_save() -> usize {
 #[inline]
 pub extern "C" fn enable_local_irq_restore(old: usize) {
     atomic::compiler_fence(Ordering::SeqCst);
-    unsafe { core::arch::asm!("msr PRIMASK, {}", in(reg) old, options(nostack)) }
+    unsafe {
+        core::arch::asm!(
+        "msr basepri, {}", 
+        in(reg) old,
+        options(nostack))
+    }
 }
 
 #[inline]
@@ -388,8 +431,10 @@ pub extern "C" fn switch_context_with_hook(
 ) {
     unsafe {
         core::arch::naked_asm!(
+            "movs r12, r7",
             "ldr r7, ={nr}",
             "svc 0",
+            "mov r7, r12",
             "bx lr",
             nr = const NR_SWITCH,
         )
@@ -464,7 +509,7 @@ pub extern "C" fn local_irq_enabled() -> bool {
     let x: usize;
     unsafe {
         core::arch::asm!(
-            "mrs {}, PRIMASK",
+            "mrs {}, basepri",
             out(reg) x, options(nostack)
         );
     };

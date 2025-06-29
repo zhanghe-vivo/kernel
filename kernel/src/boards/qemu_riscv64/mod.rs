@@ -9,18 +9,15 @@ mod uart;
 use crate::{
     arch,
     arch::riscv64::{local_irq_enabled, trap_entry, Context, READY_CORES},
-    debug,
     devices::{console, dumb, plic::Plic, DeviceManager},
     scheduler,
     support::SmpStagedInit,
-    thread::Thread,
+    time,
 };
-use alloc::string::ToString;
+use alloc::string::String;
 use core::sync::atomic::Ordering;
-//pub(crate) use dumb::get_early_uart;
 pub(crate) use uart::get_early_uart;
 
-pub(crate) const NUM_CORES: usize = 32;
 const CLOCK_ADDR: usize = 0x0200_0000;
 const CLOCK_TIME: usize = CLOCK_ADDR + 0xBFF8;
 const NUM_TICKS_PER_SECOND: usize = 10_000_000;
@@ -49,11 +46,6 @@ pub fn current_cycles() -> usize {
     x
 }
 
-fn init_timer() {
-    let time = current_ticks();
-    set_timecmp(time + NUM_TICKS_PER_TIMER);
-}
-
 fn set_timecmp(tick: usize) {
     let hart = arch::current_cpu_id();
     unsafe { clock_timecmp_ptr(hart).write_volatile(tick) };
@@ -73,7 +65,8 @@ fn init_vector_table() {
 }
 
 pub(crate) fn handle_plic_irq(ctx: &Context, mcause: usize, mtval: usize) {
-    PLIC.complete(PLIC.claim())
+    let cpu_id = arch::current_cpu_id();
+    PLIC.complete(cpu_id, PLIC.claim(cpu_id))
 }
 
 pub(crate) fn set_timeout_after(ns: usize) {
@@ -102,7 +95,9 @@ pub(crate) fn init() {
     STAGING.run(0, true, || crate::boot::init_runtime());
     STAGING.run(1, true, || crate::boot::init_heap());
     STAGING.run(2, false, || init_vector_table());
-    STAGING.run(3, false, || init_timer());
+    STAGING.run(3, false, || {
+        time::systick_init(0);
+    });
     // From now on, all work will be done by core 0.
     if arch::current_cpu_id() != 0 {
         wait_and_then_start_schedule();
@@ -120,5 +115,5 @@ fn enumerate_devices() {
 
 fn register_devices_in_vfs() {
     console::init_console(dumb::get_serial0());
-    DeviceManager::get().register_device("ttyS0".to_string(), dumb::get_serial0().clone());
+    DeviceManager::get().register_device(String::from("ttyS0"), dumb::get_serial0().clone());
 }

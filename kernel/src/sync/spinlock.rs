@@ -1,4 +1,4 @@
-use crate::{support::DisableInterruptGuard, thread};
+use crate::support::DisableInterruptGuard;
 use core::{
     ops::{Deref, DerefMut},
     sync::atomic::{compiler_fence, Ordering},
@@ -12,6 +12,7 @@ pub struct SpinLock<T: ?Sized> {
 
 // See https://doc.rust-lang.org/reference/destructors.html#r-destructors.operation for dropping orders.
 #[derive(Debug)]
+#[repr(C)]
 pub struct SpinLockGuard<'a, T: ?Sized> {
     mutex_guard: MutexGuard<'a, T>,
     irq_guard: Option<DisableInterruptGuard>,
@@ -84,6 +85,15 @@ impl<T: ?Sized> SpinLock<T> {
             };
             return l;
         }
+    }
+}
+
+impl<'a, T: 'a + ?Sized> SpinLockGuard<'a, T> {
+    pub fn forget_irq(&mut self) {
+        if self.irq_guard.is_none() {
+            return;
+        }
+        core::mem::forget(self.irq_guard.take())
     }
 }
 

@@ -2,13 +2,10 @@
 
 extern crate alloc;
 use crate::{
-    arch,
-    config::{MAX_THREAD_PRIORITY, NUM_CORES},
-    scheduler,
-    scheduler::WaitQueue,
-    static_arc, support,
-    support::{ArcBufferingQueue, PerCpu},
-    sync::{atomic_wait, spinlock::SpinLock},
+    config::MAX_THREAD_PRIORITY,
+    scheduler, static_arc,
+    support::ArcBufferingQueue,
+    sync::atomic_wait,
     thread,
     thread::{Entry, SystemThreadStorage, ThreadNode},
     types::{
@@ -89,7 +86,7 @@ pub fn block_on(future: impl Future<Output = ()> + 'static) {
 }
 
 fn wake_poller() {
-    POLLER_WAKER.fetch_add(1, Ordering::Relaxed);
+    POLLER_WAKER.fetch_add(1, Ordering::Release);
     atomic_wait::atomic_wake(&POLLER_WAKER as *const _ as usize, 1);
 }
 

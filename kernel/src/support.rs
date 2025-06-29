@@ -299,13 +299,13 @@ impl<T: Sized, A: IntrusiveAdapter, const N: usize> ArcBufferingQueue<T, A, N> {
 
     #[inline]
     pub fn advance_active_queue<'a>(&'a self) -> SpinLockGuard<'a, ArcList<T, A>> {
-        let i = self.active.fetch_add(1, Ordering::Relaxed) as usize;
+        let i = self.active.fetch_add(1, Ordering::AcqRel) as usize;
         return self.queues[i % N].irqsave_lock();
     }
 
     #[inline]
     pub fn get_active_queue<'a>(&'a self) -> SpinLockGuard<'a, ArcList<T, A>> {
-        let i = self.active.load(Ordering::Relaxed) as usize;
+        let i = self.active.load(Ordering::Acquire) as usize;
         return self.queues[i % N].irqsave_lock();
     }
 }

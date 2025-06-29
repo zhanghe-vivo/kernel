@@ -1,13 +1,12 @@
 extern crate alloc;
 use crate::{
     arch,
-    config::{MAX_THREAD_PRIORITY, NUM_CORES},
-    debug,
+    config::MAX_THREAD_PRIORITY,
     scheduler::RUNNING_THREADS,
-    support, thread,
-    thread::{Entry, SystemThreadStorage, Thread, ThreadNode},
-    trace,
+    support,
+    thread::{self, Entry, SystemThreadStorage, Thread, ThreadNode},
 };
+use bluekernel_kconfig::NUM_CORES;
 use core::mem::MaybeUninit;
 
 static IDLE_THREAD_BLOCKS: [SystemThreadStorage; NUM_CORES] =

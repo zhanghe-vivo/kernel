@@ -1,6 +1,5 @@
 extern crate alloc;
 
-use crate::debug;
 use alloc::alloc::Layout;
 use core::{alloc::GlobalAlloc, ptr};
 

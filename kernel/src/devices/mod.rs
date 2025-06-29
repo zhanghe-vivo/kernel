@@ -12,8 +12,6 @@ pub mod console;
 pub(crate) mod dumb;
 mod error;
 mod null;
-#[cfg(target_arch = "arm")]
-pub(crate) mod nvic;
 #[cfg(target_arch = "riscv64")]
 pub(crate) mod plic;
 pub mod serial;
@@ -112,13 +110,13 @@ impl DeviceId {
         #[cfg(target_pointer_width = "32")]
         {
             // Extract high 12 bits
-            ((self.0 >> 20) & 0xFFF)
+            (self.0 >> 20) & 0xFFF
         }
 
         #[cfg(target_pointer_width = "64")]
         {
             // Extract high 20 bits
-            ((self.0 >> 44) & 0xFFFFF)
+            (self.0 >> 44) & 0xFFFFF
         }
     }
 
@@ -127,13 +125,13 @@ impl DeviceId {
         #[cfg(target_pointer_width = "32")]
         {
             // Extract low 20 bits
-            (self.0 & 0xFFFFF)
+            self.0 & 0xFFFFF
         }
 
         #[cfg(target_pointer_width = "64")]
         {
             // Extract low 44 bits
-            (self.0 & 0xFFFFFFFFFFF)
+            self.0 & 0xFFFFFFFFFFF
         }
     }
 

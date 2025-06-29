@@ -1,4 +1,6 @@
-use crate::devices::nvic::IrqNumber;
+#![allow(non_upper_case_globals)]
+#![allow(unused)]
+use crate::arch::irq::IrqNumber;
 use core::ffi::CStr;
 
 // Use some names from arm cmsdk.
@@ -57,7 +59,6 @@ pub mod memory_map {
 }
 
 pub const SYSTEM_CORE_CLOCK: u32 = 25000000;
-pub const TICK_PER_SECOND: u32 = 100;
 
 pub const UART0_CLOCK: u32 = 25000000;
 pub const UART0_NAME: &CStr = c"uart0";

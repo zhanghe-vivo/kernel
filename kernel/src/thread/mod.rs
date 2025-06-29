@@ -2,13 +2,14 @@ extern crate alloc;
 use crate::{
     arch, config, debug, scheduler,
     support::{Region, RegionalObjectBuilder},
+    time::timer::Timer,
     types::{
         impl_simple_intrusive_adapter, Arc, AtomicUint, IRwLock, IlistHead,
         RwLockWriteGuard as WriteGuard, ThreadPriority, Uint,
     },
 };
 use alloc::boxed::Box;
-use core::sync::atomic::{AtomicUsize, Ordering};
+use core::sync::atomic::{AtomicI32, AtomicUsize, Ordering};
 
 mod builder;
 mod posix;
@@ -90,11 +91,13 @@ impl ThreadStats {
 pub struct Thread {
     pub global: IlistHead<Thread, OffsetOfGlobal>,
     pub sched_node: IlistHead<Thread, OffsetOfSchedNode>,
-    state: AtomicUint,
     stack: Stack,
     saved_sp: usize,
     priority: ThreadPriority,
+    state: AtomicUint,
     preempt_count: AtomicUint,
+    #[cfg(robin_scheduler)]
+    robin_count: AtomicI32,
     // FIXME: Using a rusty lock looks not flexible. Now we are using
     // a C-style intrusive lock. It's conventional to declare which
     // fields this lock is protecting. lock is protecting the
@@ -102,6 +105,7 @@ pub struct Thread {
     lock: IRwLock<Thread, OffsetOfLock>,
     posix_compat: Option<PosixCompat>,
     stats: ThreadStats,
+    pub timer: Option<Arc<Timer>>,
 }
 
 extern "C" fn run_simple_c(f: extern "C" fn()) {
@@ -222,6 +226,9 @@ impl Thread {
             preempt_count: AtomicUint::new(0),
             posix_compat: None,
             stats: ThreadStats::new(),
+            timer: None,
+            #[cfg(robin_scheduler)]
+            robin_count: AtomicI32::new(0),
         }
     }
 
@@ -243,6 +250,11 @@ impl Thread {
             t: t.clone(),
             status: t.disable_preempt(),
         }
+    }
+
+    #[inline]
+    pub fn is_preemptable(&self) -> bool {
+        self.preempt_count.load(Ordering::Relaxed) == 0
     }
 
     #[inline]
@@ -315,6 +327,19 @@ impl Thread {
     #[inline]
     pub fn preempt_count(&self) -> Uint {
         self.preempt_count.load(Ordering::Relaxed)
+    }
+
+    #[cfg(robin_scheduler)]
+    #[inline]
+    pub fn round_robin(&self, tick: usize) -> i32 {
+        self.robin_count.fetch_sub(tick as i32, Ordering::Relaxed)
+    }
+
+    #[cfg(robin_scheduler)]
+    #[inline]
+    pub fn reset_robin(&self) {
+        self.robin_count
+            .store(bluekernel_kconfig::ROBIN_SLICE as i32, Ordering::Relaxed);
     }
 }
 

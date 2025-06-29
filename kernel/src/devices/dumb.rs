@@ -1,10 +1,9 @@
 use crate::{
     devices::serial::{config::SerialConfig, Serial, SerialError, UartOps},
     sync::SpinLock,
-    vfs::AccessMode,
 };
 use alloc::sync::Arc;
-use embedded_io::{ErrorKind, ErrorType, Read, ReadReady, Write, WriteReady};
+use embedded_io::{ErrorType, Read, ReadReady, Write, WriteReady};
 use spin::Once;
 
 struct DumbUart;
