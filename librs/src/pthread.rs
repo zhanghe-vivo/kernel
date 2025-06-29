@@ -69,6 +69,7 @@ struct PthreadTcb {
     detached: AtomicI8,
     cancel_enabled: AtomicBool,
     waitval: Waitval<usize>,
+    waitexit: Waitval<usize>,
 }
 
 #[inline(always)]
@@ -272,6 +273,7 @@ fn register_posix_tcb(tid: usize, clone_args: &CloneArgs) {
             cancel_enabled: AtomicBool::new(false),
             detached: AtomicI8::new(0),
             waitval: Waitval::new(),
+            waitexit: Waitval::new(),
         }));
         let mut write = TCBS.write();
         let ret = write.insert(tid, tcb);
@@ -340,7 +342,7 @@ pub extern "C" fn pthread_join(tid: pthread_t, retval: *mut *mut c_void) -> c_in
     if !retval.is_null() {
         unsafe { *retval = transmute::<usize, *mut c_void>(val) };
     }
-    drop_tcb(tid);
+    tcb.read().waitexit.post(1);
     0
 }
 
@@ -385,16 +387,13 @@ pub extern "C" fn pthread_exit(retval: *mut c_void) -> ! {
             tcb.read().stack_start,
         ));
     }
-    // pthread_join should drop the tcb otherwise.
-    if detached == 1 {
-        drop_my_tcb();
+
+    if detached != 1 {
+        tcb.read().waitexit.wait();
     }
+    drop_my_tcb();
+
     bk_syscall!(ExitThread);
-    // FIXME: On cortex-m, BlueKernel currently is unable to switch context during SVC ISR.
-    // So loop infinitely here to wait for PendSV triggered.
-    #[cfg(cortex_m)]
-    loop {}
-    #[cfg(not(cortex_m))]
     unreachable!("We have called system call to exit this thread, so should not reach here");
 }
 
