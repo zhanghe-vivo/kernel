@@ -11,30 +11,31 @@ pub fn systick_init(sys_clock: u32) -> bool {
     SYSTICK.init(sys_clock, TICKS_PER_SECOND as u32)
 }
 
-pub extern "C" fn handle_tick_increment() {
-    let _ = DisableInterruptGuard::new();
-    let mut need_schedule = false;
-    // FIXME: aarch64 and riscv64 need to be supported
-    #[cfg(cortex_m)]
-    {
-        if arch::current_cpu_id() == 0 {
-            let ticks = SYSTICK.increment_ticks();
-            need_schedule = timer::check_hard_timer(ticks);
-        }
-        need_schedule = scheduler::handle_tick_increment(1) || need_schedule;
-    }
-    SYSTICK.reset_counter();
-    if need_schedule {
-        scheduler::yield_me_now_or_later();
-    }
-}
-
 pub fn get_systick() -> usize {
     SYSTICK.get_tick()
 }
 
 pub fn get_sysclock_cycle() -> u64 {
     SYSTICK.get_cycle()
+}
+
+pub fn reset_systick() {
+    SYSTICK.reset_counter();
+}
+
+pub extern "C" fn handle_tick_increment() {
+    let _ = DisableInterruptGuard::new();
+    let mut need_schedule = false;
+    // FIXME: aarch64 and riscv64 need to be supported
+    if arch::current_cpu_id() == 0 {
+        let ticks = SYSTICK.increment_ticks();
+        need_schedule = timer::check_hard_timer(ticks);
+    }
+    need_schedule = scheduler::handle_tick_increment(1) || need_schedule;
+    SYSTICK.reset_counter();
+    if need_schedule {
+        scheduler::yield_me_now_or_later();
+    }
 }
 
 pub fn tick_from_millisecond(ms: usize) -> usize {
@@ -52,7 +53,10 @@ pub fn tick_from_millisecond(ms: usize) -> usize {
     }
 }
 
-#[doc = "This function will return the passed millisecond from boot."]
+pub fn tick_to_millisecond(ticks: usize) -> usize {
+    ticks * (1000 / TICKS_PER_SECOND)
+}
+
 pub fn tick_get_millisecond() -> usize {
     crate::static_assert!(TICKS_PER_SECOND > 0);
     crate::static_assert!(1000 % TICKS_PER_SECOND == 0);

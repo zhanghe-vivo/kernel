@@ -45,12 +45,4 @@ impl Systick {
     pub fn reset_counter(&self) {
         CNTP_TVAL_EL0.set(self.get_step() as u64);
     }
-
-    pub fn get_tick(&self) -> usize {
-        self.tick.load(Ordering::Relaxed)
-    }
-
-    pub fn increment_ticks(&self) -> usize {
-        self.tick.fetch_add(1, Ordering::Relaxed) + 1
-    }
 }

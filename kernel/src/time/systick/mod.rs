@@ -39,4 +39,12 @@ impl Systick {
         // SAFETY: step is only read after initialization
         unsafe { *self.step.get() }
     }
+
+    pub fn get_tick(&self) -> usize {
+        self.tick.load(Ordering::Relaxed)
+    }
+
+    pub fn increment_ticks(&self) -> usize {
+        self.tick.fetch_add(1, Ordering::Relaxed) + 1
+    }
 }

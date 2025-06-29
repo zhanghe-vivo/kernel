@@ -431,7 +431,7 @@ pub(crate) fn get_next_timer_ticks() -> usize {
     }
 }
 
-#[cfg(cortex_m)]
+#[cfg(not(target_arch = "aarch64"))]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -706,7 +706,7 @@ mod tests {
         timer.start();
         let first_timeout = timer.timeout_ticks();
 
-        scheduler::suspend_me_for(1);
+        scheduler::suspend_me_for(5);
 
         // Restart timer before it expires
         timer.start();

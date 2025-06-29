@@ -95,9 +95,10 @@ pub(crate) fn init() {
     STAGING.run(0, true, || crate::boot::init_runtime());
     STAGING.run(1, true, || crate::boot::init_heap());
     STAGING.run(2, false, || init_vector_table());
-    STAGING.run(3, false, || {
+    STAGING.run(3, true, || {
         time::systick_init(0);
     });
+    STAGING.run(4, false, || time::reset_systick());
     // From now on, all work will be done by core 0.
     if arch::current_cpu_id() != 0 {
         wait_and_then_start_schedule();

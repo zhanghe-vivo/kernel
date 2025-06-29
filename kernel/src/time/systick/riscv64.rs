@@ -4,21 +4,13 @@ pub const SYSTICK_IRQ_NUM: IrqNumber = IrqNumber::new(arch::TIMER_INT);
 
 impl Systick {
     pub fn init(&self, _sys_clock: u32, tick_per_second: u32) -> bool {
-        let step = tick_per_second as usize * 1000;
+        let step = 1000_000_000 / tick_per_second as usize;
         // SAFETY: step is only written once during initialization
         unsafe {
             *self.step.get() = step;
         }
         boards::set_timeout_after(step);
         true
-    }
-
-    pub fn get_tick(&self) -> usize {
-        boards::current_ticks()
-    }
-
-    pub fn increment_ticks(&self) -> usize {
-        boards::current_ticks()
     }
 
     pub fn get_cycle(&self) -> u64 {
