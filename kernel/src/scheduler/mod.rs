@@ -4,7 +4,7 @@ use crate::{
     support::DisableInterruptGuard,
     sync::{SpinLock, SpinLockGuard},
     thread,
-    thread::{GlobalQueueVisitor, Thread, ThreadNode},
+    thread::{Entry, GlobalQueueVisitor, Thread, ThreadNode},
     time::{timer::Timer, WAITING_FOREVER},
     types::{Arc, IlistHead},
 };
@@ -143,9 +143,17 @@ pub(crate) extern "C" fn save_context_finish_hook(hook: Option<&mut ContextSwitc
     closure.map(|f| f());
     compiler_fence(Ordering::SeqCst);
     retiring_thread.map(|t| {
+        let cleanup = t.lock().take_cleanup();
+        if let Some(entry) = cleanup {
+            match entry {
+                Entry::C(f) => f(),
+                Entry::Closure(f) => f(),
+                Entry::Posix(f, arg) => f(arg),
+            }
+        };
+        GlobalQueueVisitor::remove(&t);
         let ok = t.transfer_state(thread::RUNNING, thread::RETIRED);
         assert!(ok);
-        GlobalQueueVisitor::remove(&t);
         if ThreadNode::strong_count(&t) != 1 {
             // TODO: Warn if there are still references to the thread.
         }
@@ -189,19 +197,6 @@ pub fn retire_me() -> ! {
     // usage.
     let mut hooks = ContextSwitchHookHolder::new(next);
     hooks.set_retiring_thread(current_thread());
-    arch::restore_context_with_hook(to_sp, &mut hooks as *mut _);
-}
-
-pub fn retire_me_with_hook(hook: impl FnOnce() + 'static) {
-    let next = next_ready_thread().map_or_else(|| idle::current_idle_thread().clone(), |v| v);
-    let to_sp = next.saved_sp();
-    // FIXME: Some WaitQueue might still share the ownership of
-    // the `old`, shall we record which WaitQueue the `old`
-    // belongs to? Weak reference might not help to reduce memory
-    // usage.
-    let mut hooks = ContextSwitchHookHolder::new(next);
-    hooks.set_retiring_thread(current_thread());
-    hooks.set_closure(Box::new(hook));
     arch::restore_context_with_hook(to_sp, &mut hooks as *mut _);
 }
 

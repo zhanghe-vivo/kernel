@@ -79,16 +79,6 @@ pub fn atomic_wait(addr: usize, val: usize, timeout: Option<usize>) -> Result<()
         |e| e,
     );
     let t = scheduler::current_thread();
-    debug!(
-        "[C#{}:0x{:x}] Before woken by someone @ 0x{:x}, thread rc: {}, entry rc: {}, stack usage: {}, {:?}",
-        arch::current_cpu_id(),
-        Thread::id(&t),
-        addr,
-        ThreadNode::strong_count(&t),
-        EntryNode::strong_count(&entry),
-        t.stack_usage(),
-        *t,
-    );
     let we = entry.pending.irqsave_lock();
     w.forget_irq();
     drop(w);
@@ -100,11 +90,6 @@ pub fn atomic_wait(addr: usize, val: usize, timeout: Option<usize>) -> Result<()
     } else {
         let _ = scheduler::suspend_me_timed_wait(we, WAITING_FOREVER);
     }
-    debug!(
-        "Woken by someone @ 0x{:x}, entry rc: {}",
-        addr,
-        EntryNode::strong_count(&entry)
-    );
     return Ok(());
 }
 

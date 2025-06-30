@@ -1,3 +1,4 @@
+extern crate alloc;
 use crate::{
     arch, scheduler,
     sync::atomic_wait as futex,
@@ -6,6 +7,7 @@ use crate::{
     time,
     vfs::syscalls as vfs_syscalls,
 };
+use alloc::boxed::Box;
 use bluekernel_header::{
     syscalls::NR,
     thread::{ExitArgs, SpawnArgs},
@@ -217,15 +219,16 @@ define_syscall_handler!(exit_thread(exit_args: *const ExitArgs) -> c_long {
         scheduler::retire_me();
         return -1;
     }
+    let t = scheduler::current_thread();
+    let id = Thread::id(&t);
     let exit_args = unsafe{ &*exit_args };
     if let Some(ref hook) = exit_args.exit_hook {
-        let hook = || {
-            hook(scheduler::current_thread_id(), exit_args);
+        let hook = move || {
+            hook(id, exit_args);
         };
-        scheduler::retire_me_with_hook(hook);
-    } else {
-        scheduler::retire_me();
+        t.lock().set_cleanup(Entry::Closure(Box::new(hook)));
     }
+    scheduler::retire_me();
     return -1;
 });
 

@@ -27,6 +27,12 @@ pub enum Entry {
     Closure(Box<dyn FnOnce()>),
 }
 
+impl core::fmt::Debug for Entry {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        Ok(())
+    }
+}
+
 #[derive(Debug, Copy, Clone)]
 #[repr(align(16))]
 pub struct AlignedStackStorage([u8; config::DEFAULT_STACK_SIZE]);
@@ -91,6 +97,9 @@ impl ThreadStats {
 pub struct Thread {
     pub global: IlistHead<Thread, OffsetOfGlobal>,
     pub sched_node: IlistHead<Thread, OffsetOfSchedNode>,
+    pub timer: Option<Arc<Timer>>,
+    // Cleanup function will be invoked when retiring.
+    cleanup: Option<Entry>,
     stack: Stack,
     saved_sp: usize,
     priority: ThreadPriority,
@@ -105,7 +114,6 @@ pub struct Thread {
     lock: IRwLock<Thread, OffsetOfLock>,
     posix_compat: Option<PosixCompat>,
     stats: ThreadStats,
-    pub timer: Option<Arc<Timer>>,
 }
 
 extern "C" fn run_simple_c(f: extern "C" fn()) {
@@ -214,8 +222,19 @@ impl Thread {
         Self::const_new()
     }
 
+    #[inline]
+    pub fn take_cleanup(&mut self) -> Option<Entry> {
+        self.cleanup.take()
+    }
+
+    #[inline]
+    pub fn set_cleanup(&mut self, cleanup: Entry) {
+        self.cleanup = Some(cleanup);
+    }
+
     const fn const_new() -> Self {
         Self {
+            cleanup: None,
             stack: Stack::Raw { base: 0, size: 0 },
             state: AtomicUint::new(CREATED),
             lock: IRwLock::<Thread, OffsetOfLock>::new(),

@@ -71,16 +71,7 @@ pub use syscall_handlers as syscalls;
 #[cfg(test)]
 #[macro_export]
 macro_rules! debug {
-    ($($tt:tt)*) => {{
-        //        use crate::arch;
-        //        use crate::thread::{Thread,ThreadNode};
-        //        use crate::scheduler;
-        //        let dig = $crate::support::DisableInterruptGuard::new();
-        //        let l = $crate::tests::DEBUGGER.lock();
-        //        semihosting::eprintln!($($tt)*);
-        //        drop(l);
-        //        drop(dig);
-    }};
+    ($($tt:tt)*) => {{}};
 }
 
 pub(crate) static TRACER: spin::Mutex<()> = spin::Mutex::new(());
@@ -180,7 +171,11 @@ mod tests {
     static MAIN_THREAD_STORAGE: SystemThreadStorage = SystemThreadStorage::new();
     static mut MAIN_THREAD: MaybeUninit<ThreadNode> = MaybeUninit::zeroed();
 
-    fn reset_and_queue_test_thread(i: usize, entry: extern "C" fn()) {
+    fn reset_and_queue_test_thread(
+        i: usize,
+        entry: extern "C" fn(),
+        cleanup: Option<extern "C" fn()>,
+    ) {
         unsafe {
             let t = TEST_THREADS[i].assume_init_ref();
             let mut w = t.lock();
@@ -190,15 +185,18 @@ mod tests {
                 size: stack.rep.len(),
             };
             w.init(stack, thread::Entry::C(entry));
+            if let Some(cleanup) = cleanup {
+                w.set_cleanup(Entry::C(cleanup));
+            };
             let ok = scheduler::queue_ready_thread(w.state(), t.clone());
             assert!(ok);
         }
     }
 
-    fn reset_and_queue_test_threads(entry: extern "C" fn()) {
+    fn reset_and_queue_test_threads(entry: extern "C" fn(), cleanup: Option<extern "C" fn()>) {
         unsafe {
             for i in 0..TEST_THREADS.len() {
-                reset_and_queue_test_thread(i, entry);
+                reset_and_queue_test_thread(i, entry, cleanup);
             }
         }
     }
@@ -344,7 +342,7 @@ mod tests {
     #[test]
     fn stress_semaphore() {
         SEMA.init();
-        reset_and_queue_test_threads(test_semaphore);
+        reset_and_queue_test_threads(test_semaphore, None);
         let l = unsafe { TEST_THREADS.len() };
         loop {
             SEMA.acquire_notimeout();
@@ -360,14 +358,16 @@ mod tests {
 
     static TEST_ATOMIC_WAIT: AtomicUsize = AtomicUsize::new(0);
 
-    extern "C" fn test_atomic_wait() {
+    extern "C" fn test_atomic_wait_cleanup() {
         TEST_ATOMIC_WAIT.fetch_add(1, Ordering::Release);
         sync::atomic_wait::atomic_wake(&TEST_ATOMIC_WAIT as *const _ as usize, 1);
     }
 
+    extern "C" fn test_atomic_wait() {}
+
     #[test]
     fn stress_atomic_wait() {
-        reset_and_queue_test_threads(test_atomic_wait);
+        reset_and_queue_test_threads(test_atomic_wait, Some(test_atomic_wait_cleanup));
         let l = unsafe { TEST_THREADS.len() };
         loop {
             let n = TEST_ATOMIC_WAIT.load(Ordering::Acquire);
@@ -387,12 +387,15 @@ mod tests {
             scheduler::yield_me();
             assert!(scheduler::current_thread().validate_sp());
         }
+    }
+
+    extern "C" fn test_switch_context_cleanup() {
         TEST_SWITCH_CONTEXT.fetch_add(1, Ordering::Relaxed);
     }
 
     #[test]
     fn stress_context_switch() {
-        reset_and_queue_test_threads(test_switch_context);
+        reset_and_queue_test_threads(test_switch_context, Some(test_switch_context_cleanup));
         loop {
             let n = TEST_SWITCH_CONTEXT.load(Ordering::Relaxed);
             if n == unsafe { TEST_THREADS.len() } {
@@ -406,7 +409,9 @@ mod tests {
 
     static BUILT_THREADS: AtomicUsize = AtomicUsize::new(0);
 
-    extern "C" fn do_it() {
+    extern "C" fn do_it() {}
+
+    extern "C" fn do_cleanup() {
         BUILT_THREADS.fetch_add(1, Ordering::Relaxed);
     }
 
@@ -420,6 +425,7 @@ mod tests {
         let n = 512;
         for _i in 0..n {
             let t = thread::Builder::new(thread::Entry::C(do_it)).build();
+            t.lock().set_cleanup(thread::Entry::C(do_cleanup));
             let ok = scheduler::queue_ready_thread(t.state(), t);
             assert!(ok);
         }
