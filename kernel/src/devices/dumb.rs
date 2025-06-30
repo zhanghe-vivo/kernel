@@ -1,11 +1,16 @@
 use crate::{
-    devices::serial::{config::SerialConfig, Serial, SerialError, UartOps},
+    devices::{
+        tty::{
+            serial::{Serial, SerialError, UartOps},
+            termios::Termios,
+        },
+        Device,
+    },
     sync::SpinLock,
 };
 use alloc::sync::Arc;
 use embedded_io::{ErrorType, Read, ReadReady, Write, WriteReady};
 use spin::Once;
-
 struct DumbUart;
 
 pub(crate) static DUMB_UART0: SpinLock<DumbUart> = SpinLock::new(DumbUart);
@@ -46,7 +51,7 @@ impl ErrorType for DumbUart {
 }
 
 impl UartOps for DumbUart {
-    fn setup(&mut self, _: &SerialConfig) -> Result<(), SerialError> {
+    fn setup(&mut self, _: &Termios) -> Result<(), SerialError> {
         Ok(())
     }
 
@@ -83,11 +88,11 @@ pub(crate) fn get_early_uart<'a>() -> &'a SpinLock<dyn UartOps> {
     return &DUMB_UART0;
 }
 
-static DUMB_SERIAL0: Once<Arc<Serial>> = Once::new();
+static DUMB_SERIAL0: Once<Arc<dyn Device>> = Once::new();
 
-pub(crate) fn get_serial0() -> &'static Arc<Serial> {
+pub(crate) fn get_serial0() -> &'static Arc<dyn Device> {
     DUMB_SERIAL0.call_once(|| {
         let uart = Arc::new(SpinLock::new(DumbUart));
-        Arc::new(Serial::new(0, SerialConfig::default(), uart))
+        Arc::new(Serial::new(0, Termios::default(), uart))
     })
 }

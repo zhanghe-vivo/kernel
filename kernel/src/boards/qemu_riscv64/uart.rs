@@ -6,7 +6,10 @@
 use super::PLIC;
 use crate::{
     arch,
-    devices::serial::{config::SerialConfig, Serial, SerialError, UartOps},
+    devices::tty::{
+        serial::{Serial, SerialError, UartOps},
+        termios::Termios,
+    },
     sync::SpinLock,
     vfs::AccessMode,
 };
@@ -161,7 +164,7 @@ impl ErrorType for Uart {
 }
 
 impl UartOps for Uart {
-    fn setup(&mut self, _: &SerialConfig) -> Result<(), SerialError> {
+    fn setup(&mut self, _: &Termios) -> Result<(), SerialError> {
         Ok(())
     }
     fn shutdown(&mut self) -> Result<(), SerialError> {
@@ -192,6 +195,6 @@ static SERIAL0: Once<Arc<Serial>> = Once::new();
 pub fn get_serial0() -> &'static Arc<Serial> {
     SERIAL0.call_once(|| {
         let uart = Arc::new(SpinLock::new(Uart));
-        Arc::new(Serial::new(0, SerialConfig::default(), uart))
+        Arc::new(Serial::new(0, Termios::default(), uart))
     })
 }

@@ -15,7 +15,7 @@ mod error;
 mod null;
 #[cfg(target_arch = "riscv64")]
 pub(crate) mod plic;
-pub mod serial;
+pub mod tty;
 #[cfg(virtio)]
 pub mod virtio;
 mod zero;

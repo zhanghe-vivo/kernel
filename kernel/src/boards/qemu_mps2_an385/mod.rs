@@ -1,11 +1,15 @@
-mod config;
+pub mod config;
 mod handlers;
-mod uart;
+pub mod uart;
 
-use crate::{arch, boot, devices::console, error::Error, time};
+use crate::{
+    arch, boot,
+    devices::{console, tty::n_tty::Tty, Device},
+    error::Error,
+    time,
+};
+use alloc::sync::Arc;
 use boot::INIT_BSS_DONE;
-pub use uart::get_early_uart;
-
 #[repr(C)]
 struct CopyTable {
     src: *const u32,
@@ -63,8 +67,12 @@ pub(crate) fn init() {
         Ok(_) => (),
         Err(e) => panic!("Failed to init uart: {}", Error::from(e)),
     }
-    let uart = uart::get_serial0();
-    match console::init_console(&uart) {
+    let device: Arc<dyn Device> = if (cfg!(line_discipline)) {
+        Tty::init(uart::get_serial0().clone()).clone()
+    } else {
+        uart::get_serial0().clone()
+    };
+    match console::init_console(device) {
         Ok(_) => (),
         Err(e) => panic!("Failed to init console: {}", Error::from(e)),
     }

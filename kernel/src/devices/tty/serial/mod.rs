@@ -1,5 +1,5 @@
 use crate::{
-    devices::{Device, DeviceBase, DeviceClass, DeviceId, DeviceRequest},
+    devices::{tty::termios::Termios, Device, DeviceBase, DeviceClass, DeviceId, DeviceRequest},
     irq,
     sync::{
         atomic_wait::{atomic_wait, atomic_wake},
@@ -13,11 +13,10 @@ use core::sync::atomic::AtomicUsize;
 use delegate::delegate;
 use embedded_io::{ErrorKind, ErrorType, Read, ReadReady, Write, WriteReady};
 
+#[cfg(target_arch = "aarch64")]
 pub mod arm_pl011;
+#[cfg(target_arch = "arm")]
 pub mod cmsdk_uart;
-pub mod config;
-
-use config::SerialConfig;
 
 const SERIAL_RX_FIFO_MIN_SIZE: usize = 256;
 const SERIAL_TX_FIFO_MIN_SIZE: usize = 256;
@@ -70,7 +69,7 @@ impl From<SerialError> for ErrorKind {
 pub trait UartOps:
     Read + Write + ReadReady + WriteReady + ErrorType<Error = SerialError> + Send + Sync
 {
-    fn setup(&mut self, serial_config: &SerialConfig) -> Result<(), SerialError>;
+    fn setup(&mut self, termios: &Termios) -> Result<(), SerialError>;
     fn shutdown(&mut self) -> Result<(), SerialError>;
     fn read_byte(&mut self) -> Result<u8, SerialError>;
     fn write_byte(&mut self, byte: u8) -> Result<(), SerialError>;
@@ -115,18 +114,18 @@ impl SerialTxFifo {
 pub struct Serial {
     base: DeviceBase,
     index: u32,
-    config: SerialConfig,
+    pub termios: Termios,
     rx_fifo: SerialRxFifo,
     tx_fifo: SerialTxFifo,
     pub uart_ops: Arc<SpinLock<dyn UartOps>>,
 }
 
 impl Serial {
-    pub fn new(index: u32, config: SerialConfig, uart_ops: Arc<SpinLock<dyn UartOps>>) -> Self {
+    pub fn new(index: u32, termios: Termios, uart_ops: Arc<SpinLock<dyn UartOps>>) -> Self {
         Self {
             base: DeviceBase::new(),
             index,
-            config,
+            termios,
             rx_fifo: SerialRxFifo::new(SERIAL_RX_FIFO_SIZE.max(SERIAL_RX_FIFO_MIN_SIZE)),
             tx_fifo: SerialTxFifo::new(SERIAL_TX_FIFO_SIZE.max(SERIAL_TX_FIFO_MIN_SIZE)),
             uart_ops,
@@ -310,7 +309,7 @@ impl Device for Serial {
     fn open(&self) -> Result<(), ErrorKind> {
         if !self.is_opened() {
             let mut uart_ops = self.uart_ops.irqsave_lock();
-            uart_ops.setup(&self.config)?;
+            uart_ops.setup(&self.termios)?;
             uart_ops.set_rx_interrupt(true);
         }
 

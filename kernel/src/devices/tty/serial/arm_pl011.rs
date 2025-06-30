@@ -1,12 +1,18 @@
 // SPDX-FileCopyrightText: Copyright 2023-2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // SPDX-License-Identifier: MIT OR Apache-2.0
-
-use super::{
-    config::{DataBits, Parity, SerialConfig, StopBits},
-    SerialError,
+use crate::{
+    boards::config::APBP_CLOCK,
+    devices::{
+        tty::{
+            serial::{SerialError, UartOps},
+            termios::{Cflags, Termios},
+        },
+        DeviceRequest,
+    },
 };
 use bitflags::bitflags;
 use core::fmt;
+use embedded_io::{ErrorKind, ErrorType, Read, ReadReady, Write, WriteReady};
 use safe_mmio::{
     field, field_shared,
     fields::{ReadPure, ReadPureWrite, ReadWrite, WriteOnly},
@@ -270,28 +276,30 @@ impl<'a> Uart<'a> {
     }
 
     /// Configure and enable UART
-    pub fn enable(&mut self, config: &SerialConfig, sysclk: u32) -> Result<(), SerialError> {
+    pub fn enable(&mut self, termios: &Termios, sysclk: u32) -> Result<(), SerialError> {
         // Baud rate
-        let (uartibrd, uartfbrd) = Self::calculate_baud_rate_divisor(config.baudrate, sysclk)?;
+        let (uartibrd, uartfbrd) = Self::calculate_baud_rate_divisor(termios.getospeed(), sysclk)?;
 
         // Line control register
-        let line_control = match config.data_bits {
-            DataBits::Five => LineControlRegister::WLEN_5BITS,
-            DataBits::Six => LineControlRegister::WLEN_6BITS,
-            DataBits::Seven => LineControlRegister::WLEN_7BITS,
-            DataBits::Eight => LineControlRegister::WLEN_8BITS,
-        } | match config.parity {
-            Parity::None => LineControlRegister::empty(),
-            Parity::Even => LineControlRegister::PEN | LineControlRegister::EPS,
-            Parity::Odd => LineControlRegister::PEN,
-            Parity::One => LineControlRegister::PEN | LineControlRegister::SPS,
-            Parity::Zero => {
-                LineControlRegister::PEN | LineControlRegister::EPS | LineControlRegister::SPS
-            }
-        } | match config.stop_bits {
-            StopBits::One => LineControlRegister::empty(),
-            StopBits::Two => LineControlRegister::STP2,
-        } | LineControlRegister::FEN;
+        let line_control = if termios.cflag.contains(Cflags::CSIZE_8) {
+            LineControlRegister::WLEN_8BITS
+        } else if termios.cflag.contains(Cflags::CSIZE_7) {
+            LineControlRegister::WLEN_7BITS
+        } else if termios.cflag.contains(Cflags::CSIZE_6) {
+            LineControlRegister::WLEN_6BITS
+        } else {
+            LineControlRegister::WLEN_5BITS
+        } | if !termios.cflag.contains(Cflags::PARENB) {
+            LineControlRegister::empty()
+        } else if termios.cflag.contains(Cflags::PARODD) {
+            LineControlRegister::PEN
+        } else {
+            LineControlRegister::PEN | LineControlRegister::EPS
+        } | if termios.cflag.contains(Cflags::CSTOPB) {
+            LineControlRegister::STP2
+        } else {
+            LineControlRegister::empty()
+        };
 
         field!(self.regs, uartrsr_ecr).write(0);
         field!(self.regs, uartcr).write(ControlRegister::empty());
@@ -469,6 +477,144 @@ impl fmt::Write for Uart<'_> {
             // Wait until there is room in the TX buffer.
             while self.is_tx_fifo_full() {}
             self.write_word(*byte);
+        }
+        Ok(())
+    }
+}
+
+impl<'a> ErrorType for Uart<'a> {
+    type Error = SerialError;
+}
+
+impl<'a> Write for Uart<'a> {
+    fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
+        let mut count = 0;
+        // write until the buffer is full
+        while count < buf.len() {
+            match self.try_write_data(buf[count]) {
+                Ok(_) => count += 1,
+                Err(_e) => break,
+            }
+        }
+        Ok(count)
+    }
+
+    fn flush(&mut self) -> Result<(), Self::Error> {
+        while self.is_busy() {}
+        Ok(())
+    }
+}
+
+impl<'a> WriteReady for Uart<'a> {
+    fn write_ready(&mut self) -> Result<bool, SerialError> {
+        Ok(!self.is_tx_fifo_full())
+    }
+}
+
+impl<'a> Read for Uart<'a> {
+    fn read(&mut self, buf: &mut [u8]) -> Result<usize, SerialError> {
+        if buf.is_empty() {
+            return Ok(0);
+        }
+
+        let mut count = 0;
+        while count < buf.len() {
+            match self.read_word() {
+                Ok(Some(byte)) => {
+                    buf[count] = byte;
+                    count += 1;
+                }
+                Ok(None) => break,
+                Err(e) => return Err(e),
+            }
+        }
+
+        return Ok(count);
+    }
+}
+
+impl<'a> ReadReady for Uart<'a> {
+    fn read_ready(&mut self) -> Result<bool, SerialError> {
+        Ok(!self.is_rx_fifo_empty())
+    }
+}
+
+impl<'a> Drop for Uart<'a> {
+    fn drop(&mut self) {
+        self.disable();
+    }
+}
+
+impl<'a> UartOps for Uart<'a> {
+    fn setup(&mut self, termios: &Termios) -> Result<(), SerialError> {
+        self.enable(termios, APBP_CLOCK);
+        self.clear_interrupts(ALL_INTERRUPTS);
+        Ok(())
+    }
+
+    fn shutdown(&mut self) -> Result<(), SerialError> {
+        self.disable();
+        Ok(())
+    }
+
+    fn read_byte(&mut self) -> Result<u8, SerialError> {
+        match self.read_word()? {
+            Some(byte) => Ok(byte),
+            None => Err(SerialError::BufferEmpty),
+        }
+    }
+
+    fn write_byte(&mut self, byte: u8) -> Result<(), SerialError> {
+        self.write_word(byte);
+        Ok(())
+    }
+
+    fn write_str(&mut self, s: &str) -> Result<(), SerialError> {
+        for c in s.as_bytes() {
+            while self.is_tx_fifo_full() {}
+            self.write_word(*c);
+        }
+        Ok(())
+    }
+
+    fn set_rx_interrupt(&mut self, enable: bool) {
+        let mut masks = self.interrupt_masks();
+        if enable {
+            masks |= Interrupts::RXI;
+        } else {
+            masks &= !Interrupts::RXI;
+        }
+        self.set_interrupt_masks(masks);
+    }
+
+    fn set_tx_interrupt(&mut self, enable: bool) {
+        let mut masks = self.interrupt_masks();
+        if enable {
+            masks |= Interrupts::TXI;
+        } else {
+            masks &= !Interrupts::TXI;
+        }
+        self.set_interrupt_masks(masks);
+    }
+
+    fn clear_rx_interrupt(&mut self) {
+        self.clear_interrupts(Interrupts::RXI);
+    }
+
+    fn clear_tx_interrupt(&mut self) {
+        self.clear_interrupts(Interrupts::TXI);
+    }
+
+    fn ioctl(&mut self, request: u32, arg: usize) -> Result<(), SerialError> {
+        match DeviceRequest::from(request) {
+            DeviceRequest::Config => {
+                let termios = unsafe { *(arg as *const Termios) };
+                self.enable(&termios, APBP_CLOCK);
+            }
+            DeviceRequest::Close => {
+                self.disable();
+            }
+            _ => return Err(SerialError::InvalidParameter),
         }
         Ok(())
     }

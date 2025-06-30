@@ -1,8 +1,13 @@
 use super::{config, uart};
 #[cfg(virtio)]
 use crate::devices::virtio;
-
-use crate::{arch, devices::console, error::Error, time};
+use crate::{
+    arch,
+    devices::{console, dumb},
+    error::Error,
+    time,
+};
+use alloc::sync::Arc;
 use bluekernel_kconfig::NUM_CORES;
 #[cfg(virtio)]
 use flat_device_tree::Fdt;
@@ -18,12 +23,10 @@ pub(crate) fn init() {
         Ok(_) => (),
         Err(e) => panic!("Failed to init uart: {}", Error::from(e)),
     }
-    let uart = uart::get_serial0();
-    match console::init_console(&uart) {
+    match console::init_console(dumb::get_serial0().clone()) {
         Ok(_) => (),
         Err(e) => panic!("Failed to init console: {}", Error::from(e)),
     }
-
     #[cfg(virtio)]
     {
         // initialize fdt

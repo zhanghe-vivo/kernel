@@ -4,6 +4,8 @@
 
 #![no_std]
 #![allow(internal_features)]
+#![allow(unused)]
+#![allow(dead_code)]
 #![feature(alloc_error_handler)]
 #![feature(alloc_layout_extra)]
 #![feature(allocator_api)]

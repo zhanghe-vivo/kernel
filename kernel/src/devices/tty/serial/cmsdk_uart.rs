@@ -1,9 +1,19 @@
 // SPDX-FileCopyrightText: Copyright 2023-2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
-use crate::devices::serial::SerialError;
+use crate::{
+    arch,
+    boards::config::{UART0RX_IRQn, UART0TX_IRQn, SYSTEM_CORE_CLOCK},
+    devices::{
+        tty::{
+            serial::{SerialError, UartOps},
+            termios::Termios,
+        },
+        DeviceRequest,
+    },
+};
 use core::hint::spin_loop;
-
+use embedded_io::{ErrorKind, ErrorType, Read, ReadReady, Write, WriteReady};
 use tock_registers::{
     interfaces::{ReadWriteable, Readable, Writeable},
     register_bitfields, register_structs,
@@ -226,3 +236,144 @@ unsafe impl Send for Uart {}
 // SAFETY: Methods on `&Uart` don't allow changing any state so are safe to call concurrently from
 // any context. The pointer is guaranteed to be valid and properly aligned by the caller of `Uart::new`.
 unsafe impl Sync for Uart {}
+
+impl Drop for Uart {
+    fn drop(&mut self) {
+        self.disable();
+    }
+}
+
+impl ErrorType for Uart {
+    type Error = SerialError;
+}
+
+impl Write for Uart {
+    // write will block until all the data is transmitted
+    fn write(&mut self, buf: &[u8]) -> Result<usize, SerialError> {
+        assert!(!buf.is_empty());
+        let mut count = 0;
+        // write until the buffer is full
+        while count < buf.len() {
+            match self.try_write_data(buf[count]) {
+                Ok(_) => count += 1,
+                Err(_e) => break,
+            }
+        }
+        Ok(count)
+    }
+
+    fn flush(&mut self) -> Result<(), SerialError> {
+        while self.is_transmitting() {
+            spin_loop();
+        }
+        Ok(())
+    }
+}
+
+impl WriteReady for Uart {
+    fn write_ready(&mut self) -> Result<bool, SerialError> {
+        Ok(!self.is_tx_fifo_full())
+    }
+}
+
+impl Read for Uart {
+    fn read(&mut self, buf: &mut [u8]) -> Result<usize, SerialError> {
+        if buf.is_empty() {
+            return Ok(0);
+        }
+
+        let mut count = 0;
+        while count < buf.len() {
+            match self.read_data() {
+                Ok(Some(byte)) => {
+                    buf[count] = byte;
+                    count += 1;
+                }
+                Ok(None) => break,
+                Err(e) => return Err(e),
+            }
+        }
+
+        return Ok(count);
+    }
+}
+
+impl ReadReady for Uart {
+    fn read_ready(&mut self) -> Result<bool, SerialError> {
+        Ok(self.is_rx_fifo_full())
+    }
+}
+
+impl UartOps for Uart {
+    fn setup(&mut self, termios: &Termios) -> Result<(), SerialError> {
+        self.enable(SYSTEM_CORE_CLOCK, termios.getospeed());
+        self.clear_interrupt();
+        arch::irq::enable_irq_with_priority(UART0RX_IRQn, arch::irq::Priority::Normal);
+        arch::irq::enable_irq_with_priority(UART0TX_IRQn, arch::irq::Priority::Normal);
+        Ok(())
+    }
+
+    fn shutdown(&mut self) -> Result<(), SerialError> {
+        arch::irq::disable_irq(UART0RX_IRQn);
+        arch::irq::disable_irq(UART0TX_IRQn);
+        self.disable();
+        Ok(())
+    }
+
+    fn read_byte(&mut self) -> Result<u8, SerialError> {
+        match self.read_data()? {
+            Some(byte) => Ok(byte),
+            None => Err(SerialError::BufferEmpty),
+        }
+    }
+
+    fn write_byte(&mut self, byte: u8) -> Result<(), SerialError> {
+        self.write_data(byte);
+        Ok(())
+    }
+
+    fn write_str(&mut self, s: &str) -> Result<(), SerialError> {
+        for c in s.as_bytes() {
+            self.write_data(*c);
+        }
+        Ok(())
+    }
+
+    fn set_rx_interrupt(&mut self, enable: bool) {
+        if enable {
+            self.enable_rx_interrupt();
+        } else {
+            self.disable_rx_interrupt();
+        }
+    }
+
+    fn set_tx_interrupt(&mut self, enable: bool) {
+        if enable {
+            self.enable_tx_interrupt();
+        } else {
+            self.disable_tx_interrupt();
+        }
+    }
+
+    fn clear_rx_interrupt(&mut self) {
+        self.clear_rx_interrupt();
+    }
+
+    fn clear_tx_interrupt(&mut self) {
+        self.clear_tx_interrupt();
+    }
+
+    fn ioctl(&mut self, request: u32, arg: usize) -> Result<(), SerialError> {
+        match DeviceRequest::from(request) {
+            DeviceRequest::Config => {
+                let termios = unsafe { *(arg as *const Termios) };
+                self.enable(SYSTEM_CORE_CLOCK, termios.getospeed());
+            }
+            DeviceRequest::Close => {
+                self.disable();
+            }
+            _ => return Err(SerialError::InvalidParameter),
+        }
+        Ok(())
+    }
+}

@@ -9,7 +9,7 @@ mod uart;
 use crate::{
     arch,
     arch::riscv64::{local_irq_enabled, trap_entry, Context, READY_CORES},
-    devices::{console, dumb, plic::Plic, DeviceManager},
+    devices::{console, dumb, plic::Plic, Device, DeviceManager},
     scheduler,
     support::SmpStagedInit,
     time,
@@ -115,6 +115,6 @@ fn enumerate_devices() {
 }
 
 fn register_devices_in_vfs() {
-    console::init_console(dumb::get_serial0());
+    console::init_console(dumb::get_serial0().clone());
     DeviceManager::get().register_device(String::from("ttyS0"), dumb::get_serial0().clone());
 }

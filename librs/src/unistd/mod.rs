@@ -12,7 +12,7 @@ pub use sysconf::*;
 
 /// compatible with linux
 /// TODO: define stat/statfs struct in newlib, coherent with linux
-pub const O_PATH: c_int = 0o10000000;
+pub const O_PATH: c_int = 0;
 pub const O_NOFOLLOW: c_int = 0o2000000;
 
 /// See <https://pubs.opengroup.org/onlinepubs/9799919799/functions/getcwd.html>.
@@ -281,4 +281,12 @@ pub extern "C" fn seteuid(_uid: uid_t) -> c_int {
 #[no_mangle]
 pub extern "C" fn setsid() -> pid_t {
     0
+}
+
+#[no_mangle]
+pub fn realpath(
+    pathname: *const core::ffi::c_char,
+    resolved: *mut core::ffi::c_char,
+) -> *mut core::ffi::c_char {
+    pathname as *mut core::ffi::c_char
 }

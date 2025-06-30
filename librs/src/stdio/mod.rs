@@ -680,7 +680,7 @@ pub unsafe extern "C" fn puts(s: *const c_char) -> c_int {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn remove(path: *const c_char) -> c_int {
+pub unsafe extern "C" fn rmdir(path: *const c_char) -> c_int {
     bk_syscall!(Rmdir, path) as c_int
 }
 

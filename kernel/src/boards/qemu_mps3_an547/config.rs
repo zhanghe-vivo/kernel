@@ -26,16 +26,16 @@ pub const System_Timestamp_Counter_IRQn: IrqNumber = IrqNumber::new(32); // Syst
 // In the new version of QEMU (9.20), the UART RX interrupt and TX interrupt have been swapped.
 // For details, see `fix RX/TX interrupts order <https://github.com/qemu/qemu/commit/5a558be93ad628e5bed6e0ee062870f49251725c>`_
 // default set as new version of QEMU
-pub const UARTRX0_IRQn: IrqNumber = IrqNumber::new(33); // UART 0 TX Interrupt
-pub const UARTTX0_IRQn: IrqNumber = IrqNumber::new(34); // UART 0 RX Interrupt
-pub const UARTRX1_IRQn: IrqNumber = IrqNumber::new(35); // UART 1 RX Interrupt
-pub const UARTTX1_IRQn: IrqNumber = IrqNumber::new(36); // UART 1 TX Interrupt
-pub const UARTRX2_IRQn: IrqNumber = IrqNumber::new(37); // UART 2 RX Interrupt
-pub const UARTTX2_IRQn: IrqNumber = IrqNumber::new(38); // UART 2 TX Interrupt
-pub const UARTRX3_IRQn: IrqNumber = IrqNumber::new(39); // UART 3 RX Interrupt
-pub const UARTTX3_IRQn: IrqNumber = IrqNumber::new(40); // UART 3 TX Interrupt
-pub const UARTRX4_IRQn: IrqNumber = IrqNumber::new(41); // UART 4 RX Interrupt
-pub const UARTTX4_IRQn: IrqNumber = IrqNumber::new(42); // UART 4 TX Interrupt
+pub const UART0RX_IRQn: IrqNumber = IrqNumber::new(33); // UART 0 TX Interrupt
+pub const UART0TX_IRQn: IrqNumber = IrqNumber::new(34); // UART 0 RX Interrupt
+pub const UART1RX_IRQn: IrqNumber = IrqNumber::new(35); // UART 1 RX Interrupt
+pub const UART1TX_IRQn: IrqNumber = IrqNumber::new(36); // UART 1 TX Interrupt
+pub const UART2RX_IRQn: IrqNumber = IrqNumber::new(37); // UART 2 RX Interrupt
+pub const UART2TX_IRQn: IrqNumber = IrqNumber::new(38); // UART 2 TX Interrupt
+pub const UART3RX_IRQn: IrqNumber = IrqNumber::new(39); // UART 3 RX Interrupt
+pub const UART3TX_IRQn: IrqNumber = IrqNumber::new(40); // UART 3 TX Interrupt
+pub const UART4RX_IRQn: IrqNumber = IrqNumber::new(41); // UART 4 RX Interrupt
+pub const UART4TX_IRQn: IrqNumber = IrqNumber::new(42); // UART 4 TX Interrupt
 
 pub mod memory_map {
     // Secure Subsystem peripheral region
