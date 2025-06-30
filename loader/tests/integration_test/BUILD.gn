@@ -10,11 +10,11 @@ build_rust("loader_integration_test") {
   deps = [
     "//external/semihosting/v0.1.20:semihosting",
     "//kernel/kernel:bluekernel",
-    "//kernel/librs:librs",
     "//kernel/loader:bluekernel_loader",
     "//kernel/loader/tests/inputs",
     "//kernel/rsrt:rsrt",
     "//libc:libc",
+    "//librs:librs",
   ]
   if (coverage || profile) {
     deps += [ "//kernel/loader:common_cov" ]

@@ -1,1 +1,0 @@
-#define NOOP 0 // dummy for gcc to compile not rustc

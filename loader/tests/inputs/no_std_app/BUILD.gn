@@ -6,8 +6,8 @@ build_rust("everyting") {
   crate_type = "bin"
   sources = [ "src/main.rs" ]
   deps = [
-    "//kernel/librs:librs_swi",
     "//libc:libc",
+    "//librs:librs_swi",
   ]
   rustflags = [
     "-Cpanic=abort",

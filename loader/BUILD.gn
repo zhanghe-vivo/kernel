@@ -28,6 +28,6 @@ build_rust("bluekernel_loader") {
   sources = [ "src/lib.rs" ]
   deps = [
     "//external/goblin/v0.9.3:goblin",
-    "//kernel/librs:librs",
+    "//librs:librs",
   ]
 }
