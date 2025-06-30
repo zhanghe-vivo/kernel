@@ -1,27 +1,50 @@
 #![cfg_attr(not(feature = "std"), no_std)]
+use core::alloc::{GlobalAlloc, Layout};
 
 #[cfg(not(feature = "std"))]
-use bluekernel::emballoc;
-use bluekernel::{allocator::KernelAllocator, scheduler, thread};
+struct PosixAllocator;
 
-#[cfg(target_pointer_width = "64")]
-const EMBALLOC_SIZE: usize = 6 << 20;
-#[cfg(target_pointer_width = "32")]
-const EMBALLOC_SIZE: usize = 4 << 20;
+#[cfg(not(feature = "std"))]
+unsafe impl GlobalAlloc for PosixAllocator {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        if layout.size() == 0 {
+            return core::ptr::null_mut();
+        }
 
-// TODO: Use libc's malloc/free.
+        let mut mem_ptr: *mut libc::c_void = core::ptr::null_mut();
+        let align = layout.align();
+        let size = layout.size();
+
+        let result = libc::posix_memalign(&mut mem_ptr as *mut *mut libc::c_void, align, size);
+
+        if result == 0 {
+            mem_ptr as *mut u8
+        } else {
+            core::ptr::null_mut()
+        }
+    }
+
+    unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
+        if !ptr.is_null() {
+            libc::free(ptr as *mut libc::c_void);
+        }
+    }
+}
+
 // rust-std has its own allocator and panic_handler.
 #[cfg(not(feature = "std"))]
 #[global_allocator]
-static GLOBAL: KernelAllocator = KernelAllocator;
-//static ALLOCATOR: emballoc::Allocator<{ EMBALLOC_SIZE }> = emballoc::Allocator::new();
+static GLOBAL: PosixAllocator = PosixAllocator;
 
 #[cfg(not(feature = "std"))]
 #[panic_handler]
 fn oops(info: &core::panic::PanicInfo) -> ! {
-    let _ = bluekernel::support::DisableInterruptGuard::new();
     // TODO: Use libc's printf.
-    semihosting::println!("Oops: {}", info);
+    #[cfg(test)]
+    {
+        semihosting::println!("{}", info);
+        semihosting::println!("{}", info.message());
+    }
     loop {}
 }
 
@@ -29,15 +52,20 @@ fn oops(info: &core::panic::PanicInfo) -> ! {
 #[link_section = ".bk_app_array"]
 static INIT: extern "C" fn() = init;
 
-extern "C" fn entry() {
-    extern "C" {
-        // TODO: Support main(argc, argv).
-        fn main() -> i32;
-    }
-    unsafe { main() };
-}
-
 extern "C" fn init() {
-    let t = thread::Builder::new(thread::Entry::C(entry)).build();
-    scheduler::queue_ready_thread(t.state(), t);
+    #[cfg(feature = "std")]
+    {
+        extern "C" {
+            fn __librs_start_main();
+        }
+        unsafe { __librs_start_main() };
+    }
+
+    #[cfg(not(feature = "std"))]
+    {
+        extern "C" {
+            fn main() -> i32;
+        }
+        unsafe { main() };
+    }
 }

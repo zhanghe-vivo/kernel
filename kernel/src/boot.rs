@@ -1,4 +1,4 @@
-use crate::{allocator, arch, asynk, boards, logger, scheduler, time, vfs};
+use crate::{allocator, arch, asynk, boards, logger, scheduler, thread, time, vfs};
 use core::ptr::{addr_of, addr_of_mut};
 
 pub(crate) static mut INIT_BSS_DONE: bool = false;
@@ -101,7 +101,7 @@ fn init_apps() {
     unsafe {
         let mut app = addr_of!(__bk_app_array_start);
         while app < addr_of!(__bk_app_array_end) {
-            (*app)();
+            thread::Builder::new(thread::Entry::C(*app)).start();
             app = app.offset(1);
         }
     }

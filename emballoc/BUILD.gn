@@ -1,0 +1,7 @@
+import("//build/templates/build_template.gni")
+import("//build/toolchain/bluekernel.gni")
+
+build_rust("emballoc") {
+  sources = [ "src/lib.rs" ]
+  deps = [ "//external/spin/v0.9.8:spin" ]
+}

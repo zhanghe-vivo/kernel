@@ -212,15 +212,21 @@
 #![warn(unsafe_op_in_unsafe_fn)]
 #![warn(clippy::undocumented_unsafe_blocks)]
 
-use crate::{allocator::MemoryInfo, sync::spinlock::SpinLock};
-
-mod raw_allocator;
 use raw_allocator::RawAllocator;
 
 use core::{
     alloc::{GlobalAlloc, Layout},
     ptr,
 };
+use spin::Mutex;
+
+mod raw_allocator;
+
+pub struct MemoryInfo {
+    total: usize,
+    max_used: usize,
+    used: usize,
+}
 
 /// The memory allocator for embedded systems.
 ///
@@ -247,7 +253,7 @@ pub struct Allocator<const N: usize> {
     /// needing to worry about alignment. The raw allocator is protected by a
     /// `spin::Mutex` to make it usable with shared references (requirement of
     /// [`GlobalAlloc`]).
-    raw: SpinLock<RawAllocator<N>>,
+    raw: Mutex<RawAllocator<N>>,
 }
 impl<const N: usize> Allocator<N> {
     /// Create a new [`Allocator`] with exactly `N` bytes heap space.
@@ -291,12 +297,12 @@ impl<const N: usize> Allocator<N> {
     #[must_use = "assign the allocator to a static variable and apply the `#[global_allocator]`-attribute to make it the global allocator"]
     #[allow(clippy::new_without_default)] // this could be added, but not now
     pub const fn new() -> Self {
-        let raw = SpinLock::new(RawAllocator::new());
+        let raw = Mutex::new(RawAllocator::new());
         Self { raw }
     }
 
     pub fn memory_info(&self) -> MemoryInfo {
-        self.raw.irqsave_lock().memory_info()
+        self.raw.lock().memory_info()
     }
 
     /// Align a given pointer to the specified alignment.
@@ -336,7 +342,7 @@ unsafe impl<const N: usize> GlobalAlloc for Allocator<N> {
         // allocate a memory block and return the sufficiently aligned pointer
         // into that memory block.
         self.raw
-            .irqsave_lock()
+            .lock()
             .alloc(size)
             .map_or(ptr::null_mut(), |memory| {
                 // SAFETY: `align` is a power of two as by the contract of
@@ -356,7 +362,7 @@ unsafe impl<const N: usize> GlobalAlloc for Allocator<N> {
         // 2. ignore the error
         // Since there is no process and there is no stable way to abort the
         // program on `core` the only viable option is option #1: do nothing.
-        let _maybe_error = self.raw.irqsave_lock().free(ptr.cast()).ok();
+        let _maybe_error = self.raw.lock().free(ptr.cast()).ok();
         // errors are ignored
     }
 }

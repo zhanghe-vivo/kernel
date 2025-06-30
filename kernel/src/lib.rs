@@ -55,7 +55,6 @@ pub(crate) mod boot;
 pub(crate) mod config;
 pub(crate) mod console;
 pub(crate) mod devices;
-pub mod emballoc;
 pub mod error;
 pub(crate) mod irq;
 pub(crate) mod logger;
@@ -133,8 +132,7 @@ mod tests {
     extern crate alloc;
     use super::*;
     use crate::{
-        allocator, allocator::KernelAllocator, config, emballoc, support::DisableInterruptGuard,
-        sync,
+        allocator, allocator::KernelAllocator, config, support::DisableInterruptGuard, sync,
     };
     use bluekernel_header::syscalls::NR::Nop;
     use bluekernel_kconfig::NUM_CORES;

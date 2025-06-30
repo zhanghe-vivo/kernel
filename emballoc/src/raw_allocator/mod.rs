@@ -8,7 +8,7 @@ mod entry;
 use buffer::HEADER_SIZE;
 use entry::{Entry, State};
 
-use crate::allocator::MemoryInfo;
+use super::MemoryInfo;
 use core::mem::MaybeUninit;
 
 /// An error occurred when calling `free()`.
