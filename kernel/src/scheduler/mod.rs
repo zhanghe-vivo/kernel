@@ -291,7 +291,10 @@ pub(crate) fn suspend_me_for(tick: usize) {
         let th = old.clone();
         let timer_callback = Box::new(move || {
             #[cfg(debugging_scheduler)]
-            crate::trace!("add thread to ready queue after timeout");
+            crate::trace!(
+                "Add thread 0x{:x} to ready queue after timeout",
+                Thread::id(&th)
+            );
             let _ = queue_ready_thread(thread::SUSPENDED, th.clone());
         });
         let hook = Box::new(move || {
@@ -350,7 +353,10 @@ pub(crate) fn suspend_me_timed_wait<'a>(mut w: SpinLockGuard<'a, WaitQueue>, tic
         let th = old.clone();
         let timer_callback = Box::new(move || {
             #[cfg(debugging_scheduler)]
-            crate::trace!("add thread to ready queue after timeout");
+            crate::trace!(
+                "Add thread 0x{:x} to ready queue after timeout",
+                Thread::id(&th)
+            );
             let _ = queue_ready_thread(thread::SUSPENDED, th.clone());
             timed_out_clone.store(true, Ordering::SeqCst);
         });

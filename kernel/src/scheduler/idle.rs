@@ -29,7 +29,6 @@ fn init_idle_thread(i: usize) {
     unsafe {
         RUNNING_THREADS[i].write(arc.clone());
     }
-    //trace!("Built idle C#{}:0x{:x}", i, Thread::id(&arc));
 }
 
 pub(super) fn init_idle_threads() {

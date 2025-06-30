@@ -24,7 +24,7 @@ pub fn test(_attr: TokenStream, item: TokenStream) -> TokenStream {
         #[allow(dead_code)]
         #[test_case]
         fn #test_name(#(#filtered_params),*) {
-            use crate::println;
+            use semihosting::println;
             println!("[ RUN      ] {}", stringify!(#test_name));
             #( let _ = #param_names; )*
             #input_block

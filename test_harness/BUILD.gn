@@ -2,8 +2,10 @@ import("//build/templates/build_template.gni")
 build_rust("bluekernel_test_macro") {
   testonly = true
   crate_type = "proc-macro"
-  sources = [ "macros/src/lib.rs" ]
+  sources = [ "src/lib.rs" ]
   edition = "2021"
+  public_deps =
+      [ "//external/semihosting/v0.1.20:semihosting($kernel_toolchain)" ]
 
   deps = [
     "//external/proc-macro2/v1.0.89:proc_macro2",

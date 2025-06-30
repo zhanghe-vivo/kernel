@@ -68,9 +68,8 @@ impl Semaphore {
         let w = self.pending.irqsave_lock();
         let old = self.counter.get();
         crate::trace!(
-            "[C#{}:0x{:x}] reads counter to acquire: {}",
-            arch::current_cpu_id(),
-            Thread::id(&scheduler::current_thread()),
+            "[TH:0x{:x}] reads counter to acquire: {}",
+            scheduler::current_thread_id(),
             old,
         );
         if old == 0 {
@@ -94,9 +93,8 @@ impl Semaphore {
         let mut w = self.pending.irqsave_lock();
         let old = self.counter.get();
         crate::trace!(
-            "[C#{}:0x{:x}] reads counter to release: {}",
-            arch::current_cpu_id(),
-            Thread::id(&scheduler::current_thread()),
+            "[TH:0x{:x}] reads counter to release: {}",
+            scheduler::current_thread_id(),
             old,
         );
         self.counter.set(old + 1);
@@ -113,7 +111,8 @@ impl Semaphore {
                 break;
             }
             crate::trace!(
-                "Failed to enqueue 0x{:x}, state: {}",
+                "[TH:0x{:x}] Failed to enqueue 0x{:x}, state: {}",
+                scheduler::current_thread_id(),
                 Thread::id(&next.thread),
                 next.thread.state()
             );

@@ -69,7 +69,6 @@ pub mod vfs;
 
 pub use syscall_handlers as syscalls;
 
-#[cfg(test)]
 #[macro_export]
 macro_rules! debug {
     ($($tt:tt)*) => {{}};
@@ -77,54 +76,23 @@ macro_rules! debug {
 
 pub(crate) static TRACER: spin::Mutex<()> = spin::Mutex::new(());
 
-#[cfg(not(test))]
 #[macro_export]
 macro_rules! trace {
     ($($tt:tt)*) => {{
         let dig = $crate::support::DisableInterruptGuard::new();
         let l = $crate::TRACER.lock();
-        semihosting::eprintln!("[C#{}] sp: 0x{:x}",
-                               $crate::arch::current_cpu_id(),
-                               $crate::arch::current_sp());
+        #[cfg(target_pointer_width="32")]
+        semihosting::eprint!("[C:{:02} SP:0x{:08x}] ",
+                             arch::current_cpu_id(),
+                             arch::current_sp());
+        #[cfg(target_pointer_width="64")]
+        semihosting::eprint!("[C:{:02} SP:0x{:016x}] ",
+                             arch::current_cpu_id(),
+                             arch::current_sp());
         semihosting::eprintln!($($tt)*);
         drop(l);
         drop(dig);
     }};
-}
-
-#[cfg(test)]
-#[macro_export]
-macro_rules! trace {
-    ($($tt:tt)*) => {{
-        let dig = $crate::support::DisableInterruptGuard::new();
-        let l = $crate::tests::DEBUGGER.lock();
-        semihosting::eprintln!("[C#{}] sp: 0x{:x}",
-                               arch::current_cpu_id(),
-                               arch::current_sp());
-        semihosting::eprintln!($($tt)*);
-        drop(l);
-        drop(dig);
-    }};
-}
-
-#[cfg(test)]
-#[macro_export]
-macro_rules! println {
-    ($($tt:tt)*) => {
-        {
-            let dig = $crate::support::DisableInterruptGuard::new();
-            let l = $crate::tests::DEBUGGER.lock();
-            semihosting::println!($($tt)*);
-            drop(l);
-            drop(dig);
-        }
-    };
-}
-
-#[cfg(not(test))]
-#[macro_export]
-macro_rules! debug {
-    ($($tt:tt)*) => {};
 }
 
 #[cfg(test)]
@@ -144,8 +112,6 @@ mod tests {
     };
     use spin::Mutex;
     use thread::{Entry, SystemThreadStorage, Thread, ThreadNode};
-
-    pub static DEBUGGER: Mutex<()> = Mutex::new(());
 
     #[used]
     #[link_section = ".bk_app_array"]
@@ -241,8 +207,8 @@ mod tests {
     #[panic_handler]
     fn oops(info: &PanicInfo) -> ! {
         let _ = DisableInterruptGuard::new();
-        println!("{}", info);
-        println!("Oops: {}", info.message());
+        semihosting::println!("{}", info);
+        semihosting::println!("Oops: {}", info.message());
         loop {}
     }
 
@@ -487,8 +453,8 @@ mod tests {
     #[inline(never)]
     pub fn kernel_unittest_runner(tests: &[&dyn Fn()]) {
         let t = scheduler::current_thread();
-        println!("---- Running {} kernel unittests...", tests.len());
-        println!(
+        semihosting::println!("---- Running {} kernel unittests...", tests.len());
+        semihosting::println!(
             "Before test, thread 0x{:x}, rc: {}, heap status: {:?}, sp: 0x{:x}",
             Thread::id(&t),
             ThreadNode::strong_count(&t),
@@ -498,12 +464,12 @@ mod tests {
         for test in tests {
             test();
         }
-        println!(
+        semihosting::println!(
             "After test, thread 0x{:x}, heap status: {:?}, sp: 0x{:x}",
             Thread::id(&t),
             ALLOCATOR.memory_info(),
             arch::current_sp()
         );
-        println!("---- Done kernel unittests.");
+        semihosting::println!("---- Done kernel unittests.");
     }
 }

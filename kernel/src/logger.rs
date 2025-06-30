@@ -1,7 +1,11 @@
 #![allow(dead_code)]
 
-use crate::{kprintln, scheduler, thread::Thread, time::tick_get_millisecond};
+use crate::{
+    arch, kprintln, scheduler, sync::SpinLock, thread::Thread, time::tick_get_millisecond,
+};
 use log::{LevelFilter, Metadata, Record};
+
+static LOGGER_MUTEX: SpinLock<()> = SpinLock::new(());
 
 struct Logger;
 
@@ -39,15 +43,19 @@ impl log::Log for Logger {
     fn enabled(&self, metadata: &Metadata) -> bool {
         metadata.level() <= log::max_level()
     }
+
     fn log(&self, record: &Record) {
         if !self.enabled(record.metadata()) {
             return;
         }
         let timestamp = tick_get_millisecond();
-        let tid = unsafe { Thread::id(&scheduler::current_thread()) };
+        let tid = scheduler::current_thread_id();
+        let cpu = arch::current_cpu_id();
+        let _ = LOGGER_MUTEX.irqsave_lock();
         kprintln!(
-            "[{} ms] [TID:{}] {} : {}",
+            "[T:{:09} C:{} TH:0x{:x}][{}] {} ",
             timestamp,
+            cpu,
             tid,
             record.level(),
             record.args()
