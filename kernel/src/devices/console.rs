@@ -1,5 +1,3 @@
-#[cfg(line_discipline)]
-use super::tty::n_tty::Tty;
 use super::{dumb, tty::serial::UartOps, Device, DeviceManager};
 use crate::sync::SpinLock;
 use alloc::{string::String, sync::Arc};

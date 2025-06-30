@@ -4,7 +4,7 @@ pub mod uart;
 
 use crate::{
     arch, boot,
-    devices::{console, tty::n_tty::Tty, Device},
+    devices::{console, tty::n_tty::Tty},
     error::Error,
     time,
 };
@@ -67,12 +67,7 @@ pub(crate) fn init() {
         Ok(_) => (),
         Err(e) => panic!("Failed to init uart: {}", Error::from(e)),
     }
-    let device: Arc<dyn Device> = if (cfg!(line_discipline)) {
-        Tty::init(uart::get_serial0().clone()).clone()
-    } else {
-        uart::get_serial0().clone()
-    };
-    match console::init_console(device) {
+    match console::init_console(Tty::init(uart::get_serial0().clone()).clone()) {
         Ok(_) => (),
         Err(e) => panic!("Failed to init console: {}", Error::from(e)),
     }
