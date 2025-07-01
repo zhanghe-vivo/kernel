@@ -83,12 +83,12 @@ pub fn atomic_wait(addr: usize, val: usize, timeout: Option<usize>) -> Result<()
     w.forget_irq();
     drop(w);
     if let Some(timeout) = timeout {
-        let res = scheduler::suspend_me_timed_wait(we, timeout);
+        let res = scheduler::suspend_me_with_timeout(we, timeout);
         if res == true {
             return Err(code::ETIMEDOUT);
         }
     } else {
-        let _ = scheduler::suspend_me_timed_wait(we, WAITING_FOREVER);
+        let _ = scheduler::suspend_me_with_timeout(we, WAITING_FOREVER);
     }
     return Ok(());
 }

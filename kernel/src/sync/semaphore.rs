@@ -52,7 +52,7 @@ impl Semaphore {
                 old,
             );
             if old == 0 {
-                let _ = scheduler::suspend_me_timed_wait(w, WAITING_FOREVER);
+                let _ = scheduler::suspend_me_with_timeout(w, WAITING_FOREVER);
                 w = self.pending.irqsave_lock();
                 continue;
             } else {
@@ -73,7 +73,7 @@ impl Semaphore {
             old,
         );
         if old == 0 {
-            let _ = scheduler::suspend_me_timed_wait(w, t);
+            let _ = scheduler::suspend_me_with_timeout(w, t);
             return self.try_acquire();
         } else {
             self.counter.set(old - 1);

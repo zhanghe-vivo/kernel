@@ -249,35 +249,6 @@ pub(crate) fn suspend_me_with_hook(hook: impl FnOnce() + 'static) {
     assert!(arch::local_irq_enabled());
 }
 
-// Sometimes we need to queue the thread into two queues
-// simultaneously, like semaphore with timeout.
-pub(crate) fn suspend_me_2<'a>(
-    mut w0: SpinLockGuard<'a, WaitQueue>,
-    mut w1: SpinLockGuard<'a, WaitQueue>,
-) {
-    let next = next_ready_thread().map_or_else(|| idle::current_idle_thread().clone(), |v| v);
-    let to_sp = next.saved_sp();
-    let old = current_thread();
-    let from_sp_ptr = old.saved_sp_ptr();
-    w0.push_back(Arc::new(WaitEntry {
-        wait_node: IlistHead::<WaitEntry, OffsetOfWait>::new(),
-        thread: old.clone(),
-    }));
-    w1.push_back(Arc::new(WaitEntry {
-        wait_node: IlistHead::<WaitEntry, OffsetOfWait>::new(),
-        thread: old.clone(),
-    }));
-    let mut dropper = DefaultWaitQueueGuardDropper::new();
-    // Add them in reversed order.
-    dropper.add(w1);
-    dropper.add(w0);
-    let mut hook_holder = ContextSwitchHookHolder::new(next);
-    hook_holder.set_dropper(dropper);
-    hook_holder.set_pending_thread(old);
-    arch::switch_context_with_hook(from_sp_ptr as *mut u8, to_sp, &mut hook_holder as *mut _);
-    assert!(arch::local_irq_enabled());
-}
-
 pub(crate) fn suspend_me_for(tick: usize) {
     assert!(tick != 0);
     let next = next_ready_thread().map_or_else(|| idle::current_idle_thread().clone(), |v| v);
@@ -318,8 +289,11 @@ pub(crate) fn suspend_me_for(tick: usize) {
     assert!(arch::local_irq_enabled());
 }
 
-pub(crate) fn suspend_me_timed_wait<'a>(mut w: SpinLockGuard<'a, WaitQueue>, tick: usize) -> bool {
-    assert!(tick != 0);
+pub(crate) fn suspend_me_with_timeout<'a>(
+    mut w: SpinLockGuard<'a, WaitQueue>,
+    ticks: usize,
+) -> bool {
+    assert!(ticks != 0);
     let next = next_ready_thread().map_or_else(|| idle::current_idle_thread().clone(), |v| v);
     // FIXME: Ideally, we should defer state transfer to context switch hook.
     let to_sp = next.saved_sp();
@@ -349,7 +323,7 @@ pub(crate) fn suspend_me_timed_wait<'a>(mut w: SpinLockGuard<'a, WaitQueue>, tic
     let timed_out = Arc::new(AtomicBool::new(false));
     let timed_out_clone = timed_out.clone();
 
-    if tick != WAITING_FOREVER {
+    if ticks != WAITING_FOREVER {
         let th = old.clone();
         let timer_callback = Box::new(move || {
             #[cfg(debugging_scheduler)]
@@ -364,10 +338,10 @@ pub(crate) fn suspend_me_timed_wait<'a>(mut w: SpinLockGuard<'a, WaitQueue>, tic
             match &old.timer {
                 Some(t) => {
                     t.set_callback(timer_callback);
-                    t.start_new_interval(tick);
+                    t.start_new_interval(ticks);
                 }
                 None => {
-                    let timer = Timer::new_hard_oneshot(tick, timer_callback);
+                    let timer = Timer::new_hard_oneshot(ticks, timer_callback);
                     old.lock().timer = Some(timer.clone());
                     compiler_fence(Ordering::SeqCst);
                     timer.start();
@@ -418,12 +392,12 @@ pub fn current_thread_id() -> usize {
     return Thread::id(t);
 }
 
-pub(crate) fn handle_tick_increment(escape_tick: usize) -> bool {
+pub(crate) fn handle_tick_increment(elapsed_ticks: usize) -> bool {
     #[cfg(robin_scheduler)]
     {
         let th = current_thread();
         if Thread::id(&th) != Thread::id(idle::current_idle_thread())
-            && th.round_robin(escape_tick) <= 0
+            && th.round_robin(elapsed_ticks) <= 0
             && th.is_preemptable()
         {
             th.reset_robin();
