@@ -1,7 +1,6 @@
 use super::SpinLock;
 use crate::{
-    arch, irq, scheduler, scheduler::WaitQueue, thread, thread::Thread, time::WAITING_FOREVER,
-    types::Int,
+    irq, scheduler, scheduler::WaitQueue, thread, thread::Thread, time::WAITING_FOREVER, types::Int,
 };
 use core::cell::Cell;
 
@@ -45,12 +44,16 @@ impl Semaphore {
         let mut w = self.pending.irqsave_lock();
         loop {
             let old = self.counter.get();
-            crate::debug!(
-                "[C#{}:0x{:x}] reads counter to acquire: {}",
-                arch::current_cpu_id(),
-                Thread::id(&scheduler::current_thread()),
-                old,
-            );
+            #[cfg(debugging_scheduler)]
+            {
+                use crate::arch;
+                crate::debug!(
+                    "[C#{}:0x{:x}] reads counter to acquire: {}",
+                    arch::current_cpu_id(),
+                    Thread::id(&scheduler::current_thread()),
+                    old,
+                );
+            }
             if old == 0 {
                 let _ = scheduler::suspend_me_with_timeout(w, WAITING_FOREVER);
                 w = self.pending.irqsave_lock();
@@ -67,11 +70,15 @@ impl Semaphore {
         assert!(!irq::is_in_irq());
         let w = self.pending.irqsave_lock();
         let old = self.counter.get();
-        crate::trace!(
-            "[TH:0x{:x}] reads counter to acquire: {}",
-            scheduler::current_thread_id(),
-            old,
-        );
+        #[cfg(debugging_scheduler)]
+        {
+            use crate::arch;
+            crate::trace!(
+                "[TH:0x{:x}] reads counter to acquire: {}",
+                scheduler::current_thread_id(),
+                old,
+            );
+        }
         if old == 0 {
             let _ = scheduler::suspend_me_with_timeout(w, t);
             return self.try_acquire();
@@ -92,11 +99,15 @@ impl Semaphore {
     pub fn release(&self) {
         let mut w = self.pending.irqsave_lock();
         let old = self.counter.get();
-        crate::trace!(
-            "[TH:0x{:x}] reads counter to release: {}",
-            scheduler::current_thread_id(),
-            old,
-        );
+        #[cfg(debugging_scheduler)]
+        {
+            use crate::arch;
+            crate::trace!(
+                "[TH:0x{:x}] reads counter to release: {}",
+                scheduler::current_thread_id(),
+                old,
+            );
+        }
         self.counter.set(old + 1);
         if old > 0 {
             return;
@@ -110,12 +121,16 @@ impl Semaphore {
             if ok {
                 break;
             }
-            crate::trace!(
-                "[TH:0x{:x}] Failed to enqueue 0x{:x}, state: {}",
-                scheduler::current_thread_id(),
-                Thread::id(&next.thread),
-                next.thread.state()
-            );
+            #[cfg(debugging_scheduler)]
+            {
+                use crate::arch;
+                crate::trace!(
+                    "[TH:0x{:x}] Failed to enqueue 0x{:x}, state: {}",
+                    scheduler::current_thread_id(),
+                    Thread::id(&next.thread),
+                    next.thread.state()
+                );
+            }
         }
         drop(w);
         scheduler::yield_me_now_or_later();

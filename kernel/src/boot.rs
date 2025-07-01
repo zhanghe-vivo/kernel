@@ -34,13 +34,11 @@ extern "C" fn init() {
     boards::init();
     init_runtime();
     init_heap();
-
+    scheduler::init();
     // FIXME: remove this after aarch64 and riscv64 is supported
     #[cfg(cortex_m)]
     logger::logger_init();
-
     time::timer::system_timer_init();
-    scheduler::init();
     asynk::init();
     init_vfs();
     init_apps();

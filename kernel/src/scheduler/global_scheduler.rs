@@ -48,6 +48,12 @@ impl ReadyTable {
 pub fn next_ready_thread() -> Option<ThreadNode> {
     let mut tbl = unsafe { READY_TABLE.assume_init_ref().irqsave_lock() };
     let highest_active = tbl.highest_active();
+
+    #[cfg(debugging_scheduler)]
+    {
+        use crate::arch;
+        crate::trace!("next_ready_thread highest_active {}", highest_active);
+    }
     if highest_active > MAX_THREAD_PRIORITY as u32 {
         return None;
     }
@@ -70,8 +76,19 @@ pub fn queue_ready_thread(old_state: Uint, t: ThreadNode) -> bool {
     assert!(t.validate_saved_sp());
     let mut tbl = unsafe { READY_TABLE.assume_init_ref().irqsave_lock() };
     let priority = t.priority();
+    assert!(priority <= MAX_THREAD_PRIORITY);
     let q = &mut tbl.tables[priority as usize];
     q.push_back(t.clone());
     tbl.set_active_queue(priority as u32);
+
+    #[cfg(debugging_scheduler)]
+    {
+        use crate::arch;
+        crate::trace!(
+            "add pri {} get highest pri {}",
+            priority,
+            tbl.highest_active()
+        );
+    }
     return true;
 }

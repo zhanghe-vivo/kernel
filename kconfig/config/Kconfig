@@ -78,6 +78,10 @@ config ALLOCATOR
     default "llff" if ALLOCATOR_LLFF
     default "buddy" if ALLOCATOR_BUDDY
 
+config SOFT_TIMER
+    default y
+    bool "Enable soft timer"
+
 config ROBIN_SCHEDULER
     default y
     bool "Enable robin scheduler"

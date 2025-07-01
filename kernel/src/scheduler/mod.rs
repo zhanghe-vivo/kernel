@@ -117,11 +117,13 @@ pub(crate) extern "C" fn save_context_finish_hook(hook: Option<&mut ContextSwitc
         let old = set_current_thread(next.clone());
         #[cfg(debugging_scheduler)]
         crate::trace!(
-            "Switching from 0x{:x}: 0x{:x} to 0x{:x}: 0x{:x}",
+            "Switching from 0x{:x}: 0x{:x} pri:{} to 0x{:x}: 0x{:x} pri:{}",
             Thread::id(&old),
             old.saved_sp(),
+            old.priority(),
             Thread::id(&next),
             next.saved_sp(),
+            next.priority(),
         );
     }
     compiler_fence(Ordering::SeqCst);
@@ -176,11 +178,13 @@ pub(crate) extern "C" fn yield_me_and_return_next_sp(old_sp: usize) -> usize {
     let old = set_current_thread(next.clone());
     #[cfg(debugging_scheduler)]
     crate::trace!(
-        "Switching from 0x{:x}: 0x{:x} to 0x{:x}: 0x{:x}",
+        "Switching from 0x{:x}: 0x{:x} pri:{} to 0x{:x}: 0x{:x} pri:{}",
         Thread::id(&old),
         old.saved_sp(),
+        old.priority(),
         Thread::id(&next),
         next.saved_sp(),
+        next.priority(),
     );
     old.lock().set_saved_sp(old_sp);
     let ok = queue_ready_thread(thread::RUNNING, old);

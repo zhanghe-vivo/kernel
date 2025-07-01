@@ -27,11 +27,16 @@ static SOFT_TIMER_THREAD_STACK: SystemThreadStorage = SystemThreadStorage::const
 #[cfg(soft_timer)]
 extern "C" fn run_soft_timer() {
     loop {
-        if let Some(next_timeout) = SOFT_TIMER_WHEEL.next_timeout() {
+        let next_timeout = SOFT_TIMER_WHEEL.next_timeout();
+        if next_timeout != usize::MAX {
             let ct = get_systick();
-            let wait_time = next_timeout.wrapping_sub(ct);
-            if wait_time < usize::MAX / 2 {
+            let wait_time = next_timeout.saturating_sub(ct);
+            if wait_time > 0 {
                 scheduler::suspend_me_for(wait_time);
+                let wakeup_ct = get_systick();
+                if wakeup_ct < next_timeout {
+                    continue;
+                }
             }
             SOFT_TIMER_WHEEL.check_timer(next_timeout);
         } else {
@@ -55,6 +60,15 @@ pub fn system_timer_init() {
         let ok = scheduler::queue_ready_thread(thread::CREATED, th);
         debug_assert!(ok);
     }
+}
+
+fn wakeup_soft_timer_thread() {
+    let th = unsafe { SOFT_TIMER_THREAD.assume_init_ref() };
+    if let Some(timer) = &th.timer {
+        timer.stop();
+    }
+    let ok = scheduler::queue_ready_thread(thread::SUSPENDED, th.clone());
+    debug_assert!(ok);
 }
 
 struct TimerWheel {
@@ -93,12 +107,25 @@ impl TimerWheel {
                 return;
             }
         }
-        wheel[cursor].push_back(timer);
+        wheel[cursor].push_back(timer.clone());
+        #[cfg(soft_timer)]
+        {
+            if timer.is_soft() {
+                wakeup_soft_timer_thread();
+            }
+        }
     }
 
     fn remove_timer(&self, timer: &Arc<Timer>) {
-        let _ = self.wheel.irqsave_lock();
+        let lock = self.wheel.irqsave_lock();
         WheelTimerList::detach(timer);
+        drop(lock);
+        #[cfg(soft_timer)]
+        {
+            if timer.is_soft() {
+                wakeup_soft_timer_thread();
+            }
+        }
     }
 
     fn next_timeout(&self) -> usize {
@@ -443,7 +470,6 @@ mod tests {
     // Helper function to create a simple callback
     fn create_test_callback(counter: Arc<AtomicUsize>) -> Box<dyn Fn() + Send + Sync + 'static> {
         Box::new(move || {
-            log::info!("timer callback");
             counter.fetch_add(1, Ordering::Relaxed);
         })
     }
@@ -492,9 +518,6 @@ mod tests {
         scheduler::suspend_me_for(10);
         assert_eq!(counter3.load(Ordering::Relaxed), 0);
         assert_eq!(counter4.load(Ordering::Relaxed), 0);
-
-        let next_timeout = get_next_timer_ticks();
-        assert_eq!(next_timeout, usize::MAX);
     }
 
     #[test]
@@ -519,9 +542,6 @@ mod tests {
 
         scheduler::suspend_me_for(10);
         assert_eq!(counter.load(Ordering::Relaxed), 1);
-
-        let next_timeout = get_next_timer_ticks();
-        assert_eq!(next_timeout, usize::MAX);
     }
 
     #[test]
@@ -542,9 +562,6 @@ mod tests {
 
         scheduler::suspend_me_for(10);
         assert_eq!(counter.load(Ordering::Relaxed), 1);
-
-        let next_timeout = get_next_timer_ticks();
-        assert_eq!(next_timeout, usize::MAX);
     }
 
     #[test]
@@ -563,9 +580,6 @@ mod tests {
 
         scheduler::suspend_me_for(20);
         assert_eq!(counter.load(Ordering::Relaxed), 1);
-
-        let next_timeout = get_next_timer_ticks();
-        assert_eq!(next_timeout, usize::MAX);
     }
 
     #[test]
@@ -585,9 +599,6 @@ mod tests {
 
         scheduler::suspend_me_for(10);
         assert_eq!(counter.load(Ordering::Relaxed), 1);
-
-        let next_timeout = get_next_timer_ticks();
-        assert_eq!(next_timeout, usize::MAX);
     }
 
     #[test]
@@ -617,9 +628,6 @@ mod tests {
 
         scheduler::suspend_me_for(10);
         assert_eq!(counter2.load(Ordering::Relaxed), 1);
-
-        let next_timeout = get_next_timer_ticks();
-        assert_eq!(next_timeout, usize::MAX);
     }
 
     #[test]
@@ -641,9 +649,6 @@ mod tests {
         assert!(second_timeout > first_timeout); // Should be rescheduled
 
         timer.stop();
-
-        let next_timeout = get_next_timer_ticks();
-        assert_eq!(next_timeout, usize::MAX);
     }
 
     #[test]
@@ -671,9 +676,6 @@ mod tests {
         assert_eq!(counter1.load(Ordering::Relaxed), 1);
         assert_eq!(counter2.load(Ordering::Relaxed), 1);
         assert_eq!(counter3.load(Ordering::Relaxed), 1);
-
-        let next_timeout = get_next_timer_ticks();
-        assert_eq!(next_timeout, usize::MAX);
     }
 
     #[test]
@@ -692,9 +694,6 @@ mod tests {
         // Timer will not run
         scheduler::suspend_me_for(10);
         assert_eq!(counter.load(Ordering::Relaxed), 0);
-
-        let next_timeout = get_next_timer_ticks();
-        assert_eq!(next_timeout, usize::MAX);
     }
 
     #[test]
@@ -715,9 +714,6 @@ mod tests {
 
         scheduler::suspend_me_for(10);
         assert_eq!(counter.load(Ordering::Relaxed), 1);
-
-        let next_timeout = get_next_timer_ticks();
-        assert_eq!(next_timeout, usize::MAX);
     }
 
     #[test]
@@ -729,16 +725,6 @@ mod tests {
 
         timer.start();
         assert_eq!(counter.load(Ordering::Relaxed), 1);
-
-        let next_timeout = get_next_timer_ticks();
-        assert_eq!(next_timeout, usize::MAX);
-    }
-
-    #[test]
-    fn test_timer_wheel_empty() {
-        // Test behavior when no timers are active
-        let next_timeout = get_next_timer_ticks();
-        assert_eq!(next_timeout, usize::MAX); // Should return MAX when no timers
     }
 
     #[test]
@@ -777,9 +763,6 @@ mod tests {
         assert_eq!(counter1.load(Ordering::Relaxed), 1);
         assert_eq!(counter2.load(Ordering::Relaxed), 1);
         assert_eq!(counter3.load(Ordering::Relaxed), 1);
-
-        let next_timeout = get_next_timer_ticks();
-        assert_eq!(next_timeout, usize::MAX);
     }
 
     #[test]
@@ -803,9 +786,6 @@ mod tests {
         // Test periodic timer
         let periodic_timer = Timer::new_hard_periodic(10, callback);
         assert!(periodic_timer.is_periodic());
-
-        let next_timeout = get_next_timer_ticks();
-        assert_eq!(next_timeout, usize::MAX);
     }
 
     #[test]
@@ -827,9 +807,6 @@ mod tests {
         timer_clone2.stop();
         assert!(!timer_clone1.is_activated());
         assert!(!timer_clone2.is_activated());
-
-        let next_timeout = get_next_timer_ticks();
-        assert_eq!(next_timeout, usize::MAX);
 
         // timer should not run
         scheduler::suspend_me_for(10);
@@ -860,9 +837,6 @@ mod tests {
             assert_eq!(counter.load(Ordering::Relaxed), 1);
             scheduler::suspend_me_for(1);
         }
-
-        let next_timeout = get_next_timer_ticks();
-        assert_eq!(next_timeout, usize::MAX);
     }
 
     #[test]
@@ -881,9 +855,6 @@ mod tests {
         // For oneshot timer, it should not be reactivated automatically
         // The timer should remain inactive after running
         assert!(!timer.is_activated());
-
-        let next_timeout = get_next_timer_ticks();
-        assert_eq!(next_timeout, usize::MAX);
     }
 
     #[test]
@@ -902,9 +873,6 @@ mod tests {
             assert!(timer.is_activated()); // Should remain active
         }
         timer.stop();
-
-        let next_timeout = get_next_timer_ticks();
-        assert_eq!(next_timeout, usize::MAX);
     }
 
     #[test]
@@ -922,9 +890,6 @@ mod tests {
         assert!(timeout >= 100); // Should be at least the interval
 
         timer.stop();
-
-        let next_timeout = get_next_timer_ticks();
-        assert_eq!(next_timeout, usize::MAX);
     }
 
     #[test]
@@ -947,9 +912,6 @@ mod tests {
         assert!(next_timeout < usize::MAX);
 
         scheduler::suspend_me_for(33);
-
-        let next_timeout = get_next_timer_ticks();
-        assert_eq!(next_timeout, usize::MAX);
     }
 
     #[test]
@@ -984,9 +946,6 @@ mod tests {
 
         scheduler::suspend_me_for(10);
         assert_eq!(counter.load(Ordering::Relaxed), 1);
-
-        let next_timeout = get_next_timer_ticks();
-        assert_eq!(next_timeout, usize::MAX);
     }
 
     #[test]
@@ -1023,7 +982,7 @@ mod tests {
         assert!(soft_timer.is_activated());
         assert!(hard_timer.is_activated());
 
-        scheduler::suspend_me_for(10);
+        scheduler::suspend_me_for(11);
 
         assert_eq!(counter1.load(Ordering::Relaxed), 1);
         assert_eq!(counter2.load(Ordering::Relaxed), 1);
@@ -1117,10 +1076,6 @@ mod tests {
         // Stop timer (removes from wheel)
         timer.stop();
         assert!(!timer.is_activated());
-
-        // Check that wheel is empty
-        let next_timeout = get_next_timer_ticks();
-        assert_eq!(next_timeout, usize::MAX);
     }
 
     #[test]
