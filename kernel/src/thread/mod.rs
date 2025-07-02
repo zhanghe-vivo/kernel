@@ -110,12 +110,6 @@ impl ThreadStats {
     }
 
     pub fn set_start_cycles(&mut self, start: u64) {
-        assert!(
-            start >= self.start,
-            "start: {}, self.start: {}",
-            start,
-            self.start
-        );
         self.start = start;
     }
 
