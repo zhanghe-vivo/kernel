@@ -36,14 +36,27 @@
 extern crate alloc;
 
 pub mod ffi {
+    #[coverage(off)]
     #[no_mangle]
     pub extern "C" fn disable_local_irq_save() -> usize {
         crate::arch::disable_local_irq_save()
     }
 
+    #[coverage(off)]
     #[no_mangle]
     pub extern "C" fn enable_local_irq_restore(val: usize) {
         crate::arch::enable_local_irq_restore(val)
+    }
+
+    #[coverage(off)]
+    #[no_mangle]
+    #[linkage = "weak"]
+    pub unsafe extern "C" fn __aeabi_memclr8(s: *mut u8, n: usize) -> *mut u8 {
+        let mut i = 0;
+        for i in 0..n {
+            s.offset(i as isize).write(0u8);
+        }
+        return s;
     }
 }
 
@@ -54,6 +67,8 @@ pub(crate) mod boards;
 pub(crate) mod boot;
 pub(crate) mod config;
 pub(crate) mod console;
+#[cfg(coverage)]
+pub mod cov;
 pub(crate) mod devices;
 pub mod error;
 pub(crate) mod irq;
@@ -304,13 +319,16 @@ mod tests {
         SEMA.acquire_notimeout();
         let n = unsafe { SEMA_COUNTER };
         unsafe { SEMA_COUNTER += 1 };
+    }
+
+    extern "C" fn test_semaphore_cleanup() {
         SEMA.release();
     }
 
     #[test]
     fn stress_semaphore() {
         SEMA.init();
-        reset_and_queue_test_threads(test_semaphore, None);
+        reset_and_queue_test_threads(test_semaphore, Some(test_semaphore_cleanup));
         let l = unsafe { TEST_THREADS.len() };
         loop {
             SEMA.acquire_notimeout();
@@ -377,9 +395,7 @@ mod tests {
 
     static BUILT_THREADS: AtomicUsize = AtomicUsize::new(0);
 
-    extern "C" fn do_it() {}
-
-    extern "C" fn do_cleanup() {
+    extern "C" fn do_it() {
         BUILT_THREADS.fetch_add(1, Ordering::Relaxed);
     }
 
@@ -393,7 +409,6 @@ mod tests {
         let n = 512;
         for _i in 0..n {
             let t = thread::Builder::new(thread::Entry::C(do_it)).build();
-            t.lock().set_cleanup(thread::Entry::C(do_cleanup));
             let ok = scheduler::queue_ready_thread(t.state(), t);
             assert!(ok);
         }
@@ -473,5 +488,7 @@ mod tests {
             arch::current_sp()
         );
         semihosting::println!("---- Done kernel unittests.");
+        #[cfg(coverage)]
+        crate::cov::write_coverage_data();
     }
 }

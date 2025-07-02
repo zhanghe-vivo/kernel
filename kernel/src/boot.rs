@@ -79,7 +79,7 @@ fn init_bss() {
     }
 }
 
-#[inline]
+#[inline(never)]
 fn run_init_array() {
     unsafe {
         if INIT_ARRAY_DONE {

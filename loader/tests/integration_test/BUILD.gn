@@ -17,7 +17,10 @@ build_rust("loader_integration_test") {
     "//librs:librs",
   ]
   if (coverage || profile) {
-    deps += [ "//kernel/loader:common_cov" ]
+    deps += [
+      "//kernel/kernel:atomic",
+      "//kernel/loader:common_cov",
+    ]
   }
   proc_macro_deps = [ "//kernel/test_harness:bluekernel_test_macro" ]
   inputs = [ "//kernel/kernel/src/boards/$board/link.x" ]

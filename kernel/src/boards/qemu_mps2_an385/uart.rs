@@ -57,7 +57,6 @@ pub fn uart_init() -> Result<(), ErrorKind> {
     DeviceManager::get().register_device(String::from("ttyS0"), serial0.clone())
 }
 
-#[coverage(off)]
 pub unsafe extern "C" fn uart0rx_handler() {
     let _ = IrqTrace::new(UART0RX_IRQn);
     let uart = get_serial0();
@@ -67,7 +66,6 @@ pub unsafe extern "C" fn uart0rx_handler() {
     }
 }
 
-#[coverage(off)]
 pub unsafe extern "C" fn uart0tx_handler() {
     let _ = IrqTrace::new(UART0TX_IRQn);
     let uart = get_serial0();

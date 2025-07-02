@@ -1,16 +1,36 @@
-// NEWLINE-TIMEOUT: 15
+// TOTAL-TIMEOUT: 8
 // ASSERT-SUCC: coverage test end.
 // ASSERT-FAIL: Backtrace in Panic.*
-use log::info;
-use minicov::capture_coverage;
+use minicov::{CoverageWriteError, CoverageWriter};
+use semihosting::{c, fs, io, io::Write};
+
+struct SemihostingCoverageWriter<'a> {
+    f: &'a mut fs::File,
+}
+
+impl<'a> SemihostingCoverageWriter<'a> {
+    pub fn new(f: &'a mut fs::File) -> Self {
+        Self { f }
+    }
+}
+
+impl CoverageWriter for SemihostingCoverageWriter<'_> {
+    fn write(&mut self, buf: &[u8]) -> Result<(), CoverageWriteError> {
+        let Ok(_) = self.f.write(buf) else {
+            return Err(CoverageWriteError);
+        };
+        return Ok(());
+    }
+}
 
 pub fn write_coverage_data() {
-    let mut cov_data = alloc::vec![];
+    let mut f = fs::File::create(c"output.profraw").unwrap();
+    let mut w = SemihostingCoverageWriter::new(&mut f);
     unsafe {
         // Note that this function is not thread-safe! Use a lock if needed.
-        capture_coverage(&mut cov_data).unwrap();
+        minicov::capture_coverage(&mut w).unwrap();
     }
-    use semihosting::{c, fs, io};
-    fs::write(c!("output.profraw"), cov_data).unwrap();
-    info!("coverage test end.");
+    drop(w);
+    f.flush();
+    semihosting::println!("coverage test end.");
 }
