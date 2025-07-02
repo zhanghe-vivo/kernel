@@ -83,12 +83,12 @@ macro_rules! trace {
         let l = $crate::TRACER.lock();
         #[cfg(target_pointer_width="32")]
         semihosting::eprint!("[C:{:02} SP:0x{:08x}] ",
-                             arch::current_cpu_id(),
-                             arch::current_sp());
+                             $crate::arch::current_cpu_id(),
+                             $crate::arch::current_sp());
         #[cfg(target_pointer_width="64")]
         semihosting::eprint!("[C:{:02} SP:0x{:016x}] ",
-                             arch::current_cpu_id(),
-                             arch::current_sp());
+                             $crate::arch::current_cpu_id(),
+                             $crate::arch::current_sp());
         semihosting::eprintln!($($tt)*);
         drop(l);
         drop(dig);
@@ -111,7 +111,7 @@ mod tests {
         sync::atomic::{AtomicUsize, Ordering},
     };
     use spin::Mutex;
-    use thread::{Entry, SystemThreadStorage, Thread, ThreadNode};
+    use thread::{Entry, SystemThreadStorage, Thread, ThreadKind, ThreadNode};
 
     #[used]
     #[link_section = ".bk_app_array"]
@@ -130,11 +130,11 @@ mod tests {
     pub const K: usize = 64;
 
     static TEST_THREAD_STORAGES: [SystemThreadStorage; NUM_CORES * K] =
-        [const { SystemThreadStorage::new() }; NUM_CORES * K];
+        [const { SystemThreadStorage::new(ThreadKind::Normal) }; NUM_CORES * K];
     static mut TEST_THREADS: [MaybeUninit<ThreadNode>; NUM_CORES * K] =
         [const { MaybeUninit::zeroed() }; NUM_CORES * K];
 
-    static MAIN_THREAD_STORAGE: SystemThreadStorage = SystemThreadStorage::new();
+    static MAIN_THREAD_STORAGE: SystemThreadStorage = SystemThreadStorage::new(ThreadKind::Normal);
     static mut MAIN_THREAD: MaybeUninit<ThreadNode> = MaybeUninit::zeroed();
 
     fn reset_and_queue_test_thread(
@@ -174,6 +174,7 @@ mod tests {
             config::MAX_THREAD_PRIORITY / 2,
             thread::CREATED,
             Entry::C(test_main),
+            ThreadKind::Normal,
         );
     }
 
@@ -184,6 +185,7 @@ mod tests {
             config::MAX_THREAD_PRIORITY / 2,
             thread::CREATED,
             Entry::C(test_main),
+            ThreadKind::Normal,
         );
         let ok = scheduler::queue_ready_thread(thread::CREATED, t.clone());
         assert!(ok);
@@ -262,11 +264,11 @@ mod tests {
     #[cfg(cortex_m)]
     #[test]
     fn test_sys_tick() {
-        let tick = time::get_systick();
+        let tick = time::get_sys_ticks();
         assert!(scheduler::current_thread().validate_sp());
         scheduler::suspend_me_for(10);
         assert!(scheduler::current_thread().validate_sp());
-        let tick2 = time::get_systick();
+        let tick2 = time::get_sys_ticks();
         assert!(tick2 - tick >= 10);
         assert!(tick2 - tick <= 11);
     }

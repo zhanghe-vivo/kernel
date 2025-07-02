@@ -21,6 +21,7 @@ use core::{
     sync::atomic::{AtomicBool, AtomicUsize, Ordering},
     time::Duration,
 };
+use delegate::delegate;
 use embedded_io::ErrorKind;
 use fatfs::{DefaultTimeProvider, IoBase, LossyOemCpConverter, Read, Seek, SeekFrom, Write};
 use log::{debug, error, info, trace, warn};
@@ -760,34 +761,6 @@ impl InodeOps for FatInode {
         }
     }
 
-    fn type_(&self) -> InodeFileType {
-        self.inner.read().attr.type_()
-    }
-
-    fn mode(&self) -> InodeMode {
-        self.inner.read().attr.mode()
-    }
-
-    fn size(&self) -> usize {
-        self.inner.read().attr.size()
-    }
-
-    fn atime(&self) -> Duration {
-        self.inner.read().attr.atime
-    }
-
-    fn mtime(&self) -> Duration {
-        self.inner.read().attr.mtime
-    }
-
-    fn set_atime(&self, time: Duration) {
-        self.inner.write().attr.atime = time;
-    }
-
-    fn set_mtime(&self, time: Duration) {
-        self.inner.write().attr.mtime = time;
-    }
-
     fn flush(&self) -> Result<(), Error> {
         // Each write operation is submitted directly to virtio block, so we don't need to do anything here.
         Ok(())
@@ -812,6 +785,21 @@ impl InodeOps for FatInode {
                 FileAttr::new(dev, 0, &inner.attr)
             }
             None => FileAttr::default(),
+        }
+    }
+
+    delegate! {
+        to self.inner.read().attr {
+            fn ino(&self) -> InodeNo;
+            fn type_(&self) -> InodeFileType;
+            fn mode(&self) -> InodeMode;
+            fn size(&self) -> usize;
+            fn atime(&self) -> Duration;
+            fn mtime(&self) -> Duration;
+        }
+        to self.inner.write().attr {
+            fn set_atime(&self, time: Duration);
+            fn set_mtime(&self, time: Duration);
         }
     }
 }

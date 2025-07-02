@@ -8,7 +8,8 @@ use config::SYSTEM_THREAD_STACK_SIZE;
 use core::mem::MaybeUninit;
 use spin::{Mutex, MutexGuard};
 use thread::{
-    AlignedStackStorage, Entry, OffsetOfGlobal, Stack, Thread, ThreadNode, ThreadPriority,
+    AlignedStackStorage, Entry, OffsetOfGlobal, Stack, Thread, ThreadKind, ThreadNode,
+    ThreadPriority,
 };
 
 type Head = ListHead<Thread, OffsetOfGlobal>;
@@ -91,7 +92,7 @@ impl Builder {
     }
 
     pub fn build(mut self) -> ThreadNode {
-        let thread = ThreadNode::new(Thread::new());
+        let thread = ThreadNode::new(Thread::new(ThreadKind::Normal));
         let mut w = thread.lock();
         let stack = self.stack.take().map_or_else(
             || Stack::Boxed(unsafe { Box::<AlignedStackStorage>::new_uninit().assume_init() }),
@@ -101,6 +102,12 @@ impl Builder {
         w.set_priority(self.priority);
         drop(w);
         GlobalQueueVisitor::add(thread.clone());
+
+        #[cfg(procfs)]
+        {
+            let _ = crate::vfs::trace_thread_create(thread.clone());
+        }
+
         return thread;
     }
 
@@ -124,17 +131,17 @@ pub(crate) struct SystemThreadStorage {
 }
 
 impl SystemThreadStorage {
-    pub(crate) const fn const_new() -> Self {
+    pub(crate) const fn const_new(kind: ThreadKind) -> Self {
         Self {
-            arc: ArcInner::<Thread>::new(Thread::new()),
+            arc: ArcInner::<Thread>::new(Thread::new(kind)),
             stack: SystemThreadStack {
                 rep: [0u8; SYSTEM_THREAD_STACK_SIZE],
             },
         }
     }
 
-    pub(crate) const fn new() -> Self {
-        Self::const_new()
+    pub(crate) const fn new(kind: ThreadKind) -> Self {
+        Self::const_new(kind)
     }
 }
 
@@ -146,6 +153,7 @@ pub(crate) fn build_static_thread(
     p: ThreadPriority,
     init_state: Uint,
     entry: Entry,
+    kind: ThreadKind,
 ) -> ThreadNode {
     let inner = &s.arc;
     let stack = &s.stack;
@@ -161,6 +169,7 @@ pub(crate) fn build_static_thread(
         entry,
     );
     w.set_priority(p);
+    w.set_kind(kind);
     assert!(init_state >= thread::CREATED && init_state <= thread::RETIRED);
     unsafe { w.set_state(init_state) };
     debug!(

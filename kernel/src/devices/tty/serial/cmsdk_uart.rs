@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
 use crate::{
-    arch,
-    boards::config::{UART0RX_IRQn, UART0TX_IRQn, SYSTEM_CORE_CLOCK},
+    arch::irq,
     devices::{
         tty::{
             serial::{SerialError, UartOps},
@@ -103,13 +102,13 @@ pub struct Uart {
 }
 
 impl Uart {
-    /// Constructs a new instance of the UART driver for a PL011 device at the
+    /// Constructs a new instance of the UART driver for a CMSDK UART device at the
     /// given base address.
     ///
     /// # Safety
     ///
     /// The given base address must point to the 14 MMIO control registers of a
-    /// PL011 device, which must be mapped into the address space of the process
+    /// CMSDK UART device, which must be mapped into the address space of the process
     /// as device memory and not have any other aliases.
     pub const unsafe fn new(base_address: *mut u32) -> Self {
         Self {
@@ -223,7 +222,7 @@ impl Uart {
 
     #[inline]
     fn registers(&self) -> &Registers {
-        // SAFETY: self.registers points to the control registers of a PL011 device which is
+        // SAFETY: self.registers points to the control registers of a CMSDK UART device which is
         // appropriately mapped, as promised by the caller of `Uart::new`.
         unsafe { &(*self.registers) }
     }
@@ -243,18 +242,53 @@ impl Drop for Uart {
     }
 }
 
-impl ErrorType for Uart {
+impl ErrorType for Driver {
     type Error = SerialError;
 }
 
-impl Write for Uart {
+pub struct Driver {
+    uart: Uart,
+    clock: u32,
+    rx_irq: irq::IrqNumber,
+    tx_irq: irq::IrqNumber,
+}
+
+impl Driver {
+    /// Constructs a new instance of the UART driver for a CMSDK UART device at the
+    /// given base address.
+    ///
+    /// # Safety
+    ///
+    /// The given base address must point to the 14 MMIO control registers of a
+    /// CMSDK UART device, which must be mapped into the address space of the process
+    /// as device memory and not have any other aliases.
+    pub unsafe fn new(
+        base_address: *mut u32,
+        clock: u32,
+        rx_irq: irq::IrqNumber,
+        tx_irq: irq::IrqNumber,
+    ) -> Self {
+        Self {
+            uart: Uart::new(base_address),
+            clock,
+            rx_irq,
+            tx_irq,
+        }
+    }
+
+    pub fn enable(&mut self, baud_rate: u32) {
+        self.uart.enable(self.clock, baud_rate);
+    }
+}
+
+impl Write for Driver {
     // write will block until all the data is transmitted
     fn write(&mut self, buf: &[u8]) -> Result<usize, SerialError> {
         assert!(!buf.is_empty());
         let mut count = 0;
         // write until the buffer is full
         while count < buf.len() {
-            match self.try_write_data(buf[count]) {
+            match self.uart.try_write_data(buf[count]) {
                 Ok(_) => count += 1,
                 Err(_e) => break,
             }
@@ -263,20 +297,20 @@ impl Write for Uart {
     }
 
     fn flush(&mut self) -> Result<(), SerialError> {
-        while self.is_transmitting() {
+        while self.uart.is_transmitting() {
             spin_loop();
         }
         Ok(())
     }
 }
 
-impl WriteReady for Uart {
+impl WriteReady for Driver {
     fn write_ready(&mut self) -> Result<bool, SerialError> {
-        Ok(!self.is_tx_fifo_full())
+        Ok(!self.uart.is_tx_fifo_full())
     }
 }
 
-impl Read for Uart {
+impl Read for Driver {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, SerialError> {
         if buf.is_empty() {
             return Ok(0);
@@ -284,7 +318,7 @@ impl Read for Uart {
 
         let mut count = 0;
         while count < buf.len() {
-            match self.read_data() {
+            match self.uart.read_data() {
                 Ok(Some(byte)) => {
                     buf[count] = byte;
                     count += 1;
@@ -298,79 +332,79 @@ impl Read for Uart {
     }
 }
 
-impl ReadReady for Uart {
+impl ReadReady for Driver {
     fn read_ready(&mut self) -> Result<bool, SerialError> {
-        Ok(self.is_rx_fifo_full())
+        Ok(self.uart.is_rx_fifo_full())
     }
 }
 
-impl UartOps for Uart {
+impl UartOps for Driver {
     fn setup(&mut self, termios: &Termios) -> Result<(), SerialError> {
-        self.enable(SYSTEM_CORE_CLOCK, termios.getospeed());
-        self.clear_interrupt();
-        arch::irq::enable_irq_with_priority(UART0RX_IRQn, arch::irq::Priority::Normal);
-        arch::irq::enable_irq_with_priority(UART0TX_IRQn, arch::irq::Priority::Normal);
+        self.enable(termios.getospeed());
+        self.uart.clear_interrupt();
+        irq::enable_irq_with_priority(self.rx_irq, irq::Priority::Normal);
+        irq::enable_irq_with_priority(self.tx_irq, irq::Priority::Normal);
         Ok(())
     }
 
     fn shutdown(&mut self) -> Result<(), SerialError> {
-        arch::irq::disable_irq(UART0RX_IRQn);
-        arch::irq::disable_irq(UART0TX_IRQn);
-        self.disable();
+        irq::disable_irq(self.rx_irq);
+        irq::disable_irq(self.tx_irq);
+        self.uart.disable();
         Ok(())
     }
 
     fn read_byte(&mut self) -> Result<u8, SerialError> {
-        match self.read_data()? {
+        match self.uart.read_data()? {
             Some(byte) => Ok(byte),
             None => Err(SerialError::BufferEmpty),
         }
     }
 
     fn write_byte(&mut self, byte: u8) -> Result<(), SerialError> {
-        self.write_data(byte);
+        self.uart.write_data(byte);
         Ok(())
     }
 
     fn write_str(&mut self, s: &str) -> Result<(), SerialError> {
         for c in s.as_bytes() {
-            self.write_data(*c);
+            self.uart.write_data(*c);
         }
         Ok(())
     }
 
     fn set_rx_interrupt(&mut self, enable: bool) {
         if enable {
-            self.enable_rx_interrupt();
+            self.uart.enable_rx_interrupt();
         } else {
-            self.disable_rx_interrupt();
+            self.uart.disable_rx_interrupt();
         }
     }
 
     fn set_tx_interrupt(&mut self, enable: bool) {
         if enable {
-            self.enable_tx_interrupt();
+            self.uart.enable_tx_interrupt();
         } else {
-            self.disable_tx_interrupt();
+            self.uart.disable_tx_interrupt();
         }
     }
 
     fn clear_rx_interrupt(&mut self) {
-        self.clear_rx_interrupt();
+        self.uart.clear_rx_interrupt();
     }
 
     fn clear_tx_interrupt(&mut self) {
-        self.clear_tx_interrupt();
+        self.uart.clear_tx_interrupt();
     }
 
     fn ioctl(&mut self, request: u32, arg: usize) -> Result<(), SerialError> {
         match DeviceRequest::from(request) {
             DeviceRequest::Config => {
                 let termios = unsafe { *(arg as *const Termios) };
-                self.enable(SYSTEM_CORE_CLOCK, termios.getospeed());
+                self.enable(termios.getospeed());
             }
             DeviceRequest::Close => {
-                self.disable();
+                self.uart.disable();
             }
             _ => return Err(SerialError::InvalidParameter),
         }

@@ -1,6 +1,5 @@
 //! C API for VFS operations  
 use crate::{
-    devices::DeviceId,
     error::code,
     vfs::{
         dcache::Dcache,

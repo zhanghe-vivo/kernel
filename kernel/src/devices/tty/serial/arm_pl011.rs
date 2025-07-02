@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2023-2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // SPDX-License-Identifier: MIT OR Apache-2.0
 use crate::{
-    boards::config::APBP_CLOCK,
+    arch::irq,
     devices::{
         tty::{
             serial::{SerialError, UartOps},
@@ -11,7 +11,7 @@ use crate::{
     },
 };
 use bitflags::bitflags;
-use core::fmt;
+use core::{fmt, ptr::NonNull};
 use embedded_io::{ErrorKind, ErrorType, Read, ReadReady, Write, WriteReady};
 use safe_mmio::{
     field, field_shared,
@@ -482,16 +482,44 @@ impl fmt::Write for Uart<'_> {
     }
 }
 
-impl<'a> ErrorType for Uart<'a> {
+impl<'a> Drop for Uart<'a> {
+    fn drop(&mut self) {
+        self.disable();
+    }
+}
+
+pub struct Driver<'a> {
+    uart: Uart<'a>,
+    clock: u32,
+    irq: irq::IrqNumber,
+}
+
+impl<'a> Driver<'a> {
+    pub fn new(base_address: u64, clock: u32, irq: irq::IrqNumber) -> Self {
+        Self {
+            uart: Uart::new(unsafe {
+                UniqueMmioPointer::new(NonNull::new(base_address as *mut _).unwrap())
+            }),
+            clock,
+            irq,
+        }
+    }
+
+    pub fn enable(&mut self, termios: &Termios) {
+        self.uart.enable(termios, self.clock);
+    }
+}
+
+impl<'a> ErrorType for Driver<'a> {
     type Error = SerialError;
 }
 
-impl<'a> Write for Uart<'a> {
+impl<'a> Write for Driver<'a> {
     fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
         let mut count = 0;
         // write until the buffer is full
         while count < buf.len() {
-            match self.try_write_data(buf[count]) {
+            match self.uart.try_write_data(buf[count]) {
                 Ok(_) => count += 1,
                 Err(_e) => break,
             }
@@ -500,18 +528,18 @@ impl<'a> Write for Uart<'a> {
     }
 
     fn flush(&mut self) -> Result<(), Self::Error> {
-        while self.is_busy() {}
+        while self.uart.is_busy() {}
         Ok(())
     }
 }
 
-impl<'a> WriteReady for Uart<'a> {
+impl<'a> WriteReady for Driver<'a> {
     fn write_ready(&mut self) -> Result<bool, SerialError> {
-        Ok(!self.is_tx_fifo_full())
+        Ok(!self.uart.is_tx_fifo_full())
     }
 }
 
-impl<'a> Read for Uart<'a> {
+impl<'a> Read for Driver<'a> {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, SerialError> {
         if buf.is_empty() {
             return Ok(0);
@@ -519,7 +547,7 @@ impl<'a> Read for Uart<'a> {
 
         let mut count = 0;
         while count < buf.len() {
-            match self.read_word() {
+            match self.uart.read_word() {
                 Ok(Some(byte)) => {
                     buf[count] = byte;
                     count += 1;
@@ -533,86 +561,80 @@ impl<'a> Read for Uart<'a> {
     }
 }
 
-impl<'a> ReadReady for Uart<'a> {
+impl<'a> ReadReady for Driver<'a> {
     fn read_ready(&mut self) -> Result<bool, SerialError> {
-        Ok(!self.is_rx_fifo_empty())
+        Ok(!self.uart.is_rx_fifo_empty())
     }
 }
 
-impl<'a> Drop for Uart<'a> {
-    fn drop(&mut self) {
-        self.disable();
-    }
-}
-
-impl<'a> UartOps for Uart<'a> {
+impl<'a> UartOps for Driver<'a> {
     fn setup(&mut self, termios: &Termios) -> Result<(), SerialError> {
-        self.enable(termios, APBP_CLOCK);
-        self.clear_interrupts(ALL_INTERRUPTS);
+        self.enable(termios);
+        self.uart.clear_interrupts(ALL_INTERRUPTS);
         Ok(())
     }
 
     fn shutdown(&mut self) -> Result<(), SerialError> {
-        self.disable();
+        self.uart.disable();
         Ok(())
     }
 
     fn read_byte(&mut self) -> Result<u8, SerialError> {
-        match self.read_word()? {
+        match self.uart.read_word()? {
             Some(byte) => Ok(byte),
             None => Err(SerialError::BufferEmpty),
         }
     }
 
     fn write_byte(&mut self, byte: u8) -> Result<(), SerialError> {
-        self.write_word(byte);
+        self.uart.write_word(byte);
         Ok(())
     }
 
     fn write_str(&mut self, s: &str) -> Result<(), SerialError> {
         for c in s.as_bytes() {
-            while self.is_tx_fifo_full() {}
-            self.write_word(*c);
+            while self.uart.is_tx_fifo_full() {}
+            self.uart.write_word(*c);
         }
         Ok(())
     }
 
     fn set_rx_interrupt(&mut self, enable: bool) {
-        let mut masks = self.interrupt_masks();
+        let mut masks = self.uart.interrupt_masks();
         if enable {
             masks |= Interrupts::RXI;
         } else {
             masks &= !Interrupts::RXI;
         }
-        self.set_interrupt_masks(masks);
+        self.uart.set_interrupt_masks(masks);
     }
 
     fn set_tx_interrupt(&mut self, enable: bool) {
-        let mut masks = self.interrupt_masks();
+        let mut masks = self.uart.interrupt_masks();
         if enable {
             masks |= Interrupts::TXI;
         } else {
             masks &= !Interrupts::TXI;
         }
-        self.set_interrupt_masks(masks);
+        self.uart.set_interrupt_masks(masks);
     }
 
     fn clear_rx_interrupt(&mut self) {
-        self.clear_interrupts(Interrupts::RXI);
+        self.uart.clear_interrupts(Interrupts::RXI);
     }
 
     fn clear_tx_interrupt(&mut self) {
-        self.clear_interrupts(Interrupts::TXI);
+        self.uart.clear_interrupts(Interrupts::TXI);
     }
 
     fn ioctl(&mut self, request: u32, arg: usize) -> Result<(), SerialError> {
         match DeviceRequest::from(request) {
             DeviceRequest::Config => {
                 let termios = unsafe { *(arg as *const Termios) };
-                self.enable(&termios, APBP_CLOCK);
+                self.enable(&termios);
             }
             DeviceRequest::Close => {
-                self.disable();
+                self.uart.disable();
             }
             _ => return Err(SerialError::InvalidParameter),
         }

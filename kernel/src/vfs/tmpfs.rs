@@ -21,6 +21,7 @@ use core::{
     sync::atomic::{AtomicBool, AtomicUsize, Ordering},
     time::Duration,
 };
+use delegate::delegate;
 use log::{debug, warn};
 use spin::RwLock;
 
@@ -580,24 +581,16 @@ impl InodeOps for TmpInode {
                 };
                 FileAttr::new(dev, rdev, &inner.attr)
             }
-            None => FileAttr::default(),
+            None => FileAttr::new(0, 0, &self.inner.read().attr),
         }
     }
 
     fn lookup(&self, name: &str) -> Result<Arc<dyn InodeOps>, Error> {
-        if name == "." {
-            return Ok(self.this.upgrade().unwrap());
-        }
-
         let inner = self.inner.read();
         let Some(dir) = inner.as_dir() else {
             debug!("lookup: inode is not a directory");
             return Err(code::ENOTDIR);
         };
-
-        if name == ".." {
-            return Ok(dir.parent.upgrade().unwrap());
-        }
         let inode = dir.find(name).ok_or(code::ENOENT)?;
         Ok(inode)
     }
@@ -609,25 +602,19 @@ impl InodeOps for TmpInode {
         }
     }
 
-    fn type_(&self) -> InodeFileType {
-        self.inner.read().attr.type_()
-    }
-    fn mode(&self) -> InodeMode {
-        self.inner.read().attr.mode()
-    }
-    fn size(&self) -> usize {
-        self.inner.read().attr.size()
-    }
-    fn atime(&self) -> Duration {
-        self.inner.read().attr.atime
-    }
-    fn mtime(&self) -> Duration {
-        self.inner.read().attr.mtime
-    }
-    fn set_atime(&self, time: Duration) {
-        self.inner.write().attr.atime = time;
-    }
-    fn set_mtime(&self, time: Duration) {
-        self.inner.write().attr.mtime = time;
+    delegate! {
+        to self.inner.read().attr {
+            fn ino(&self) -> InodeNo;
+            fn type_(&self) -> InodeFileType;
+            fn mode(&self) -> InodeMode;
+            fn size(&self) -> usize;
+            fn atime(&self) -> Duration;
+            fn mtime(&self) -> Duration;
+        }
+
+        to self.inner.write().attr {
+            fn set_atime(&self, time: Duration);
+            fn set_mtime(&self, time: Duration);
+        }
     }
 }

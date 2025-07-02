@@ -4,13 +4,13 @@ use crate::{
     config::MAX_THREAD_PRIORITY,
     scheduler::RUNNING_THREADS,
     support,
-    thread::{self, Entry, SystemThreadStorage, Thread, ThreadNode},
+    thread::{self, Entry, SystemThreadStorage, Thread, ThreadKind, ThreadNode},
 };
 use bluekernel_kconfig::NUM_CORES;
 use core::mem::MaybeUninit;
 
 static IDLE_THREAD_BLOCKS: [SystemThreadStorage; NUM_CORES] =
-    [const { SystemThreadStorage::new() }; NUM_CORES];
+    [const { SystemThreadStorage::new(ThreadKind::Idle) }; NUM_CORES];
 static mut IDLE_THREADS: [MaybeUninit<ThreadNode>; NUM_CORES] =
     [const { MaybeUninit::zeroed() }; NUM_CORES];
 
@@ -25,6 +25,7 @@ fn init_idle_thread(i: usize) {
         MAX_THREAD_PRIORITY,
         thread::RUNNING,
         Entry::C(fake_idle_thread_entry),
+        ThreadKind::Idle,
     );
     unsafe {
         RUNNING_THREADS[i].write(arc.clone());
@@ -42,4 +43,10 @@ pub(super) fn current_idle_thread<'a>() -> &'a ThreadNode {
     let _dig = support::DisableInterruptGuard::new();
     let id = arch::current_cpu_id();
     return unsafe { IDLE_THREADS[id].assume_init_ref() };
+}
+
+#[inline]
+pub fn get_idle_thread<'a>(cpu_id: usize) -> &'a ThreadNode {
+    let _dig = support::DisableInterruptGuard::new();
+    return unsafe { IDLE_THREADS[cpu_id].assume_init_ref() };
 }

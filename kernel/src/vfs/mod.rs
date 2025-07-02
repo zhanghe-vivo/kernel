@@ -1,5 +1,3 @@
-#[cfg(procfs)]
-use crate::vfs::procfs::ProcFileSystem;
 use crate::{
     error::Error,
     vfs::{
@@ -25,13 +23,16 @@ mod inode;
 mod inode_mode;
 mod mount;
 mod path;
+#[cfg(procfs)]
+mod procfs;
+#[cfg(procfs)]
+pub use procfs::{trace_thread_close, trace_thread_create};
 mod root;
 pub mod syscalls;
 mod tmpfs;
 mod utils;
 use alloc::string::String;
 pub use file::AccessMode;
-use semihosting::println;
 
 /// Initialize the virtual file system  
 pub fn vfs_init() -> Result<(), Error> {
@@ -91,19 +92,17 @@ pub fn vfs_init() -> Result<(), Error> {
 
     #[cfg(procfs)]
     {
-        use alloc::sync::Arc;
-        // Register procfs filesystem
-        let procfs = Arc::new(ProcFileSystem::new());
-        vfs_manager.register_fs("procfs", procfs.clone())?;
-        // Mount procfs to /proc
-        if vfs_posix::mount(None, "/proc", "procfs", 0, None) == 0 {
-            debug!("Mounted procfs at '/proc'");
-        } else {
-            warn!("Failed to mount procfs");
-            return Err(code::EAGAIN);
-        }
-
-        ProcFileSystem::init()?;
+        let proc_name = String::from("proc");
+        let procfs = procfs::get_procfs();
+        let proc_dir = cwd.new_child(
+            proc_name.as_str(),
+            InodeFileType::Directory,
+            InodeMode::from(0o555),
+            || None,
+        )?;
+        let procfs_mount_point = Dcache::new(procfs.root_inode(), proc_name, cwd.get_weak_ref());
+        procfs_mount_point.mount(procfs.clone())?;
+        debug!("Mounted procfs at '/proc'");
     }
 
     debug!("VFS initialized successfully");

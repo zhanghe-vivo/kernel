@@ -1,6 +1,6 @@
 // pub(crate) mod asm;
 // pub(crate) mod mmu;
-pub(crate) mod irq;
+pub mod irq;
 pub(crate) mod registers;
 // pub(crate) mod vector;
 // mod exception;

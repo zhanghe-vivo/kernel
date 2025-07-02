@@ -1,17 +1,10 @@
-use crate::{allocator, error::Error, vfs::procfs::*};
+use crate::{allocator, error::Error, vfs::procfs::ProcFileOps};
 use alloc::{format, string::String, vec::Vec};
 use core::fmt::Write;
-pub struct ProcMemoryInfoFileOp {
-    data: Vec<u8>,
-}
 
-impl ProcMemoryInfoFileOp {
-    pub fn new() -> Self {
-        ProcMemoryInfoFileOp { data: Vec::new() }
-    }
-}
+pub(crate) struct MemoryInfo;
 
-impl ProcNodeOperationTrait for ProcMemoryInfoFileOp {
+impl ProcFileOps for MemoryInfo {
     fn get_content(&self) -> Result<Vec<u8>, Error> {
         let meminfo = allocator::memory_info();
         let available = meminfo.total - meminfo.used;
@@ -30,7 +23,7 @@ impl ProcNodeOperationTrait for ProcMemoryInfoFileOp {
         Ok(result.as_bytes().to_vec())
     }
 
-    fn set_content(&self, content: Vec<u8>) -> Result<(usize), Error> {
+    fn set_content(&self, content: Vec<u8>) -> Result<usize, Error> {
         Ok(0)
     }
 }

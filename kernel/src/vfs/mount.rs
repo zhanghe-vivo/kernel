@@ -82,7 +82,6 @@ pub fn get_mount_manager() -> &'static MountManager {
 pub fn get_fs(fs_type: &str, device: &str) -> Option<Arc<dyn FileSystem>> {
     match fs_type {
         "tmpfs" => Some(TmpFileSystem::new()),
-        "devfs" => Some(TmpFileSystem::new()),
         #[cfg(virtio)]
         "fatfs" => match FatFileSystem::new(device) {
             Ok(fs) => Some(fs),
@@ -94,8 +93,6 @@ pub fn get_fs(fs_type: &str, device: &str) -> Option<Arc<dyn FileSystem>> {
                 None
             }
         },
-        #[cfg(procfs)]
-        "procfs" => Some(ProcFileSystem::new()),
         _ => None,
     }
 }

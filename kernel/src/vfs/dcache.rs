@@ -87,7 +87,9 @@ impl Dcache {
         let inode =
             inode_creator().unwrap_or_else(|| self.inode.create(name, type_, mode).unwrap());
         let child = Self::new(inode, String::from(name), self.get_weak_ref());
-        children.insert(String::from(name), child.clone());
+        if child.is_dcacheable() {
+            children.insert(String::from(name), child.clone());
+        }
         Ok(child)
     }
 
@@ -108,7 +110,9 @@ impl Dcache {
         let inode = self.inode.create_device(name, mode, dev)?;
         let name_str = String::from(name);
         let child = Self::new(inode, name_str.clone(), self.get_weak_ref());
-        children.insert(name_str, child.clone());
+        if child.is_dcacheable() {
+            children.insert(name_str, child.clone());
+        }
         Ok(child)
     }
 
@@ -284,7 +288,9 @@ impl Dcache {
         self.inode.link(&old.inode, new_name)?;
         let new_name_str = String::from(new_name);
         let new_child = Self::new(old.inode.clone(), new_name_str.clone(), self.get_weak_ref());
-        children.insert(new_name_str, new_child);
+        if new_child.is_dcacheable() {
+            children.insert(new_name_str, new_child);
+        }
         Ok(())
     }
 
@@ -360,7 +366,9 @@ impl Dcache {
             }
             self.inode.rename(old_name, &self.inode, new_name)?;
             children.remove(old_name);
-            children.insert(String::from(new_name), child);
+            if child.is_dcacheable() {
+                children.insert(String::from(new_name), child);
+            }
         } else {
             let mut new_children = new_dir.children.write();
             if new_children.contains_key(new_name) {
@@ -370,7 +378,9 @@ impl Dcache {
             self.inode.rename(old_name, &new_dir.inode, new_name)?;
             children.remove(old_name);
             child.set_name_and_parent(new_name, new_dir.this.clone());
-            new_children.insert(String::from(new_name), child);
+            if child.is_dcacheable() {
+                new_children.insert(String::from(new_name), child);
+            }
         }
 
         Ok(())
@@ -388,6 +398,7 @@ impl Dcache {
                 overrided_children.insert(overrided_child.name(), overrided_child);
             }
         }
+
         children.insert(name, mount_point);
         Ok(())
     }
@@ -432,6 +443,7 @@ impl Dcache {
             pub fn set_atime(&self, time: Duration);
             pub fn mtime(&self) -> Duration;
             pub fn set_mtime(&self, time: Duration);
+            pub fn is_dcacheable(&self) -> bool;
         }
     }
 }

@@ -2,10 +2,10 @@ extern crate alloc;
 use crate::{
     arch,
     support::DisableInterruptGuard,
-    sync::{SpinLock, SpinLockGuard},
+    sync::SpinLockGuard,
     thread,
     thread::{Entry, GlobalQueueVisitor, Thread, ThreadNode},
-    time::{timer::Timer, WAITING_FOREVER},
+    time::{self, timer::Timer, WAITING_FOREVER},
     types::{Arc, IlistHead},
 };
 use alloc::boxed::Box;
@@ -20,6 +20,7 @@ mod fifo;
 #[cfg(scheduler = "global")]
 mod global_scheduler;
 mod idle;
+pub use idle::get_idle_thread;
 mod wait_queue;
 
 #[cfg(scheduler = "fifo")]
@@ -108,13 +109,13 @@ pub(crate) extern "C" fn save_context_finish_hook(hook: Option<&mut ContextSwitc
     let mut dropper = hook.dropper.take();
     let next = hook.next_thread.take();
     compiler_fence(Ordering::SeqCst);
-    let Some(next) = next else {
+    let Some(mut next) = next else {
         panic!("Next thread must be specified!");
     };
     {
         let ok = next.transfer_state(thread::READY, thread::RUNNING);
         assert!(ok);
-        let old = set_current_thread(next.clone());
+        let mut old = set_current_thread(next.clone());
         #[cfg(debugging_scheduler)]
         crate::trace!(
             "Switching from 0x{:x}: 0x{:x} pri:{} to 0x{:x}: 0x{:x} pri:{}",
@@ -125,6 +126,10 @@ pub(crate) extern "C" fn save_context_finish_hook(hook: Option<&mut ContextSwitc
             next.saved_sp(),
             next.priority(),
         );
+
+        let cycles = time::get_sys_cycles();
+        old.lock().increment_cycles(cycles);
+        next.lock().set_start_cycles(cycles);
     }
     compiler_fence(Ordering::SeqCst);
     ready_thread.map(|t| {
@@ -195,12 +200,18 @@ pub(crate) extern "C" fn yield_me_and_return_next_sp(old_sp: usize) -> usize {
 pub fn retire_me() -> ! {
     let next = next_ready_thread().map_or_else(|| idle::current_idle_thread().clone(), |v| v);
     let to_sp = next.saved_sp();
+
+    let old = current_thread();
+    #[cfg(procfs)]
+    {
+        let _ = crate::vfs::trace_thread_close(old.clone());
+    }
     // FIXME: Some WaitQueue might still share the ownership of
     // the `old`, shall we record which WaitQueue the `old`
     // belongs to? Weak reference might not help to reduce memory
     // usage.
     let mut hooks = ContextSwitchHookHolder::new(next);
-    hooks.set_retiring_thread(current_thread());
+    hooks.set_retiring_thread(old);
     arch::restore_context_with_hook(to_sp, &mut hooks as *mut _);
 }
 

@@ -6,8 +6,7 @@ use crate::{
     scheduler, static_arc,
     support::ArcBufferingQueue,
     sync::atomic_wait,
-    thread,
-    thread::{Entry, SystemThreadStorage, ThreadNode},
+    thread::{self, Entry, SystemThreadStorage, ThreadKind, ThreadNode},
     types::{
         impl_simple_intrusive_adapter, Arc, IRwLock, IlistHead, RwLockWriteGuard as WriteGuard,
     },
@@ -47,7 +46,7 @@ impl Tasklet {
 }
 
 type AsyncWorkQueue = ArcBufferingQueue<Tasklet, TaskletNode, 2>;
-static POLLER_STORAGE: SystemThreadStorage = SystemThreadStorage::new();
+static POLLER_STORAGE: SystemThreadStorage = SystemThreadStorage::new(ThreadKind::AsyncPoller);
 static mut POLLER: MaybeUninit<ThreadNode> = MaybeUninit::zeroed();
 static POLLER_WAKER: AtomicUsize = AtomicUsize::new(0);
 static_arc! {
@@ -62,6 +61,7 @@ pub(crate) fn init() {
         MAX_THREAD_PRIORITY,
         thread::CREATED,
         Entry::C(poll),
+        ThreadKind::AsyncPoller,
     );
     let ok = scheduler::queue_ready_thread(thread::CREATED, poller);
     debug_assert!(ok);

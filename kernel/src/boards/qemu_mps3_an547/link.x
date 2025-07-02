@@ -84,7 +84,7 @@ SECTIONS
     . = ALIGN(4);
     __copy_table_start = .;
     __copy_table_end = .;
-  } > FLASH
+  } > FLASH_EXT
 
   __etext = ALIGN (4);
 

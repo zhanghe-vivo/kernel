@@ -40,11 +40,11 @@ static GLOBAL: PosixAllocator = PosixAllocator;
 #[panic_handler]
 fn oops(info: &core::panic::PanicInfo) -> ! {
     // TODO: Use libc's printf.
-    #[cfg(test)]
-    {
-        semihosting::println!("{}", info);
-        semihosting::println!("{}", info.message());
-    }
+    //#[cfg(test)]
+    //{
+    semihosting::println!("{}", info);
+    semihosting::println!("{}", info.message());
+    //}
     loop {}
 }
 

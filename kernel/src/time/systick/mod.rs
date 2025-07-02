@@ -1,4 +1,8 @@
-use crate::{arch::irq::IrqNumber, config, scheduler, time::timer};
+use crate::{
+    arch::{self, irq::IrqNumber},
+    config, scheduler,
+    time::timer,
+};
 use core::{
     cell::UnsafeCell,
     sync::atomic::{AtomicUsize, Ordering},

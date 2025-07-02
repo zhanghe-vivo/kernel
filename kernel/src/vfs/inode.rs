@@ -74,16 +74,16 @@ impl InodeAttr {
     pub fn size(&self) -> usize {
         self.size
     }
-    fn atime(&self) -> Duration {
+    pub fn atime(&self) -> Duration {
         self.atime
     }
-    fn set_atime(&mut self, time: Duration) {
+    pub fn set_atime(&mut self, time: Duration) {
         self.atime = time;
     }
-    fn mtime(&self) -> Duration {
+    pub fn mtime(&self) -> Duration {
         self.mtime
     }
-    fn set_mtime(&mut self, time: Duration) {
+    pub fn set_mtime(&mut self, time: Duration) {
         self.mtime = time;
     }
     pub fn set_size(&mut self, size: usize) {
@@ -165,10 +165,14 @@ pub trait InodeOps: Any + Sync + Send {
         warn!("resize is not supported");
         Err(code::EINVAL)
     }
+    fn is_dcacheable(&self) -> bool {
+        true
+    }
     fn fs(&self) -> Option<Arc<dyn FileSystem>>;
+    fn ino(&self) -> InodeNo;
+    fn type_(&self) -> InodeFileType;
     fn inode_attr(&self) -> InodeAttr;
     fn file_attr(&self) -> FileAttr;
-    fn type_(&self) -> InodeFileType;
     fn mode(&self) -> InodeMode;
     fn size(&self) -> usize;
     fn atime(&self) -> Duration;

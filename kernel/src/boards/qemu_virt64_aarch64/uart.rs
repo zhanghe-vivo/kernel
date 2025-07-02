@@ -3,7 +3,7 @@ use crate::{
     arch::{irq, irq::IrqHandler},
     devices::{
         tty::{
-            serial::{arm_pl011::Uart, Serial, UartOps},
+            serial::{arm_pl011::Driver, Serial, UartOps},
             termios::{Cflags, Iflags, Lflags, Oflags, Termios},
         },
         DeviceManager,
@@ -21,14 +21,10 @@ use embedded_io::{ErrorKind, ErrorType, Read, ReadReady, Write, WriteReady};
 use safe_mmio::UniqueMmioPointer;
 use spin::Once;
 
-static UART0: Once<SpinLock<Uart<'static>>> = Once::new();
+static UART0: Once<SpinLock<Driver<'static>>> = Once::new();
 pub fn get_early_uart() -> &'static SpinLock<dyn UartOps> {
     UART0.call_once(|| {
-        let mut uart = unsafe {
-            Uart::new(UniqueMmioPointer::new(
-                NonNull::new(PL011_UART0_BASE as *mut _).unwrap(),
-            ))
-        };
+        let mut uart = unsafe { Driver::new(PL011_UART0_BASE, APBP_CLOCK, PL011_UART0_IRQNUM) };
         let termios = Termios::new(
             Iflags::default(),
             Oflags::default(),
@@ -37,7 +33,7 @@ pub fn get_early_uart() -> &'static SpinLock<dyn UartOps> {
             19200,
             19200,
         );
-        uart.enable(&termios, APBP_CLOCK);
+        uart.enable(&termios);
         SpinLock::new(uart)
     })
 }
@@ -46,11 +42,7 @@ static SERIAL0: Once<Arc<Serial>> = Once::new();
 
 pub fn get_serial0() -> &'static Arc<Serial> {
     SERIAL0.call_once(|| {
-        let mut uart = unsafe {
-            Uart::new(UniqueMmioPointer::new(
-                NonNull::new(PL011_UART0_BASE as *mut _).unwrap(),
-            ))
-        };
+        let mut uart = unsafe { Driver::new(PL011_UART0_BASE, APBP_CLOCK, PL011_UART0_IRQNUM) };
         let termios = Termios::new(
             Iflags::default(),
             Oflags::default(),
@@ -59,7 +51,7 @@ pub fn get_serial0() -> &'static Arc<Serial> {
             19200,
             19200,
         );
-        uart.enable(&termios, APBP_CLOCK);
+        uart.enable(&termios);
         Arc::new(Serial::new(0, termios, Arc::new(SpinLock::new(uart))))
     })
 }

@@ -56,12 +56,16 @@ fn test_futex_thread_wait() {
     }
     let t = Builder::new(Entry::Posix(thread_entry, core::ptr::null_mut())).build();
     scheduler::queue_ready_thread(t.state(), t);
+    #[cfg(aarch64)]
     scheduler::yield_me();
+
     TEST_FUTEX_WAIT.fetch_add(1, Ordering::Relaxed);
     // Wake up the waiting thread
     let addr = &TEST_FUTEX_WAIT as *const _ as usize;
     match atomic_wake(addr, 1) {
         Ok(c) => {
+            // FIXME: aarch64 not suport timeout yet
+            #[cfg(aarch64)]
             scheduler::yield_me();
             if c == 1 {
                 loop {

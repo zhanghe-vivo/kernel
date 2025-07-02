@@ -1,10 +1,10 @@
 #![allow(dead_code)]
 use crate::{arch, time};
+use bluekernel_kconfig::NUM_CORES;
 use core::sync::atomic::{AtomicU32, Ordering};
 
 // nested irq counter
-pub(crate) static IRQ_NEST_COUNT: [AtomicU32; bluekernel_kconfig::NUM_CORES] =
-    [const { AtomicU32::new(0) }; bluekernel_kconfig::NUM_CORES];
+pub(crate) static IRQ_NEST_COUNT: [AtomicU32; NUM_CORES] = [const { AtomicU32::new(0) }; NUM_CORES];
 
 pub struct IrqTrace {
     irq_number: arch::irq::IrqNumber,
@@ -23,8 +23,8 @@ impl IrqTrace {
         {
             let trace_info: &irq_trace::IrqTraceInfo =
                 &irq_trace::IRQ_TRACE_INFOS[arch::current_cpu_id()];
-            *(trace_info.last_irq_enter_cycle.write()) = time::get_sysclock_cycle();
-            irq_trace::IRQ_COUNTS[usize::from(irq_number)].fetch_add(1, Ordering::Relaxed);
+            *(trace_info.last_irq_enter_cycle.write()) = time::get_sys_cycles();
+            irq_trace::IRQ_COUNTS[usize::from(self.irq_number)].fetch_add(1, Ordering::Relaxed);
         }
     }
 
@@ -32,7 +32,7 @@ impl IrqTrace {
         let _ = IRQ_NEST_COUNT[arch::current_cpu_id()].fetch_sub(1, Ordering::Relaxed);
         #[cfg(procfs)]
         {
-            let current_cycle = time::get_sysclock_cycle();
+            let current_cycle = time::get_sys_cycles();
             let trace_info: &irq_trace::IrqTraceInfo =
                 &irq_trace::IRQ_TRACE_INFOS[arch::current_cpu_id()];
             let irq_enter_cycle = *(trace_info.last_irq_enter_cycle.read());
@@ -54,20 +54,21 @@ pub fn is_in_irq() -> bool {
 
 #[cfg(procfs)]
 pub mod irq_trace {
-    use crate::{arch::interrupt::INTERRUPT_TABLE_LEN, cpu::CPUS_NUMBER};
+    use crate::arch::irq::INTERRUPT_TABLE_LEN;
+    use bluekernel_kconfig::NUM_CORES;
     use core::sync::atomic::AtomicU32;
     use spin::RwLock as SpinRwLock;
 
     pub static IRQ_COUNTS: [AtomicU32; INTERRUPT_TABLE_LEN] =
-        { [const { AtomicU32::new(0) }; INTERRUPT_TABLE_LEN] };
+        [const { AtomicU32::new(0) }; INTERRUPT_TABLE_LEN];
 
-    pub static IRQ_TRACE_INFOS: [IrqTraceInfo; CPUS_NUMBER] = {
+    pub static IRQ_TRACE_INFOS: [IrqTraceInfo; NUM_CORES] = {
         [const {
             IrqTraceInfo {
                 last_irq_enter_cycle: SpinRwLock::new(0),
                 total_irq_process_cycle: SpinRwLock::new(0),
             }
-        }; CPUS_NUMBER]
+        }; NUM_CORES]
     };
 
     pub struct IrqTraceInfo {

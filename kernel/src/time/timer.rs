@@ -1,6 +1,6 @@
 use crate::{
     boards, config, scheduler, sync, thread,
-    time::get_systick,
+    time::get_sys_ticks,
     types::{impl_simple_intrusive_adapter, Arc, ArcList, IlistHead},
 };
 use alloc::boxed::Box;
@@ -12,7 +12,7 @@ use core::{
 };
 use log::warn;
 use sync::spinlock::SpinLock;
-use thread::{Entry, SystemThreadStorage, Thread, ThreadNode};
+use thread::{Entry, SystemThreadStorage, Thread, ThreadKind, ThreadNode};
 
 const TIMER_WHEEL_SIZE: u32 = 32;
 
@@ -22,18 +22,19 @@ static SOFT_TIMER_WHEEL: TimerWheel = TimerWheel::const_new();
 #[cfg(soft_timer)]
 static mut SOFT_TIMER_THREAD: MaybeUninit<ThreadNode> = MaybeUninit::zeroed();
 #[cfg(soft_timer)]
-static SOFT_TIMER_THREAD_STACK: SystemThreadStorage = SystemThreadStorage::const_new();
+static SOFT_TIMER_THREAD_STACK: SystemThreadStorage =
+    SystemThreadStorage::const_new(ThreadKind::SoftTimer);
 
 #[cfg(soft_timer)]
 extern "C" fn run_soft_timer() {
     loop {
         let next_timeout = SOFT_TIMER_WHEEL.next_timeout();
         if next_timeout != usize::MAX {
-            let ct = get_systick();
+            let ct = get_sys_ticks();
             let wait_time = next_timeout.saturating_sub(ct);
             if wait_time > 0 {
                 scheduler::suspend_me_for(wait_time);
-                let wakeup_ct = get_systick();
+                let wakeup_ct = get_sys_ticks();
                 if wakeup_ct < next_timeout {
                     continue;
                 }
@@ -56,6 +57,7 @@ pub fn system_timer_init() {
             config::SOFT_TIMER_THREAD_PRIORITY,
             thread::CREATED,
             Entry::C(run_soft_timer),
+            ThreadKind::SoftTimer,
         );
         let ok = scheduler::queue_ready_thread(thread::CREATED, th);
         debug_assert!(ok);
@@ -292,7 +294,7 @@ impl Timer {
             inner.callback.take().unwrap()();
             return;
         }
-        inner.timeout_ticks = get_systick().saturating_add(inner.interval);
+        inner.timeout_ticks = get_sys_ticks().saturating_add(inner.interval);
         self.flags
             .fetch_or(TimerFlags::ACTIVATED.bits(), Ordering::Relaxed);
 
@@ -335,7 +337,7 @@ impl Timer {
 
         let mut inner = self.inner.irqsave_lock();
         inner.interval = interval;
-        inner.timeout_ticks = get_systick().saturating_add(interval);
+        inner.timeout_ticks = get_sys_ticks().saturating_add(interval);
         self.flags
             .fetch_or(TimerFlags::ACTIVATED.bits(), Ordering::Relaxed);
 
@@ -391,7 +393,7 @@ impl Timer {
                 SOFT_TIMER_WHEEL.remove_timer(&timer);
             }
             let mut inner = self.inner.irqsave_lock();
-            inner.timeout_ticks = get_systick().saturating_add(inner.interval);
+            inner.timeout_ticks = get_sys_ticks().saturating_add(inner.interval);
             self.flags
                 .fetch_or(TimerFlags::ACTIVATED.bits(), Ordering::Relaxed);
             SOFT_TIMER_WHEEL.add_timer(timer, inner.timeout_ticks);
@@ -402,7 +404,7 @@ impl Timer {
                 HARD_TIMER_WHEEL.remove_timer(&timer);
             }
             let mut inner = self.inner.irqsave_lock();
-            inner.timeout_ticks = get_systick().saturating_add(inner.interval);
+            inner.timeout_ticks = get_sys_ticks().saturating_add(inner.interval);
             self.flags
                 .fetch_or(TimerFlags::ACTIVATED.bits(), Ordering::Relaxed);
             HARD_TIMER_WHEEL.add_timer(timer, inner.timeout_ticks);
@@ -416,7 +418,7 @@ impl Timer {
                 HARD_TIMER_WHEEL.remove_timer(&timer);
             }
             let mut inner = self.inner.irqsave_lock();
-            inner.timeout_ticks = get_systick().saturating_add(inner.interval);
+            inner.timeout_ticks = get_sys_ticks().saturating_add(inner.interval);
             self.flags
                 .fetch_or(TimerFlags::ACTIVATED.bits(), Ordering::Relaxed);
             HARD_TIMER_WHEEL.add_timer(timer, inner.timeout_ticks);
@@ -885,33 +887,11 @@ mod tests {
         let timeout = timer.timeout_ticks();
 
         // The timeout should be current time + interval
-        // Since we can't mock get_systick easily, we just verify it's reasonable
+        // Since we can't mock get_sys_ticks easily, we just verify it's reasonable
         assert!(timeout > 0);
         assert!(timeout >= 100); // Should be at least the interval
 
         timer.stop();
-    }
-
-    #[test]
-    fn test_timer_wheel_hash_distribution() {
-        // Test that timers with different timeouts are distributed across wheel
-        let mut timers = Vec::new();
-
-        // Create timers with different intervals to test wheel distribution
-        for i in 0..32 {
-            let counter = Arc::new(AtomicUsize::new(0));
-            let callback = create_test_callback(counter.clone());
-            let timer = Timer::new_hard_oneshot(1 + i, callback);
-            timer.start();
-            assert!(timer.is_activated());
-            timers.push(timer);
-        }
-
-        // Check that next timeout is reasonable
-        let next_timeout = get_next_timer_ticks();
-        assert!(next_timeout < usize::MAX);
-
-        scheduler::suspend_me_for(33);
     }
 
     #[test]

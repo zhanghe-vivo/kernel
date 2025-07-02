@@ -13,3 +13,5 @@ impl From<IrqNumber> for usize {
         irq.0
     }
 }
+
+pub const INTERRUPT_TABLE_LEN: usize = 128;

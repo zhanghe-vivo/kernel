@@ -73,6 +73,14 @@ pub(crate) fn set_timeout_after(ns: usize) {
     set_timecmp(current_ticks() + ns / NS_PER_TICK);
 }
 
+pub(crate) fn get_cycles_to_duration(cycles: u64) -> core::time::Duration {
+    return core::time::Duration::from_nanos(cycles);
+}
+
+pub(crate) fn get_cycles_to_ms(cycles: u64) -> u64 {
+    return cycles / 1_000_000;
+}
+
 pub(crate) fn ticks_to_duration(ticks: usize) -> core::time::Duration {
     return core::time::Duration::from_nanos((ticks * NS_PER_TICK) as u64);
 }

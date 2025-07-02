@@ -100,6 +100,7 @@ build_rust("kernel_integration_test") {
     deps += [ "//external/minicov/v0.3.7:minicov" ]
   }
   cfgs = bluekernel_default_cfgs
+  configs += [ "//kernel/kconfig:kconfigs" ]
   inputs = [ "//kernel/kernel/src/boards/$board/link.x" ]
   rustflags = test_image_rustflags
 }

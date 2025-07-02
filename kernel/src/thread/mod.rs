@@ -34,6 +34,21 @@ impl core::fmt::Debug for Entry {
 }
 
 #[derive(Debug, Copy, Clone)]
+pub enum ThreadKind {
+    AsyncPoller,
+    Idle,
+    Normal,
+    #[cfg(soft_timer)]
+    SoftTimer,
+}
+
+impl Default for ThreadKind {
+    fn default() -> Self {
+        ThreadKind::Normal
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
 #[repr(align(16))]
 pub struct AlignedStackStorage([u8; config::DEFAULT_STACK_SIZE]);
 
@@ -75,21 +90,37 @@ pub const RUNNING: Uint = 2;
 pub const SUSPENDED: Uint = 3;
 pub const RETIRED: Uint = 4;
 
+// ThreadStats is protected by thread scheduler.
 #[derive(Debug, Default)]
 pub struct ThreadStats {
-    cycles: AtomicUsize,
+    start: u64,
+    cycles: u64,
 }
 
 impl ThreadStats {
     pub const fn new() -> Self {
         Self {
-            cycles: AtomicUsize::new(0),
+            start: 0,
+            cycles: 0,
         }
     }
 
-    pub fn increment_cycles(&self, addend: usize) -> &Self {
-        self.cycles.fetch_add(addend, Ordering::Relaxed);
-        return self;
+    pub fn increment_cycles(&mut self, cycles: u64) {
+        self.cycles += cycles.saturating_sub(self.start);
+    }
+
+    pub fn set_start_cycles(&mut self, start: u64) {
+        assert!(
+            start >= self.start,
+            "start: {}, self.start: {}",
+            start,
+            self.start
+        );
+        self.start = start;
+    }
+
+    pub fn get_cycles(&self) -> u64 {
+        self.cycles
     }
 }
 
@@ -100,6 +131,7 @@ pub struct Thread {
     pub timer: Option<Arc<Timer>>,
     // Cleanup function will be invoked when retiring.
     cleanup: Option<Entry>,
+    kind: ThreadKind,
     stack: Stack,
     saved_sp: usize,
     priority: ThreadPriority,
@@ -184,6 +216,35 @@ impl Thread {
     }
 
     #[inline]
+    pub fn state_to_str(&self) -> &str {
+        let state = self.state.load(Ordering::Relaxed);
+        match state {
+            CREATED => "created",
+            READY => "ready",
+            RUNNING => "running",
+            SUSPENDED => "suspended",
+            RETIRED => "retired",
+            _ => "unknown",
+        }
+    }
+
+    #[inline]
+    pub fn kind(&self) -> ThreadKind {
+        self.kind
+    }
+
+    #[inline]
+    pub fn kind_to_str(&self) -> &str {
+        match self.kind {
+            ThreadKind::AsyncPoller => "async_poller",
+            ThreadKind::Idle => "idle",
+            ThreadKind::Normal => "normal",
+            #[cfg(soft_timer)]
+            ThreadKind::SoftTimer => "soft_timer",
+        }
+    }
+
+    #[inline]
     pub fn transfer_state(&self, from: Uint, to: Uint) -> bool {
         self.state
             .compare_exchange(from, to, Ordering::SeqCst, Ordering::Relaxed)
@@ -203,6 +264,12 @@ impl Thread {
     }
 
     #[inline]
+    pub fn set_kind(&mut self, kind: ThreadKind) -> &mut Self {
+        self.kind = kind;
+        self
+    }
+
+    #[inline]
     pub fn saved_sp_ptr(&self) -> *const u8 {
         &self.saved_sp as *const _ as *const u8
     }
@@ -218,8 +285,8 @@ impl Thread {
         self
     }
 
-    const fn new() -> Self {
-        Self::const_new()
+    const fn new(kind: ThreadKind) -> Self {
+        Self::const_new(kind)
     }
 
     #[inline]
@@ -232,7 +299,7 @@ impl Thread {
         self.cleanup = Some(cleanup);
     }
 
-    const fn const_new() -> Self {
+    const fn const_new(kind: ThreadKind) -> Self {
         Self {
             cleanup: None,
             stack: Stack::Raw { base: 0, size: 0 },
@@ -248,6 +315,7 @@ impl Thread {
             timer: None,
             #[cfg(robin_scheduler)]
             robin_count: AtomicI32::new(0),
+            kind,
         }
     }
 
@@ -359,6 +427,21 @@ impl Thread {
     pub fn reset_robin(&self) {
         self.robin_count
             .store(bluekernel_kconfig::ROBIN_SLICE as i32, Ordering::Relaxed);
+    }
+
+    #[inline]
+    pub fn increment_cycles(&mut self, cycles: u64) {
+        self.stats.increment_cycles(cycles);
+    }
+
+    #[inline]
+    pub fn set_start_cycles(&mut self, cycles: u64) {
+        self.stats.set_start_cycles(cycles);
+    }
+
+    #[inline]
+    pub fn get_cycles(&self) -> u64 {
+        self.stats.get_cycles()
     }
 }
 

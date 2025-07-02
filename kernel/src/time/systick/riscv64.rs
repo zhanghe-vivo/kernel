@@ -1,6 +1,11 @@
-use crate::{arch, boards};
+use crate::boards;
+use spin::Once;
 
 pub const SYSTICK_IRQ_NUM: IrqNumber = IrqNumber::new(arch::TIMER_INT);
+static BOOT_CYCLE_COUNT: Once<u64> = Once::new();
+fn get_boot_cycle_count() -> u64 {
+    *BOOT_CYCLE_COUNT.call_once(|| boards::current_cycles() as u64)
+}
 
 impl Systick {
     pub fn init(&self, _sys_clock: u32, tick_per_second: u32) -> bool {
@@ -10,10 +15,11 @@ impl Systick {
             *self.step.get() = step;
         }
         boards::set_timeout_after(step);
+        let _ = get_boot_cycle_count();
         true
     }
 
-    pub fn get_cycle(&self) -> u64 {
+    pub fn get_cycles(&self) -> u64 {
         boards::current_cycles() as u64
     }
 
