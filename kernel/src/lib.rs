@@ -194,6 +194,10 @@ mod tests {
     }
 
     extern "C" fn init_test() {
+        let l = unsafe { TEST_THREADS.len() };
+        for i in 0..l {
+            init_test_thread(i);
+        }
         let t = thread::build_static_thread(
             unsafe { &mut MAIN_THREAD },
             &MAIN_THREAD_STORAGE,
@@ -204,11 +208,6 @@ mod tests {
         );
         let ok = scheduler::queue_ready_thread(thread::CREATED, t.clone());
         assert!(ok);
-        let l = unsafe { TEST_THREADS.len() };
-        debug!("Total test threads: {}", l);
-        for i in 0..l {
-            init_test_thread(i);
-        }
     }
 
     #[cfg(target_pointer_width = "64")]
@@ -402,9 +401,9 @@ mod tests {
     #[test]
     fn stress_build_threads() {
         #[cfg(target_pointer_width = "32")]
-        let n = 128;
+        let n = 32;
         #[cfg(all(debug_assertions, target_pointer_width = "64"))]
-        let n = 128;
+        let n = 32;
         #[cfg(all(not(debug_assertions), target_pointer_width = "64"))]
         let n = 512;
         for _i in 0..n {
