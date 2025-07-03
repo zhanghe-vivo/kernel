@@ -14,15 +14,15 @@
 extern crate alloc;
 extern crate rsrt;
 // Import it just for the global allocator.
-use bluekernel;
-use bluekernel_loader as loader;
+use blueos;
+use blueos_loader as loader;
 use libc::{c_char, pthread_t};
 use librs::pthread::{pthread_create, pthread_join};
 use semihosting::{io::Read, println};
 
 mod test_everyting {
     use super::*;
-    use bluekernel_test_macro::test;
+    use blueos_test_macro::test;
 
     extern "C" {
         static EVERYTHING_ELF_PATH: *const c_char;

@@ -1,5 +1,5 @@
 import("//build/templates/build_template.gni")
-import("//build/toolchain/bluekernel.gni")
+import("//build/toolchain/blueos.gni")
 
 build_rust("emballoc") {
   sources = [ "src/lib.rs" ]

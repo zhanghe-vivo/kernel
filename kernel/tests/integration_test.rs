@@ -9,7 +9,7 @@
 
 extern crate alloc;
 extern crate rsrt;
-use bluekernel::allocator;
+use blueos::allocator;
 use semihosting::println;
 
 mod test_futex;
@@ -43,6 +43,6 @@ fn main() -> i32 {
     kernel_test_main();
 
     #[cfg(coverage)]
-    bluekernel::cov::write_coverage_data();
+    blueos::cov::write_coverage_data();
     0
 }

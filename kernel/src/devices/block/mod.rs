@@ -235,7 +235,7 @@ impl<E: embedded_io::Error> Device for Block<E, SECTOR_SIZE> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bluekernel_test_macro::test;
+    use blueos_test_macro::test;
     use semihosting::println;
 
     fn test_virtio_block_read_write(write_size: usize, pos: usize) {

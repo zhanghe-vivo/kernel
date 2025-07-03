@@ -1,5 +1,5 @@
-use bluekernel::sync::semaphore::Semaphore;
-use bluekernel_test_macro::test;
+use blueos::sync::semaphore::Semaphore;
+use blueos_test_macro::test;
 
 #[test]
 fn test_sempahore() {}

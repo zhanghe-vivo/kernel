@@ -117,9 +117,9 @@ mod tests {
     use crate::{
         allocator, allocator::KernelAllocator, config, support::DisableInterruptGuard, sync,
     };
-    use bluekernel_header::syscalls::NR::Nop;
-    use bluekernel_kconfig::NUM_CORES;
-    use bluekernel_test_macro::test;
+    use blueos_header::syscalls::NR::Nop;
+    use blueos_kconfig::NUM_CORES;
+    use blueos_test_macro::test;
     use core::{
         mem::MaybeUninit,
         panic::PanicInfo,

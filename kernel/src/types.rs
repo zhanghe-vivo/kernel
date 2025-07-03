@@ -1,4 +1,4 @@
-pub use bluekernel_infra::{
+pub use blueos_infra::{
     impl_simple_intrusive_adapter,
     intrusive::Adapter as IntrusiveAdapter,
     list::typed_ilist::ListHead as IlistHead,

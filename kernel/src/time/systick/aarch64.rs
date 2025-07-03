@@ -36,7 +36,7 @@ impl Systick {
         }
         CNTP_TVAL_EL0.set(step as u64);
         CNTP_CTL_EL0.write(CNTP_CTL_EL0::ENABLE::Enabled);
-        for cpu_id in 0..bluekernel_kconfig::NUM_CORES {
+        for cpu_id in 0..blueos_kconfig::NUM_CORES {
             enable_irq_with_priority(self.irq_num, cpu_id, Priority::Normal);
         }
         let _ = get_boot_cycle_count();

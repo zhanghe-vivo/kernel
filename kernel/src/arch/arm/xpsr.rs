@@ -141,7 +141,7 @@ impl core::fmt::Display for Xpsr {
 #[cfg(all(test, not(target_os = "none")))]
 mod tests {
     use super::*;
-    use bluekernel_test_macro::test;
+    use blueos_test_macro::test;
 
     #[test]
     fn test_xpsr_flags() {

@@ -5,7 +5,7 @@ use crate::{
     scheduler, thread, time,
 };
 use alloc::{string::String, vec::Vec};
-use bluekernel_kconfig::NUM_CORES;
+use blueos_kconfig::NUM_CORES;
 use core::{
     fmt::{self, Write},
     sync::atomic::Ordering::Relaxed,

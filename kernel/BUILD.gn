@@ -1,5 +1,5 @@
 import("//build/templates/build_template.gni")
-import("//build/toolchain/bluekernel.gni")
+import("//build/toolchain/blueos.gni")
 import("//kernel/common_crate_rustflags.gni")
 
 group("check_kernel") {
@@ -24,9 +24,9 @@ shared_deps = [
   "//external/thiserror/v2.0.9:thiserror",
   "//external/tock-registers/v0.9.0:tock_registers",
   "//external/zerocopy/v0.8.25:zerocopy",
-  "//kernel/header:bluekernel_header",
-  "//kernel/infra:bluekernel_infra",
-  "//kernel/kconfig:bluekernel_kconfig",
+  "//kernel/header:blueos_header",
+  "//kernel/infra:blueos_infra",
+  "//kernel/kconfig:blueos_kconfig",
   "//libc:libc",
 ]
 if (coverage || profile) {
@@ -73,9 +73,9 @@ build_rust("kernel_unittest") {
   proc_macro_deps = [
     "//external/paste/v1.0.15:paste",
     "//external/rust-delegate/v0.13.3:delegate",
-    "//kernel/test_harness:bluekernel_test_macro",
+    "//kernel/test_harness:blueos_test_macro",
   ]
-  cfgs = bluekernel_default_cfgs
+  cfgs = blueos_default_cfgs
   deps = shared_deps
   configs += [ "//kernel/kconfig:kconfigs" ]
   inputs = [ "//kernel/kernel/src/boards/$board/link.x" ]
@@ -88,25 +88,25 @@ build_rust("kernel_integration_test") {
   crate_type = "bin"
   sources = [ "tests/integration_test.rs" ]
   edition = "2021"
-  proc_macro_deps = [ "//kernel/test_harness:bluekernel_test_macro" ]
+  proc_macro_deps = [ "//kernel/test_harness:blueos_test_macro" ]
   deps = [
-    ":bluekernel",
+    ":blueos",
     "//external/semihosting/v0.1.20:semihosting",
     "//external/smoltcp/v0.12.0:smoltcp",
     "//kernel/rsrt:rsrt",
-    "//kernel/scal:bluekernel_scal_test",
+    "//kernel/scal:blueos_scal_test",
     "//libc:libc",
   ]
   if (coverage || profile) {
     deps += [ "//external/minicov/v0.3.7:minicov" ]
   }
-  cfgs = bluekernel_default_cfgs
+  cfgs = blueos_default_cfgs
   configs += [ "//kernel/kconfig:kconfigs" ]
   inputs = [ "//kernel/kernel/src/boards/$board/link.x" ]
   rustflags = test_image_rustflags
 }
 
-build_rust("bluekernel") {
+build_rust("blueos") {
   crate_type = "rlib"
   sources = [ "src/lib.rs" ]
   edition = "2021"
@@ -114,15 +114,15 @@ build_rust("bluekernel") {
     "//external/paste/v1.0.15:paste",
     "//external/rust-delegate/v0.13.3:delegate",
   ]
-  cfgs = bluekernel_default_cfgs
+  cfgs = blueos_default_cfgs
   deps = shared_deps
   configs += [ "//kernel/kconfig:kconfigs" ]
   rustflags = shared_rust_build_flags
   rustflags += common_crate_rustflags
 }
 
-build_rust("bluekernel_std_static") {
-  crate_name = "bluekernel"
+build_rust("blueos_std_static") {
+  crate_name = "blueos"
   crate_type = "staticlib"
   sources = [ "src/lib.rs" ]
   edition = "2021"
@@ -132,7 +132,7 @@ build_rust("bluekernel_std_static") {
   ]
   deps = shared_deps
   configs += [ "//kernel/kconfig:kconfigs" ]
-  cfgs = bluekernel_default_cfgs
+  cfgs = blueos_default_cfgs
   rustflags = shared_rust_build_flags
   rustflags += common_crate_rustflags
   rustflags += [
@@ -141,8 +141,8 @@ build_rust("bluekernel_std_static") {
   ]
 }
 
-build_rust("bluekernel_std") {
-  crate_name = "bluekernel"
+build_rust("blueos_std") {
+  crate_name = "blueos"
   crate_type = "rlib"
   sources = [ "src/lib.rs" ]
   edition = "2021"
@@ -151,7 +151,7 @@ build_rust("bluekernel_std") {
     "//external/rust-delegate/v0.13.3:delegate",
   ]
   deps = shared_deps
-  cfgs = bluekernel_default_cfgs
+  cfgs = blueos_default_cfgs
   rustflags = shared_rust_build_flags
   rustflags += common_crate_rustflags
   rustflags += [
@@ -160,9 +160,9 @@ build_rust("bluekernel_std") {
   ]
 }
 
-build_rust("bluekernel_posixtestsuite") {
+build_rust("blueos_posixtestsuite") {
   testonly = true
-  crate_name = "bluekernel"
+  crate_name = "blueos"
   crate_type = "rlib"
   sources = [ "src/lib.rs" ]
   edition = "2021"
@@ -171,7 +171,7 @@ build_rust("bluekernel_posixtestsuite") {
     "//external/rust-delegate/v0.13.3:delegate",
   ]
   deps = shared_deps
-  cfgs = bluekernel_default_cfgs
+  cfgs = blueos_default_cfgs
   rustflags = shared_rust_build_flags
   rustflags += common_crate_rustflags
   rustflags += [

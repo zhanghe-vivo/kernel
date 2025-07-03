@@ -1,7 +1,7 @@
 import("//build/templates/rust.gni")
 import("//kernel/common_crate_rustflags.gni")
 
-build_rust("bluekernel_header") {
+build_rust("blueos_header") {
   crate_type = "rlib"
   sources = [ "src/lib.rs" ]
   edition = "2021"

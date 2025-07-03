@@ -7,8 +7,8 @@ use crate::{
     },
 };
 use alloc::{format, string::String, sync::Arc};
-use bluekernel_infra::ringbuffer::BoxedRingBuffer;
-use bluekernel_kconfig::{SERIAL_RX_FIFO_SIZE, SERIAL_TX_FIFO_SIZE};
+use blueos_infra::ringbuffer::BoxedRingBuffer;
+use blueos_kconfig::{SERIAL_RX_FIFO_SIZE, SERIAL_TX_FIFO_SIZE};
 use core::sync::atomic::AtomicUsize;
 use delegate::delegate;
 use embedded_io::{ErrorKind, ErrorType, Read, ReadReady, Write, WriteReady};

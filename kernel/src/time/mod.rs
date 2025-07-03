@@ -2,7 +2,7 @@ pub(crate) mod systick;
 pub(crate) mod timer;
 
 use crate::{arch, boards, scheduler, support::DisableInterruptGuard, thread::Thread};
-use bluekernel_kconfig::TICKS_PER_SECOND;
+use blueos_kconfig::TICKS_PER_SECOND;
 use systick::SYSTICK;
 
 pub const WAITING_FOREVER: usize = usize::MAX;

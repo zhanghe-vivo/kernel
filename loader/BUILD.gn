@@ -1,5 +1,5 @@
 import("//build/templates/rust.gni")
-import("//build/toolchain/bluekernel.gni")
+import("//build/toolchain/blueos.gni")
 import("//kernel/common_crate_rustflags.gni")
 
 group("check_loader") {
@@ -23,7 +23,7 @@ if (coverage || profile) {
   }
 }
 
-build_rust("bluekernel_loader") {
+build_rust("blueos_loader") {
   crate_type = "rlib"
   sources = [ "src/lib.rs" ]
   deps = [

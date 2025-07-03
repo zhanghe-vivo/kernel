@@ -129,7 +129,7 @@ pub fn atomic_wake(addr: usize, how_many: usize) -> Result<usize, ()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bluekernel_test_macro::test;
+    use blueos_test_macro::test;
     use core::sync::atomic::{AtomicUsize, Ordering};
 
     #[test]

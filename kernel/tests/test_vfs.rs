@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 use alloc::{ffi::CString, format, string::String, vec};
-use bluekernel::{
+use blueos::{
     error::{
         code::{EEXIST, ENOENT, ENOTEMPTY},
         Error,
@@ -10,7 +10,7 @@ use bluekernel::{
         syscalls::*,
     },
 };
-use bluekernel_test_macro::test;
+use blueos_test_macro::test;
 use core::{
     cmp::min,
     ffi::{c_char, c_int, CStr},

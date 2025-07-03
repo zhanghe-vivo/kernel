@@ -466,7 +466,7 @@ mod tests {
     use super::*;
     use crate::types::Arc;
     use alloc::vec::Vec;
-    use bluekernel_test_macro::test;
+    use blueos_test_macro::test;
     use core::sync::atomic::{AtomicUsize, Ordering};
 
     // Helper function to create a simple callback

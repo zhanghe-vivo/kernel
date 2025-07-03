@@ -1,5 +1,5 @@
 import("//build/templates/build_template.gni")
-build_rust("bluekernel_test_macro") {
+build_rust("blueos_test_macro") {
   testonly = true
   crate_type = "proc-macro"
   sources = [ "src/lib.rs" ]

@@ -8,7 +8,7 @@ use crate::{
     time,
 };
 use alloc::sync::Arc;
-use bluekernel_kconfig::NUM_CORES;
+use blueos_kconfig::NUM_CORES;
 #[cfg(virtio)]
 use flat_device_tree::Fdt;
 pub(crate) fn init() {

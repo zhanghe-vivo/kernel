@@ -1,9 +1,9 @@
-use bluekernel::{
+use blueos::{
     allocator, scheduler,
     sync::atomic_wait as futex,
     thread::{Builder as ThreadBuilder, Entry, Stack, Thread},
 };
-use bluekernel_test_macro::test;
+use blueos_test_macro::test;
 use core::{
     str,
     sync::atomic::{AtomicUsize, Ordering},

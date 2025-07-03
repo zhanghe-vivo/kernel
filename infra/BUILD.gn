@@ -1,5 +1,5 @@
 import("//build/templates/build_template.gni")
-import("//build/toolchain/bluekernel.gni")
+import("//build/toolchain/blueos.gni")
 
 group("check_infra") {
   testonly = true
@@ -12,7 +12,7 @@ shared_deps = [
   "//external/pinned-init/v0.0.8:pinned_init",
 ]
 
-build_rust("bluekernel_infra") {
+build_rust("blueos_infra") {
   crate_type = "rlib"
   sources = [ "src/lib.rs" ]
   edition = "2021"

@@ -69,7 +69,7 @@ test_image_rustflags += common_image_rustflags
 
 qemu_riscv64_run_args = "-bios none -smp 32 "
 
-bluekernel_default_cfgs = [
+blueos_default_cfgs = [
   "target_board=\"$board\"",
   "scheduler=\"global\"",
   "allocator=\"tlsf\"",

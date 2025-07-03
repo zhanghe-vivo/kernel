@@ -20,7 +20,7 @@ action("kconfig_const") {
   ]
 }
 
-build_rust("bluekernel_kconfig") {
+build_rust("blueos_kconfig") {
   crate_type = "rlib"
   sources = get_target_outputs(":kconfig_const")
   edition = "2021"

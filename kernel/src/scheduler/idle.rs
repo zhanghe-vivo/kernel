@@ -6,7 +6,7 @@ use crate::{
     support,
     thread::{self, Entry, SystemThreadStorage, Thread, ThreadKind, ThreadNode},
 };
-use bluekernel_kconfig::NUM_CORES;
+use blueos_kconfig::NUM_CORES;
 use core::mem::MaybeUninit;
 
 static IDLE_THREAD_BLOCKS: [SystemThreadStorage; NUM_CORES] =

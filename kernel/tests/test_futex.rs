@@ -1,10 +1,10 @@
-use bluekernel::{
+use blueos::{
     scheduler,
     sync::{atomic_wait, atomic_wake, Semaphore},
     thread::{Builder, Entry, Thread},
     types::Arc,
 };
-use bluekernel_test_macro::test;
+use blueos_test_macro::test;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use libc::ETIMEDOUT;
 

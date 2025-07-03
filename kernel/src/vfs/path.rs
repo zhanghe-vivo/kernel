@@ -287,7 +287,7 @@ fn lookup_in_dir(dir: &Arc<Dcache>, path: &str) -> Option<Arc<Dcache>> {
 mod tests {
     use super::*;
     use alloc::string::ToString;
-    use bluekernel_test_macro::test;
+    use blueos_test_macro::test;
 
     #[test]
     fn test_is_valid_path() {

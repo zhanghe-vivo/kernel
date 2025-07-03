@@ -8,7 +8,7 @@ use crate::{
     vfs::syscalls as vfs_syscalls,
 };
 use alloc::boxed::Box;
-use bluekernel_header::{
+use blueos_header::{
     syscalls::NR,
     thread::{ExitArgs, SpawnArgs},
 };

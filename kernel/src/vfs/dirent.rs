@@ -165,7 +165,7 @@ impl<'a> DirBufferReader<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bluekernel_test_macro::test;
+    use blueos_test_macro::test;
 
     #[test]
     fn test_dirent() {

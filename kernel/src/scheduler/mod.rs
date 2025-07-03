@@ -9,7 +9,7 @@ use crate::{
     types::{Arc, IlistHead},
 };
 use alloc::boxed::Box;
-use bluekernel_kconfig::NUM_CORES;
+use blueos_kconfig::NUM_CORES;
 use core::{
     mem::MaybeUninit,
     sync::atomic::{compiler_fence, AtomicBool, Ordering},

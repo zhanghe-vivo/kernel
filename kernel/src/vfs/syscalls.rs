@@ -817,7 +817,7 @@ fn flags_to_string(flags: c_int) -> String {
 mod tests {
     use super::*;
     use crate::vfs::dirent::{Dirent, DirentType};
-    use bluekernel_test_macro::test;
+    use blueos_test_macro::test;
     use libc;
 
     // Mock data for testing

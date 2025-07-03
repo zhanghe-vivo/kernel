@@ -59,4 +59,4 @@ macro_rules! bk_syscall {
 }
 
 #[cfg(direct_syscall_handler)]
-pub use bluekernel::bk_syscall;
+pub use blueos::bk_syscall;

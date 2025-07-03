@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 use crate::{arch, time};
-use bluekernel_kconfig::NUM_CORES;
+use blueos_kconfig::NUM_CORES;
 use core::sync::atomic::{AtomicU32, Ordering};
 
 // nested irq counter
@@ -55,7 +55,7 @@ pub fn is_in_irq() -> bool {
 #[cfg(procfs)]
 pub mod irq_trace {
     use crate::arch::irq::INTERRUPT_TABLE_LEN;
-    use bluekernel_kconfig::NUM_CORES;
+    use blueos_kconfig::NUM_CORES;
     use core::sync::atomic::AtomicU32;
     use spin::RwLock as SpinRwLock;
 
