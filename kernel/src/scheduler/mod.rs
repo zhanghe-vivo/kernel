@@ -142,8 +142,12 @@ pub(crate) extern "C" fn save_context_finish_hook(hook: Option<&mut ContextSwitc
         assert!(ok);
     });
     compiler_fence(Ordering::SeqCst);
-    // Local irq is disabled by arch and the scheduler assumes every
-    // thread should be resumed with local irq enabled.
+    // Local irq is disabled by arch and the scheduler assumes every thread
+    // should be resumed with local irq enabled. Alternative solution to handle
+    // irq status might be `save_context_finish_hook` taking an additional
+    // irq_status arg indicating the irq status when entered the context switch
+    // routine, and returning irq status indicating the irq status after leaving
+    // the context switch routine.
     dropper.as_mut().map(|v| v.forget_irq());
     drop(dropper);
     compiler_fence(Ordering::SeqCst);

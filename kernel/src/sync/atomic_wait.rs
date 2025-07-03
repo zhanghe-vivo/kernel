@@ -79,8 +79,8 @@ pub fn atomic_wait(addr: usize, val: usize, timeout: Option<usize>) -> Result<()
         |e| e,
     );
     let t = scheduler::current_thread();
-    let we = entry.pending.irqsave_lock();
-    w.forget_irq();
+    let mut we = entry.pending.irqsave_lock();
+    we.take_irq_guard(&mut w);
     drop(w);
     if let Some(timeout) = timeout {
         let res = scheduler::suspend_me_with_timeout(we, timeout);

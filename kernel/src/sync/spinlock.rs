@@ -18,6 +18,13 @@ pub struct SpinLockGuard<'a, T: ?Sized> {
     irq_guard: Option<DisableInterruptGuard>,
 }
 
+impl<'t, T: ?Sized> SpinLockGuard<'t, T> {
+    #[inline]
+    pub fn take_irq_guard<'s, S>(&mut self, other: &mut SpinLockGuard<'s, S>) {
+        self.irq_guard = other.irq_guard.take();
+    }
+}
+
 impl<'a, T: 'a + ?Sized> Deref for SpinLockGuard<'a, T> {
     type Target = T;
     #[inline]
