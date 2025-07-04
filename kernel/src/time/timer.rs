@@ -460,7 +460,6 @@ pub(crate) fn get_next_timer_ticks() -> usize {
     }
 }
 
-#[cfg(not(target_arch = "aarch64"))]
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1,9 +1,9 @@
 // pub(crate) mod asm;
 // pub(crate) mod mmu;
+mod exception;
 pub mod irq;
 pub(crate) mod registers;
-// pub(crate) mod vector;
-// mod exception;
+pub(crate) mod vector;
 
 use crate::{arch::registers::mpidr_el1::MPIDR_EL1, scheduler};
 use core::{
@@ -13,6 +13,8 @@ use core::{
 };
 use scheduler::ContextSwitchHookHolder;
 use tock_registers::interfaces::Readable;
+
+pub(crate) const NR_SWITCH: usize = !0;
 
 macro_rules! disable_interrupt {
     () => {
@@ -131,7 +133,8 @@ macro_rules! aarch64_restore_context {
     () => {
         "
         ldr x8, [sp, #{spsr}]
-        msr spsr_el1, x8
+        and x9, x8, #~(1 << 7)
+        msr spsr_el1, x9
         ldr x8, [sp, #{elr}]
         msr elr_el1, x8
         ldp x0, x1, [sp, #{x0}]
@@ -195,6 +198,7 @@ pub struct Context {
 impl Context {
     #[inline]
     pub(crate) fn init(&mut self) -> &mut Self {
+        self.spsr = 0b0101;
         self
     }
 
@@ -202,13 +206,8 @@ impl Context {
     // FIXME: rustc miscompiles it if inlined.
     #[inline(never)]
     pub(crate) fn set_return_address(&mut self, lr: usize) -> &mut Self {
-        self.lr = lr;
+        self.elr = lr;
         self
-    }
-
-    #[inline]
-    pub(crate) fn get_return_address(&self) -> usize {
-        self.lr
     }
 
     #[inline]
@@ -292,61 +291,31 @@ pub(crate) extern "C" fn restore_context_with_hook(
     loop {}
 }
 
-#[naked]
-pub(crate) extern "C" fn switch_context_with_hook(
+#[inline(never)]
+pub(crate) extern "C" fn svc_switch_context_with_hook(
     saved_sp_mut: *mut u8,
     to_sp: usize,
     hook: *mut ContextSwitchHookHolder,
 ) {
     unsafe {
-        core::arch::naked_asm!(
-            concat!(
-                "
-                cbz x0, 1f
-                ",
-                aarch64_save_context_prologue!(),
-                aarch64_save_context!(),
-                "
-                mov lr, sp
-                str lr, [x0]
-                dsb sy
-                1:
-                mov sp, x1
-                cbz x2, 2f
-                mov x0, x2
-                bl {hook}
-                2:
-                ",
-                aarch64_restore_context!(),
-                aarch64_restore_context_epilogue!(),
-                "
-                msr daifclr, #3
-                dsb sy
-                ret
-                "
-            ),
-            lr = const core::mem::offset_of!(self::Context, lr),
-            stack_size = const core::mem::size_of::<self::Context>(),
-            hook = sym scheduler::save_context_finish_hook,
-            x0 = const offset_of!(Context, x0),
-            x2 = const offset_of!(Context, x2),
-            x4 = const offset_of!(Context, x4),
-            x6 = const offset_of!(Context, x6),
-            x8 = const offset_of!(Context, x8),
-            x10 = const offset_of!(Context, x10),
-            x12 = const offset_of!(Context, x12),
-            x14 = const offset_of!(Context, x14),
-            x16 = const offset_of!(Context, x16),
-            x18 = const offset_of!(Context, x18),
-            x20 = const offset_of!(Context, x20),
-            x22 = const offset_of!(Context, x22),
-            x24 = const offset_of!(Context, x24),
-            x26 = const offset_of!(Context, x26),
-            x28 = const offset_of!(Context, x28),
-            spsr = const offset_of!(Context, spsr),
-            elr = const offset_of!(Context, elr),
+        core::arch::asm!(
+            "svc #0",
+            inlateout("x0") saved_sp_mut as usize => _,
+            inlateout("x1") to_sp => _,
+            in("x2") hook as usize,
+            in("x8") NR_SWITCH,
+            options(nostack),
         )
     }
+}
+
+#[inline]
+pub(crate) extern "C" fn switch_context_with_hook(
+    saved_sp_mut: *mut u8,
+    to_sp: usize,
+    hook: *mut ContextSwitchHookHolder,
+) {
+    svc_switch_context_with_hook(saved_sp_mut, to_sp, hook)
 }
 
 #[naked]
@@ -368,6 +337,7 @@ pub(crate) extern "C" fn init(_: *mut u8, stack_end: *mut u8, cont: extern "C" f
 
 extern "C" fn setup() {}
 
+#[no_mangle]
 pub(crate) extern "C" fn start_schedule(cont: extern "C" fn() -> !) {
     let current = crate::scheduler::current_thread();
     current.lock().reset_saved_sp();

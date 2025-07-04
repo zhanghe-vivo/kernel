@@ -35,8 +35,8 @@ extern "C" fn init() {
     init_runtime();
     init_heap();
     scheduler::init();
-    // FIXME: remove this after aarch64 and riscv64 is supported
-    #[cfg(cortex_m)]
+    // FIXME: remove this after riscv64 is supported
+    #[cfg(not(target_arch = "riscv64"))]
     logger::logger_init();
     time::timer::system_timer_init();
     asynk::init();

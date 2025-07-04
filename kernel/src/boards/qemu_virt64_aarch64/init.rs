@@ -3,7 +3,7 @@ use super::{config, uart};
 use crate::devices::virtio;
 use crate::{
     arch,
-    devices::{console, dumb},
+    devices::{console, tty::n_tty::Tty},
     error::Error,
     time,
 };
@@ -15,15 +15,15 @@ pub(crate) fn init() {
     crate::boot::init_runtime();
     unsafe { crate::boot::init_heap() };
 
-    // arch::vector::init();
+    arch::vector::init();
     unsafe { arch::irq::init(config::GICD as u64, config::GICR as u64, NUM_CORES, false) };
 
-    // time::systick_init(0);
+    time::systick_init(0);
     match uart::uart_init() {
         Ok(_) => (),
         Err(e) => panic!("Failed to init uart: {}", Error::from(e)),
     }
-    match console::init_console(dumb::get_serial0().clone()) {
+    match console::init_console(Tty::init(uart::get_serial0().clone()).clone()) {
         Ok(_) => (),
         Err(e) => panic!("Failed to init console: {}", Error::from(e)),
     }
