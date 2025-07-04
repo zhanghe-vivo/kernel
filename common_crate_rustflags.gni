@@ -72,5 +72,4 @@ qemu_riscv64_run_args = "-bios none -smp 32 "
 blueos_default_cfgs = [
   "target_board=\"$board\"",
   "scheduler=\"global\"",
-  "allocator=\"tlsf\"",
 ]

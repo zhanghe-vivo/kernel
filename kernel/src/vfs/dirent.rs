@@ -16,8 +16,8 @@
 #![allow(dead_code)]
 
 use crate::{
-    allocator::align_up_size,
     error::{code, Error},
+    support::align_up_size,
     vfs::inode_mode::InodeFileType,
 };
 use core::{

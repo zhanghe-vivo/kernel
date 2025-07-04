@@ -14,6 +14,7 @@
 
 extern crate alloc;
 
+use crate::static_arc;
 use alloc::alloc::Layout;
 use core::{alloc::GlobalAlloc, ptr};
 
@@ -23,8 +24,15 @@ pub mod tlsf;
 #[cfg(allocator = "tlsf")]
 pub use tlsf::heap::Heap;
 
+#[cfg(allocator = "llff")]
+pub mod llff;
+#[cfg(allocator = "llff")]
+pub use llff::heap::LlffHeap as Heap;
+
 pub struct KernelAllocator;
-static HEAP: Heap = Heap::new();
+static_arc! {
+   HEAP(Heap, Heap::new()),
+}
 
 unsafe impl GlobalAlloc for KernelAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
@@ -186,36 +194,6 @@ pub fn free_align(ptr: *mut u8, align: usize) {
         let layout = Layout::from_size_align_unchecked(0, align);
         HEAP.dealloc(ptr, layout);
     }
-}
-
-/// Align address and size downwards.
-///
-/// Returns the greatest `x` with alignment `align` so that `x <= addr`.
-///
-/// The alignment must be a power of two.
-#[allow(dead_code)]
-#[inline]
-pub const fn align_down_size(addr: usize, align: usize) -> usize {
-    addr & !(align - 1)
-}
-
-/// Align address and size upwards.
-///
-/// Returns the smallest `x` with alignment `align` so that `x >= addr`.
-///
-/// The alignment must be a power of two.
-#[allow(dead_code)]
-#[inline]
-pub const fn align_up_size(addr: usize, align: usize) -> usize {
-    (addr + align - 1) & !(align - 1)
-}
-
-/// Align upwards. Returns the smallest x with alignment `align`
-/// so that x >= addr. The alignment must be a power of 2.
-#[allow(dead_code)]
-#[inline]
-pub fn align_up(addr: *mut u8, align: usize) -> *mut u8 {
-    align_up_size(addr as usize, align) as *mut u8
 }
 
 /// Returns the offset of the address within the alignment.

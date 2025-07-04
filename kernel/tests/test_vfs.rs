@@ -365,7 +365,7 @@ fn verify_directory(path: *const c_char) -> Result<(), c_int> {
         println!("[VFS Test DirctoryTree] open fail,  fd: {}", dir);
         return Err(-ENOSYS);
     };
-    let mut buf = [0u8; 512];
+    let mut buf = [0u8; 256];
     // Print return value of each readdir call
     let len = vfs_getdents(dir, buf.as_mut_ptr() as *mut u8, buf.len());
     if len < 0 {
