@@ -42,7 +42,6 @@ pub use crate::vfs::syscalls::{Stat, Statfs as StatFs};
 /// now add attributes to disable warnings
 /// copy from librs/signal/mod.rs
 #[allow(non_camel_case_types)]
-#[allow(dead_code)]
 #[repr(C)]
 #[derive(Clone)]
 pub struct sigaltstack {
@@ -53,7 +52,6 @@ pub struct sigaltstack {
 
 /// copy from librs/signal/mod.rs
 #[allow(non_camel_case_types)]
-#[allow(dead_code)]
 #[repr(align(8))]
 pub struct siginfo_t {
     pub si_signo: c_int,
@@ -65,7 +63,6 @@ pub struct siginfo_t {
 
 /// copy from librs/signal/mod.rs
 #[allow(non_camel_case_types)]
-#[allow(dead_code)]
 pub struct sigaction {
     pub sa_handler: Option<extern "C" fn(c_int)>,
     pub sa_flags: c_ulong,
@@ -135,7 +132,7 @@ define_syscall_handler!(
 get_tid() -> c_long {
     let t = scheduler::current_thread();
     let handle = Thread::id(&t);
-    return handle as c_long;
+    handle as c_long
 });
 
 define_syscall_handler!(
@@ -145,15 +142,13 @@ create_thread(spawn_args_ptr: *const SpawnArgs) -> c_long {
         .set_stack(Stack::Raw{base:spawn_args.stack_start as usize, size: spawn_args.stack_size})
         .build();
     let handle = Thread::id(&t);
-    spawn_args.spawn_hook.map(|f| {
-        f(handle, spawn_args);
-    });
+    if let Some(f) = spawn_args.spawn_hook { f(handle, spawn_args); }
     let ok = scheduler::queue_ready_thread(thread::CREATED, t);
     // We don't increment the rc of the created thread since it's also
     // referenced by the global queue. When this thread is retired,
     // it's removed from the global queue.
     assert!(ok);
-    return unsafe {core::mem::transmute(handle)};
+    unsafe {core::mem::transmute(handle)}
 });
 
 define_syscall_handler!(
@@ -189,13 +184,13 @@ alloc_mem(ptr: *mut *mut c_void, size: usize, align: usize) -> c_long {
         return -1;
     }
     unsafe { ptr.write(addr as *mut c_void) };
-    return 0;
+    0
 });
 
 define_syscall_handler!(
 free_mem(ptr: *mut c_void) -> c_long {
     crate::allocator::free(ptr as *mut u8);
-    return 0;
+    0
 });
 
 define_syscall_handler!(
@@ -243,7 +238,7 @@ define_syscall_handler!(exit_thread(exit_args: *const ExitArgs) -> c_long {
         t.lock().set_cleanup(Entry::Closure(Box::new(hook)));
     }
     scheduler::retire_me();
-    return -1;
+    -1
 });
 
 define_syscall_handler!(sched_yield() -> c_long {

@@ -25,7 +25,7 @@ use crate::{
 use alloc::sync::Arc;
 use embedded_io::{ErrorType, Read, ReadReady, Write, WriteReady};
 use spin::Once;
-struct DumbUart;
+pub(crate) struct DumbUart;
 
 pub(crate) static DUMB_UART0: SpinLock<DumbUart> = SpinLock::new(DumbUart);
 
@@ -99,7 +99,7 @@ impl UartOps for DumbUart {
 }
 
 pub(crate) fn get_early_uart<'a>() -> &'a SpinLock<dyn UartOps> {
-    return &DUMB_UART0;
+    &DUMB_UART0
 }
 
 static DUMB_SERIAL0: Once<Arc<dyn Device>> = Once::new();

@@ -25,7 +25,7 @@ use core::{
 };
 
 #[derive(Debug)]
-pub struct DisableInterruptGuard {
+pub(crate) struct DisableInterruptGuard {
     old: usize,
 }
 
@@ -45,7 +45,7 @@ impl Drop for DisableInterruptGuard {
     }
 }
 
-pub struct PlainDisableInterruptGuard;
+pub(crate) struct PlainDisableInterruptGuard;
 
 impl PlainDisableInterruptGuard {
     #[inline]
@@ -95,11 +95,11 @@ impl RegionalObjectBuilder {
         if start < self.unfilled_region.base {
             return None;
         }
-        let ptr = unsafe { core::mem::transmute::<usize, *mut T>(start) };
+        let ptr = start as *mut T;
         assert_eq!(ptr.align_offset(align), 0, "Must be aligned");
         unsafe { ptr.write(val) };
         self.unfilled_region.size = start - self.unfilled_region.base;
-        return Some(unsafe { &mut *ptr });
+        Some(unsafe { &mut *ptr })
     }
 
     pub fn write_after_start<T: Sized>(&mut self, val: T) -> Option<&'static mut T> {
@@ -114,12 +114,12 @@ impl RegionalObjectBuilder {
         if start + sz > end {
             return None;
         }
-        let ptr = unsafe { core::mem::transmute::<usize, *mut T>(start) };
+        let ptr = start as *mut T;
         assert_eq!(ptr.align_offset(align), 0, "Must be aligned");
         unsafe { ptr.write(val) };
         self.unfilled_region.base = start + sz;
         self.unfilled_region.size = end - self.unfilled_region.base;
-        return Some(unsafe { &mut *ptr });
+        Some(unsafe { &mut *ptr })
     }
 
     // FIXME: Should return MaybeUninint<T>?
@@ -135,13 +135,13 @@ impl RegionalObjectBuilder {
         if start + sz > end {
             return None;
         }
-        let ptr: *mut u8 = unsafe { core::mem::transmute(start) };
+        let ptr = start as *mut u8;
         assert_eq!(ptr.align_offset(align), 0, "Must be aligned");
         let slice = unsafe { core::slice::from_raw_parts_mut(ptr, sz) };
         slice.fill(0u8);
         self.unfilled_region.base = start + sz;
         self.unfilled_region.size = end - self.unfilled_region.base;
-        return Some(unsafe { &mut *(ptr as *mut T) });
+        Some(unsafe { &mut *(ptr as *mut T) })
     }
 
     pub fn get_aligned_region_end(&self, align: usize) -> usize {
@@ -178,52 +178,45 @@ impl MemoryPartitioner {
             return None;
         }
         let part = self.size / self.num_parts;
-        return Some(Region {
+        Some(Region {
             base: self.base + i * part,
             size: part,
-        });
+        })
     }
 }
 
-#[allow(dead_code)]
 #[inline]
 pub const fn align_down_size(addr: usize, align: usize) -> usize {
     addr & !(align - 1)
 }
 
-#[allow(dead_code)]
 #[inline]
 pub const fn align_up_size(addr: usize, align: usize) -> usize {
     (addr + align - 1) & !(align - 1)
 }
 
-#[allow(dead_code)]
 #[inline]
 pub fn align_up(addr: *mut u8, align: usize) -> *mut u8 {
     align_up_size(addr as usize, align) as *mut u8
 }
 
-#[allow(dead_code)]
 #[inline]
 pub const fn align_offset(addr: usize, align: usize) -> usize {
     addr & (align - 1)
 }
 
-#[allow(dead_code)]
 #[inline]
 pub const fn is_aligned(addr: usize, align: usize) -> bool {
     align_offset(addr, align) == 0
 }
 
 /// Polyfill for <https://github.com/rust-lang/rust/issues/71941>
-#[allow(dead_code)]
 #[inline]
 pub fn nonnull_slice_from_raw_parts<T>(ptr: NonNull<T>, len: usize) -> NonNull<[T]> {
     unsafe { NonNull::new_unchecked(core::ptr::slice_from_raw_parts_mut(ptr.as_ptr(), len)) }
 }
 
 /// Polyfill for <https://github.com/rust-lang/rust/issues/71146>
-#[allow(dead_code)]
 #[inline]
 pub fn nonnull_slice_len<T>(ptr: NonNull<[T]>) -> usize {
     // Safety: We are just reading the slice length embedded in the fat
@@ -234,19 +227,17 @@ pub fn nonnull_slice_len<T>(ptr: NonNull<[T]>) -> usize {
 }
 
 /// Polyfill for <https://github.com/rust-lang/rust/issues/74265>
-#[allow(dead_code)]
 #[inline]
 pub fn nonnull_slice_start<T>(ptr: NonNull<[T]>) -> NonNull<T> {
     unsafe { NonNull::new_unchecked(ptr.as_ptr() as *mut T) }
 }
 
-#[allow(dead_code)]
 #[inline]
 pub fn nonnull_slice_end<T>(ptr: NonNull<[T]>) -> *mut T {
     (ptr.as_ptr() as *mut T).wrapping_add(nonnull_slice_len(ptr))
 }
 
-pub struct PerCpuVarAccessGuard {
+pub(crate) struct PerCpuVarAccessGuard {
     t: ThreadNode,
     id: u8,
 }
@@ -279,7 +270,7 @@ impl Drop for PerCpuVarAccessGuard {
     }
 }
 
-pub struct ArcBufferingQueue<T: Sized, A: IntrusiveAdapter, const N: usize> {
+pub(crate) struct ArcBufferingQueue<T: Sized, A: IntrusiveAdapter, const N: usize> {
     queues: [SpinLock<ArcList<T, A>>; N],
     active: AtomicUint,
 }
@@ -306,21 +297,23 @@ impl<T: Sized, A: IntrusiveAdapter, const N: usize> ArcBufferingQueue<T, A, N> {
                 res += 1;
             }
         }
-        return res;
+        res
     }
 
     pub type WorkList = ArcList<T, A>;
 
     #[inline]
-    pub fn advance_active_queue<'a>(&'a self) -> SpinLockGuard<'a, ArcList<T, A>> {
+    #[allow(clippy::unnecessary_cast)]
+    pub fn advance_active_queue(&self) -> SpinLockGuard<'_, ArcList<T, A>> {
         let i = self.active.fetch_add(1, Ordering::AcqRel) as usize;
-        return self.queues[i % N].irqsave_lock();
+        self.queues[i % N].irqsave_lock()
     }
 
     #[inline]
-    pub fn get_active_queue<'a>(&'a self) -> SpinLockGuard<'a, ArcList<T, A>> {
+    #[allow(clippy::unnecessary_cast)]
+    pub fn get_active_queue(&self) -> SpinLockGuard<'_, ArcList<T, A>> {
         let i = self.active.load(Ordering::Acquire) as usize;
-        return self.queues[i % N].irqsave_lock();
+        self.queues[i % N].irqsave_lock()
     }
 }
 
@@ -357,7 +350,7 @@ impl<T: Sized + Init, const N: usize> PerCpu<T, N> {
                 n += 1;
             }
         }
-        return n;
+        n
     }
 }
 
@@ -394,7 +387,6 @@ impl SmpStagedInit {
         }
         f();
         self.stage.fetch_add(1, Ordering::Relaxed);
-        return;
     }
 }
 
@@ -409,7 +401,6 @@ macro_rules! static_assert {
         // Based on the latest one in `rustc`'s one before it was [removed].
         //
         // [removed]: https://github.com/rust-lang/rust/commit/c2dad1c6b9f9636198d7c561b47a2974f5103f6d
-        #[allow(dead_code)]
         const _: () = [()][!($condition) as usize];
     };
 }

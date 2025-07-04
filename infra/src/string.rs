@@ -64,7 +64,7 @@ impl<'a, T: Zero> Iterator for NulTerminated<'a, T> {
     }
 }
 
-impl<'a, T: Zero> NulTerminated<'a, T> {
+impl<T: Zero> NulTerminated<'_, T> {
     /// Constructs a new iterator, starting at `ptr`, yielding elements of
     /// type `&T` up to (but not including) the terminating nul.
     ///
@@ -278,7 +278,7 @@ mod tests {
 
     #[test]
     fn test_strncpy() {
-        let src = b"hello\0";
+        let src = c"hello";
         let mut dst = [0 as c_char; 10];
 
         unsafe {
@@ -293,25 +293,25 @@ mod tests {
 
     #[test]
     fn test_strlen() {
-        let s = b"hello\0";
+        let s = c"hello";
 
         unsafe {
             assert_eq!(strlen(s.as_ptr() as *const c_char), 5);
 
-            assert_eq!(strlen(b"\0".as_ptr() as *const c_char), 0);
+            assert_eq!(strlen(c"".as_ptr() as *const c_char), 0);
         }
     }
 
     #[test]
     fn test_strnlen() {
-        let s = b"hello\0";
+        let s = c"hello";
 
         unsafe {
             assert_eq!(strnlen(s.as_ptr() as *const c_char, 10), 5);
 
             assert_eq!(strnlen(s.as_ptr() as *const c_char, 3), 3);
 
-            assert_eq!(strnlen(b"\0".as_ptr() as *const c_char, 10), 0);
+            assert_eq!(strnlen(c"".as_ptr() as *const c_char, 10), 0);
         }
     }
 }

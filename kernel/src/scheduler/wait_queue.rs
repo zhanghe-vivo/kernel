@@ -56,13 +56,15 @@ impl<'a, const N: usize> WaitQueueGuardDropper<'a, N> {
         assert!(self.guards[self.num_active_guards].is_none());
         self.guards[self.num_active_guards] = Some(w);
         self.num_active_guards += 1;
-        return true;
+        true
     }
 
     #[inline]
     pub fn forget_irq(&mut self) {
         for i in 0..self.num_active_guards {
-            self.guards[i].as_mut().map(|v| v.forget_irq());
+            if let Some(v) = self.guards[i].as_mut() {
+                v.forget_irq()
+            }
         }
     }
 }

@@ -33,12 +33,12 @@ static_arc! {
     GLOBAL_QUEUE(Mutex<Head>, Mutex::new(Head::new())),
 }
 
-pub struct GlobalQueueVisitor<'a> {
+pub(crate) struct GlobalQueueVisitor<'a> {
     lock: MutexGuard<'a, Head>,
     it: ArcListIterator<Thread, OffsetOfGlobal>,
 }
 
-impl<'a> GlobalQueueVisitor<'a> {
+impl GlobalQueueVisitor<'_> {
     pub fn new() -> Self {
         let lock = GLOBAL_QUEUE.lock();
         let it = ArcListIterator::new(&*lock, None);
@@ -46,22 +46,22 @@ impl<'a> GlobalQueueVisitor<'a> {
     }
 
     pub fn next(&mut self) -> Option<ThreadNode> {
-        return self.it.next();
+        self.it.next()
     }
 
     pub fn add(t: ThreadNode) -> bool {
         let mut w = GLOBAL_QUEUE.lock();
-        return ThreadList::insert_after(&mut *w, t.clone());
+        ThreadList::insert_after(&mut *w, t.clone())
     }
 
     pub fn remove(t: &ThreadNode) -> bool {
         let mut w = GLOBAL_QUEUE.lock();
         for mut e in ArcListIterator::new(&*w, None) {
             if Thread::id(&e) == Thread::id(t) {
-                return ThreadList::detach(&mut e);
+                return ThreadList::detach(&e);
             }
         }
-        return false;
+        false
     }
 }
 
@@ -75,7 +75,7 @@ where
     if scheduler::queue_ready_thread(thread::CREATED, t.clone()) {
         return Some(t);
     }
-    return None;
+    None
 }
 
 pub struct Builder {
@@ -122,13 +122,13 @@ impl Builder {
             let _ = crate::vfs::trace_thread_create(thread.clone());
         }
 
-        return thread;
+        thread
     }
 
     pub fn start(self) -> ThreadNode {
         let t = self.build();
         scheduler::queue_ready_thread(super::CREATED, t.clone());
-        return t;
+        t
     }
 }
 
@@ -184,7 +184,7 @@ pub(crate) fn build_static_thread(
     );
     w.set_priority(p);
     w.set_kind(kind);
-    assert!(init_state >= thread::CREATED && init_state <= thread::RETIRED);
+    assert!((thread::CREATED..=thread::RETIRED).contains(&init_state));
     unsafe { w.set_state(init_state) };
     debug!(
         "System thread 0x{:x} created: sp: 0x{:x}, stack base: {:?}, stack size: {}, context size: {}",
@@ -197,5 +197,5 @@ pub(crate) fn build_static_thread(
     drop(w);
     t.write(arc.clone());
     GlobalQueueVisitor::add(arc.clone());
-    return arc;
+    arc
 }

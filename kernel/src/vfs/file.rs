@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![allow(unused_variables)]
-#![allow(dead_code)]
 use crate::{
     error::{code, Error},
     vfs::{
@@ -67,7 +65,7 @@ impl From<AccessMode> for i32 {
 
 impl From<i32> for AccessMode {
     fn from(mode: i32) -> Self {
-        match mode as i32 & libc::O_ACCMODE {
+        match mode & libc::O_ACCMODE {
             libc::O_RDONLY => AccessMode::O_RDONLY,
             libc::O_WRONLY => AccessMode::O_WRONLY,
             libc::O_RDWR => AccessMode::O_RDWR,
@@ -104,7 +102,7 @@ impl From<i32> for OpenFlags {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct FileAttr {
     pub dev: usize,
     pub ino: InodeNo,
@@ -146,26 +144,6 @@ impl FileAttr {
 
     pub fn type_(&self) -> InodeFileType {
         InodeFileType::from(self.mode)
-    }
-}
-
-impl Default for FileAttr {
-    fn default() -> Self {
-        Self {
-            dev: Default::default(),
-            ino: Default::default(),
-            size: Default::default(),
-            blk_size: Default::default(),
-            blocks: Default::default(),
-            atime: Default::default(),
-            mtime: Default::default(),
-            ctime: Default::default(),
-            mode: Default::default(),
-            nlinks: Default::default(),
-            uid: Default::default(),
-            gid: Default::default(),
-            rdev: Default::default(),
-        }
     }
 }
 

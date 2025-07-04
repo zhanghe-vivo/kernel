@@ -140,7 +140,7 @@ impl Uart {
         self.registers()
             .CTRL
             .modify(CTRL::RXEN::SET + CTRL::TXEN::SET);
-        self.registers().BAUDDIV.set(divisor as u32);
+        self.registers().BAUDDIV.set(divisor);
         self.registers().INTSTATUS.set(0xf);
     }
 
@@ -342,7 +342,7 @@ impl Read for Driver {
             }
         }
 
-        return Ok(count);
+        Ok(count)
     }
 }
 

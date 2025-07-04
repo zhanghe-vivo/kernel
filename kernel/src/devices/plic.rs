@@ -25,7 +25,7 @@ pub struct Plic {
 impl Plic {
     pub const fn new(base: usize) -> Self {
         Self {
-            base: unsafe { core::mem::transmute(base) },
+            base: unsafe { base as *mut u32 },
         }
     }
 

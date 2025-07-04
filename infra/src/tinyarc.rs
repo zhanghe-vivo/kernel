@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![allow(unused)]
 extern crate alloc;
 use crate::{
     intrusive::Adapter,
@@ -47,7 +46,7 @@ pub struct TinyArcInner<T: Sized> {
 impl<T: Sized> TinyArcInner<T> {
     pub const fn const_new(data: T) -> Self {
         Self {
-            data: data,
+            data,
             rc: AtomicUint::new(1),
         }
     }
@@ -97,6 +96,7 @@ impl<T> TinyArc<T> {
         this.inner.as_ref() as *const _ as *const u8
     }
 
+    #[allow(clippy::unnecessary_cast)]
     pub fn strong_count(this: &Self) -> usize {
         unsafe { this.inner.as_ref().rc.load(Ordering::Relaxed) as usize }
     }
@@ -123,9 +123,7 @@ impl<T: Sized> Clone for TinyArc<T> {
             .rc
             .fetch_add(1, Ordering::Relaxed);
         assert!(old >= 1);
-        return TinyArc {
-            inner: self.inner.clone(),
-        };
+        TinyArc { inner: self.inner }
     }
 }
 
@@ -192,7 +190,7 @@ impl<T: Sized, A: Adapter> TinyArcList<T, A> {
 
     #[inline]
     pub fn init(&mut self) -> bool {
-        return ListHead::<T, A>::insert_after(&mut self.head, NonNull::from_mut(&mut self.tail));
+        ListHead::<T, A>::insert_after(&mut self.head, NonNull::from_mut(&mut self.tail))
     }
 
     #[inline]
@@ -201,7 +199,7 @@ impl<T: Sized, A: Adapter> TinyArcList<T, A> {
             self.head.next == Some(NonNull::from_ref(&self.tail)),
             self.len == 0
         );
-        return self.head.next == Some(NonNull::from_ref(&self.tail));
+        self.head.next == Some(NonNull::from_ref(&self.tail))
     }
 
     #[inline]
@@ -209,7 +207,7 @@ impl<T: Sized, A: Adapter> TinyArcList<T, A> {
         let other_val = this.deref();
         let ptr = other_val as *const _ as *const u8;
         let list_head_ptr = unsafe { ptr.add(A::offset()) as *const ListHead<T, A> };
-        return NonNull::from_ref(unsafe { &*list_head_ptr });
+        NonNull::from_ref(unsafe { &*list_head_ptr })
     }
 
     #[inline]
@@ -227,7 +225,7 @@ impl<T: Sized, A: Adapter> TinyArcList<T, A> {
         offset += A::offset();
         unsafe {
             let inner = &*(ptr.sub(offset) as *const TinyArcInner<T>);
-            return TinyArc::from_inner(NonNull::from_ref(inner));
+            TinyArc::from_inner(NonNull::from_ref(inner))
         }
     }
 
@@ -238,7 +236,7 @@ impl<T: Sized, A: Adapter> TinyArcList<T, A> {
         }
         // The list shares ownership of me.
         unsafe { TinyArc::<T>::increment_strong_count(&me) };
-        return true;
+        true
     }
 
     pub fn insert_before(other_node: &mut ListHead<T, A>, me: TinyArc<T>) -> bool {
@@ -248,7 +246,7 @@ impl<T: Sized, A: Adapter> TinyArcList<T, A> {
         }
         // The list shares ownership of me.
         unsafe { TinyArc::<T>::increment_strong_count(&me) };
-        return true;
+        true
     }
 
     pub fn push_back(&mut self, me: TinyArc<T>) -> bool {
@@ -256,7 +254,7 @@ impl<T: Sized, A: Adapter> TinyArcList<T, A> {
             self.len += 1;
             return true;
         }
-        return false;
+        false
     }
 
     pub fn len(&self) -> usize {
@@ -276,7 +274,7 @@ impl<T: Sized, A: Adapter> TinyArcList<T, A> {
         assert!(ok);
         unsafe { TinyArc::<T>::decrement_strong_count(&arc) };
         self.len -= 1;
-        return Some(arc);
+        Some(arc)
     }
 
     pub fn detach(me: &TinyArc<T>) -> bool {
@@ -285,7 +283,7 @@ impl<T: Sized, A: Adapter> TinyArcList<T, A> {
             return false;
         }
         unsafe { TinyArc::<T>::decrement_strong_count(me) };
-        return true;
+        true
     }
 
     pub fn clear(&mut self) -> usize {
@@ -295,7 +293,7 @@ impl<T: Sized, A: Adapter> TinyArcList<T, A> {
             c += 1;
         }
         self.len = 0;
-        return c;
+        c
     }
 
     pub fn iter(&self) -> TinyArcListIterator<T, A> {
@@ -341,10 +339,8 @@ impl<T, A: Adapter> Iterator for TinyArcListIterator<T, A> {
     type Item = TinyArc<T>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let Some(node) = self.it.next() else {
-            return None;
-        };
-        return Some(unsafe { TinyArcList::<T, A>::make_arc_from(node.as_ref()) });
+        let node = self.it.next()?;
+        Some(unsafe { TinyArcList::<T, A>::make_arc_from(node.as_ref()) })
     }
 }
 
@@ -352,10 +348,8 @@ impl<T, A: Adapter> Iterator for TinyArcListReverseIterator<T, A> {
     type Item = TinyArc<T>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let Some(node) = self.it.next() else {
-            return None;
-        };
-        return Some(unsafe { TinyArcList::<T, A>::make_arc_from(node.as_ref()) });
+        let node = self.it.next()?;
+        Some(unsafe { TinyArcList::<T, A>::make_arc_from(node.as_ref()) })
     }
 }
 
@@ -378,9 +372,10 @@ mod tests {
 
     impl Thread {
         pub fn new(id: usize) -> Self {
-            let mut res = Self::default();
-            res.id = id;
-            return res;
+            Self {
+                id,
+                ..Default::default()
+            }
         }
     }
 
@@ -577,7 +572,7 @@ mod tests {
                 assert_eq!(i.id, counter as usize);
                 assert_eq!(Ty::strong_count(&i), 2);
                 counter -= 1;
-                assert!(CslList::detach(&mut i));
+                assert!(CslList::detach(&i));
                 assert_eq!(Ty::strong_count(&i), 1);
             }
         });
@@ -599,12 +594,12 @@ mod tests {
                 CslList::insert_before(&mut tail, t.clone());
                 assert_eq!(Ty::strong_count(&t), 2);
             }
-            let mut counter = 0;
-            for mut i in TinyArcListIterator::new(&head, Some(NonNull::from_ref(&tail))) {
+            for (counter, mut i) in
+                TinyArcListIterator::new(&head, Some(NonNull::from_ref(&tail))).enumerate()
+            {
                 assert_eq!(i.id, counter);
                 assert_eq!(Ty::strong_count(&i), 2);
-                counter += 1;
-                assert!(CslList::detach(&mut i));
+                assert!(CslList::detach(&i));
                 assert_eq!(Ty::strong_count(&i), 1);
             }
         });

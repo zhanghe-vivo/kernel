@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![allow(dead_code)]
 use alloc::alloc::{AllocError, LayoutError};
 use core::{ffi::CStr, num::TryFromIntError, str::Utf8Error};
 
@@ -50,34 +49,34 @@ pub mod code {
     pub const ENOTSUP: super::Error = super::Error(-libc::ENOTSUP);
 }
 
-const UNKNOW_STR: &'static CStr = c"EUNKNOW ";
-const EOK_STR: &'static CStr = c"OK  ";
-const ERROR_STR: &'static CStr = c"ERROR  ";
-const ETIMEDOUT_STR: &'static CStr = c"Timedout  ";
-const ENOSPC_STR: &'static CStr = c"No space left on device  ";
-const ENODATA_STR: &'static CStr = c"No data available  ";
-const ENOMEM_STR: &'static CStr = c"Cannot allocate memory  ";
-const ENOSYS_STR: &'static CStr = c"Function not implemented  ";
-const EBUSY_STR: &'static CStr = c"Device or resource busy  ";
-const EIO_STR: &'static CStr = c"Input/output error  ";
-const EINTR_STR: &'static CStr = c"Interrupted system call  ";
-const EINVAL_STR: &'static CStr = c"Invalid argument  ";
-const ENOENT_STR: &'static CStr = c"No such file or directory  ";
-const EPERM_STR: &'static CStr = c"Operation not permitted  ";
-const ENODEV_STR: &'static CStr = c"No Such Device  ";
-const EAGAIN_STR: &'static CStr = c"Try again  ";
-const EBADF_STR: &'static CStr = c"File descriptor in bad state  ";
-const EEXIST_STR: &'static CStr = c"File exists ";
-const ENOTDIR_STR: &'static CStr = c"Not a directory ";
-const EISDIR_STR: &'static CStr = c"Is a directory ";
-const ENOTEMPTY_STR: &'static CStr = c"Directory not empty ";
-const ENAMETOOLONG_STR: &'static CStr = c"File name too long";
-const ESPIPE_STR: &'static CStr = c"Invalid seek";
-const EOVERFLOW_STR: &'static CStr = c"Value too large to be stored in data type";
-const ELOOP_STR: &'static CStr = c"Too many symbolic links encountered";
-const EXDEV_STR: &'static CStr = c"Cross-device link";
-const EILSEQ_STR: &'static CStr = c"Invalid data";
-const ENOTSUP_STR: &'static CStr = c"Not supported";
+const UNKNOW_STR: &CStr = c"EUNKNOW ";
+const EOK_STR: &CStr = c"OK  ";
+const ERROR_STR: &CStr = c"ERROR  ";
+const ETIMEDOUT_STR: &CStr = c"Timedout  ";
+const ENOSPC_STR: &CStr = c"No space left on device  ";
+const ENODATA_STR: &CStr = c"No data available  ";
+const ENOMEM_STR: &CStr = c"Cannot allocate memory  ";
+const ENOSYS_STR: &CStr = c"Function not implemented  ";
+const EBUSY_STR: &CStr = c"Device or resource busy  ";
+const EIO_STR: &CStr = c"Input/output error  ";
+const EINTR_STR: &CStr = c"Interrupted system call  ";
+const EINVAL_STR: &CStr = c"Invalid argument  ";
+const ENOENT_STR: &CStr = c"No such file or directory  ";
+const EPERM_STR: &CStr = c"Operation not permitted  ";
+const ENODEV_STR: &CStr = c"No Such Device  ";
+const EAGAIN_STR: &CStr = c"Try again  ";
+const EBADF_STR: &CStr = c"File descriptor in bad state  ";
+const EEXIST_STR: &CStr = c"File exists ";
+const ENOTDIR_STR: &CStr = c"Not a directory ";
+const EISDIR_STR: &CStr = c"Is a directory ";
+const ENOTEMPTY_STR: &CStr = c"Directory not empty ";
+const ENAMETOOLONG_STR: &CStr = c"File name too long";
+const ESPIPE_STR: &CStr = c"Invalid seek";
+const EOVERFLOW_STR: &CStr = c"Value too large to be stored in data type";
+const ELOOP_STR: &CStr = c"Too many symbolic links encountered";
+const EXDEV_STR: &CStr = c"Cross-device link";
+const EILSEQ_STR: &CStr = c"Invalid data";
+const ENOTSUP_STR: &CStr = c"Not supported";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
@@ -94,34 +93,34 @@ impl Error {
     }
 
     pub fn name(&self) -> &'static CStr {
-        match self {
-            &code::EOK => EOK_STR,
-            &code::ERROR => ERROR_STR,
-            &code::ETIMEDOUT => ETIMEDOUT_STR,
-            &code::ENOSPC => ENOSPC_STR,
-            &code::ENODATA => ENODATA_STR,
-            &code::ENOMEM => ENOMEM_STR,
-            &code::ENOSYS => ENOSYS_STR,
-            &code::EBUSY => EBUSY_STR,
-            &code::EIO => EIO_STR,
-            &code::EINTR => EINTR_STR,
-            &code::EINVAL => EINVAL_STR,
-            &code::ENOENT => ENOENT_STR,
-            &code::EPERM => EPERM_STR,
-            &code::EAGAIN => EAGAIN_STR,
-            &code::EBADF => EBADF_STR,
-            &code::EEXIST => EEXIST_STR,
-            &code::ENOTDIR => ENOTDIR_STR,
-            &code::EISDIR => EISDIR_STR,
-            &code::ENOTEMPTY => ENOTEMPTY_STR,
-            &code::ENODEV => ENODEV_STR,
-            &code::ENAMETOOLONG => ENAMETOOLONG_STR,
-            &code::ESPIPE => ESPIPE_STR,
-            &code::EOVERFLOW => EOVERFLOW_STR,
-            &code::ELOOP => ELOOP_STR,
-            &code::EXDEV => EXDEV_STR,
-            &code::EILSEQ => EILSEQ_STR,
-            &code::ENOTSUP => ENOTSUP_STR,
+        match *self {
+            code::ERROR => ERROR_STR,
+            code::ETIMEDOUT => ETIMEDOUT_STR,
+            code::ENOSPC => ENOSPC_STR,
+            code::ENODATA => ENODATA_STR,
+            code::ENOMEM => ENOMEM_STR,
+            code::ENOSYS => ENOSYS_STR,
+            code::EBUSY => EBUSY_STR,
+            code::EIO => EIO_STR,
+            code::EOK => EOK_STR,
+            code::EINTR => EINTR_STR,
+            code::EINVAL => EINVAL_STR,
+            code::ENOENT => ENOENT_STR,
+            code::EPERM => EPERM_STR,
+            code::EAGAIN => EAGAIN_STR,
+            code::EBADF => EBADF_STR,
+            code::EEXIST => EEXIST_STR,
+            code::ENOTDIR => ENOTDIR_STR,
+            code::EISDIR => EISDIR_STR,
+            code::ENOTEMPTY => ENOTEMPTY_STR,
+            code::ENODEV => ENODEV_STR,
+            code::ENAMETOOLONG => ENAMETOOLONG_STR,
+            code::ESPIPE => ESPIPE_STR,
+            code::EOVERFLOW => EOVERFLOW_STR,
+            code::ELOOP => ELOOP_STR,
+            code::EXDEV => EXDEV_STR,
+            code::EILSEQ => EILSEQ_STR,
+            code::ENOTSUP => ENOTSUP_STR,
             _ => UNKNOW_STR,
         }
     }

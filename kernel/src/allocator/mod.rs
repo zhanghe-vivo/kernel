@@ -20,9 +20,9 @@ use core::{alloc::GlobalAlloc, ptr};
 
 pub mod block;
 #[cfg(allocator = "tlsf")]
-pub mod tlsf;
+pub(crate) mod tlsf;
 #[cfg(allocator = "tlsf")]
-pub use tlsf::heap::Heap;
+pub(crate) use tlsf::heap::Heap;
 
 #[cfg(allocator = "llff")]
 pub mod llff;
@@ -36,10 +36,8 @@ static_arc! {
 
 unsafe impl GlobalAlloc for KernelAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        let res = HEAP
-            .alloc(layout)
-            .map_or(ptr::null_mut(), |ptr| ptr.as_ptr());
-        return res;
+        HEAP.alloc(layout)
+            .map_or(ptr::null_mut(), |ptr| ptr.as_ptr())
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
@@ -106,10 +104,8 @@ pub fn malloc(size: usize) -> *mut u8 {
     }
     const ALIGN: usize = core::mem::size_of::<usize>();
     let layout = Layout::from_size_align(size, ALIGN).unwrap();
-    let ptr = HEAP
-        .alloc(layout)
-        .map_or(ptr::null_mut(), |allocation| allocation.as_ptr());
-    ptr
+    HEAP.alloc(layout)
+        .map_or(ptr::null_mut(), |allocation| allocation.as_ptr())
 }
 
 /// Free previously allocated memory pointed by ptr.
@@ -138,11 +134,10 @@ pub fn realloc(ptr: *mut u8, newsize: usize) -> *mut u8 {
     if ptr.is_null() {
         return malloc(newsize);
     }
-    let ptr = unsafe {
+    unsafe {
         HEAP.realloc_unknown_align(ptr, newsize)
             .map_or(ptr::null_mut(), |ptr| ptr.as_ptr())
-    };
-    ptr
+    }
 }
 
 /// Allocates memory for an array of elements and initializes all bytes in this block to zero.
@@ -175,10 +170,8 @@ pub fn malloc_align(size: usize, align: usize) -> *mut u8 {
     }
 
     let layout = Layout::from_size_align(size, align).unwrap();
-    let ptr = HEAP
-        .alloc(layout)
-        .map_or(ptr::null_mut(), |allocation| allocation.as_ptr());
-    ptr
+    HEAP.alloc(layout)
+        .map_or(ptr::null_mut(), |allocation| allocation.as_ptr())
 }
 
 /// Deallocates memory that was allocated using `malloc_align`.
@@ -199,7 +192,6 @@ pub fn free_align(ptr: *mut u8, align: usize) {
 /// Returns the offset of the address within the alignment.
 ///
 /// Equivalent to `addr % align`, but the alignment must be a power of two.
-#[allow(dead_code)]
 #[inline]
 pub const fn align_offset(addr: usize, align: usize) -> usize {
     addr & (align - 1)
@@ -208,7 +200,6 @@ pub const fn align_offset(addr: usize, align: usize) -> usize {
 /// Checks whether the address has the demanded alignment.
 ///
 /// Equivalent to `addr % align == 0`, but the alignment must be a power of two.
-#[allow(dead_code)]
 #[inline]
 pub const fn is_aligned(addr: usize, align: usize) -> bool {
     align_offset(addr, align) == 0

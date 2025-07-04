@@ -35,7 +35,6 @@ pub fn test(_attr: TokenStream, item: TokenStream) -> TokenStream {
     });
 
     let expanded = quote! {
-        #[allow(dead_code)]
         #[test_case]
         fn #test_name(#(#filtered_params),*) {
             use semihosting::println;

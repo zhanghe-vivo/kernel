@@ -279,12 +279,12 @@ impl InnerNode {
 
     fn inc_size(&mut self) {
         self.attr.size += 1;
-        self.attr.blocks = (self.attr.size + BLOCK_SIZE - 1) / BLOCK_SIZE;
+        self.attr.blocks = self.attr.size.div_ceil(BLOCK_SIZE);
     }
 
     fn dec_size(&mut self) {
         self.attr.size -= 1;
-        self.attr.blocks = (self.attr.size + BLOCK_SIZE - 1) / BLOCK_SIZE;
+        self.attr.blocks = self.attr.size.div_ceil(BLOCK_SIZE);
     }
 }
 
@@ -371,7 +371,7 @@ impl InodeOps for TmpInode {
         if let Some(device) = inner.as_device() {
             return device
                 .read(offset as u64, buf, nonblock)
-                .map_err(|e| Error::from(e));
+                .map_err(Error::from);
         }
         let Some(data) = inner.as_file() else {
             warn!("read_at: inode is not a file");
@@ -392,7 +392,7 @@ impl InodeOps for TmpInode {
         if let Some(device) = inner.as_device() {
             return device
                 .write(offset as u64, buf, nonblock)
-                .map_err(|e| Error::from(e));
+                .map_err(Error::from);
         }
 
         let write_end = offset + buf.len();

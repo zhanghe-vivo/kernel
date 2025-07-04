@@ -78,7 +78,7 @@ impl<'a> ContextSwitchHookHolder<'a> {
 
     pub fn set_dropper(&mut self, d: DefaultWaitQueueGuardDropper<'a>) -> &mut Self {
         self.dropper = Some(d);
-        return self;
+        self
     }
 
     pub fn set_ready_thread(&mut self, t: ThreadNode) -> &mut Self {
@@ -146,15 +146,15 @@ pub(crate) extern "C" fn save_context_finish_hook(hook: Option<&mut ContextSwitc
         next.lock().set_start_cycles(cycles);
     }
     compiler_fence(Ordering::SeqCst);
-    ready_thread.map(|t| {
+    if let Some(t) = ready_thread {
         let ok = crate::scheduler::queue_ready_thread(thread::RUNNING, t);
         assert!(ok);
-    });
+    }
     compiler_fence(Ordering::SeqCst);
-    pending_thread.map(|t| {
+    if let Some(t) = pending_thread {
         let ok = t.transfer_state(thread::RUNNING, thread::SUSPENDED);
         assert!(ok);
-    });
+    }
     compiler_fence(Ordering::SeqCst);
     // Local irq is disabled by arch and the scheduler assumes every thread
     // should be resumed with local irq enabled. Alternative solution to handle
@@ -162,12 +162,16 @@ pub(crate) extern "C" fn save_context_finish_hook(hook: Option<&mut ContextSwitc
     // irq_status arg indicating the irq status when entered the context switch
     // routine, and returning irq status indicating the irq status after leaving
     // the context switch routine.
-    dropper.as_mut().map(|v| v.forget_irq());
+    if let Some(v) = dropper.as_mut() {
+        v.forget_irq()
+    }
     drop(dropper);
     compiler_fence(Ordering::SeqCst);
-    closure.map(|f| f());
+    if let Some(f) = closure {
+        f()
+    }
     compiler_fence(Ordering::SeqCst);
-    retiring_thread.map(|t| {
+    if let Some(t) = retiring_thread {
         let cleanup = t.lock().take_cleanup();
         if let Some(entry) = cleanup {
             match entry {
@@ -182,7 +186,7 @@ pub(crate) extern "C" fn save_context_finish_hook(hook: Option<&mut ContextSwitc
         if ThreadNode::strong_count(&t) != 1 {
             // TODO: Warn if there are still references to the thread.
         }
-    });
+    }
 }
 
 // It's usually used in cortex-m's pendsv handler. It assumes current
@@ -211,7 +215,7 @@ pub(crate) extern "C" fn yield_me_and_return_next_sp(old_sp: usize) -> usize {
     old.lock().set_saved_sp(old_sp);
     let ok = queue_ready_thread(thread::RUNNING, old);
     assert!(ok);
-    return to_sp;
+    to_sp
 }
 
 pub fn retire_me() -> ! {
@@ -321,11 +325,8 @@ pub(crate) fn suspend_me_for(tick: usize) {
     assert!(arch::local_irq_enabled());
 }
 
-pub(crate) fn suspend_me_with_timeout<'a>(
-    mut w: SpinLockGuard<'a, WaitQueue>,
-    ticks: usize,
-) -> bool {
-    assert_ne!(ticks, 0);
+pub(crate) fn suspend_me_with_timeout(mut w: SpinLockGuard<'_, WaitQueue>, ticks: usize) -> bool {
+    assert!(ticks != 0);
     #[cfg(debugging_scheduler)]
     crate::trace!(
         "[TH:0x{:x}] is looking for the next thread",
@@ -395,7 +396,7 @@ pub(crate) fn suspend_me_with_timeout<'a>(
     }
     arch::switch_context_with_hook(from_sp_ptr as *mut u8, to_sp, &mut hook_holder as *mut _);
     assert!(arch::local_irq_enabled());
-    return timed_out.load(Ordering::SeqCst);
+    timed_out.load(Ordering::SeqCst)
 }
 
 // Yield me immediately if not in ISR, otherwise switch context on
@@ -423,7 +424,7 @@ pub fn current_thread() -> ThreadNode {
     let _ = DisableInterruptGuard::new();
     let my_id = arch::current_cpu_id();
     let t = unsafe { RUNNING_THREADS[my_id].assume_init_ref().clone() };
-    return t;
+    t
 }
 
 #[inline]
@@ -431,7 +432,7 @@ pub fn current_thread_id() -> usize {
     let _ = DisableInterruptGuard::new();
     let my_id = arch::current_cpu_id();
     let t = unsafe { RUNNING_THREADS[my_id].assume_init_ref() };
-    return Thread::id(t);
+    Thread::id(t)
 }
 
 pub(crate) fn handle_tick_increment(elapsed_ticks: usize) -> bool {
@@ -456,5 +457,5 @@ fn set_current_thread(t: ThreadNode) -> ThreadNode {
     let old = unsafe { core::mem::replace(RUNNING_THREADS[my_id].assume_init_mut(), t) };
     // Do not validate sp here, since we might be using system stack,
     // like on cortex-m platform.
-    return old;
+    old
 }

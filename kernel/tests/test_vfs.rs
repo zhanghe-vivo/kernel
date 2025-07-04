@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![allow(dead_code)]
 use alloc::{ffi::CString, format, string::String, vec};
 use blueos::{
     error::{
@@ -36,7 +35,7 @@ use semihosting::println;
 #[test]
 fn vfs_test_uart() {
     // Test UART device path
-    let uart_path = b"/dev/ttyS0\0";
+    let uart_path = c"/dev/ttyS0";
     let path_ptr = uart_path.as_ptr() as *const c_char;
 
     let fd = vfs_open(path_ptr, O_RDWR, 0);
@@ -367,7 +366,7 @@ fn verify_directory(path: *const c_char) -> Result<(), c_int> {
     };
     let mut buf = [0u8; 256];
     // Print return value of each readdir call
-    let len = vfs_getdents(dir, buf.as_mut_ptr() as *mut u8, buf.len());
+    let len = vfs_getdents(dir, buf.as_mut_ptr(), buf.len());
     if len < 0 {
         vfs_close(dir);
         return Err(len);
@@ -377,7 +376,7 @@ fn verify_directory(path: *const c_char) -> Result<(), c_int> {
         let entry = unsafe { Dirent::from_buf_ref(&buf[next_entry..]) };
         let name = entry.name().unwrap().to_string_lossy();
         let mut dir_full_path = String::with_capacity(name.len() + 1 + path_str.len());
-        write!(dir_full_path, "{}/{}", path_str, name);
+        let _ = write!(dir_full_path, "{}/{}", path_str, name);
         if entry.type_() == DirentType::Dir {
             println!(
                 "\t[VFS Test DirctoryTree]: Found directory: {}, {}, {}",
@@ -418,7 +417,7 @@ fn vfs_test_std_fds() {
             test_data.len(),
             write_size
         );
-        assert!(false);
+        unreachable!();
     }
 
     // Test writing to stderr (fd 2)
@@ -430,7 +429,7 @@ fn vfs_test_std_fds() {
             error_data.len(),
             write_size
         );
-        assert!(false);
+        unreachable!();
     }
 }
 
@@ -438,8 +437,8 @@ fn vfs_test_std_fds() {
 #[test]
 fn vfs_test_fatfs_mount_unmount() {
     let mode: libc::mode_t = 0o644;
-    let mount_path_1 = b"/fat\0".as_ptr() as *const c_char;
-    let mount_path_2 = b"/fat2\0".as_ptr() as *const c_char;
+    let mount_path_1 = c"/fat".as_ptr() as *const c_char;
+    let mount_path_2 = c"/fat2".as_ptr() as *const c_char;
 
     // Unmount /fat
     assert_eq!(vfs_umount(mount_path_1), 0);
@@ -448,9 +447,9 @@ fn vfs_test_fatfs_mount_unmount() {
     assert!(vfs_mkdir(mount_path_2, mode) == 0);
     assert_eq!(
         vfs_mount(
-            b"virt-storage\0".as_ptr() as *const c_char,
+            c"virt-storage".as_ptr() as *const c_char,
             mount_path_2,
-            b"fatfs\0".as_ptr() as *const c_char,
+            c"fatfs".as_ptr() as *const c_char,
             0,
             core::ptr::null(),
         ),
@@ -459,7 +458,7 @@ fn vfs_test_fatfs_mount_unmount() {
 
     // Create a file and write something
     let fd = vfs_open(
-        b"/fat2/test.txt\0".as_ptr() as *const c_char,
+        c"/fat2/test.txt".as_ptr() as *const c_char,
         O_CREAT | O_RDWR,
         mode,
     );
@@ -477,9 +476,9 @@ fn vfs_test_fatfs_mount_unmount() {
     // Mount the fatfs using the virt-storage device to /fat
     assert_eq!(
         vfs_mount(
-            b"virt-storage\0".as_ptr() as *const c_char,
+            c"virt-storage".as_ptr() as *const c_char,
             mount_path_1,
-            b"fatfs\0".as_ptr() as *const c_char,
+            c"fatfs".as_ptr() as *const c_char,
             0,
             core::ptr::null(),
         ),
@@ -487,7 +486,7 @@ fn vfs_test_fatfs_mount_unmount() {
     );
 
     // Read the file and check content
-    let fd = vfs_open(b"/fat/test.txt\0".as_ptr() as *const c_char, O_RDONLY, mode);
+    let fd = vfs_open(c"/fat/test.txt".as_ptr() as *const c_char, O_RDONLY, mode);
     assert!(fd >= 0);
     let mut read_buf = [0u8; 64];
     let read_size = vfs_read(fd, read_buf.as_mut_ptr(), test_data.len());
@@ -502,7 +501,7 @@ fn vfs_test_fatfs_mount_unmount() {
 #[test]
 fn vfs_test_procfs_posix() {
     // 1. Test: read /proc/meminfo
-    let path = b"/proc/meminfo\0".as_ptr() as *const c_char;
+    let path = c"/proc/meminfo".as_ptr() as *const c_char;
     let path_str = unsafe { CStr::from_ptr(path).to_str().unwrap() };
     let fd = vfs_open(path, O_WRONLY, 0o444);
     assert!(
@@ -525,7 +524,7 @@ fn vfs_test_procfs_posix() {
     vfs_close(fd);
 
     // 2. Test: read /proc/stat
-    let path = b"/proc/stat\0".as_ptr() as *const c_char;
+    let path = c"/proc/stat".as_ptr() as *const c_char;
     let path_str = unsafe { CStr::from_ptr(path).to_str().unwrap() };
     let fd = vfs_open(path, O_RDONLY, 0o444);
     assert!(
@@ -542,14 +541,14 @@ fn vfs_test_procfs_posix() {
     vfs_close(fd);
 
     // 3. Test: readdir /proc & read /proc/{tid}/task
-    let path = b"/proc\0".as_ptr() as *const c_char;
+    let path = c"/proc".as_ptr() as *const c_char;
     let path_str = unsafe { CStr::from_ptr(path).to_str().unwrap() };
     let fd = vfs_open(path, O_RDONLY, 0o555);
     if fd < 0 {
         unreachable!("[VFS Test proc posix]: Failed to open file {}", path_str);
     }
     let mut buf = [0u8; 1024];
-    let len = vfs_getdents(fd, buf.as_mut_ptr() as *mut u8, buf.len());
+    let len = vfs_getdents(fd, buf.as_mut_ptr(), buf.len());
     if len < 0 {
         vfs_close(fd);
         unreachable!("[VFS Test proc posix]: Failed to getdents {}", path_str);

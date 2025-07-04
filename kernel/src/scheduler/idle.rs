@@ -56,11 +56,11 @@ pub(super) fn init_idle_threads() {
 pub(super) fn current_idle_thread<'a>() -> &'a ThreadNode {
     let _dig = support::DisableInterruptGuard::new();
     let id = arch::current_cpu_id();
-    return unsafe { IDLE_THREADS[id].assume_init_ref() };
+    unsafe { IDLE_THREADS[id].assume_init_ref() }
 }
 
 #[inline]
 pub fn get_idle_thread<'a>(cpu_id: usize) -> &'a ThreadNode {
     let _dig = support::DisableInterruptGuard::new();
-    return unsafe { IDLE_THREADS[cpu_id].assume_init_ref() };
+    unsafe { IDLE_THREADS[cpu_id].assume_init_ref() }
 }

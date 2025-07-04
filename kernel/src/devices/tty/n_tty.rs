@@ -19,7 +19,7 @@ use crate::devices::{
     },
     Device, DeviceClass, DeviceId,
 };
-use alloc::{collections::VecDeque, format, string::String, sync::Arc};
+use alloc::{collections::VecDeque, string::String, sync::Arc};
 use core::sync::atomic::{AtomicUsize, Ordering};
 use embedded_io::ErrorKind;
 use serial::Serial;
@@ -45,7 +45,7 @@ impl Tty {
     pub fn init(serial: Arc<Serial>) -> &'static Arc<Tty> {
         TTY.call_once(|| {
             Arc::new(Self {
-                serial: serial,
+                serial,
                 line_buf: Mutex::new([0u8; 512]),
                 cursor: AtomicUsize::new(0),
                 history: Mutex::new(VecDeque::with_capacity(5)),
@@ -79,7 +79,7 @@ impl Tty {
 
 impl Device for Tty {
     fn name(&self) -> String {
-        format!("n_tty")
+        String::from("n_tty")
     }
 
     fn class(&self) -> DeviceClass {
@@ -142,7 +142,7 @@ impl Device for Tty {
                 let ch = temp_buf[i];
                 let cursor = self.cursor.load(Ordering::Relaxed);
                 if self.serial.termios.iflag.contains(Iflags::ICRNL) && ch == b'\r' {
-                    let _ = self.serial.write(_pos, &[b'\n'], false);
+                    let _ = self.serial.write(_pos, b"\n", false);
                     line_buf[cursor] = b'\n';
                     buf[..cursor + 1].copy_from_slice(&line_buf[..cursor + 1]);
                     let command = String::from_utf8_lossy(&line_buf[..cursor]).into_owned();
@@ -153,18 +153,18 @@ impl Device for Tty {
                     self.cursor.store(0, Ordering::Relaxed);
                     return Ok(cursor + 1);
                 }
-                if self.serial.termios.cc[CcIndex::VERASE as usize] == ch as u8 {
+                if self.serial.termios.cc[CcIndex::Verase as usize] == ch {
                     if cursor > 0 {
                         let backspace_seq = [8u8, b' ', 8u8];
                         let _ = self.serial.write(_pos, &backspace_seq, false);
                         let _ = self.cursor.fetch_sub(1, Ordering::Relaxed);
-                        let _ = line_buf[cursor - 1] = 0;
+                        line_buf[cursor - 1] = 0;
                     }
                     i += 1;
                     continue;
                 }
 
-                if self.serial.termios.cc[CcIndex::VKILL as usize] == ch as u8 {
+                if self.serial.termios.cc[CcIndex::Vkill as usize] == ch {
                     line_buf.fill(0);
                     self.cursor.store(0, Ordering::Relaxed);
                     i += 1;
@@ -189,7 +189,7 @@ impl Device for Tty {
                             return Ok(1);
                         }
                         _ => {
-                            i = i + 3;
+                            i += 3;
                             continue;
                         }
                     }

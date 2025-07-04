@@ -49,6 +49,7 @@ pub use inner::*;
 #[macro_export]
 macro_rules! static_arc {
     ($name:ident($ty:ty, $val:expr),) => {
+        #[allow(non_snake_case)]
         mod $name {
             use super::*;
             use $crate::types::{Arc, ArcInner};

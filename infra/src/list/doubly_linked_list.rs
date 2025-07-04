@@ -24,7 +24,6 @@
 //! - Supports zero-cost abstraction with intrusive design
 //! - Provides complete iterator support
 
-#![allow(dead_code)]
 extern crate alloc;
 
 use alloc::boxed::Box;
@@ -233,7 +232,6 @@ impl ListHead {
     }
 
     /// Counts the number of nodes in the list
-    #[allow(dead_code)]
     pub fn size(&self) -> usize {
         let mut size = 0;
         let mut cur = self.next.clone();
@@ -294,7 +292,6 @@ impl Link {
         unsafe { &(*self.0.get().as_ptr()).prev }
     }
 
-    #[allow(dead_code)]
     fn cur(&self) -> &ListHead {
         // SAFETY: self.0.get() is a NonNull<ListHead>, so self.0.get().as_ptr() is a valid pointer
         unsafe { &*self.0.get().as_ptr() }

@@ -96,11 +96,11 @@ impl<T> IlistNode<T> {
     // Assume guards are acquired.
     fn do_detach(&mut self, prev: Option<&mut Self>, next: Option<&mut Self>) {
         if let Some(prev) = prev {
-            let _ = core::mem::replace(&mut prev.next, None);
+            let _ = prev.next.take();
             core::mem::swap(&mut prev.next, &mut self.next);
         };
         if let Some(next) = next {
-            let _ = core::mem::replace(&mut next.prev, None);
+            let _ = next.prev.take();
             core::mem::swap(&mut next.prev, &mut self.prev);
         }
         self.next = None;
@@ -124,7 +124,7 @@ impl<T> IlistNode<T> {
                     return false;
                 }
             };
-            let prev = write_me_guard.prev().map(|prev| prev.clone());
+            let prev = write_me_guard.prev().cloned();
             let mut write_prev_guard = None;
             if prev.is_some() {
                 write_prev_guard = unsafe { prev.as_ref().unwrap_unchecked() }.try_write();
@@ -133,7 +133,7 @@ impl<T> IlistNode<T> {
                     continue;
                 }
             }
-            let next = write_me_guard.next().map(|next| next.clone());
+            let next = write_me_guard.next().cloned();
             let mut write_next_guard = None;
             if next.is_some() {
                 write_next_guard = unsafe { next.as_ref().unwrap_unchecked() }.try_write();
@@ -143,8 +143,8 @@ impl<T> IlistNode<T> {
                 }
             }
             write_me_guard.do_detach(
-                write_prev_guard.as_mut().map(|w| w.deref_mut()),
-                write_next_guard.as_mut().map(|w| w.deref_mut()),
+                write_prev_guard.as_deref_mut(),
+                write_next_guard.as_deref_mut(),
             );
             write_me_guard.increment_version();
             return true;
@@ -177,7 +177,7 @@ impl<T> IlistNode<T> {
                     return false;
                 }
             };
-            let prev = write_other_guard.prev.as_ref().map(|prev| prev.clone());
+            let prev = write_other_guard.prev.clone();
             let write_prev_guard = {
                 if let Some(prev) = prev.as_ref() {
                     if let Some(guard) = prev.try_write() {
@@ -229,7 +229,7 @@ impl<T> IlistNode<T> {
                     return false;
                 }
             };
-            let next = write_other_guard.next.as_ref().map(|next| next.clone());
+            let next = write_other_guard.next.clone();
             let write_next_guard = {
                 if let Some(next) = next.as_ref() {
                     if let Some(guard) = next.try_write() {
@@ -265,9 +265,7 @@ impl<T> IlistNode<T> {
                 core::hint::spin_loop();
                 continue;
             };
-            if w.next().is_none() {
-                return None;
-            }
+            w.next()?;
             let Some(wn) = (unsafe { w.next().as_ref().unwrap_unchecked().try_write() }) else {
                 core::hint::spin_loop();
                 continue;
@@ -300,14 +298,13 @@ impl<T> DerefMut for IlistNode<T> {
 impl<T> Drop for IlistNode<T> {
     fn drop(&mut self) {
         // Static data should never reach here.
-        self.object.map(|v| {
+        if let Some(v) = self.object {
             let x = unsafe { Box::from_raw(v.as_ptr()) };
             drop(x);
-        });
+        }
     }
 }
 
-#[allow(unused)]
 pub struct MutexIter<'a, T> {
     mutex: WriteGuard<'a, IlistNode<T>>,
     current: Option<SpinArc<IlistNode<T>>>,
@@ -316,27 +313,25 @@ pub struct MutexIter<'a, T> {
 impl<'a, T> MutexIter<'a, T> {
     pub fn new(head: &'a SpinArc<IlistNode<T>>) -> Self {
         let mutex = head.write();
-        let current = mutex.next().map(|v| v.clone());
+        let current = mutex.next().cloned();
         Self { mutex, current }
     }
 }
 
-impl<'a, T> Iterator for MutexIter<'a, T> {
+impl<T> Iterator for MutexIter<'_, T> {
     type Item = SpinArc<IlistNode<T>>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.current.is_none() {
-            return None;
-        }
+        self.current.as_ref()?;
         let x = unsafe {
             self.current
                 .as_ref()
                 .unwrap_unchecked()
                 .read()
                 .next()
-                .map(|v| v.clone())
+                .cloned()
         };
-        return core::mem::replace(&mut self.current, x);
+        core::mem::replace(&mut self.current, x)
     }
 }
 
@@ -366,9 +361,7 @@ impl<T> Iterator for VerIter<T> {
             if r.version() != self.version.into() {
                 return None;
             }
-            let Some(next) = r.next().map(|v| v.clone()) else {
-                return None;
-            };
+            let next = r.next().cloned()?;
             let Some(rn) = next.try_read() else {
                 core::hint::spin_loop();
                 continue;
@@ -383,7 +376,7 @@ impl<T> Iterator for VerIter<T> {
     }
 }
 
-pub struct Ilist<T: Sized> {
+pub(crate) struct Ilist<T: Sized> {
     // FIXME: We can use only one sentinel node if our IlistNode impl
     // is aliasing awared.
     head: SpinArc<IlistNode<T>>,
@@ -393,14 +386,11 @@ pub struct Ilist<T: Sized> {
 type Node<T> = IlistNode<T>;
 
 impl<T> Ilist<T> {
-    pub fn default() -> Self {
+    pub fn new() -> Self {
         let mut head = Arc::new(RwLock::new(Node::<T>::default()));
         let tail = Arc::new(RwLock::new(Node::<T>::default()));
         Node::<T>::insert_after(&mut head, tail.clone());
-        Self {
-            head: head,
-            tail: tail,
-        }
+        Self { head, tail }
     }
 
     #[inline]
@@ -424,10 +414,7 @@ impl<T> Ilist<T> {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.head()
-            .read()
-            .next()
-            .map_or(false, |v| v.is(self.tail()))
+        self.head().read().next().is_some_and(|v| v.is(self.tail()))
     }
 
     pub fn push_back(&mut self, n: SpinArc<Node<T>>) {
@@ -470,14 +457,14 @@ mod tests {
         while cursor.is_some() {
             counter += 1;
             let id = **cursor.as_ref().unwrap().read();
-            assert!(ids.get(&id).is_none());
+            assert!(!ids.contains(&id));
             assert!(ids.insert(id));
             let tmp = cursor.unwrap().read().next.clone();
             cursor = tmp;
         }
         assert_eq!(counter, n);
         for i in 0..n {
-            ids.get(&i).is_some();
+            ids.contains(&i);
         }
     }
 

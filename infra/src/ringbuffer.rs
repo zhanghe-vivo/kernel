@@ -37,12 +37,10 @@ impl BoxedRingBuffer {
     pub fn new(size: usize) -> Self {
         let buf = Box::new_uninit_slice(size);
         let mut buf = unsafe { buf.assume_init() };
-        let rb = Self {
+        Self {
             inner: unsafe { RingBuffer::new_with_buffer(buf.as_mut_ptr(), buf.len()) },
             _box: buf, // hold the buffer to prevent it from being freed
-        };
-
-        rb
+        }
     }
 
     /// Get a reader for this ring buffer
@@ -79,7 +77,7 @@ impl BoxedRingBuffer {
 
 /// Atomic reusable ringbuffer
 #[derive(Debug)]
-pub struct RingBuffer {
+struct RingBuffer {
     buf: AtomicPtr<u8>,
     len: AtomicUsize,
 
@@ -241,7 +239,7 @@ impl RingBuffer {
     }
 }
 
-impl<'a> Writer<'a> {
+impl Writer<'_> {
     /// Push data into the buffer in-place.
     ///
     /// The closure `f` is called with a free part of the buffer, it must write
@@ -387,7 +385,7 @@ impl<'a> Writer<'a> {
     }
 }
 
-impl<'a> Reader<'a> {
+impl Reader<'_> {
     /// Pop data from the buffer in-place.
     ///
     /// The closure `f` is called with the next data, it must process
@@ -411,9 +409,9 @@ impl<'a> Reader<'a> {
     /// Returns true if popped successfully.
     pub fn pop_one(&mut self) -> Option<u8> {
         let mut res = None;
-        self.pop(|f| match f {
-            &[] => 0,
-            &[x, ..] => {
+        self.pop(|f| match *f {
+            [] => 0,
+            [x, ..] => {
                 res = Some(x);
                 1
             }
@@ -561,8 +559,8 @@ mod tests {
         unsafe {
             rb.init(b.as_mut_ptr(), 4);
 
-            assert_eq!(rb.is_empty(), true);
-            assert_eq!(rb.is_full(), false);
+            assert!(rb.is_empty());
+            assert!(!rb.is_full());
 
             for _i in 0..2 {
                 rb.writer().push(|buf| {
@@ -574,8 +572,8 @@ mod tests {
                     4
                 });
 
-                assert_eq!(rb.is_empty(), false);
-                assert_eq!(rb.is_full(), true);
+                assert!(!rb.is_empty());
+                assert!(rb.is_full());
 
                 rb.reader().pop(|buf| {
                     assert_eq!(4, buf.len());
@@ -586,8 +584,8 @@ mod tests {
                     4
                 });
 
-                assert_eq!(rb.is_empty(), true);
-                assert_eq!(rb.is_full(), false);
+                assert!(rb.is_empty());
+                assert!(!rb.is_full());
             }
         }
     }
@@ -599,8 +597,8 @@ mod tests {
         unsafe {
             rb.init(b.as_mut_ptr(), 4);
 
-            assert_eq!(rb.is_empty(), true);
-            assert_eq!(rb.is_full(), false);
+            assert!(rb.is_empty());
+            assert!(!rb.is_full());
 
             rb.writer().push(|buf| {
                 assert_eq!(4, buf.len());
@@ -611,8 +609,8 @@ mod tests {
                 4
             });
 
-            assert_eq!(rb.is_empty(), false);
-            assert_eq!(rb.is_full(), true);
+            assert!(!rb.is_empty());
+            assert!(rb.is_full());
 
             rb.writer().push(|buf| {
                 // If it's full, we can push 0 bytes.
@@ -620,8 +618,8 @@ mod tests {
                 0
             });
 
-            assert_eq!(rb.is_empty(), false);
-            assert_eq!(rb.is_full(), true);
+            assert!(!rb.is_empty());
+            assert!(rb.is_full());
 
             rb.reader().pop(|buf| {
                 assert_eq!(4, buf.len());
@@ -629,16 +627,16 @@ mod tests {
                 1
             });
 
-            assert_eq!(rb.is_empty(), false);
-            assert_eq!(rb.is_full(), false);
+            assert!(!rb.is_empty());
+            assert!(!rb.is_full());
 
             rb.reader().pop(|buf| {
                 assert_eq!(3, buf.len());
                 0
             });
 
-            assert_eq!(rb.is_empty(), false);
-            assert_eq!(rb.is_full(), false);
+            assert!(!rb.is_empty());
+            assert!(!rb.is_full());
 
             rb.reader().pop(|buf| {
                 assert_eq!(3, buf.len());
@@ -652,8 +650,8 @@ mod tests {
                 1
             });
 
-            assert_eq!(rb.is_empty(), true);
-            assert_eq!(rb.is_full(), false);
+            assert!(rb.is_empty());
+            assert!(!rb.is_full());
 
             rb.reader().pop(|buf| {
                 assert_eq!(0, buf.len());
@@ -673,8 +671,8 @@ mod tests {
                 2
             });
 
-            assert_eq!(rb.is_empty(), false);
-            assert_eq!(rb.is_full(), false);
+            assert!(!rb.is_empty());
+            assert!(!rb.is_full());
 
             rb.writer().push(|buf| {
                 assert_eq!(1, buf.len());
@@ -682,8 +680,8 @@ mod tests {
                 1
             });
 
-            assert_eq!(rb.is_empty(), false);
-            assert_eq!(rb.is_full(), true);
+            assert!(!rb.is_empty());
+            assert!(rb.is_full());
         }
     }
 
@@ -695,8 +693,8 @@ mod tests {
         unsafe {
             rb.init(b.as_mut_ptr(), b.len());
 
-            assert_eq!(rb.is_empty(), true);
-            assert_eq!(rb.is_full(), true);
+            assert!(rb.is_empty());
+            assert!(rb.is_full());
 
             rb.writer().push(|buf| {
                 assert_eq!(0, buf.len());
@@ -726,7 +724,6 @@ mod tests {
             ps[0][1] = 2;
             ps[0][2] = 3;
             w.push_done(3);
-            drop(w);
 
             /* pop 2 -> [x x 3 x] */
             rb.reader().pop(|buf| {
@@ -746,7 +743,6 @@ mod tests {
             ps[1][0] = 5;
             ps[1][1] = 6;
             w.push_done(3);
-            drop(w);
 
             /* buf is now full */
             let mut w = rb.writer();
@@ -767,7 +763,6 @@ mod tests {
             let ps = w.push_slices();
             assert_eq!(2, ps[0].len());
             assert_eq!(0, ps[1].len());
-            drop(w);
 
             /* pop 2 -> [x x x x] */
             rb.reader().pop(|buf| {
@@ -782,7 +777,6 @@ mod tests {
             let ps = w.push_slices();
             assert_eq!(2, ps[0].len());
             assert_eq!(2, ps[1].len());
-            drop(w);
 
             /* make sure we exercise all wrap around cases properly */
             for _ in 0..10 {
@@ -791,13 +785,11 @@ mod tests {
                 let ps = w.push_slices();
                 assert_eq!(4, ps[0].len() + ps[1].len());
                 w.push_done(1);
-                drop(w);
 
                 /* should have 1 element */
                 let mut w = rb.writer();
                 let ps = w.push_slices();
                 assert_eq!(3, ps[0].len() + ps[1].len());
-                drop(w);
 
                 /* pop 1 */
                 rb.reader().pop(|buf| {
@@ -851,7 +843,7 @@ mod tests {
         let producer = thread::spawn(move || {
             for i in 0..100 {
                 let mut writer = unsafe { rb_producer.writer() };
-                while writer.push_one(i as u8) == false {
+                while !writer.push_one(i as u8) {
                     thread::sleep(Duration::from_micros(10));
                 }
             }
@@ -1096,7 +1088,7 @@ mod tests {
         let producer = thread::spawn(move || {
             for i in 0..100 {
                 let mut writer = unsafe { rb_producer.writer() };
-                while writer.push_one(i) == false {
+                while !writer.push_one(i) {
                     thread::sleep(Duration::from_micros(10));
                 }
             }

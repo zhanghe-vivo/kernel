@@ -23,7 +23,7 @@ fn get_boot_cycle_count() -> u64 {
 
 impl Systick {
     pub fn init(&self, _sys_clock: u32, tick_per_second: u32) -> bool {
-        let step = 1000_000_000 / tick_per_second as usize;
+        let step = 1_000_000_000 / tick_per_second as usize;
         // SAFETY: step is only written once during initialization
         unsafe {
             *self.step.get() = step;

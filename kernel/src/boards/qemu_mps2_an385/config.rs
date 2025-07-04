@@ -13,7 +13,6 @@
 // limitations under the License.
 
 #![allow(non_upper_case_globals)]
-#![allow(unused)]
 use crate::arch::irq::IrqNumber;
 use core::ffi::CStr;
 
@@ -60,7 +59,7 @@ pub mod memory_map {
     pub const AHB_BASE: u32 = 0x40010000;
 
     // APB peripherals
-    pub const TIMER0_BASE: u32 = APB_BASE + 0x0000;
+    pub const TIMER0_BASE: u32 = APB_BASE;
     pub const TIMER1_BASE: u32 = APB_BASE + 0x1000;
     pub const DUALTIMER_BASE: u32 = APB_BASE + 0x2000;
     pub const DUALTIMER_1_BASE: u32 = DUALTIMER_BASE;
@@ -71,7 +70,7 @@ pub mod memory_map {
     pub const WATCHDOG_BASE: u32 = APB_BASE + 0x8000;
 
     // AHB peripherals
-    pub const GPIO0_BASE: u32 = AHB_BASE + 0x0000;
+    pub const GPIO0_BASE: u32 = AHB_BASE;
     pub const GPIO1_BASE: u32 = AHB_BASE + 0x1000;
     pub const SYSCTRL_BASE: u32 = AHB_BASE + 0xF000;
 }

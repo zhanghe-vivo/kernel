@@ -49,7 +49,7 @@ fn increment_isr_level(hart: usize) -> usize {
     let counter = unsafe { &mut CURRENT_ISR_LEVEL[hart] };
     let old = *counter;
     *counter += 1;
-    return old;
+    old
 }
 
 #[inline]
@@ -57,7 +57,7 @@ fn decrement_isr_level(hart: usize) -> usize {
     let counter = unsafe { &mut CURRENT_ISR_LEVEL[hart] };
     let old = *counter;
     *counter -= 1;
-    return old;
+    old
 }
 
 #[inline]
@@ -68,7 +68,7 @@ pub(crate) extern "C" fn is_in_interrupt() -> bool {
     let n = disable_local_irq_save();
     let ret = unsafe { CURRENT_ISR_LEVEL[current_cpu_id()] != 0 };
     enable_local_irq_restore(n);
-    return ret;
+    ret
 }
 
 #[inline]
@@ -304,6 +304,7 @@ pub(crate) extern "C" fn switch_context_with_hook(
 }
 
 #[inline(always)]
+#[allow(clippy::empty_loop)]
 pub(crate) extern "C" fn restore_context_with_hook(
     to_sp: usize,
     hook: *mut ContextSwitchHookHolder,

@@ -21,7 +21,7 @@ use alloc::sync::Arc;
 use log::debug;
 
 pub fn init() -> Result<(), Error> {
-    DeviceManager::get().foreach(|name, dev| add_device(name, dev))
+    DeviceManager::get().foreach(add_device)
 }
 
 fn add_device(path: &str, dev: Arc<dyn Device>) -> Result<(), Error> {

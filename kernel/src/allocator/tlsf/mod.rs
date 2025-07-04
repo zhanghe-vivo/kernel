@@ -140,9 +140,7 @@ impl<'pool, FLBitmap: BinInteger, SLBitmap: BinInteger, const FLLEN: usize, cons
     }
 
     // For testing
-    #[allow(dead_code)]
     const FLLEN: usize = FLLEN;
-    #[allow(dead_code)]
     const SLLEN: usize = SLLEN;
 
     /// Evaluates successfully only if the parameters are valid.

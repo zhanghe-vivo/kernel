@@ -53,7 +53,7 @@ fn copy_content_to_memory(buffer: &[u8], binary: &Elf, mapper: &mut MemoryMapper
             goblin::elf::program_header::PT_LOAD => {
                 let src =
                     buffer[ph.p_offset as usize..(ph.p_offset + ph.p_filesz) as usize].as_ptr();
-                let dst = unsafe { base.offset((ph.p_vaddr as usize - mapper.start()) as isize) };
+                let dst = unsafe { base.add(ph.p_vaddr as usize - mapper.start()) };
                 unsafe {
                     memcpy(
                         dst as *mut core::ffi::c_void,
@@ -73,7 +73,7 @@ pub fn load_elf(buffer: &[u8], mapper: &mut MemoryMapper) -> Result {
     let Ok(binary) = goblin::elf::Elf::parse(buffer) else {
         return Err("Unable to parse the buffer");
     };
-    let _ = build_memory_layout(&binary, mapper)?;
+    build_memory_layout(&binary, mapper)?;
     allocate_memory_for_segments(&binary, mapper)?;
     copy_content_to_memory(buffer, &binary, mapper)
 }

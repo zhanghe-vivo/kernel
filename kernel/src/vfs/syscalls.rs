@@ -67,7 +67,7 @@ pub extern "C" fn vfs_mount(
         }
     };
 
-    let Some(dir) = path::lookup_path(&target) else {
+    let Some(dir) = path::lookup_path(target) else {
         warn!("[mount] Invalid target path: {}", target);
         return -libc::EINVAL;
     };
@@ -116,7 +116,7 @@ pub extern "C" fn vfs_umount(path: *const c_char) -> c_int {
         Err(_) => return -libc::EINVAL,
     };
 
-    let Some(dir) = path::lookup_path(&target) else {
+    let Some(dir) = path::lookup_path(target) else {
         warn!("[unmount] Invalid target path: {}", target);
         return -libc::EINVAL;
     };
@@ -173,7 +173,7 @@ pub extern "C" fn vfs_close(fd: i32) -> i32 {
         let mut fd_manager = get_fd_manager().lock();
         let entry = match fd_manager.get_file_ops(fd) {
             Some(entry) => entry,
-            None => return -libc::EBADF as i32,
+            None => return -libc::EBADF,
         };
         let _ = fd_manager.free_fd(fd);
         entry
@@ -389,7 +389,7 @@ pub extern "C" fn vfs_fcntl(fd: i32, cmd: c_int, args: usize) -> c_int {
             0
         }
 
-        _ => return -libc::ENOSYS,
+        _ => -libc::ENOSYS,
     }
 }
 
@@ -428,7 +428,7 @@ pub extern "C" fn vfs_link(old_path: *const c_char, new_path: *const c_char) -> 
         None => return -libc::ENOENT,
     };
 
-    match new_dir.link(&old_dentry, &new_name) {
+    match new_dir.link(&old_dentry, new_name) {
         Ok(_) => 0,
         Err(e) => e.to_errno(),
     }
@@ -631,7 +631,7 @@ pub extern "C" fn vfs_stat(path: *const c_char, buf: *mut Stat) -> c_int {
     unsafe {
         copy_nonoverlapping(&stat, buf, 1);
     }
-    return 0;
+    0
 }
 
 #[no_mangle]
@@ -651,7 +651,7 @@ pub extern "C" fn vfs_fstat(fd: i32, buf: *mut Stat) -> c_int {
     unsafe {
         copy_nonoverlapping(&stat, buf, 1);
     }
-    return 0;
+    0
 }
 
 #[repr(C)]
@@ -713,9 +713,9 @@ pub extern "C" fn vfs_statfs(path: *const c_char, buf: *mut Statfs) -> c_int {
 
     let statvfs = Statfs::from(fs_info);
     unsafe {
-        copy_nonoverlapping(&statvfs, buf, size_of::<Statfs>());
+        copy_nonoverlapping(&statvfs, buf, 1);
     }
-    return 0;
+    0
 }
 
 #[no_mangle]
@@ -737,9 +737,9 @@ pub extern "C" fn vfs_fstatfs(fd: i32, buf: *mut Statfs) -> c_int {
     let fs_info = file.fs_info();
     let statvfs = Statfs::from(fs_info);
     unsafe {
-        copy_nonoverlapping(&statvfs, buf, size_of::<Statfs>());
+        copy_nonoverlapping(&statvfs, buf, 1);
     }
-    return 0;
+    0
 }
 
 #[no_mangle]
@@ -780,7 +780,7 @@ pub extern "C" fn vfs_getcwd(buf: *mut c_char, len: usize) -> c_int {
         core::ptr::copy_nonoverlapping(cwd_str.as_ptr(), buf as *mut u8, cwd_str_len);
         *(buf as *mut u8).add(cwd_str_len) = 0;
     }
-    return cwd_str_len as c_int;
+    cwd_str_len as c_int
 }
 
 /// Convert open flags to readable string for debugging
@@ -835,10 +835,10 @@ mod tests {
     use libc;
 
     // Mock data for testing
-    const TEST_PATH: *const c_char = b"/test/file.txt\0".as_ptr() as *const c_char;
-    const TEST_DIR: *const c_char = b"/test\0".as_ptr() as *const c_char;
-    const TEST_SUB_DIR: *const c_char = b"/test/subdir\0".as_ptr() as *const c_char;
-    const ROOT_DIR: *const c_char = b"/\0".as_ptr() as *const c_char;
+    const TEST_PATH: *const c_char = c"/test/file.txt".as_ptr() as *const c_char;
+    const TEST_DIR: *const c_char = c"/test".as_ptr() as *const c_char;
+    const TEST_SUB_DIR: *const c_char = c"/test/subdir".as_ptr() as *const c_char;
+    const ROOT_DIR: *const c_char = c"/".as_ptr() as *const c_char;
 
     #[test]
     fn test_open_invalid_path() {
@@ -889,13 +889,13 @@ mod tests {
 
         // Test with invalid fd
         let mut buffer = [0u8; 100];
-        let result = vfs_read(-1, buffer.as_mut_ptr() as *mut u8, 100);
+        let result = vfs_read(-1, buffer.as_mut_ptr(), 100);
         assert_eq!(result, code::EBADF.to_errno() as isize);
     }
 
     #[test]
     fn test_write_invalid_fd() {
-        let result = vfs_write(-1, b"test".as_ptr() as *const u8, 4);
+        let result = vfs_write(-1, b"test".as_ptr(), 4);
         assert_eq!(result, code::EBADF.to_errno() as isize);
     }
 
@@ -954,7 +954,7 @@ mod tests {
         assert!(dir > 0);
 
         let mut buf = [0u8; 256];
-        let len = vfs_getdents(dir, buf.as_mut_ptr() as *mut u8, buf.len());
+        let len = vfs_getdents(dir, buf.as_mut_ptr(), buf.len());
         assert!(len > 0);
 
         let result = vfs_close(dir);
@@ -1015,12 +1015,12 @@ mod tests {
 
     #[test]
     fn test_getdents_current_dir() {
-        let dir = vfs_open(b".\0".as_ptr() as *const c_char, libc::O_RDONLY, 0o755);
+        let dir = vfs_open(c".".as_ptr() as *const c_char, libc::O_RDONLY, 0o755);
         assert!(dir > 0);
 
         let mut buf = [0u8; 512];
         // Print return value of each readdir call
-        let len = vfs_getdents(dir, buf.as_mut_ptr() as *mut u8, buf.len());
+        let len = vfs_getdents(dir, buf.as_mut_ptr(), buf.len());
         assert!(len > 0);
         let mut next_entry = 0;
         while next_entry < len as usize {
@@ -1049,12 +1049,12 @@ mod tests {
 
     #[test]
     fn test_getdents_parent_dir() {
-        let dir = vfs_open(b"..\0".as_ptr() as *const c_char, libc::O_RDONLY, 0o755);
+        let dir = vfs_open(c"..".as_ptr() as *const c_char, libc::O_RDONLY, 0o755);
         assert!(dir > 0);
 
         let mut buf = [0u8; 512];
         // Print return value of each readdir call
-        let len = vfs_getdents(dir, buf.as_mut_ptr() as *mut u8, buf.len());
+        let len = vfs_getdents(dir, buf.as_mut_ptr(), buf.len());
         assert!(len > 0);
         let mut next_entry = 0;
         while next_entry < len as usize {
@@ -1125,7 +1125,7 @@ mod tests {
 
         // Write some data to file
         let test_data = b"Hello, World!";
-        let write_result = vfs_write(fd, test_data.as_ptr() as *const u8, test_data.len());
+        let write_result = vfs_write(fd, test_data.as_ptr(), test_data.len());
         assert_eq!(write_result, test_data.len() as isize);
 
         // Close file
@@ -1141,7 +1141,7 @@ mod tests {
         assert!(fd > 0);
 
         let mut buffer = [0u8; 20];
-        let read_result = vfs_read(fd, buffer.as_mut_ptr() as *mut u8, buffer.len());
+        let read_result = vfs_read(fd, buffer.as_mut_ptr(), buffer.len());
         assert_eq!(read_result, 5);
 
         // Verify content is truncated
@@ -1160,7 +1160,7 @@ mod tests {
         assert!(fd > 0);
 
         let mut buffer = [0u8; 25];
-        let read_result = vfs_read(fd, buffer.as_mut_ptr() as *mut u8, buffer.len());
+        let read_result = vfs_read(fd, buffer.as_mut_ptr(), buffer.len());
         assert_eq!(read_result, 20);
 
         // Verify original content is preserved, rest is zero-filled
@@ -1200,7 +1200,7 @@ mod tests {
 
         // Write some data to file
         let test_data = b"Hello, World!";
-        let write_result = vfs_write(fd, test_data.as_ptr() as *const u8, test_data.len());
+        let write_result = vfs_write(fd, test_data.as_ptr(), test_data.len());
         assert_eq!(write_result, test_data.len() as isize);
 
         // Test ftruncate to smaller size
@@ -1212,7 +1212,7 @@ mod tests {
         assert_eq!(seek_result, 0);
 
         let mut buffer = [0u8; 20];
-        let read_result = vfs_read(fd, buffer.as_mut_ptr() as *mut u8, buffer.len());
+        let read_result = vfs_read(fd, buffer.as_mut_ptr(), buffer.len());
         assert_eq!(read_result, 5);
 
         // Verify content is truncated
@@ -1227,7 +1227,7 @@ mod tests {
         assert_eq!(seek_result, 0);
 
         let mut buffer = [0u8; 25];
-        let read_result = vfs_read(fd, buffer.as_mut_ptr() as *mut u8, buffer.len());
+        let read_result = vfs_read(fd, buffer.as_mut_ptr(), buffer.len());
         assert_eq!(read_result, 20);
 
         // Verify original content is preserved, rest is zero-filled
@@ -1272,7 +1272,7 @@ mod tests {
 
         // Write some data
         let test_data = b"Hello, World!";
-        let write_result = vfs_write(fd, test_data.as_ptr() as *const u8, test_data.len());
+        let write_result = vfs_write(fd, test_data.as_ptr(), test_data.len());
         assert_eq!(write_result, test_data.len() as isize);
 
         // Close file

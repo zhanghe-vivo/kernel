@@ -106,14 +106,15 @@ unsafe extern "C" fn handle_svc(context: &mut Context) -> usize {
     let old_sp = context as *const _ as usize;
     if ec == 0x15 {
         if context.x8 == NR_SWITCH {
-            let saved_sp_ptr: *mut usize = unsafe { core::mem::transmute(context.x0) };
+            let saved_sp_ptr: *mut usize = unsafe { context.x0 as *mut usize };
             if !saved_sp_ptr.is_null() {
                 unsafe {
                     sideeffect();
                     saved_sp_ptr.write_volatile(old_sp)
                 };
             }
-            let hook: *mut ContextSwitchHookHolder = unsafe { core::mem::transmute(context.x2) };
+            let hook: *mut ContextSwitchHookHolder =
+                unsafe { context.x2 as *mut scheduler::ContextSwitchHookHolder<'_> };
             if !hook.is_null() {
                 sideeffect();
                 unsafe {
@@ -123,21 +124,19 @@ unsafe extern "C" fn handle_svc(context: &mut Context) -> usize {
             return context.x1;
         } else {
             compiler_fence(Ordering::SeqCst);
-            let mut sc = ScContext::default();
-            sc.nr = context.x8;
-            sc.args[0] = context.x0;
-            sc.args[1] = context.x1;
-            sc.args[2] = context.x2;
-            sc.args[3] = context.x3;
-            sc.args[4] = context.x4;
-            sc.args[5] = context.x5;
-            context.x0 = dispatch_syscall(&sc) as usize;
+            let sc = ScContext {
+                nr: context.x8,
+                args: [
+                    context.x0, context.x1, context.x2, context.x3, context.x4, context.x5,
+                ],
+            };
+            context.x0 = dispatch_syscall(&sc);
             compiler_fence(Ordering::SeqCst);
         }
     } else {
         show_exception(ec, context);
     }
-    return old_sp;
+    old_sp
 }
 
 extern "C" fn trap_exception(context: &mut Context) -> usize {
@@ -145,7 +144,7 @@ extern "C" fn trap_exception(context: &mut Context) -> usize {
     let esr = ESR_EL1.get();
     let ec = (esr >> 26) & 0x3F;
     show_exception(ec, context);
-    return sp;
+    sp
 }
 
 extern "C" fn trap_irq(context: &mut Context) -> usize {
@@ -153,7 +152,7 @@ extern "C" fn trap_irq(context: &mut Context) -> usize {
     let irq = irq::get_interrupt();
     irq::trigger_irq(irq);
     irq::end_interrupt(irq);
-    return sp;
+    sp
 }
 
 extern "C" fn trap_fiq(context: &mut Context) -> usize {
@@ -163,7 +162,7 @@ extern "C" fn trap_fiq(context: &mut Context) -> usize {
         irq::trigger_irq(fiq);
     }
     irq::end_interrupt(fiq);
-    return sp;
+    sp
 }
 
 fn show_exception(ec: u64, context: &mut Context) {

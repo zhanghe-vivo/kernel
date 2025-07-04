@@ -244,11 +244,11 @@ impl<T> Node<T> {
     const fn new(val: T) -> Self {
         Self { next: None, val }
     }
-    #[allow(dead_code)]
+
     fn as_ref(&self) -> &T {
         &self.val
     }
-    #[allow(dead_code)]
+
     fn as_mut(&mut self) -> &mut T {
         &mut self.val
     }
@@ -258,7 +258,6 @@ impl<T> Node<T> {
     }
 
     // O(1) insertion.
-    #[allow(dead_code)]
     fn insert(&mut self, val: T) -> &mut Self {
         let mut new_node = Box::<Node<T>>::new(Node::<T> { next: None, val });
         mem::swap(&mut new_node.val, &mut self.val);
@@ -269,7 +268,6 @@ impl<T> Node<T> {
     }
 
     // O(1) removal.
-    #[allow(dead_code)]
     fn remove(&mut self) -> Option<Self> {
         match self.next.take() {
             None => None,
@@ -291,6 +289,7 @@ mod tests {
     use test::{black_box, Bencher};
 
     #[bench]
+    #[allow(clippy::unit_arg)]
     fn raw_list_bench_push(b: &mut Bencher) {
         let n = 1 << 16;
         let mut l = SinglyLinkedList::new();
@@ -304,6 +303,7 @@ mod tests {
     }
 
     #[bench]
+    #[allow(clippy::unit_arg)]
     fn raw_list_bench_push_and_pop(b: &mut Bencher) {
         let n = 1 << 16;
         let mut l = SinglyLinkedList::new();

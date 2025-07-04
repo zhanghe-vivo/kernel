@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![allow(unused)]
 pub(crate) mod hardfault;
 pub(crate) mod irq;
 pub(crate) mod xpsr;
@@ -52,7 +51,7 @@ macro_rules! arch_bootstrap {
 extern "C" fn prepare_schedule(cont: extern "C" fn() -> !) -> usize {
     let current = scheduler::current_thread();
     current.lock().reset_saved_sp();
-    return current.saved_sp();
+    current.saved_sp()
 }
 
 extern "C" {
@@ -211,16 +210,12 @@ pub(crate) unsafe extern "C" fn handle_svc() {
 }
 
 extern "C" fn syscall_handler(ctx: &mut Context) {
-    let mut sc = ScContext::default();
-    sc.nr = ctx.r7;
-    sc.args[0] = ctx.r0;
-    sc.args[1] = ctx.r1;
-    sc.args[2] = ctx.r2;
-    sc.args[3] = ctx.r3;
-    sc.args[4] = ctx.r4;
-    sc.args[5] = ctx.r5;
+    let sc = ScContext {
+        nr: ctx.r7,
+        args: [ctx.r0, ctx.r1, ctx.r2, ctx.r3, ctx.r4, ctx.r5],
+    };
     // r0 should contain the return value.
-    ctx.r0 = dispatch_syscall(&sc) as usize;
+    ctx.r0 = dispatch_syscall(&sc);
 }
 
 #[naked]
@@ -254,7 +249,7 @@ fn handle_svc_switch(ctx: &Context) -> usize {
     // there is no switch hook holder.
     assert_eq!(ctx.r7, NR_SWITCH);
     let sp = ctx as *const _ as usize;
-    let saved_sp_ptr: *mut usize = unsafe { core::mem::transmute(ctx.r0) };
+    let saved_sp_ptr: *mut usize = unsafe { ctx.r0 as *mut usize };
     if !saved_sp_ptr.is_null() {
         // FIXME: rustc opt the write out if not setting it volatile.
         unsafe {
@@ -262,14 +257,14 @@ fn handle_svc_switch(ctx: &Context) -> usize {
             saved_sp_ptr.write_volatile(sp)
         };
     }
-    let hook: *mut ContextSwitchHookHolder = unsafe { core::mem::transmute(ctx.r2) };
+    let hook: *mut ContextSwitchHookHolder = unsafe { ctx.r2 as *mut ContextSwitchHookHolder<'_> };
     if !hook.is_null() {
         unsafe {
             sideeffect();
             scheduler::save_context_finish_hook(Some(&mut *hook));
         }
     }
-    return ctx.r1;
+    ctx.r1
 }
 
 extern "C" fn handle_syscall(ctx: &mut Context) -> usize {
@@ -283,8 +278,7 @@ extern "C" fn handle_syscall(ctx: &mut Context) -> usize {
     base -= size;
     let region = Region { base, size };
     let mut rb = RegionalObjectBuilder::new(region);
-    let dup_ctx =
-        rb.write_after_start::<Context>(ctx.clone()).unwrap() as *mut Context as *mut usize;
+    let dup_ctx = rb.write_after_start::<Context>(*ctx).unwrap() as *mut Context as *mut usize;
     // Use thumb mode.
     ctx.xpsr = ctx.pc | 1;
     ctx.pc = ctx.lr;
@@ -296,7 +290,7 @@ extern "C" fn handle_syscall(ctx: &mut Context) -> usize {
             .byte_offset(offset_of!(Context, r0) as isize)
             .write_volatile(ctx as *const _ as usize);
     }
-    return base;
+    base
 }
 
 #[naked]
@@ -354,7 +348,7 @@ impl Context {
     #[inline]
     pub fn init(&mut self) -> &mut Self {
         self.xpsr = THUMB_MODE;
-        return self;
+        self
     }
 }
 

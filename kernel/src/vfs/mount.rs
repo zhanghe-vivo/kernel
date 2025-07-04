@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![allow(dead_code)]
 #[cfg(virtio)]
 use crate::vfs::fatfs::FatFileSystem;
 #[cfg(procfs)]
@@ -65,7 +64,7 @@ impl MountManager {
         mounts.insert(path.clone(), Arc::new(MountPoint { root, fs }));
 
         debug!("[mount_manager] Added mount point: {}", path);
-        return Ok(());
+        Ok(())
     }
 
     pub fn remove_mount(&self, path: &String) -> Result<(), Error> {
@@ -79,7 +78,6 @@ impl MountManager {
     }
 
     /// Get all mount points
-    #[allow(dead_code)]
     pub fn list_mounts(&self) -> Vec<Arc<MountPoint>> {
         self.mount_points.read().values().cloned().collect()
     }
@@ -90,7 +88,7 @@ static MOUNT_MANAGER: Once<MountManager> = Once::new();
 /// Get mount manager instance
 #[inline(always)]
 pub fn get_mount_manager() -> &'static MountManager {
-    MOUNT_MANAGER.call_once(|| MountManager::new())
+    MOUNT_MANAGER.call_once(MountManager::new)
 }
 
 pub fn get_fs(fs_type: &str, device: &str) -> Option<Arc<dyn FileSystem>> {

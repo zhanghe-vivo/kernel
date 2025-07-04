@@ -75,7 +75,7 @@ const ROOT_INO: InodeNo = 1;
 static PROCFS: Once<Arc<ProcFileSystem>> = Once::new();
 
 pub fn get_procfs() -> &'static Arc<ProcFileSystem> {
-    PROCFS.call_once(|| ProcFileSystem::new())
+    PROCFS.call_once(ProcFileSystem::new)
 }
 
 /// Proc filesystem implementation
@@ -468,7 +468,7 @@ impl<T: ProcFileOps + 'static> InodeOps for ProcFile<T> {
         let len = end - start;
         buf[0..len].copy_from_slice(&snapshot[start..end]);
 
-        return Ok(len);
+        Ok(len)
     }
 
     fn write_at(&self, _offset: usize, _buf: &[u8], _nonblock: bool) -> Result<usize, Error> {

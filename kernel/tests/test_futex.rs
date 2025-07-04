@@ -14,13 +14,11 @@
 
 use blueos::{
     scheduler,
-    sync::{atomic_wait, atomic_wake, Semaphore},
-    thread::{Builder, Entry, Thread},
-    types::Arc,
+    sync::{atomic_wait, atomic_wake},
+    thread::{Builder, Entry},
 };
 use blueos_test_macro::test;
 use core::sync::atomic::{AtomicUsize, Ordering};
-use libc::ETIMEDOUT;
 
 #[test]
 fn test_futex_timeout() {
@@ -89,7 +87,6 @@ fn test_futex_thread_wait() {
                     }
                     core::hint::spin_loop();
                 }
-            } else {
             }
         }
         _ => panic!("Unable to wake a thread"),

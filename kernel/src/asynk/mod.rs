@@ -81,8 +81,7 @@ pub(crate) fn init() {
 
 fn create_tasklet(future: impl Future<Output = ()> + 'static) -> Arc<Tasklet> {
     let future = Box::pin(future);
-    let mut task = Arc::new(Tasklet::new(future));
-    return task;
+    Arc::new(Tasklet::new(future))
 }
 
 pub fn block_on(future: impl Future<Output = ()> + 'static) {
@@ -111,7 +110,7 @@ pub fn spawn(future: impl Future<Output = ()> + 'static) -> Arc<Tasklet> {
     let task = create_tasklet(future);
     enqueue_active_tasklet(task.clone());
     wake_poller();
-    return task;
+    task
 }
 
 pub fn enqueue_active_tasklet(t: Arc<Tasklet>) {
@@ -135,20 +134,18 @@ fn poll_inner() {
     let mut w = ASYNC_WORK_QUEUE.advance_active_queue();
     for mut task in w.iter() {
         let mut l = task.lock();
-        match l.future.as_mut().poll(&mut ctx) {
-            Poll::Ready(()) => {
-                if let Some(t) = l.blocked.take() {
-                    scheduler::queue_ready_thread(thread::SUSPENDED, t);
-                }
-                // If we detach the task what ever it's ready or
-                // pending, it would be edge-level triggered. Now
-                // we're using level-trigger mode conservatively.
-                AsyncWorkQueue::WorkList::detach(&mut task.clone());
+        if let Poll::Ready(()) = l.future.as_mut().poll(&mut ctx) {
+            if let Some(t) = l.blocked.take() {
+                scheduler::queue_ready_thread(thread::SUSPENDED, t);
             }
+            // If we detach the task what ever it's ready or
+            // pending, it would be edge-level triggered. Now
+            // we're using level-trigger mode conservatively.
+            AsyncWorkQueue::WorkList::detach(&task.clone());
+        } else {
             // FIXME: This is not an efficient impl right now. We
             // might need a waker for each future, so that the poller
             // doesn't need to poll all futures when woken up.
-            _ => {}
         }
     }
 }

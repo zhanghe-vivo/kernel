@@ -29,7 +29,7 @@ pub(super) fn init() {
 pub fn next_ready_thread() -> Option<ThreadNode> {
     let mut w = READY_QUEUE.lock();
     let mut rq = LazyCell::get_mut(w.deref_mut()).unwrap();
-    return rq.pop_front();
+    rq.pop_front()
 }
 
 pub fn queue_ready_thread(old_state: Uint, t: ThreadNode) -> bool {
@@ -39,5 +39,5 @@ pub fn queue_ready_thread(old_state: Uint, t: ThreadNode) -> bool {
     let mut w = READY_QUEUE.lock();
     let mut rq = LazyCell::get_mut(w.deref_mut()).unwrap();
     rq.push_back(t);
-    return true;
+    true
 }

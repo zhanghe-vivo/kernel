@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![allow(dead_code)]
 use crate::{
     error::Error,
     vfs::{dcache::Dcache, inode::InodeOps},
@@ -21,7 +20,7 @@ use alloc::sync::Arc;
 use core::{any::Any, fmt::Debug};
 
 /// File system information, used for statfs
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct FileSystemInfo {
     pub magic: usize,
     pub dev: usize,
@@ -58,28 +57,7 @@ impl FileSystemInfo {
     }
 }
 
-impl Default for FileSystemInfo {
-    fn default() -> Self {
-        FileSystemInfo {
-            dev: 0,
-            magic: 0,
-            namelen: 0,
-            bsize: 0,
-            frsize: 0,
-            blocks: 0,
-            bfree: 0,
-            bavail: 0,
-            files: 0,
-            ffree: 0,
-            favail: 0,
-            fsid: 0,
-            flags: 0,
-        }
-    }
-}
-
 /// File system trait
-#[allow(dead_code)]
 pub trait FileSystem: Any + Send + Sync {
     fn mount(&self, mount_point: Arc<Dcache>) -> Result<(), Error>;
 

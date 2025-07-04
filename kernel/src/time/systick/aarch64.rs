@@ -53,7 +53,7 @@ impl Systick {
         unsafe {
             *self.step.get() = step as usize;
         }
-        CNTP_TVAL_EL0.set(step as u64);
+        CNTP_TVAL_EL0.set(step);
         CNTP_CTL_EL0.write(CNTP_CTL_EL0::ENABLE::Enabled);
         enable_irq_with_priority(self.irq_num, cpu_id, Priority::Normal);
         true

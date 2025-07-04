@@ -41,12 +41,12 @@ static PLIC: Plic = Plic::new(0x0c00_0000);
 
 #[inline]
 fn clock_timecmp_ptr(hart: usize) -> *mut usize {
-    unsafe { core::mem::transmute::<usize, *mut usize>(CLOCK_ADDR + 0x4000 + 8 * hart) }
+    unsafe { (CLOCK_ADDR + 0x4000 + 8 * hart) as *mut usize }
 }
 
 #[inline]
 pub fn current_ticks() -> usize {
-    unsafe { core::mem::transmute::<usize, *const usize>(CLOCK_TIME).read_volatile() }
+    unsafe { (CLOCK_TIME as *const usize).read_volatile() }
 }
 
 #[inline]
@@ -88,15 +88,15 @@ pub(crate) fn set_timeout_after(ns: usize) {
 }
 
 pub(crate) fn get_cycles_to_duration(cycles: u64) -> core::time::Duration {
-    return core::time::Duration::from_nanos(cycles);
+    core::time::Duration::from_nanos(cycles)
 }
 
 pub(crate) fn get_cycles_to_ms(cycles: u64) -> u64 {
-    return cycles / 1_000_000;
+    cycles / 1_000_000
 }
 
 pub(crate) fn ticks_to_duration(ticks: usize) -> core::time::Duration {
-    return core::time::Duration::from_nanos((ticks * NS_PER_TICK) as u64);
+    core::time::Duration::from_nanos((ticks * NS_PER_TICK) as u64)
 }
 
 pub(crate) fn current_duration() -> core::time::Duration {
@@ -114,13 +114,13 @@ static STAGING: SmpStagedInit = SmpStagedInit::new();
 
 pub(crate) fn init() {
     assert!(!local_irq_enabled());
-    STAGING.run(0, true, || crate::boot::init_runtime());
-    STAGING.run(1, true, || crate::boot::init_heap());
-    STAGING.run(2, false, || init_vector_table());
+    STAGING.run(0, true, crate::boot::init_runtime);
+    STAGING.run(1, true, crate::boot::init_heap);
+    STAGING.run(2, false, init_vector_table);
     STAGING.run(3, true, || {
         time::systick_init(0);
     });
-    STAGING.run(4, false, || time::reset_systick());
+    STAGING.run(4, false, time::reset_systick);
     // From now on, all work will be done by core 0.
     if arch::current_cpu_id() != 0 {
         wait_and_then_start_schedule();

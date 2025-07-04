@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![allow(dead_code)]
 use crate::{arch, time};
 use blueos_kconfig::NUM_CORES;
 use core::sync::atomic::{AtomicU32, Ordering};

@@ -13,7 +13,6 @@
 // limitations under the License.
 
 //! Provides utility functions for path processing
-#![allow(dead_code)]
 use crate::{
     error::{code, Error},
     vfs::{
@@ -63,7 +62,7 @@ impl<'a> FilePath<'a> {
 
 pub fn lookup_path(path: &str) -> Option<Arc<Dcache>> {
     match FilePath::new(path) {
-        FilePath::Absolute(path) => lookup_in_dir(&get_root_dir(), path.trim_start_matches('/')),
+        FilePath::Absolute(path) => lookup_in_dir(get_root_dir(), path.trim_start_matches('/')),
         FilePath::Relative(path) => lookup_in_dir(&get_working_dir(), path),
     }
 }
@@ -79,7 +78,7 @@ pub fn find_parent_and_name(path: &str) -> Option<(Arc<Dcache>, &str)> {
         FilePath::Absolute(path) => {
             let (parent, name) = split_path(path)?;
             let dir = get_root_dir();
-            let parent = lookup_in_dir(&dir, parent.trim_start_matches('/'))?;
+            let parent = lookup_in_dir(dir, parent.trim_start_matches('/'))?;
             Some((parent, name))
         }
     }
@@ -220,7 +219,6 @@ pub fn normalize_path(path: &str) -> Option<String> {
 
 /// Join two paths
 /// If path is absolute path then return path directly
-#[allow(dead_code)]
 pub fn join_path(base: &str, path: &str) -> Option<String> {
     if base.is_empty() {
         return normalize_path(path);

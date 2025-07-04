@@ -166,7 +166,7 @@ impl TimerWheel {
         {
             let wheel = self.wheel.irqsave_lock();
             let mut iter = wheel[cursor].iter();
-            while let Some(timer) = iter.next() {
+            for timer in &mut iter {
                 if timer.timeout_ticks() > current_ticks {
                     break;
                 }

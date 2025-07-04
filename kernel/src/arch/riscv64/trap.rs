@@ -129,7 +129,7 @@ impl SyscallGuard {
         compiler_fence(Ordering::SeqCst);
         leave_irq();
         enable_local_irq();
-        return g;
+        g
     }
 }
 
@@ -164,18 +164,14 @@ extern "C" fn handle_ecall(ctx: &mut Context) -> usize {
     {
         compiler_fence(Ordering::SeqCst);
         let scg = SyscallGuard::new();
-        let mut sc = ScContext::default();
-        sc.nr = ctx.a7;
-        sc.args[0] = ctx.a0;
-        sc.args[1] = ctx.a1;
-        sc.args[2] = ctx.a2;
-        sc.args[3] = ctx.a3;
-        sc.args[4] = ctx.a4;
-        sc.args[5] = ctx.a5;
-        ctx.a0 = dispatch_syscall(&sc) as usize;
+        let sc = ScContext {
+            nr: ctx.a7,
+            args: [ctx.a0, ctx.a1, ctx.a2, ctx.a3, ctx.a4, ctx.a5],
+        };
+        ctx.a0 = dispatch_syscall(&sc);
         compiler_fence(Ordering::SeqCst);
     }
-    return sp;
+    sp
 }
 
 extern "C" fn might_switch(from: &Context, to: &Context, mcause: usize) -> usize {
@@ -188,13 +184,13 @@ extern "C" fn might_switch(from: &Context, to: &Context, mcause: usize) -> usize
     assert!(mcause == ECALL && from.a7 == NR_SWITCH);
     assert_eq!(to_ptr as usize, from.a1);
     let sp = from_ptr as usize;
-    let saved_sp_ptr: *mut usize = unsafe { core::mem::transmute(from.a0) };
+    let saved_sp_ptr: *mut usize = unsafe { from.a0 as *mut usize };
     if !saved_sp_ptr.is_null() {
         sideeffect();
         // FIXME: rustc opt the write out if not setting it volatile.
         unsafe { saved_sp_ptr.write_volatile(sp) };
     }
-    let hook: *mut ContextSwitchHookHolder = unsafe { core::mem::transmute(from.a2) };
+    let hook: *mut ContextSwitchHookHolder = unsafe { from.a2 as *mut ContextSwitchHookHolder };
     if !hook.is_null() {
         sideeffect();
         unsafe {
@@ -209,7 +205,7 @@ extern "C" fn might_switch(from: &Context, to: &Context, mcause: usize) -> usize
             val = in(reg) super::MSTATUS_MPIE,
         )
     }
-    return from.a1;
+    from.a1
 }
 
 extern "C" fn handle_trap(ctx: &mut Context, mcause: usize, mtval: usize) -> usize {
@@ -217,15 +213,13 @@ extern "C" fn handle_trap(ctx: &mut Context, mcause: usize, mtval: usize) -> usi
     match mcause {
         EXTERN_INT => {
             handle_plic_irq(ctx, mcause, mtval);
-            return sp;
+            sp
         }
         TIMER_INT => {
             crate::time::handle_tick_increment();
-            return sp;
+            sp
         }
-        ECALL => {
-            return handle_ecall(ctx);
-        }
+        ECALL => handle_ecall(ctx),
         _ => {
             let t = scheduler::current_thread();
             panic!(

@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![allow(dead_code)]
 use crate::devices::DeviceClass;
 use bitflags::bitflags;
 
@@ -80,23 +79,23 @@ impl InodeFileType {
     }
 
     pub fn is_readable(&self) -> bool {
-        match self {
-            InodeFileType::Regular => true,
-            InodeFileType::CharDevice => true,
-            InodeFileType::BlockDevice => true,
-            InodeFileType::Socket => true,
-            _ => false,
-        }
+        matches!(
+            self,
+            InodeFileType::Regular
+                | InodeFileType::CharDevice
+                | InodeFileType::BlockDevice
+                | InodeFileType::Socket
+        )
     }
 
     pub fn is_writable(&self) -> bool {
-        match self {
-            InodeFileType::Regular => true,
-            InodeFileType::CharDevice => true,
-            InodeFileType::BlockDevice => true,
-            InodeFileType::Socket => true,
-            _ => false,
-        }
+        matches!(
+            self,
+            InodeFileType::Regular
+                | InodeFileType::CharDevice
+                | InodeFileType::BlockDevice
+                | InodeFileType::Socket
+        )
     }
 }
 

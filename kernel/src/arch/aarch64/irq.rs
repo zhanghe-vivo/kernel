@@ -144,7 +144,8 @@ impl IrqManager {
 
     fn trigger_irq(&mut self, irq: IrqNumber) -> Result<(), &'static str> {
         if let Some(context) = &mut self.contexts[usize::from(irq)] {
-            return Ok(context.handler.handle());
+            context.handler.handle();
+            return Ok(());
         }
         Err("handler not found")
     }

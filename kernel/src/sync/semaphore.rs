@@ -39,7 +39,7 @@ impl Semaphore {
     }
 
     pub fn init(&self) -> bool {
-        return self.pending.irqsave_lock().init();
+        self.pending.irqsave_lock().init()
     }
 
     pub fn try_acquire(&self) -> bool {
@@ -49,7 +49,7 @@ impl Semaphore {
             return false;
         }
         self.counter.set(old - 1);
-        return true;
+        true
     }
 
     #[inline(never)]
@@ -77,7 +77,7 @@ impl Semaphore {
                 break;
             }
         }
-        return true;
+        true
     }
 
     pub fn acquire_timeout(&self, t: usize) -> bool {
@@ -99,14 +99,14 @@ impl Semaphore {
         } else {
             self.counter.set(old - 1);
         }
-        return true;
+        true
     }
 
     pub fn acquire(&self, timeout: Option<usize>) -> bool {
         let Some(t) = timeout else {
             return self.acquire_notimeout();
         };
-        return self.acquire_timeout(t);
+        self.acquire_timeout(t)
     }
 
     #[inline(never)]

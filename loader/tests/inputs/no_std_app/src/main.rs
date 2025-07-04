@@ -102,6 +102,6 @@ extern "C" fn main(argc: i32) -> i32 {
         #[cfg(coverage)]
         common_cov::write_coverage_data();
 
-        return LARGE_ARRAY[argc as usize] as i32;
+        LARGE_ARRAY[argc as usize] as i32
     }
 }

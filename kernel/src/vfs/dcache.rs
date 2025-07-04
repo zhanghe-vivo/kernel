@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![allow(dead_code)]
 use crate::{
     devices::Device,
     error::{code, Error},
@@ -178,10 +177,7 @@ impl Dcache {
     /// Find child node
     pub fn find_child(&self, name: &str) -> Option<Arc<Dcache>> {
         let children = self.children.read();
-        match children.get(name) {
-            Some(child) => Some(child.clone()),
-            None => None,
-        }
+        children.get(name).cloned()
     }
 
     fn set_name_and_parent(&self, name: &str, parent: Weak<Self>) {
@@ -373,7 +369,7 @@ impl Dcache {
         }
 
         // rename in the same directory
-        if ptr::addr_eq(self, Arc::as_ptr(&new_dir)) && old_name != new_name {
+        if ptr::addr_eq(self, Arc::as_ptr(new_dir)) && old_name != new_name {
             if children.contains_key(new_name) {
                 debug!("{} already exists", new_name);
                 return Err(code::EEXIST);

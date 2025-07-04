@@ -25,6 +25,7 @@ static mut READY_TABLE: MaybeUninit<SpinLock<ReadyTable>> = MaybeUninit::zeroed(
 
 type ReadyTableBitFields = u32;
 
+#[allow(clippy::assertions_on_constants)]
 pub(super) fn init() {
     assert!(ReadyTableBitFields::BITS >= ThreadPriority::BITS);
     unsafe { READY_TABLE.write(SpinLock::new(ReadyTable::default())) };
@@ -78,7 +79,7 @@ pub fn next_ready_thread() -> Option<ThreadNode> {
         tbl.clear_active_queue(highest_active);
     }
     assert!(next.as_ref().unwrap().validate_saved_sp());
-    return next;
+    next
 }
 
 // We only queue the thread if old_state equals thread's current state.
@@ -104,5 +105,5 @@ pub fn queue_ready_thread(old_state: Uint, t: ThreadNode) -> bool {
             tbl.highest_active()
         );
     }
-    return true;
+    true
 }

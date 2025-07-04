@@ -37,22 +37,22 @@ const UART0_IRQ: usize = 10;
 const RHR: usize = 0;
 const THR: usize = 0;
 const IER: usize = 1;
-const IER_RX_ENABLE: u8 = 1 << 0;
+const IER_RX_ENABLE: u8 = 1;
 const IER_TX_ENABLE: u8 = 1 << 1;
 const FCR: usize = 2;
-const FCR_FIFO_ENABLE: u8 = 1 << 0;
+const FCR_FIFO_ENABLE: u8 = 1;
 const FCR_FIFO_CLEAR: u8 = 3 << 1;
 const ISR: usize = 2;
 const LCR: usize = 3;
-const LCR_EIGHT_BITS: u8 = 3 << 0;
+const LCR_EIGHT_BITS: u8 = 3;
 const LCR_BAUD_LATCH: u8 = 1 << 7;
 const LSR: usize = 5;
-const LSR_RX_READY: u8 = 1 << 0;
+const LSR_RX_READY: u8 = 1;
 const LSR_TX_IDLE: u8 = 1 << 5;
 
 #[inline]
 fn map_reg(reg: usize) -> *mut u8 {
-    unsafe { core::mem::transmute(UART0 + reg) }
+    unsafe { (UART0 + reg) as *mut u8 }
 }
 
 #[inline]
@@ -84,7 +84,7 @@ pub fn write_bytes(s: &str) -> usize {
     for c in s.bytes() {
         write_byte(c);
     }
-    return s.len();
+    s.len()
 }
 
 static UART0_MUTEX: SpinLock<()> = SpinLock::new(());
@@ -148,7 +148,7 @@ impl Read for Uart {
             buf[r] = c;
             r += 1;
         }
-        return Ok(r);
+        Ok(r)
     }
 }
 
@@ -163,13 +163,13 @@ impl Write for Uart {
             self.write_byte(buf[w])?;
             w += 1;
         }
-        return Ok(w);
+        Ok(w)
     }
 
     fn flush(&mut self) -> Result<(), SerialError> {
         let _ = UART0_MUTEX.irqsave_lock();
         write_reg(FCR, FCR_FIFO_CLEAR);
-        return Ok(());
+        Ok(())
     }
 }
 

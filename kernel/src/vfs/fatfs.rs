@@ -44,9 +44,9 @@ use spin::{mutex::Mutex, MutexGuard, RwLock};
 static MAGIC: usize = 0x16914836;
 const ROOT_INO: InodeNo = 1;
 const BLOCK_SIZE: u32 = 4096;
-const TYPE_FAT_12: &'static str = "Fat12";
-const TYPE_FAT_16: &'static str = "Fat16";
-const TYPE_FAT_32: &'static str = "Fat32";
+const TYPE_FAT_12: &str = "Fat12";
+const TYPE_FAT_16: &str = "Fat16";
+const TYPE_FAT_32: &str = "Fat32";
 
 use core::{cell::UnsafeCell, mem::MaybeUninit};
 
@@ -290,7 +290,7 @@ impl FileSystem for FatFileSystem {
     }
 
     fn fs_type(&self) -> &str {
-        &self.fat_type
+        self.fat_type
     }
 }
 
@@ -372,7 +372,7 @@ impl FatInode {
         parent: &Weak<FatInode>,
         internal_file: File,
     ) -> Result<Arc<Self>, Error> {
-        let internal_fs_wrapper: &'static InternalFsWrapper = *INTERNAL_FS_INSTANCES
+        let internal_fs_wrapper: &'static InternalFsWrapper = INTERNAL_FS_INSTANCES
             .read()
             .get(&fs.clone().upgrade().unwrap().device_name)
             .unwrap();
@@ -410,7 +410,7 @@ impl FatInode {
         parent: &Weak<FatInode>,
         internal_dir: Dir,
     ) -> Result<Arc<Self>, Error> {
-        let internal_fs_wrapper: &'static InternalFsWrapper = *INTERNAL_FS_INSTANCES
+        let internal_fs_wrapper: &'static InternalFsWrapper = INTERNAL_FS_INSTANCES
             .read()
             .get(&fs.clone().upgrade().unwrap().device_name)
             .unwrap();
@@ -516,7 +516,7 @@ impl InodeOps for FatInode {
                 }
                 InodeFileType::Regular => {
                     // Check: The file should not exist
-                    debug_assert_eq!(internal_dir.contais_entry(name, false).unwrap(), false);
+                    debug_assert!(!internal_dir.contais_entry(name, false).unwrap());
                     let internal_file = internal_dir.create_file(name)?;
                     FatInode::new_file(
                         name,
@@ -605,7 +605,7 @@ impl InodeOps for FatInode {
             let mut inner = self.inner.write();
             let block_size = inner.attr.blk_size;
             inner.attr.size = new_size;
-            inner.attr.blocks = (inner.attr.size + block_size - 1) / block_size;
+            inner.attr.blocks = inner.attr.size.div_ceil(block_size);
             debug_assert!(extents == inner.attr.blocks);
         }
 
@@ -614,7 +614,7 @@ impl InodeOps for FatInode {
 
     fn link(&self, _old: &Arc<dyn InodeOps>, _name: &str) -> Result<(), Error> {
         // FAT file system does not support hard link.
-        return Err(code::ENOTSUP);
+        Err(code::ENOTSUP)
     }
 
     fn unlink(&self, name: &str) -> Result<(), Error> {
@@ -749,7 +749,7 @@ impl InodeOps for FatInode {
             let mut inner = self.inner.write();
             inner.attr.size = new_size;
             let block_size = inner.attr.blk_size;
-            inner.attr.blocks = (inner.attr.size + block_size - 1) / block_size;
+            inner.attr.blocks = inner.attr.size.div_ceil(block_size);
             debug_assert!(extents == inner.attr.blocks);
         }
         Ok(())
@@ -872,7 +872,7 @@ fn get_internal_fs_with_guard(
     name: &String,
 ) -> (&'static fatfs::FileSystem<FatStorage>, MutexGuard<'_, ()>) {
     let internal_fs_wrapper: &'static InternalFsWrapper =
-        *INTERNAL_FS_INSTANCES.read().get(name).unwrap();
+        INTERNAL_FS_INSTANCES.read().get(name).unwrap();
     internal_fs_wrapper.get()
 }
 

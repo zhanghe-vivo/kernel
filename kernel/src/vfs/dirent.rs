@@ -13,7 +13,6 @@
 // limitations under the License.
 
 //! vfs_dirent.rs  
-#![allow(dead_code)]
 
 use crate::{
     error::{code, Error},

@@ -89,7 +89,7 @@ impl MemoryMapper {
     pub fn real_start(&self) -> Option<*const u8> {
         self.mem.as_ref().map(|mem| {
             let p = mem.as_ptr();
-            return unsafe { p.offset(p.align_offset(self.align) as isize) };
+            unsafe { p.add(p.align_offset(self.align)) }
         })
     }
 
@@ -97,7 +97,7 @@ impl MemoryMapper {
     pub fn real_start_mut(&self) -> Option<*mut u8> {
         self.mem.as_ref().map(|mem| {
             let p = mem.as_ptr() as *mut u8;
-            return unsafe { p.offset(p.align_offset(self.align) as isize) };
+            unsafe { p.add(p.align_offset(self.align)) }
         })
     }
 

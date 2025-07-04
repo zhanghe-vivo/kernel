@@ -88,7 +88,7 @@ pub fn atomic_wait(addr: usize, val: usize, timeout: Option<usize>) -> Result<()
             let entry = Arc::new(AtomicWaitEntry::new(addr));
             entry.init();
             EntryList::insert_after(&mut *w, entry.clone());
-            return entry;
+            entry
         },
         |e| e,
     );
@@ -110,10 +110,10 @@ pub fn atomic_wait(addr: usize, val: usize, timeout: Option<usize>) -> Result<()
     } else {
         let _ = scheduler::suspend_me_with_timeout(we, WAITING_FOREVER);
     }
-    return Ok(());
+    Ok(())
 }
 
-pub fn atomic_wake(addr: usize, how_many: usize) -> Result<usize, ()> {
+pub fn atomic_wake(addr: usize, how_many: usize) -> Result<usize, Error> {
     if how_many == 0 {
         return Ok(0);
     }
@@ -145,7 +145,7 @@ pub fn atomic_wake(addr: usize, how_many: usize) -> Result<usize, ()> {
             }
         }
         if we.is_empty() {
-            EntryList::detach(&mut e.clone());
+            EntryList::detach(&e.clone());
         }
         if woken == how_many {
             break;
@@ -159,7 +159,7 @@ pub fn atomic_wake(addr: usize, how_many: usize) -> Result<usize, ()> {
         woken
     );
     scheduler::yield_me_now_or_later();
-    return Ok(woken);
+    Ok(woken)
 }
 
 #[cfg(cortex_m)]

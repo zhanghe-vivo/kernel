@@ -8,7 +8,7 @@ use allocator::MemoryInfo;
 type TlsfHeap = Tlsf<'static, usize, usize, { usize::BITS as usize }, { usize::BITS as usize }>;
 
 /// A two-Level segregated fit heap.
-pub struct Heap {
+pub(crate) struct Heap {
     heap: SpinLock<TlsfHeap>,
 }
 
@@ -30,8 +30,7 @@ impl Heap {
     // try to allocate memory with the given layout
     pub fn alloc(&self, layout: Layout) -> Option<NonNull<u8>> {
         let mut heap = self.heap.irqsave_lock();
-        let ptr = heap.allocate(&layout);
-        ptr
+        heap.allocate(&layout)
     }
 
     // deallocate the memory pointed by ptr with the given layout
@@ -54,8 +53,7 @@ impl Heap {
     ) -> Option<NonNull<u8>> {
         let new_layout = Layout::from_size_align_unchecked(new_size, layout.align());
         let mut heap = self.heap.irqsave_lock();
-        let new_ptr = heap.reallocate(NonNull::new_unchecked(ptr), &new_layout);
-        new_ptr
+        heap.reallocate(NonNull::new_unchecked(ptr), &new_layout)
     }
 
     // reallocate memory with the given size but with out align
@@ -65,8 +63,7 @@ impl Heap {
         new_size: usize,
     ) -> Option<NonNull<u8>> {
         let mut heap = self.heap.irqsave_lock();
-        let new_ptr = heap.reallocate_unknown_align(NonNull::new_unchecked(ptr), new_size);
-        new_ptr
+        heap.reallocate_unknown_align(NonNull::new_unchecked(ptr), new_size)
     }
 
     // Retrieves various statistics about the current state of the heap's memory usage.

@@ -211,7 +211,7 @@ impl Serial {
             let slices = writer.push_slices();
             let mut n = 0;
             for slice in slices {
-                if slice.len() == 0 {
+                if slice.is_empty() {
                     continue;
                 }
                 let slice_len = slice.len().min(len - count);

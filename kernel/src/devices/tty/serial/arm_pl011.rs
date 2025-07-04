@@ -483,7 +483,7 @@ impl<'a> Uart<'a> {
 
 // SAFETY: An `&Uart` only allows operations which read registers, which can safely be done from
 // multiple threads simultaneously.
-unsafe impl<'a> Sync for Uart<'a> {}
+unsafe impl Sync for Uart<'_> {}
 
 impl fmt::Write for Uart<'_> {
     fn write_str(&mut self, s: &str) -> fmt::Result {
@@ -496,7 +496,7 @@ impl fmt::Write for Uart<'_> {
     }
 }
 
-impl<'a> Drop for Uart<'a> {
+impl Drop for Uart<'_> {
     fn drop(&mut self) {
         self.disable();
     }
@@ -508,7 +508,7 @@ pub struct Driver<'a> {
     irq: irq::IrqNumber,
 }
 
-impl<'a> Driver<'a> {
+impl Driver<'_> {
     pub fn new(base_address: u64, clock: u32, irq: irq::IrqNumber) -> Self {
         Self {
             uart: Uart::new(unsafe {
@@ -524,11 +524,11 @@ impl<'a> Driver<'a> {
     }
 }
 
-impl<'a> ErrorType for Driver<'a> {
+impl ErrorType for Driver<'_> {
     type Error = SerialError;
 }
 
-impl<'a> Write for Driver<'a> {
+impl Write for Driver<'_> {
     fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
         let mut count = 0;
         // write until the buffer is full
@@ -547,13 +547,13 @@ impl<'a> Write for Driver<'a> {
     }
 }
 
-impl<'a> WriteReady for Driver<'a> {
+impl WriteReady for Driver<'_> {
     fn write_ready(&mut self) -> Result<bool, SerialError> {
         Ok(!self.uart.is_tx_fifo_full())
     }
 }
 
-impl<'a> Read for Driver<'a> {
+impl Read for Driver<'_> {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, SerialError> {
         if buf.is_empty() {
             return Ok(0);
@@ -571,17 +571,17 @@ impl<'a> Read for Driver<'a> {
             }
         }
 
-        return Ok(count);
+        Ok(count)
     }
 }
 
-impl<'a> ReadReady for Driver<'a> {
+impl ReadReady for Driver<'_> {
     fn read_ready(&mut self) -> Result<bool, SerialError> {
         Ok(!self.uart.is_rx_fifo_empty())
     }
 }
 
-impl<'a> UartOps for Driver<'a> {
+impl UartOps for Driver<'_> {
     fn setup(&mut self, termios: &Termios) -> Result<(), SerialError> {
         self.enable(termios);
         self.uart.clear_interrupts(ALL_INTERRUPTS);

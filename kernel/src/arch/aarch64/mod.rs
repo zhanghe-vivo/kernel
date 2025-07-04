@@ -297,6 +297,7 @@ pub(crate) extern "C" fn switch_context(saved_sp_mut: *mut u8, to_sp: usize) {
 }
 
 #[inline(always)]
+#[allow(clippy::empty_loop)]
 pub(crate) extern "C" fn restore_context_with_hook(
     to_sp: usize,
     hook: *mut ContextSwitchHookHolder,

@@ -63,15 +63,15 @@ pub extern "C" fn handle_tick_increment() {
 pub fn tick_from_millisecond(ms: usize) -> usize {
     #[cfg(has_fpu)]
     {
-        let ticks = TICKS_PER_SECOND as usize * (ms as usize / 1000);
-        ticks + (TICKS_PER_SECOND as usize * (ms as usize % 1000) + 999) / 1000
+        let ticks = TICKS_PER_SECOND * (ms / 1000);
+        ticks + (TICKS_PER_SECOND * (ms % 1000) + 999) / 1000
     }
     // use 1024 as 1000 to aviod use math library
     #[cfg(not(has_fpu))]
     {
-        let ticks = (TICKS_PER_SECOND as usize).wrapping_mul(ms as usize >> 10);
-        let remainder = ms as usize & 0x3FF;
-        ticks.wrapping_add(((TICKS_PER_SECOND as usize).wrapping_mul(remainder) + 1023) >> 10)
+        let ticks = TICKS_PER_SECOND.wrapping_mul(ms >> 10);
+        let remainder = ms & 0x3FF;
+        ticks.wrapping_add((TICKS_PER_SECOND.wrapping_mul(remainder) + 1023) >> 10)
     }
 }
 

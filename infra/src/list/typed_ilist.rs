@@ -40,7 +40,7 @@ impl<T, A: Adapter> ListIterator<T, A> {
     pub fn new(head: &ListHead<T, A>, tail: Option<NonNull<ListHead<T, A>>>) -> Self {
         Self {
             next: head.next,
-            tail: tail,
+            tail,
             _t: PhantomData,
             _a: PhantomData,
         }
@@ -59,7 +59,7 @@ impl<T, A: Adapter> Iterator for ListIterator<T, A> {
             panic!("Tail node is specified, but encountered None during iteration");
         };
         self.next = unsafe { current.as_ref().next };
-        return Some(current);
+        Some(current)
     }
 }
 
@@ -74,7 +74,7 @@ impl<T, A: Adapter> ListReverseIterator<T, A> {
     pub fn new(tail: &ListHead<T, A>, head: Option<NonNull<ListHead<T, A>>>) -> Self {
         Self {
             prev: tail.prev,
-            head: head,
+            head,
             _t: PhantomData,
             _a: PhantomData,
         }
@@ -93,7 +93,7 @@ impl<T, A: Adapter> Iterator for ListReverseIterator<T, A> {
             panic!("Tail node is specified, but encountered None during iteration");
         };
         self.prev = unsafe { current.as_ref().prev };
-        return Some(current);
+        Some(current)
     }
 }
 
@@ -114,13 +114,13 @@ impl<T, A: Adapter> ListHead<T, A> {
     pub fn owner(&self) -> &T {
         let ptr = self as *const _ as *const u8;
         let base = unsafe { ptr.sub(A::offset()) as *const T };
-        return unsafe { &*base };
+        unsafe { &*base }
     }
 
     pub unsafe fn owner_mut(&mut self) -> &mut T {
         let ptr = self as *mut _ as *mut u8;
         let base = unsafe { ptr.sub(A::offset()) as *mut T };
-        return unsafe { &mut *base };
+        unsafe { &mut *base }
     }
 
     pub fn is_detached(&self) -> bool {
@@ -138,7 +138,7 @@ impl<T, A: Adapter> ListHead<T, A> {
                 core::mem::replace(&mut v.as_mut().prev, Some(me))
             });
             let _ = core::mem::replace(&mut me.as_mut().prev, prev);
-            return true;
+            true
         }
     }
 
@@ -153,7 +153,7 @@ impl<T, A: Adapter> ListHead<T, A> {
                 core::mem::replace(&mut v.as_mut().next, Some(me))
             });
             let _ = core::mem::replace(&mut me.as_mut().next, next);
-            return true;
+            true
         }
     }
 
@@ -166,7 +166,7 @@ impl<T, A: Adapter> ListHead<T, A> {
             return false;
         }
         hook(unsafe { me.as_ref() });
-        return true;
+        true
     }
 
     pub fn detach(mut me: NonNull<ListHead<T, A>>) -> bool {
@@ -183,7 +183,7 @@ impl<T, A: Adapter> ListHead<T, A> {
             };
             me_mut.prev = None;
             me_mut.next = None;
-            return true;
+            true
         }
     }
 
@@ -195,7 +195,7 @@ impl<T, A: Adapter> ListHead<T, A> {
             return false;
         }
         hook(unsafe { me.as_ref() });
-        return true;
+        true
     }
 }
 
@@ -220,7 +220,7 @@ mod tests {
     #[derive(Default, Debug)]
     pub struct Foo {
         head: [u8; 8],
-        pub lh: ListHead<Foo, OffsetOfLh>,
+        lh: ListHead<Foo, OffsetOfLh>,
         tail: [u8; 8],
     }
 

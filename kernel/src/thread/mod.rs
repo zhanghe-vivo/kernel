@@ -45,19 +45,14 @@ impl core::fmt::Debug for Entry {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Default)]
 pub enum ThreadKind {
     AsyncPoller,
     Idle,
+    #[default]
     Normal,
     #[cfg(soft_timer)]
     SoftTimer,
-}
-
-impl Default for ThreadKind {
-    fn default() -> Self {
-        ThreadKind::Normal
-    }
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -185,25 +180,24 @@ impl Thread {
     #[inline(always)]
     pub fn stack_usage(&self) -> usize {
         let sp = arch::current_sp();
-        let used = self.stack.base() + self.stack.size() - sp;
-        return used;
+        self.stack.base() + self.stack.size() - sp
     }
 
     #[inline(always)]
     pub fn validate_sp(&self) -> bool {
         let sp = arch::current_sp();
-        return sp >= self.stack.base() && sp <= self.stack.base() + self.stack.size();
+        sp >= self.stack.base() && sp <= self.stack.base() + self.stack.size()
     }
 
     #[inline(always)]
     pub fn validate_saved_sp(&self) -> bool {
         let sp = self.saved_sp;
-        return sp >= self.stack.base() && sp <= self.stack.base() + self.stack.size();
+        sp >= self.stack.base() && sp <= self.stack.base() + self.stack.size()
     }
 
     #[inline(always)]
     pub fn saved_stack_usage(&self) -> usize {
-        return self.stack.base() + self.stack.size() - self.saved_sp();
+        self.stack.base() + self.stack.size() - self.saved_sp()
     }
 
     #[inline]
@@ -260,7 +254,7 @@ impl Thread {
     #[inline]
     pub unsafe fn set_state(&self, to: Uint) -> &Self {
         self.state.store(to, Ordering::Relaxed);
-        return self;
+        self
     }
 
     #[inline]
@@ -353,13 +347,13 @@ impl Thread {
     #[inline]
     pub(crate) fn reset_saved_sp(&mut self) -> &mut Self {
         self.saved_sp = self.stack.base() + self.stack.size();
-        return self;
+        self
     }
 
     #[inline]
     pub(crate) fn set_saved_sp(&mut self, sp: usize) -> &mut Self {
         self.saved_sp = sp;
-        return self;
+        self
     }
 
     pub(crate) fn init(&mut self, stack: Stack, entry: Entry) -> &mut Self {
@@ -384,7 +378,7 @@ impl Thread {
         match entry {
             Entry::C(f) => ctx
                 .set_return_address(run_simple_c as usize)
-                .set_arg(0, unsafe { core::mem::transmute(f) }),
+                .set_arg(0, unsafe { f as usize }),
             Entry::Closure(boxed) => {
                 // FIXME: We need to make a new box to contain Box<dyn
                 // FnOnce() + Send + 'static>, since *mut (dyn
@@ -396,10 +390,10 @@ impl Thread {
             }
             Entry::Posix(f, arg) => ctx
                 .set_return_address(run_posix as usize)
-                .set_arg(0, unsafe { core::mem::transmute(f) })
-                .set_arg(1, unsafe { core::mem::transmute(arg) }),
+                .set_arg(0, unsafe { f as usize })
+                .set_arg(1, unsafe { arg as usize }),
         };
-        return self;
+        self
     }
 
     #[inline]
@@ -409,12 +403,12 @@ impl Thread {
 
     #[inline]
     pub fn disable_preempt(&self) -> bool {
-        return self.preempt_count.fetch_add(1, Ordering::Acquire) == 0;
+        self.preempt_count.fetch_add(1, Ordering::Acquire) == 0
     }
 
     #[inline]
     pub fn enable_preempt(&self) -> bool {
-        return self.preempt_count.fetch_sub(1, Ordering::Acquire) == 1;
+        self.preempt_count.fetch_sub(1, Ordering::Acquire) == 1
     }
 
     #[inline]
@@ -469,7 +463,7 @@ impl PreemptGuard {
     }
 }
 
-impl<'a> Drop for PreemptGuard {
+impl Drop for PreemptGuard {
     #[inline]
     fn drop(&mut self) {
         self.t.enable_preempt();

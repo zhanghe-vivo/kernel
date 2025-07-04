@@ -14,8 +14,7 @@
 
 #![no_std]
 #![allow(internal_features)]
-#![allow(unused)]
-#![allow(dead_code)]
+#![allow(incomplete_features)]
 #![feature(alloc_error_handler)]
 #![feature(alloc_layout_extra)]
 #![feature(allocator_api)]
@@ -64,9 +63,9 @@ pub mod ffi {
     pub unsafe extern "C" fn __aeabi_memclr8(s: *mut u8, n: usize) -> *mut u8 {
         let mut i = 0;
         for i in 0..n {
-            s.offset(i as isize).write(0u8);
+            s.add(i).write(0u8);
         }
-        return s;
+        s
     }
 }
 

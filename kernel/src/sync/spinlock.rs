@@ -34,9 +34,9 @@ pub struct SpinLockGuard<'a, T: ?Sized> {
     irq_guard: Option<DisableInterruptGuard>,
 }
 
-impl<'t, T: ?Sized> SpinLockGuard<'t, T> {
+impl<T: ?Sized> SpinLockGuard<'_, T> {
     #[inline]
-    pub fn take_irq_guard<'s, S>(&mut self, other: &mut SpinLockGuard<'s, S>) {
+    pub fn take_irq_guard<S>(&mut self, other: &mut SpinLockGuard<'_, S>) {
         self.irq_guard = other.irq_guard.take();
     }
 }
@@ -72,12 +72,10 @@ impl<T: ?Sized> SpinLock<T> {
     pub fn try_irqsave_lock(&self) -> Option<SpinLockGuard<'_, T>> {
         let irq_guard = DisableInterruptGuard::new();
         compiler_fence(Ordering::SeqCst);
-        let Some(mut guard) = self.try_lock() else {
-            return None;
-        };
+        let mut guard = self.try_lock()?;
         assert!(guard.irq_guard.is_none());
         guard.irq_guard = Some(irq_guard);
-        return Some(guard);
+        Some(guard)
     }
 
     pub fn irqsave_lock(&self) -> SpinLockGuard<'_, T> {
@@ -91,13 +89,11 @@ impl<T: ?Sized> SpinLock<T> {
     }
 
     pub fn try_lock(&self) -> Option<SpinLockGuard<'_, T>> {
-        let Some(mutex_guard) = self.lock.try_write() else {
-            return None;
-        };
-        return Some(SpinLockGuard {
+        let mutex_guard = self.lock.try_write()?;
+        Some(SpinLockGuard {
             irq_guard: None,
             mutex_guard,
-        });
+        })
     }
 
     pub fn lock(&self) -> SpinLockGuard<'_, T> {
@@ -150,7 +146,7 @@ impl<T: Sized, A: IntrusiveAdapter> ISpinLock<T, A> {
         compiler_fence(Ordering::SeqCst);
         let mut g = self.lock();
         g.irq_guard = Some(irq_guard);
-        return g;
+        g
     }
 }
 

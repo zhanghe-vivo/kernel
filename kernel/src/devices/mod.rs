@@ -173,7 +173,6 @@ impl From<DeviceId> for usize {
     }
 }
 
-#[allow(unused_variables)]
 pub trait Device: Send + Sync {
     fn name(&self) -> String;
     fn class(&self) -> DeviceClass;
@@ -230,7 +229,7 @@ impl DeviceManager {
     }
 
     pub fn get() -> &'static DeviceManager {
-        DEVICE_MANAGER.call_once(|| DeviceManager::new())
+        DEVICE_MANAGER.call_once(DeviceManager::new)
     }
 
     pub fn get_device_number(&self) -> usize {
@@ -302,8 +301,8 @@ impl DeviceManager {
 }
 
 pub fn init() -> Result<(), Error> {
-    null::Null::register().map_err(|e| Error::from(e))?;
-    zero::Zero::register().map_err(|e| Error::from(e))?;
+    null::Null::register().map_err(Error::from)?;
+    zero::Zero::register().map_err(Error::from)?;
     Ok(())
 }
 

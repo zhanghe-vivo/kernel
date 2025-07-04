@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![allow(dead_code)]
-
 use crate::{
     devices::Device,
     error::{code, Error},
@@ -105,7 +103,6 @@ impl InodeAttr {
     }
 }
 
-#[allow(unused_variables)]
 pub trait InodeOps: Any + Sync + Send {
     fn read_at(&self, offset: usize, buf: &mut [u8], nonblock: bool) -> Result<usize, Error> {
         warn!("read_at is not implemented");

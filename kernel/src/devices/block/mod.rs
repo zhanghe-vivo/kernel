@@ -25,7 +25,7 @@ use virtio_drivers::{
     Hal,
 };
 
-pub const VIRTUAL_STORAGE_NAME: &'static str = "virt-storage";
+pub const VIRTUAL_STORAGE_NAME: &str = "virt-storage";
 
 #[derive(Debug, Clone, Eq, PartialEq, thiserror::Error)]
 pub enum BlockError<T> {
@@ -154,7 +154,7 @@ impl<E: embedded_io::Error> Device for Block<E, SECTOR_SIZE> {
         // Calculate starting sector and offset
         let start_sector = (pos / SECTOR_SIZE as u64) as usize;
         let sector_offset = (pos % SECTOR_SIZE as u64) as usize;
-        let sectors_coverred = ((sector_offset + max_read) + SECTOR_SIZE - 1) / SECTOR_SIZE;
+        let sectors_coverred = (sector_offset + max_read).div_ceil(SECTOR_SIZE);
         let mut sector_buf = vec![0u8; sectors_coverred * SECTOR_SIZE];
         self.driver
             .lock()
@@ -224,7 +224,7 @@ impl<E: embedded_io::Error> Device for Block<E, SECTOR_SIZE> {
                 .write_blocks(start_sector, &sector_buf)
                 .map_err(|e| IOError::kind(&e))?;
         }
-        return Ok(total_write_size);
+        Ok(total_write_size)
     }
 
     fn capacity(&self) -> Result<u64, ErrorKind> {

@@ -14,7 +14,6 @@
 extern crate alloc;
 extern crate rsrt;
 // Import it just for the global allocator.
-use blueos;
 use blueos_loader as loader;
 use libc::{c_char, pthread_t};
 use librs::pthread::{pthread_create, pthread_join};
@@ -35,7 +34,7 @@ mod test_everyting {
     pub fn test_load_elf_and_run() {
         let path =
             unsafe { core::ffi::CStr::from_ptr(EVERYTHING_ELF_PATH as *const core::ffi::c_char) };
-        let mut f = semihosting::fs::File::open(&path).unwrap();
+        let mut f = semihosting::fs::File::open(path).unwrap();
         let mut tmp = [0u8; 64];
         let mut buf = alloc::vec::Vec::new();
         loop {

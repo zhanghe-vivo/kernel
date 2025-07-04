@@ -63,7 +63,7 @@ const fn build_exception_handlers() -> [Vector; 15] {
     tbl[14] = Vector {
         handler: time::handle_tick_increment,
     };
-    return tbl;
+    tbl
 }
 
 macro_rules! default_irq_handler {

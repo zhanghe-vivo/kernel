@@ -13,7 +13,6 @@
 // limitations under the License.
 
 #![allow(non_upper_case_globals)]
-#![allow(unused)]
 use crate::arch::irq::IrqNumber;
 use core::ffi::CStr;
 

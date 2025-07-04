@@ -15,7 +15,7 @@
 use blueos::{
     allocator, scheduler,
     sync::atomic_wait as futex,
-    thread::{Builder as ThreadBuilder, Entry, Stack, Thread},
+    thread::{Builder as ThreadBuilder, Entry, Stack},
 };
 use blueos_test_macro::test;
 use core::{
@@ -114,12 +114,10 @@ extern "C" fn thread_entry(_arg: *mut core::ffi::c_void) {
         iface.poll(clock.elapsed(), &mut device, &mut sockets);
 
         let socket = sockets.get_mut::<tcp::Socket>(server_handle);
-        if !socket.is_active() && !socket.is_listening() {
-            if !did_listen {
-                println!("[smoltcp Tcp Socket Test]: Socket listening");
-                socket.listen(1234).unwrap();
-                did_listen = true;
-            }
+        if !socket.is_active() && !socket.is_listening() && !did_listen {
+            println!("[smoltcp Tcp Socket Test]: Socket listening");
+            socket.listen(1234).unwrap();
+            did_listen = true;
         }
 
         if socket.can_recv() {
@@ -133,14 +131,12 @@ extern "C" fn thread_entry(_arg: *mut core::ffi::c_void) {
 
         let socket = sockets.get_mut::<tcp::Socket>(client_handle);
         let cx = iface.context();
-        if !socket.is_open() {
-            if !did_connect {
-                println!("[smoltcp Tcp Socket Test]: Socket connecting");
-                socket
-                    .connect(cx, (IpAddress::v4(127, 0, 0, 1), 1234), 65000)
-                    .unwrap();
-                did_connect = true;
-            }
+        if !socket.is_open() && !did_connect {
+            println!("[smoltcp Tcp Socket Test]: Socket connecting");
+            socket
+                .connect(cx, (IpAddress::v4(127, 0, 0, 1), 1234), 65000)
+                .unwrap();
+            did_connect = true;
         }
 
         if socket.can_send() {
@@ -168,7 +164,7 @@ extern "C" fn thread_entry(_arg: *mut core::ffi::c_void) {
         "[smoltcp Tcp Socket Test]: Bailing out: socket test took too long on loopback device"
     );
     DONE.store(1, Ordering::Relaxed);
-    futex::atomic_wake(&DONE as *const _ as usize, 1);
+    let _ = futex::atomic_wake(&DONE as *const _ as usize, 1);
 }
 
 #[test]
@@ -182,6 +178,6 @@ fn test_smoltcp() {
             size,
         })
         .start();
-    futex::atomic_wait(&DONE as *const _ as usize, 0, None);
+    let _ = futex::atomic_wait(&DONE as *const _ as usize, 0, None);
     allocator::free_align(base, 16);
 }

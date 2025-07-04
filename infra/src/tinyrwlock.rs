@@ -474,14 +474,14 @@ impl<T: ?Sized + fmt::Debug> fmt::Debug for RwLock<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self.try_read() {
             Some(guard) => write!(f, "RwLock {{ data: ")
-                .and_then(|()| (&*guard).fmt(f))
+                .and_then(|()| (*guard).fmt(f))
                 .and_then(|()| write!(f, " }}")),
             None => write!(f, "RwLock {{ <locked> }}"),
         }
     }
 }
 
-impl<T: ?Sized + Default> Default for RwLock<T> {
+impl<T: Default> Default for RwLock<T> {
     fn default() -> Self {
         Self::new(Default::default())
     }
@@ -513,13 +513,13 @@ impl<'rwlock, T: ?Sized> RwLockReadGuard<'rwlock, T> {
     }
 }
 
-impl<'rwlock, T: ?Sized + fmt::Debug> fmt::Debug for RwLockReadGuard<'rwlock, T> {
+impl<T: ?Sized + fmt::Debug> fmt::Debug for RwLockReadGuard<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         fmt::Debug::fmt(&**self, f)
     }
 }
 
-impl<'rwlock, T: ?Sized + fmt::Display> fmt::Display for RwLockReadGuard<'rwlock, T> {
+impl<T: ?Sized + fmt::Display> fmt::Display for RwLockReadGuard<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         fmt::Display::fmt(&**self, f)
     }
@@ -551,7 +551,7 @@ impl<'rwlock, T: ?Sized> RwLockUpgradableGuard<'rwlock, T> {
     #[inline(always)]
     fn try_upgrade_internal(self, strong: bool) -> Result<RwLockWriteGuard<'rwlock, T>, Self> {
         if compare_exchange(
-            &self.lock,
+            self.lock,
             UPGRADED,
             WRITER,
             Ordering::Acquire,
@@ -608,7 +608,7 @@ impl<'rwlock, T: ?Sized> RwLockUpgradableGuard<'rwlock, T> {
     /// ```
     pub fn downgrade(self) -> RwLockReadGuard<'rwlock, T> {
         // Reserve the read guard for ourselves
-        acquire_reader(&self.lock);
+        acquire_reader(self.lock);
 
         let lock = self.lock;
         let data = self.data;
@@ -638,13 +638,13 @@ impl<'rwlock, T: ?Sized> RwLockUpgradableGuard<'rwlock, T> {
     }
 }
 
-impl<'rwlock, T: ?Sized + fmt::Debug> fmt::Debug for RwLockUpgradableGuard<'rwlock, T> {
+impl<T: ?Sized + fmt::Debug> fmt::Debug for RwLockUpgradableGuard<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         fmt::Debug::fmt(&**self, f)
     }
 }
 
-impl<'rwlock, T: ?Sized + fmt::Display> fmt::Display for RwLockUpgradableGuard<'rwlock, T> {
+impl<T: ?Sized + fmt::Display> fmt::Display for RwLockUpgradableGuard<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         fmt::Display::fmt(&**self, f)
     }
@@ -666,7 +666,7 @@ impl<'rwlock, T: ?Sized> RwLockWriteGuard<'rwlock, T> {
     #[inline]
     pub fn downgrade(self) -> RwLockReadGuard<'rwlock, T> {
         // Reserve the read guard for ourselves
-        acquire_reader(&self.lock);
+        acquire_reader(self.lock);
 
         let lock = self.lock;
         let data = self.data;
@@ -727,19 +727,19 @@ impl<'rwlock, T: ?Sized> RwLockWriteGuard<'rwlock, T> {
     }
 }
 
-impl<'rwlock, T: ?Sized + fmt::Debug> fmt::Debug for RwLockWriteGuard<'rwlock, T> {
+impl<T: ?Sized + fmt::Debug> fmt::Debug for RwLockWriteGuard<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         fmt::Debug::fmt(&**self, f)
     }
 }
 
-impl<'rwlock, T: ?Sized + fmt::Display> fmt::Display for RwLockWriteGuard<'rwlock, T> {
+impl<T: ?Sized + fmt::Display> fmt::Display for RwLockWriteGuard<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         fmt::Display::fmt(&**self, f)
     }
 }
 
-impl<'rwlock, T: ?Sized> Deref for RwLockReadGuard<'rwlock, T> {
+impl<T: ?Sized> Deref for RwLockReadGuard<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &T {
@@ -748,7 +748,7 @@ impl<'rwlock, T: ?Sized> Deref for RwLockReadGuard<'rwlock, T> {
     }
 }
 
-impl<'rwlock, T: ?Sized> Deref for RwLockUpgradableGuard<'rwlock, T> {
+impl<T: ?Sized> Deref for RwLockUpgradableGuard<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &T {
@@ -757,7 +757,7 @@ impl<'rwlock, T: ?Sized> Deref for RwLockUpgradableGuard<'rwlock, T> {
     }
 }
 
-impl<'rwlock, T: ?Sized> Deref for RwLockWriteGuard<'rwlock, T> {
+impl<T: ?Sized> Deref for RwLockWriteGuard<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &T {
@@ -766,21 +766,21 @@ impl<'rwlock, T: ?Sized> Deref for RwLockWriteGuard<'rwlock, T> {
     }
 }
 
-impl<'rwlock, T: ?Sized> DerefMut for RwLockWriteGuard<'rwlock, T> {
+impl<T: ?Sized> DerefMut for RwLockWriteGuard<'_, T> {
     fn deref_mut(&mut self) -> &mut T {
         // Safety: We know statically that only we are referencing data
         unsafe { &mut *self.data }
     }
 }
 
-impl<'rwlock, T: ?Sized> Drop for RwLockReadGuard<'rwlock, T> {
+impl<T: ?Sized> Drop for RwLockReadGuard<'_, T> {
     fn drop(&mut self) {
         debug_assert!(self.lock.load(Ordering::Relaxed) & !(WRITER | UPGRADED) > 0);
         self.lock.fetch_sub(READER, Ordering::Release);
     }
 }
 
-impl<'rwlock, T: ?Sized> Drop for RwLockUpgradableGuard<'rwlock, T> {
+impl<T: ?Sized> Drop for RwLockUpgradableGuard<'_, T> {
     fn drop(&mut self) {
         debug_assert_eq!(
             self.lock.load(Ordering::Relaxed) & (WRITER | UPGRADED),
@@ -790,7 +790,7 @@ impl<'rwlock, T: ?Sized> Drop for RwLockUpgradableGuard<'rwlock, T> {
     }
 }
 
-impl<'rwlock, T: ?Sized> Drop for RwLockWriteGuard<'rwlock, T> {
+impl<T: ?Sized> Drop for RwLockWriteGuard<'_, T> {
     fn drop(&mut self) {
         debug_assert_eq!(self.lock.load(Ordering::Relaxed) & WRITER, WRITER);
 
@@ -840,14 +840,14 @@ impl<T: Sized, A: Adapter> IRwLock<T, A> {
     fn this(&self) -> &T {
         let ptr = self as *const _ as *const u8;
         let base = unsafe { ptr.sub(A::offset()) as *const T };
-        return unsafe { &*base };
+        unsafe { &*base }
     }
 
     #[inline]
     fn this_mut(&self) -> &mut T {
         let ptr = self as *const _ as *mut u8;
         let base = unsafe { ptr.sub(A::offset()) as *mut T };
-        return unsafe { &mut *base };
+        unsafe { &mut *base }
     }
 
     #[inline]
@@ -856,18 +856,16 @@ impl<T: Sized, A: Adapter> IRwLock<T, A> {
         let lock = g.lock;
         let data = self.this() as *const T;
         core::mem::forget(g);
-        return RwLockReadGuard { lock, data };
+        RwLockReadGuard { lock, data }
     }
 
     #[inline]
     pub fn try_read(&self) -> Option<RwLockReadGuard<'_, T>> {
-        let Some(g) = self.rwlock.try_read() else {
-            return None;
-        };
+        let g = self.rwlock.try_read()?;
         let lock = g.lock;
         let data = self.this() as *const T;
         core::mem::forget(g);
-        return Some(RwLockReadGuard { lock, data });
+        Some(RwLockReadGuard { lock, data })
     }
 
     #[inline]
@@ -876,18 +874,16 @@ impl<T: Sized, A: Adapter> IRwLock<T, A> {
         let lock = g.lock;
         let data = self.this_mut() as *mut T;
         core::mem::forget(g);
-        return RwLockWriteGuard { lock, data };
+        RwLockWriteGuard { lock, data }
     }
 
     #[inline]
     pub fn try_write(&self) -> Option<RwLockWriteGuard<'_, T>> {
-        let Some(g) = self.rwlock.try_write() else {
-            return None;
-        };
+        let g = self.rwlock.try_write()?;
         let lock = g.lock;
         let data = self.this_mut() as *mut T;
         core::mem::forget(g);
-        return Some(RwLockWriteGuard { lock, data });
+        Some(RwLockWriteGuard { lock, data })
     }
 }
 
@@ -989,7 +985,7 @@ mod tests {
     fn test_rw_access_in_unwind() {
         let arc = Arc::new(RwLock::new(1));
         let arc2 = arc.clone();
-        let _ = thread::spawn(move || -> () {
+        let _ = thread::spawn(move || {
             struct Unwinder {
                 i: Arc<RwLock<isize>>,
             }
@@ -1029,10 +1025,9 @@ mod tests {
         let write_result = lock.try_write();
         match write_result {
             None => (),
-            Some(_) => assert!(
-                false,
-                "try_write should not succeed while read_guard is in scope"
-            ),
+            Some(_) => {
+                unreachable!("try_write should not succeed while read_guard is in scope")
+            }
         }
 
         drop(read_guard);

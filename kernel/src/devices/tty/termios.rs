@@ -186,52 +186,52 @@ impl Lflags {
 // Define the following symbolic constants for use as subscripts for the array c_cc.
 #[repr(u32)]
 pub enum CcIndex {
-    VINTR = 0,  /* INTR    character */
-    VQUIT = 1,  /* QUIT    character */
-    VERASE = 2, /* ERASE   character */
-    VKILL = 3,  /* KILL    character */
-    VEOF = 4,   /* EOF     character */
-    VTIME = 5,  /* TIME      value   */
-    VMIN = 6,   /* MIN       value   */
-    VSWTC = 7,  /* SWTC    character */
-    VSTART = 8, /* START   character */
-    VSTOP = 9,  /* STOP    character */
-    VSUSP = 10, /* SUSP    character */
-    VEOL = 11,  /* EOL     character */
+    Vintr = 0,  /* INTR    character */
+    Vquit = 1,  /* QUIT    character */
+    Verase = 2, /* ERASE   character */
+    Vkill = 3,  /* KILL    character */
+    Veof = 4,   /* EOF     character */
+    Vtime = 5,  /* TIME      value   */
+    Vmin = 6,   /* MIN       value   */
+    Vswtc = 7,  /* SWTC    character */
+    Vstart = 8, /* START   character */
+    Vstop = 9,  /* STOP    character */
+    Vsusp = 10, /* SUSP    character */
+    Veol = 11,  /* EOL     character */
 }
 
 impl CcIndex {
     pub fn default_value(self) -> u8 {
         match self {
-            CcIndex::VINTR => 0x03,  // ^C
-            CcIndex::VQUIT => 0x1C,  // ^\
-            CcIndex::VERASE => 0x7F, // DEL (Backspace)
-            CcIndex::VKILL => 0x15,  // ^U
-            CcIndex::VEOF => 0x04,   // ^D
-            CcIndex::VTIME => 0,
-            CcIndex::VMIN => 1,
-            CcIndex::VSWTC => 0,
-            CcIndex::VSTART => 0x11, // ^Q (XON)
-            CcIndex::VSTOP => 0x13,  // ^S (XOFF)
-            CcIndex::VSUSP => 0x1A,  // ^Z
-            CcIndex::VEOL => 0,      // 0
+            CcIndex::Vintr => 0x03,  // ^C
+            CcIndex::Vquit => 0x1C,  // ^\
+            CcIndex::Verase => 0x7F, // DEL (Backspace)
+            CcIndex::Vkill => 0x15,  // ^U
+            CcIndex::Veof => 0x04,   // ^D
+            CcIndex::Vtime => 0,
+            CcIndex::Vmin => 1,
+            CcIndex::Vswtc => 0,
+            CcIndex::Vstart => 0x11, // ^Q (XON)
+            CcIndex::Vstop => 0x13,  // ^S (XOFF)
+            CcIndex::Vsusp => 0x1A,  // ^Z
+            CcIndex::Veol => 0,      // 0
         }
     }
 
     pub fn from_u8(value: u8) -> Self {
         match value {
-            0 => CcIndex::VINTR,
-            1 => CcIndex::VQUIT,
-            2 => CcIndex::VERASE,
-            3 => CcIndex::VKILL,
-            4 => CcIndex::VEOF,
-            5 => CcIndex::VTIME,
-            6 => CcIndex::VMIN,
-            7 => CcIndex::VSWTC,
-            8 => CcIndex::VSTART,
-            9 => CcIndex::VSTOP,
-            10 => CcIndex::VSUSP,
-            11 => CcIndex::VEOL,
+            0 => CcIndex::Vintr,
+            1 => CcIndex::Vquit,
+            2 => CcIndex::Verase,
+            3 => CcIndex::Vkill,
+            4 => CcIndex::Veof,
+            5 => CcIndex::Vtime,
+            6 => CcIndex::Vmin,
+            7 => CcIndex::Vswtc,
+            8 => CcIndex::Vstart,
+            9 => CcIndex::Vstop,
+            10 => CcIndex::Vsusp,
+            11 => CcIndex::Veol,
             _ => unreachable!("Invalid c_cc index"),
         }
     }
@@ -240,8 +240,8 @@ impl CcIndex {
 impl Termios {
     pub fn default() -> Self {
         let mut cc = [0u8; 12];
-        for i in 0..cc.len() {
-            cc[i] = CcIndex::from_u8(i as u8).default_value();
+        for (i, item) in cc.iter_mut().enumerate() {
+            *item = CcIndex::from_u8(i as u8).default_value();
         }
         Self {
             iflag: Iflags::default(),
@@ -263,8 +263,8 @@ impl Termios {
         ospeed: u32,
     ) -> Self {
         let mut cc = [0u8; 12];
-        for i in 0..cc.len() {
-            cc[i] = CcIndex::from_u8(i as u8).default_value();
+        for (i, item) in cc.iter_mut().enumerate() {
+            *item = CcIndex::from_u8(i as u8).default_value();
         }
         Self {
             iflag,
