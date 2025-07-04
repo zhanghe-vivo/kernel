@@ -215,7 +215,7 @@ run_qemu_check("run_integration_test") {
     img = ":kernel_integration_test"
     checker = "src/cov.rs"
   } else {
-    checker = "tests/integration_test.rs"
+    checker = "tests/integration.checker"
   }
 }
 
@@ -245,7 +245,7 @@ run_qemu_check("run_unittest") {
     img = ":kernel_unittest"
     checker = "src/cov.rs"
   } else {
-    checker = "src/lib.rs"
+    checker = "src/unittests.checker"
   }
 }
 
