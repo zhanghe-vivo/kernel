@@ -123,16 +123,13 @@ impl ProcFileSystem {
         self.root.create_meminfo_file("meminfo")?;
         self.root.create_stat_file("stat")?;
 
-        // not support process yet, use thread info instead. and put all threads in /proc/0/task/
-        let pid_dir = self.root.create_dir("0", false)?;
-        let task_dir = pid_dir.create_dir("task", false)?;
-
+        // not support process yet, use thread info instead. and put all threads in /proc
         let mut global_queue_visitor = GlobalQueueVisitor::new();
         while let Some(thread) = global_queue_visitor.next() {
             let id = Thread::id(&thread);
             let id_str = id.to_string();
-            log::debug!("create_task_dir: /proc/0/task/{}", id_str);
-            let thread_dir = task_dir.create_dir(id_str.as_str(), false)?;
+            log::debug!("create_task_dir: /proc/{}", id_str);
+            let thread_dir = self.root.create_dir(id_str.as_str(), false)?;
             let _ = thread_dir.create_task_file("status", thread.clone())?;
         }
 
@@ -321,7 +318,7 @@ impl InodeOps for ProcDir {
         let mut current_offset = offset;
         // Handle special entries (., ..)
         if current_offset == 0 {
-            match reader.write_node(self.ino(), current_offset, self.type_(), ".") {
+            match reader.write_node(self.ino(), current_offset as i64, self.type_(), ".") {
                 Ok(_) => {
                     count += 1;
                     current_offset += 1;
@@ -331,7 +328,8 @@ impl InodeOps for ProcDir {
         }
 
         if current_offset == 1 {
-            if let Err(e) = reader.write_node(self.ino(), current_offset, self.type_(), "..") {
+            if let Err(e) = reader.write_node(self.ino(), current_offset as i64, self.type_(), "..")
+            {
                 if count == 0 {
                     return Err(e);
                 }
@@ -343,7 +341,7 @@ impl InodeOps for ProcDir {
 
         let start_idx = current_offset.saturating_sub(2);
         for (name, inode) in self.children.read().iter().skip(start_idx) {
-            match reader.write_node(inode.ino(), current_offset, inode.type_(), name) {
+            match reader.write_node(inode.ino(), current_offset as i64, inode.type_(), name) {
                 Ok(_) => {
                     count += 1;
                     current_offset += 1;

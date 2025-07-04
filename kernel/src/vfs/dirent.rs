@@ -52,7 +52,7 @@ impl From<u8> for DirentType {
 #[repr(C)]
 pub struct Dirent {
     d_ino: usize,
-    d_off: usize,
+    d_off: i64,
     /// The length of the dirent
     d_reclen: u16,
     /// The type of the file
@@ -61,11 +61,15 @@ pub struct Dirent {
     d_name: [u8; 0],
 }
 
+crate::static_assert!(size_of::<Dirent>() == size_of::<libc::dirent>());
+crate::static_assert!(align_of::<Dirent>() == align_of::<libc::dirent>());
+crate::static_assert!(offset_of!(Dirent, d_name) == offset_of!(libc::dirent, d_name));
+
 impl Dirent {
     pub const NAME_OFFSET: usize = offset_of!(Self, d_name);
 
     /// Create a new Dirent instance
-    pub const fn new(ino: usize, off: usize, type_: DirentType, reclen: u16) -> Self {
+    pub const fn new(ino: usize, off: i64, type_: DirentType, reclen: u16) -> Self {
         Self {
             d_ino: ino,
             d_off: off,
@@ -81,7 +85,7 @@ impl Dirent {
     }
 
     /// Get the offset
-    pub fn off(&self) -> usize {
+    pub fn off(&self) -> i64 {
         self.d_off
     }
 
@@ -131,12 +135,12 @@ impl<'a> DirBufferReader<'a> {
     pub fn write_node(
         &mut self,
         ino: usize,
-        off: usize,
+        off: i64,
         type_: InodeFileType,
         name: &str,
     ) -> Result<(), Error> {
         let name_len = name.len().min(255);
-        let dirent_size = align_up_size(Dirent::NAME_OFFSET + name_len + 1, align_of::<Self>());
+        let dirent_size = align_up_size(Dirent::NAME_OFFSET + name_len + 1, align_of::<Dirent>());
         if self.read_pos + dirent_size > self.buf.len() {
             return Err(code::ENOMEM);
         }

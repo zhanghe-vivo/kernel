@@ -527,8 +527,8 @@ fn vfs_test_procfs_posix() {
     );
     vfs_close(fd);
 
-    // 3. Test: readdir /proc & read /proc/0/task/{tid}/task
-    let path = b"/proc/0/task\0".as_ptr() as *const c_char;
+    // 3. Test: readdir /proc & read /proc/{tid}/task
+    let path = b"/proc\0".as_ptr() as *const c_char;
     let path_str = unsafe { CStr::from_ptr(path).to_str().unwrap() };
     let fd = vfs_open(path, O_RDONLY, 0o555);
     if fd < 0 {
@@ -546,9 +546,7 @@ fn vfs_test_procfs_posix() {
         let name = entry.name().unwrap().to_string_lossy();
         let mut dir_full_path = String::with_capacity(name.len() + 1 + path_str.len());
         write!(dir_full_path, "{}/{}", path_str, name);
-        println!("[VFS Test proc posix]: dir_full_path = {}", dir_full_path);
-        assert!(entry.type_() == DirentType::Dir);
-        if name.as_ref() != "." && name.as_ref() != ".." {
+        if entry.type_() == DirentType::Dir && name.as_ref() != "." && name.as_ref() != ".." {
             let status_path = format!("{}/status\0", dir_full_path);
             let status_path_str = status_path.as_ptr() as *const c_char;
             let fd = vfs_open(status_path_str, O_RDONLY, 0o444);

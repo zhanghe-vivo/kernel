@@ -615,7 +615,7 @@ pub extern "C" fn vfs_stat(path: *const c_char, buf: *mut Stat) -> c_int {
 
     let stat = Stat::from(file_attr);
     unsafe {
-        copy_nonoverlapping(&stat, buf, size_of::<Stat>());
+        copy_nonoverlapping(&stat, buf, 1);
     }
     return 0;
 }
@@ -635,7 +635,7 @@ pub extern "C" fn vfs_fstat(fd: i32, buf: *mut Stat) -> c_int {
     let file_attr = file_ops.stat();
     let stat = Stat::from(file_attr);
     unsafe {
-        copy_nonoverlapping(&stat, buf, size_of::<Stat>());
+        copy_nonoverlapping(&stat, buf, 1);
     }
     return 0;
 }
