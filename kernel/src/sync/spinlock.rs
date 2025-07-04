@@ -12,23 +12,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::support::DisableInterruptGuard;
+use crate::{
+    support::DisableInterruptGuard,
+    types::{IRwLock, IntrusiveAdapter, RwLock, RwLockWriteGuard},
+};
 use core::{
     ops::{Deref, DerefMut},
     sync::atomic::{compiler_fence, Ordering},
 };
-use spin::{Mutex, MutexGuard};
 
 #[derive(Debug)]
 pub struct SpinLock<T: ?Sized> {
-    lock: Mutex<T>,
+    lock: RwLock<T>,
 }
 
 // See https://doc.rust-lang.org/reference/destructors.html#r-destructors.operation for dropping orders.
 #[derive(Debug)]
 #[repr(C)]
 pub struct SpinLockGuard<'a, T: ?Sized> {
-    mutex_guard: MutexGuard<'a, T>,
+    mutex_guard: RwLockWriteGuard<'a, T>,
     irq_guard: Option<DisableInterruptGuard>,
 }
 
@@ -57,7 +59,7 @@ impl<'a, T: 'a + ?Sized> DerefMut for SpinLockGuard<'a, T> {
 impl<T> SpinLock<T> {
     pub const fn const_new(val: T) -> Self {
         Self {
-            lock: Mutex::new(val),
+            lock: RwLock::new(val),
         }
     }
 
@@ -89,7 +91,7 @@ impl<T: ?Sized> SpinLock<T> {
     }
 
     pub fn try_lock(&self) -> Option<SpinLockGuard<'_, T>> {
-        let Some(mutex_guard) = self.lock.try_lock() else {
+        let Some(mutex_guard) = self.lock.try_write() else {
             return None;
         };
         return Some(SpinLockGuard {
@@ -120,3 +122,37 @@ impl<'a, T: 'a + ?Sized> SpinLockGuard<'a, T> {
 
 unsafe impl<T: ?Sized + Send> Send for SpinLock<T> {}
 unsafe impl<T: ?Sized + Sync> Sync for SpinLock<T> {}
+
+#[derive(Default, Debug)]
+pub struct ISpinLock<T: Sized, A: IntrusiveAdapter> {
+    lock: IRwLock<T, A>,
+}
+
+impl<T: Sized, A: IntrusiveAdapter> ISpinLock<T, A> {
+    pub const fn new() -> Self {
+        Self {
+            lock: IRwLock::new(),
+        }
+    }
+
+    #[inline]
+    pub fn lock(&self) -> SpinLockGuard<'_, T> {
+        let l = self.lock.write();
+        SpinLockGuard {
+            mutex_guard: l,
+            irq_guard: None,
+        }
+    }
+
+    #[inline]
+    pub fn irqsave_lock(&self) -> SpinLockGuard<'_, T> {
+        let irq_guard = DisableInterruptGuard::new();
+        compiler_fence(Ordering::SeqCst);
+        let mut g = self.lock();
+        g.irq_guard = Some(irq_guard);
+        return g;
+    }
+}
+
+unsafe impl<T: Sized + Send, A: IntrusiveAdapter> Send for ISpinLock<T, A> {}
+unsafe impl<T: Sized + Sync, A: IntrusiveAdapter> Sync for ISpinLock<T, A> {}

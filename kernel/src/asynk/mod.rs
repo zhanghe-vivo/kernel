@@ -19,11 +19,9 @@ use crate::{
     config::MAX_THREAD_PRIORITY,
     scheduler, static_arc,
     support::ArcBufferingQueue,
-    sync::atomic_wait,
+    sync::{atomic_wait, ISpinLock, SpinLockGuard},
     thread::{self, Entry, SystemThreadStorage, ThreadKind, ThreadNode},
-    types::{
-        impl_simple_intrusive_adapter, Arc, IRwLock, IlistHead, RwLockWriteGuard as WriteGuard,
-    },
+    types::{impl_simple_intrusive_adapter, Arc, IlistHead},
 };
 use alloc::boxed::Box;
 use core::{
@@ -39,7 +37,7 @@ impl_simple_intrusive_adapter!(TaskletLock, Tasklet, lock);
 
 pub struct Tasklet {
     pub node: IlistHead<Tasklet, TaskletNode>,
-    lock: IRwLock<Tasklet, TaskletLock>,
+    lock: ISpinLock<Tasklet, TaskletLock>,
     future: Pin<Box<dyn Future<Output = ()>>>,
     blocked: Option<ThreadNode>,
 }
@@ -49,13 +47,13 @@ impl Tasklet {
         Self {
             node: IlistHead::new(),
             future,
-            lock: IRwLock::new(),
+            lock: ISpinLock::new(),
             blocked: None,
         }
     }
 
-    pub fn lock(&self) -> WriteGuard<'_, Tasklet> {
-        self.lock.write()
+    pub fn lock(&self) -> SpinLockGuard<'_, Tasklet> {
+        self.lock.irqsave_lock()
     }
 }
 

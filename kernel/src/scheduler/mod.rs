@@ -188,7 +188,7 @@ pub(crate) extern "C" fn save_context_finish_hook(hook: Option<&mut ContextSwitc
 // It's usually used in cortex-m's pendsv handler. It assumes current
 // thread's context is already saved.
 pub(crate) extern "C" fn yield_me_and_return_next_sp(old_sp: usize) -> usize {
-    let dig = DisableInterruptGuard::new();
+    assert!(!arch::local_irq_enabled());
     let Some(next) = next_ready_thread() else {
         #[cfg(debugging_scheduler)]
         crate::trace!("0x{:x} keeps running", Thread::id(&current_thread()));

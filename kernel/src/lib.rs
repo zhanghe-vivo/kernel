@@ -467,14 +467,14 @@ mod tests {
         assert_eq!(a - b, 0);
     }
 
-    // FIXME: asynk runtime not stable yet.
-    // #[test]
-    // fn stress_async_basic() {
-    //     let n = 1024;
-    //     for _i in 0..n {
-    //         asynk::block_on(is_asynk_working());
-    //     }
-    // }
+    // FIXME: We still have chance falling into deadlock, TBI.
+    //#[test]
+    fn stress_async_basic() {
+        let n = 1024;
+        for _i in 0..n {
+            asynk::block_on(is_asynk_working());
+        }
+    }
 
     #[inline(never)]
     pub fn kernel_unittest_runner(tests: &[&dyn Fn()]) {

@@ -16,11 +16,9 @@ extern crate alloc;
 use crate::{
     arch, config, debug, scheduler,
     support::{Region, RegionalObjectBuilder},
+    sync::{ISpinLock, SpinLockGuard},
     time::timer::Timer,
-    types::{
-        impl_simple_intrusive_adapter, Arc, AtomicUint, IRwLock, IlistHead,
-        RwLockWriteGuard as WriteGuard, ThreadPriority, Uint,
-    },
+    types::{impl_simple_intrusive_adapter, Arc, AtomicUint, IlistHead, ThreadPriority, Uint},
 };
 use alloc::boxed::Box;
 use core::sync::atomic::{AtomicI32, AtomicUsize, Ordering};
@@ -151,7 +149,7 @@ pub struct Thread {
     // a C-style intrusive lock. It's conventional to declare which
     // fields this lock is protecting. lock is protecting the
     // whole struct except those atomic fields.
-    lock: IRwLock<Thread, OffsetOfLock>,
+    lock: ISpinLock<Thread, OffsetOfLock>,
     posix_compat: Option<PosixCompat>,
     stats: ThreadStats,
 }
@@ -180,8 +178,8 @@ impl Thread {
 
     // FIXME: rustc miscompiles it if not inlined.
     #[inline]
-    pub fn lock(&self) -> WriteGuard<'_, Self> {
-        self.lock.write()
+    pub fn lock(&self) -> SpinLockGuard<'_, Self> {
+        self.lock.irqsave_lock()
     }
 
     #[inline(always)]
@@ -312,7 +310,7 @@ impl Thread {
             cleanup: None,
             stack: Stack::Raw { base: 0, size: 0 },
             state: AtomicUint::new(CREATED),
-            lock: IRwLock::<Thread, OffsetOfLock>::new(),
+            lock: ISpinLock::new(),
             sched_node: IlistHead::<Thread, OffsetOfSchedNode>::new(),
             global: IlistHead::<Thread, OffsetOfGlobal>::new(),
             saved_sp: 0,
