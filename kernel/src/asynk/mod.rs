@@ -93,6 +93,11 @@ pub fn block_on(future: impl Future<Output = ()> + 'static) {
         let ok = t.transfer_state(thread::RUNNING, thread::SUSPENDED);
         assert!(ok);
         enqueue_active_tasklet(task);
+        #[cfg(debugging_scheduler)]
+        crate::trace!(
+            "[TH:0x{:x}] is waking up the poller",
+            scheduler::current_thread_id()
+        );
         wake_poller();
     });
 }
@@ -110,9 +115,19 @@ pub fn spawn(future: impl Future<Output = ()> + 'static) -> Arc<Tasklet> {
 }
 
 pub fn enqueue_active_tasklet(t: Arc<Tasklet>) {
+    #[cfg(debugging_scheduler)]
+    crate::trace!(
+        "[TH:0x{:x}] is enqueuing tasklet",
+        scheduler::current_thread_id()
+    );
     let mut q = ASYNC_WORK_QUEUE.get_active_queue();
     let _ = t.lock();
     q.push_back(t.clone());
+    #[cfg(debugging_scheduler)]
+    crate::trace!(
+        "[TH:0x{:x}] has enqueued tasklet",
+        scheduler::current_thread_id()
+    );
 }
 
 fn poll_inner() {
@@ -140,8 +155,8 @@ fn poll_inner() {
 
 extern "C" fn poll() {
     loop {
-        poll_inner();
         let n = POLLER_WAKER.load(Ordering::Acquire);
+        poll_inner();
         atomic_wait::atomic_wait(&POLLER_WAKER as *const _ as usize, n, None);
     }
 }

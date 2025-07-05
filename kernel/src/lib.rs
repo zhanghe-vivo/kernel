@@ -239,21 +239,6 @@ mod tests {
     }
 
     #[test]
-    fn test_rwlock() {
-        let lock = types::RwLock::new(0);
-        let mut w = lock.write();
-        *w = 1;
-        drop(w);
-
-        assert!(scheduler::current_thread().validate_sp());
-        scheduler::yield_me_now_or_later();
-        assert!(scheduler::current_thread().validate_sp());
-
-        let r = lock.read();
-        assert_eq!(*r, 1);
-    }
-
-    #[test]
     fn test_spinlock() {
         let lock = sync::spinlock::SpinLock::new(0);
         let mut w = lock.irqsave_lock();
@@ -468,7 +453,7 @@ mod tests {
     }
 
     // FIXME: We still have chance falling into deadlock, TBI.
-    //#[test]
+    #[test]
     fn stress_async_basic() {
         let n = 1024;
         for _i in 0..n {

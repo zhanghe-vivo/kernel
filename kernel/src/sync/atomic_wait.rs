@@ -96,6 +96,12 @@ pub fn atomic_wait(addr: usize, val: usize, timeout: Option<usize>) -> Result<()
     let mut we = entry.pending.irqsave_lock();
     we.take_irq_guard(&mut w);
     drop(w);
+    #[cfg(debugging_scheduler)]
+    crate::trace!(
+        "[TH:0x{:x}] will be waiting @ 0x{:x}",
+        scheduler::current_thread_id(),
+        addr
+    );
     if let Some(timeout) = timeout {
         let res = scheduler::suspend_me_with_timeout(we, timeout);
         if res == true {
@@ -107,11 +113,16 @@ pub fn atomic_wait(addr: usize, val: usize, timeout: Option<usize>) -> Result<()
     return Ok(());
 }
 
-#[inline(never)]
 pub fn atomic_wake(addr: usize, how_many: usize) -> Result<usize, ()> {
     if how_many == 0 {
         return Ok(0);
     }
+    #[cfg(debugging_scheduler)]
+    crate::trace!(
+        "[TH:0x{:x}] Waking up @ 0x{:x}",
+        scheduler::current_thread_id(),
+        addr
+    );
     let mut woken = 0;
     let w = SYNC_ENTRIES.irqsave_lock();
     for e in ArcListIterator::new(&*w, None) {
@@ -122,6 +133,12 @@ pub fn atomic_wake(addr: usize, how_many: usize) -> Result<usize, ()> {
         while let Some(next) = we.pop_front() {
             if scheduler::queue_ready_thread(thread::SUSPENDED, next.thread.clone()) {
                 woken += 1;
+                #[cfg(debugging_scheduler)]
+                crate::trace!(
+                    "[TH:0x{:x}] Woken up 0x{:x}",
+                    scheduler::current_thread_id(),
+                    Thread::id(&next.thread)
+                );
             }
             if woken == how_many {
                 break;
@@ -135,6 +152,12 @@ pub fn atomic_wake(addr: usize, how_many: usize) -> Result<usize, ()> {
         }
     }
     drop(w);
+    #[cfg(debugging_scheduler)]
+    crate::trace!(
+        "[TH:0x{:x}] woken up {} threads",
+        scheduler::current_thread_id(),
+        woken
+    );
     scheduler::yield_me_now_or_later();
     return Ok(woken);
 }

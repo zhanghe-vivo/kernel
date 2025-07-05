@@ -132,7 +132,7 @@ pub(crate) extern "C" fn save_context_finish_hook(hook: Option<&mut ContextSwitc
         let mut old = set_current_thread(next.clone());
         #[cfg(debugging_scheduler)]
         crate::trace!(
-            "Switching from 0x{:x}: 0x{:x} pri:{} to 0x{:x}: 0x{:x} pri:{}",
+            "Switching from 0x{:x}: {{ SP: 0x{:x} PRI: {} }} to 0x{:x}: {{ SP: 0x{:x} PRI: {} }}",
             Thread::id(&old),
             old.saved_sp(),
             old.priority(),
@@ -191,8 +191,7 @@ pub(crate) extern "C" fn yield_me_and_return_next_sp(old_sp: usize) -> usize {
     assert!(!arch::local_irq_enabled());
     let Some(next) = next_ready_thread() else {
         #[cfg(debugging_scheduler)]
-        crate::trace!("0x{:x} keeps running", Thread::id(&current_thread()));
-
+        crate::trace!("[TH:0x{:x}] keeps running", current_thread_id());
         return old_sp;
     };
     let to_sp = next.saved_sp();
@@ -201,7 +200,7 @@ pub(crate) extern "C" fn yield_me_and_return_next_sp(old_sp: usize) -> usize {
     let old = set_current_thread(next.clone());
     #[cfg(debugging_scheduler)]
     crate::trace!(
-        "Switching from 0x{:x}: 0x{:x} pri:{} to 0x{:x}: 0x{:x} pri:{}",
+        "[PENDSV] Switching from 0x{:x}: {{ SP: 0x{:x} PRI: {} }} to 0x{:x}: {{ SP: 0x{:x} PRI: {} }}",
         Thread::id(&old),
         old.saved_sp(),
         old.priority(),
@@ -326,8 +325,19 @@ pub(crate) fn suspend_me_with_timeout<'a>(
     mut w: SpinLockGuard<'a, WaitQueue>,
     ticks: usize,
 ) -> bool {
-    assert!(ticks != 0);
+    assert_ne!(ticks, 0);
+    #[cfg(debugging_scheduler)]
+    crate::trace!(
+        "[TH:0x{:x}] is looking for the next thread",
+        current_thread_id()
+    );
     let next = next_ready_thread().map_or_else(|| idle::current_idle_thread().clone(), |v| v);
+    #[cfg(debugging_scheduler)]
+    crate::trace!(
+        "[TH:0x{:x}] next thread is 0x{:x}",
+        current_thread_id(),
+        Thread::id(&next)
+    );
     // FIXME: Ideally, we should defer state transfer to context switch hook.
     let to_sp = next.saved_sp();
     let old = current_thread();
@@ -383,7 +393,6 @@ pub(crate) fn suspend_me_with_timeout<'a>(
         });
         hook_holder.set_closure(hook);
     }
-
     arch::switch_context_with_hook(from_sp_ptr as *mut u8, to_sp, &mut hook_holder as *mut _);
     assert!(arch::local_irq_enabled());
     return timed_out.load(Ordering::SeqCst);
