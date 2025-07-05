@@ -104,7 +104,7 @@ pub fn atomic_wait(addr: usize, val: usize, timeout: Option<usize>) -> Result<()
     );
     if let Some(timeout) = timeout {
         let res = scheduler::suspend_me_with_timeout(we, timeout);
-        if res == true {
+        if res {
             return Err(code::ETIMEDOUT);
         }
     } else {
