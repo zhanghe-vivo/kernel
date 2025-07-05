@@ -42,7 +42,12 @@ impl IrqHandler for SystickIrq {
 
 impl Systick {
     pub fn init(&self, _sys_clock: u32, tick_per_second: u32) -> bool {
-        register_handler(self.irq_num, Box::new(SystickIrq {}));
+        let cpu_id = arch::current_cpu_id();
+        if cpu_id == 0 {
+            register_handler(self.irq_num, Box::new(SystickIrq {}));
+            let _ = get_boot_cycle_count();
+        }
+
         let step = CNTFRQ_EL0.get() / tick_per_second as u64;
         // SAFETY: step is only written once during initialization
         unsafe {
@@ -50,10 +55,7 @@ impl Systick {
         }
         CNTP_TVAL_EL0.set(step as u64);
         CNTP_CTL_EL0.write(CNTP_CTL_EL0::ENABLE::Enabled);
-        for cpu_id in 0..blueos_kconfig::NUM_CORES {
-            enable_irq_with_priority(self.irq_num, cpu_id, Priority::Normal);
-        }
-        let _ = get_boot_cycle_count();
+        enable_irq_with_priority(self.irq_num, cpu_id, Priority::Normal);
         true
     }
 

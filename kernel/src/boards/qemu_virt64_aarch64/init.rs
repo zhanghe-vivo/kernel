@@ -16,23 +16,39 @@ use super::{config, uart};
 #[cfg(virtio)]
 use crate::devices::virtio;
 use crate::{
-    arch,
+    arch::{self, READY_CORES},
     devices::{console, tty::n_tty::Tty},
     error::Error,
+    scheduler,
+    support::SmpStagedInit,
     time,
 };
 use alloc::sync::Arc;
 use blueos_kconfig::NUM_CORES;
+use core::sync::atomic::Ordering;
 #[cfg(virtio)]
 use flat_device_tree::Fdt;
+
+static STAGING: SmpStagedInit = SmpStagedInit::new();
+
 pub(crate) fn init() {
-    crate::boot::init_runtime();
-    unsafe { crate::boot::init_heap() };
+    STAGING.run(0, true, || crate::boot::init_runtime());
+    STAGING.run(1, true, || crate::boot::init_heap());
+    STAGING.run(2, false, || arch::vector::init());
+    STAGING.run(3, true, || unsafe {
+        arch::irq::init(config::GICD as u64, config::GICR as u64, NUM_CORES, false)
+    });
+    STAGING.run(4, false, || arch::irq::cpu_init());
+    STAGING.run(5, false, || {
+        time::systick_init(0);
+    });
+    STAGING.run(6, false, || time::reset_systick());
+    STAGING.run(7, true, || arch::secondary_cpu_setup(config::PSCI_BASE));
+    if arch::current_cpu_id() != 0 {
+        wait_and_then_start_schedule();
+        unreachable!("Secondary cores should have jumped to the scheduler");
+    }
 
-    arch::vector::init();
-    unsafe { arch::irq::init(config::GICD as u64, config::GICR as u64, NUM_CORES, false) };
-
-    time::systick_init(0);
     match uart::uart_init() {
         Ok(_) => (),
         Err(e) => panic!("Failed to init uart: {}", Error::from(e)),
@@ -50,4 +66,11 @@ pub(crate) fn init() {
         // initialize virtio
         virtio::init_virtio(&fdt);
     }
+}
+
+fn wait_and_then_start_schedule() {
+    while READY_CORES.load(Ordering::Acquire) == 0 {
+        core::hint::spin_loop();
+    }
+    arch::start_schedule(scheduler::schedule);
 }

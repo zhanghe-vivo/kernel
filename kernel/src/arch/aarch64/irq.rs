@@ -14,13 +14,12 @@
 
 extern crate alloc;
 
-use crate::sync::SpinLock;
+use crate::{arch::current_cpu_id, sync::SpinLock};
 use alloc::boxed::Box;
+pub use arm_gic::Trigger as IrqTrigger;
 use arm_gic::{gicv3::*, IntId};
 use spin::Once;
 use tock_registers::interfaces::Readable;
-
-pub use arm_gic::Trigger as IrqTrigger;
 
 // aarch64 irq priority is 0-255
 #[derive(Debug, Copy, Clone)]
@@ -80,19 +79,21 @@ pub unsafe fn init(gicd: u64, gicr: u64, num_cores: usize, is_v4: bool) {
                 is_v4,
             )
         };
-        // Initialize first CPU
-        gic.setup(0);
-        //set the priority mask for the current CPU core.
-        set_priority_mask(0xff);
         SpinLock::new(gic)
     });
+}
+
+pub fn cpu_init() {
+    let mut gic = get_gic().irqsave_lock();
+    gic.setup(current_cpu_id());
+    set_priority_mask(0xff);
 }
 
 fn get_gic() -> &'static SpinLock<GicV3<'static>> {
     GIC.get().unwrap()
 }
 
-pub const INTERRUPT_TABLE_LEN: usize = 128;
+pub const INTERRUPT_TABLE_LEN: usize = 1024;
 
 pub struct IrqContext {
     pub irq: IrqNumber,

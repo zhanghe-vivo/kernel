@@ -85,7 +85,9 @@ impl IrqHandler for Serial0Irq {
 
 pub fn uart_init() -> Result<(), ErrorKind> {
     let serial0 = get_serial0();
-    irq::set_trigger(PL011_UART0_IRQNUM, 0, irq::IrqTrigger::Level);
+    for cpu_id in 0..blueos_kconfig::NUM_CORES {
+        irq::set_trigger(PL011_UART0_IRQNUM, cpu_id, irq::IrqTrigger::Level);
+    }
     let _ = irq::register_handler(PL011_UART0_IRQNUM, Box::new(Serial0Irq {}));
     DeviceManager::get().register_device(String::from("ttyS0"), serial0.clone())
 }

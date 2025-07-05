@@ -16,6 +16,7 @@
 // pub(crate) mod mmu;
 mod exception;
 pub mod irq;
+pub(crate) mod psci;
 pub(crate) mod registers;
 pub(crate) mod vector;
 
@@ -23,12 +24,17 @@ use crate::{arch::registers::mpidr_el1::MPIDR_EL1, scheduler};
 use core::{
     fmt,
     mem::offset_of,
-    sync::{atomic, atomic::Ordering},
+    sync::{
+        atomic,
+        atomic::{AtomicU8, Ordering},
+    },
 };
 use scheduler::ContextSwitchHookHolder;
 use tock_registers::interfaces::Readable;
 
 pub(crate) const NR_SWITCH: usize = !0;
+
+pub(crate) static READY_CORES: AtomicU8 = AtomicU8::new(0);
 
 macro_rules! disable_interrupt {
     () => {
@@ -50,9 +56,6 @@ macro_rules! enable_interrupt {
 macro_rules! enter_el1 {
     () => {
         "
-        mrs x0, mpidr_el1
-        and x0, x0, #0b11
-        cbnz x0, 1f
         // Don't trap SIMD/FP instructions in both EL0 and EL1.
         mov     x1, #0x00300000
         msr     cpacr_el1, x1
@@ -75,9 +78,6 @@ macro_rules! enter_el1 {
         adr x3, {entry}
         msr elr_el2, x3
         eret
-        // wait for event
-        1: wfe
-        b 1b
         "
     };
 }
@@ -337,19 +337,15 @@ pub(crate) extern "C" fn init(_: *mut u8, stack_end: *mut u8, cont: extern "C" f
     unsafe {
         core::arch::naked_asm!(
             "
-            msr daifset, #3
-            mov sp, x1
-            mov x19, x2
-            bl {setup}
-            mov x2, x19
-            br x2
-            ",
-            setup = sym setup,
+                mrs x8, mpidr_el1
+                and x8, x8, #0b11
+                lsl x8, x8, #14
+                sub sp, x1, x8 
+                br x2
+            "
         )
     }
 }
-
-extern "C" fn setup() {}
 
 #[no_mangle]
 pub(crate) extern "C" fn start_schedule(cont: extern "C" fn() -> !) {
@@ -357,6 +353,7 @@ pub(crate) extern "C" fn start_schedule(cont: extern "C" fn() -> !) {
     current.lock().reset_saved_sp();
     let sp = current.saved_sp();
     drop(current);
+    READY_CORES.fetch_add(1, Ordering::Relaxed);
     unsafe {
         core::arch::asm!(
             "mov lr, #0",
@@ -432,3 +429,10 @@ pub extern "C" fn local_irq_enabled() -> bool {
 
 #[inline]
 pub extern "C" fn pend_switch_context() {}
+
+pub fn secondary_cpu_setup(psci_base: u32) {
+    atomic::fence(Ordering::SeqCst);
+    for i in 1..blueos_kconfig::NUM_CORES {
+        psci::cpu_on(psci_base, i as usize, crate::boot::_start as usize, 0);
+    }
+}
