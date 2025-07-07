@@ -19,7 +19,7 @@ impl CoverageWriter for SemihostingCoverageWriter<'_> {
         let Ok(_) = self.f.write(buf) else {
             return Err(CoverageWriteError);
         };
-        return Ok(());
+        Ok(())
     }
 }
 
@@ -30,7 +30,6 @@ pub fn write_coverage_data() {
         // Note that this function is not thread-safe! Use a lock if needed.
         minicov::capture_coverage(&mut w).unwrap();
     }
-    drop(w);
     f.flush();
     semihosting::println!("coverage test end.");
 }
