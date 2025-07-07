@@ -37,8 +37,6 @@ header: # `header` section is configurations for source codes license header.
 
     paths-ignore: # `paths-ignore` are the path list that will be ignored by license-eye.
       - "licenses"
-      - "**/*.gn"
-      - "**/*.gni"
       - "**/cov.rs"
       - "**/Cargo.toml"
       - "**/Cargo.lock"
