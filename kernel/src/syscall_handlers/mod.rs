@@ -26,6 +26,7 @@ use blueos_header::{
     syscalls::NR,
     thread::{ExitArgs, SpawnArgs},
 };
+use core::sync::atomic::AtomicUsize;
 use libc::{
     c_char, c_int, c_ulong, c_void, clockid_t, mode_t, off_t, sigset_t, size_t, timespec, EINVAL,
 };
@@ -159,13 +160,17 @@ atomic_wait(addr: usize, val: usize, timeout: *const timespec) -> c_long {
         let timeout = unsafe { &*timeout };
         Some(time::tick_from_millisecond((timeout.tv_sec * 1000 + timeout.tv_nsec / 1000000) as usize))
     };
-    futex::atomic_wait(addr, val, timeout).map_or_else(|e|e.to_errno() as c_long, |_| 0)
+    let ptr = addr as *const AtomicUsize;
+    let atom = unsafe { &*ptr };
+    futex::atomic_wait(atom, val, timeout).map_or_else(|e|e.to_errno() as c_long, |_| 0)
 });
 
 define_syscall_handler!(
 atomic_wake(addr: usize, count: *mut usize) -> c_long {
     let how_many = unsafe { *count };
-    futex::atomic_wake(addr, how_many).map_or_else(|_| -1, |woken| {
+    let ptr = addr as *const AtomicUsize;
+    let atom = unsafe { &*ptr };
+    futex::atomic_wake(atom, how_many).map_or_else(|_| -1, |woken| {
         unsafe { *count = woken };
         0
     })

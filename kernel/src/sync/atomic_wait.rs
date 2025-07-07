@@ -63,20 +63,20 @@ static_arc! {
     SYNC_ENTRIES(SpinLock<Head>, SpinLock::new(Head::new())),
 }
 
-pub fn atomic_wait(addr: usize, val: usize, timeout: Option<usize>) -> Result<(), Error> {
-    let ptr = addr as *const AtomicUsize;
-    let fetched = unsafe { &*ptr }.load(Ordering::Acquire);
-    if fetched != val {
+pub fn atomic_wait(atom: &AtomicUsize, val: usize, timeout: Option<usize>) -> Result<(), Error> {
+    let current_val = atom.load(Ordering::Acquire);
+    if current_val != val {
         return Err(code::EAGAIN);
     }
     // We should not wait in IRQ.
     let mut w = SYNC_ENTRIES.irqsave_lock();
     // Make the second check.
-    let fetched = unsafe { &*ptr }.load(Ordering::Acquire);
-    if fetched != val {
+    let current_val = atom.load(Ordering::Acquire);
+    if current_val != val {
         return Err(code::EAGAIN);
     }
     let mut entry = None;
+    let addr = atom as *const _ as usize;
     for e in ArcListIterator::new(&*w, None) {
         if e.addr() == addr {
             entry = Some(e);
@@ -113,7 +113,7 @@ pub fn atomic_wait(addr: usize, val: usize, timeout: Option<usize>) -> Result<()
     Ok(())
 }
 
-pub fn atomic_wake(addr: usize, how_many: usize) -> Result<usize, Error> {
+pub fn atomic_wake(atom: &AtomicUsize, how_many: usize) -> Result<usize, Error> {
     if how_many == 0 {
         return Ok(0);
     }
@@ -123,6 +123,7 @@ pub fn atomic_wake(addr: usize, how_many: usize) -> Result<usize, Error> {
         scheduler::current_thread_id(),
         addr
     );
+    let addr = atom as *const _ as usize;
     let mut woken = 0;
     let w = SYNC_ENTRIES.irqsave_lock();
     for e in ArcListIterator::new(&*w, None) {
@@ -169,12 +170,13 @@ mod tests {
     use blueos_test_macro::test;
     use core::sync::atomic::{AtomicUsize, Ordering};
 
+    static ATOM: AtomicUsize = AtomicUsize::new(0);
+
     #[test]
     fn test_atomic_wait_timeout() {
-        let atomic_var = AtomicUsize::new(0);
-        let addr = &atomic_var as *const AtomicUsize as usize;
-        let result = atomic_wait(addr, 0, Some(10));
+        let result = atomic_wait(&ATOM, 0, Some(10));
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), code::ETIMEDOUT);
+        atomic_wake(&ATOM, 1);
     }
 }

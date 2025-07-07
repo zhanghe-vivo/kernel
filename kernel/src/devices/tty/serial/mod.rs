@@ -155,13 +155,13 @@ impl Serial {
     }
 
     fn rx_disable(&self) -> Result<(), SerialError> {
-        let _ = atomic_wake(&self.rx_fifo.futex as *const AtomicUsize as usize, 1);
+        let _ = atomic_wake(&self.rx_fifo.futex, 1);
         self.uart_ops.irqsave_lock().set_rx_interrupt(false);
         Ok(())
     }
 
     fn tx_disable(&self) -> Result<(), SerialError> {
-        let _ = atomic_wake(&self.tx_fifo.futex as *const AtomicUsize as usize, 1);
+        let _ = atomic_wake(&self.tx_fifo.futex, 1);
         self.uart_ops.irqsave_lock().set_tx_interrupt(false);
         // send all data in tx fifo
         self.xmitchars()?;
@@ -188,8 +188,7 @@ impl Serial {
             if !is_nonblocking {
                 // if the available data is less than the requested data, wait for data
                 if n == 0 {
-                    atomic_wait(&self.rx_fifo.futex as *const AtomicUsize as usize, 0, None)
-                        .map_err(|_| SerialError::TimedOut)?;
+                    atomic_wait(&self.rx_fifo.futex, 0, None).map_err(|_| SerialError::TimedOut)?;
                 } else {
                     break;
                 }
@@ -231,8 +230,7 @@ impl Serial {
             if !is_nonblocking && !irq::is_in_irq() {
                 if !writer.is_empty() {
                     // wait for data to be written
-                    atomic_wait(&self.tx_fifo.futex as *const AtomicUsize as usize, 0, None)
-                        .map_err(|_| SerialError::TimedOut)?;
+                    atomic_wait(&self.tx_fifo.futex, 0, None).map_err(|_| SerialError::TimedOut)?;
                     self.uart_ops.irqsave_lock().set_tx_interrupt(false);
                 } else if count >= len {
                     break;
@@ -271,7 +269,7 @@ impl Serial {
 
         if nbytes > 0 {
             // TODO: add notify for poll/select
-            let _ = atomic_wake(&self.tx_fifo.futex as *const AtomicUsize as usize, 1);
+            let _ = atomic_wake(&self.tx_fifo.futex, 1);
         }
 
         Ok(nbytes)
@@ -300,7 +298,7 @@ impl Serial {
 
         // TODO: add notify for poll/select
         if nbytes > 0 {
-            let _ = atomic_wake(&self.rx_fifo.futex as *const AtomicUsize as usize, 1);
+            let _ = atomic_wake(&self.rx_fifo.futex, 1);
         }
 
         Ok(nbytes)

@@ -40,11 +40,8 @@ fn test_futex_wake() {
     // Create a stack variable to use as futex address
     let futex_addr = AtomicUsize::new(0);
 
-    // Use the address of the atomic variable
-    let addr = &futex_addr as *const AtomicUsize as usize;
-
     // Wake should succeed even if no one is waiting
-    let res = atomic_wake(addr, 1);
+    let res = atomic_wake(&futex_addr, 1);
     assert!(res.is_ok());
     assert_eq!(res.unwrap(), 0); // No threads were woken up
 }
@@ -55,9 +52,8 @@ static TEST_FUTEX_WAIT: AtomicUsize = AtomicUsize::new(0);
 fn test_futex_thread_wait() {
     // Thread entry function
     extern "C" fn thread_entry(arg: *mut core::ffi::c_void) {
-        let addr = &TEST_FUTEX_WAIT as *const _ as usize;
         // Wait for futex signal.
-        match atomic_wait(addr, 0, None) {
+        match atomic_wait(&TEST_FUTEX_WAIT, 0, None) {
             Ok(_) => {
                 TEST_FUTEX_WAIT.store(42, Ordering::Relaxed);
             }
@@ -73,8 +69,7 @@ fn test_futex_thread_wait() {
 
     TEST_FUTEX_WAIT.fetch_add(1, Ordering::Relaxed);
     // Wake up the waiting thread
-    let addr = &TEST_FUTEX_WAIT as *const _ as usize;
-    match atomic_wake(addr, 1) {
+    match atomic_wake(&TEST_FUTEX_WAIT, 1) {
         Ok(c) => {
             // FIXME: aarch64 not suport timeout yet
             #[cfg(aarch64)]

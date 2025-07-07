@@ -339,7 +339,7 @@ mod tests {
 
     extern "C" fn test_atomic_wait_cleanup() {
         TEST_ATOMIC_WAIT.fetch_add(1, Ordering::Release);
-        sync::atomic_wait::atomic_wake(&TEST_ATOMIC_WAIT as *const _ as usize, 1);
+        sync::atomic_wait::atomic_wake(&TEST_ATOMIC_WAIT, 1);
     }
 
     extern "C" fn test_atomic_wait() {}
@@ -353,7 +353,7 @@ mod tests {
             if n == l {
                 break;
             }
-            sync::atomic_wait::atomic_wait(&TEST_ATOMIC_WAIT as *const _ as usize, n, None);
+            sync::atomic_wait::atomic_wait(&TEST_ATOMIC_WAIT, n, None);
         }
     }
 

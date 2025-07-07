@@ -164,7 +164,7 @@ extern "C" fn thread_entry(_arg: *mut core::ffi::c_void) {
         "[smoltcp Tcp Socket Test]: Bailing out: socket test took too long on loopback device"
     );
     DONE.store(1, Ordering::Relaxed);
-    let _ = futex::atomic_wake(&DONE as *const _ as usize, 1);
+    let _ = futex::atomic_wake(&DONE, 1);
 }
 
 #[test]
@@ -178,6 +178,6 @@ fn test_smoltcp() {
             size,
         })
         .start();
-    let _ = futex::atomic_wait(&DONE as *const _ as usize, 0, None);
+    let _ = futex::atomic_wait(&DONE, 0, None);
     allocator::free_align(base, 16);
 }

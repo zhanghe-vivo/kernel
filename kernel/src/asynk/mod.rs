@@ -103,7 +103,7 @@ pub fn block_on(future: impl Future<Output = ()> + 'static) {
 
 fn wake_poller() {
     POLLER_WAKER.fetch_add(1, Ordering::Release);
-    atomic_wait::atomic_wake(&POLLER_WAKER as *const _ as usize, 1);
+    atomic_wait::atomic_wake(&POLLER_WAKER, 1);
 }
 
 pub fn spawn(future: impl Future<Output = ()> + 'static) -> Arc<Tasklet> {
@@ -154,6 +154,6 @@ extern "C" fn poll() {
     loop {
         let n = POLLER_WAKER.load(Ordering::Acquire);
         poll_inner();
-        atomic_wait::atomic_wait(&POLLER_WAKER as *const _ as usize, n, None);
+        atomic_wait::atomic_wait(&POLLER_WAKER, n, None);
     }
 }
