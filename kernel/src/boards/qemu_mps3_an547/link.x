@@ -51,18 +51,18 @@ SECTIONS
   {
     . = ALIGN(4);
     *(.text*)
-  } > FLASH
+  } > FLASH_EXT
 
   .ARM.extab :
   {
     *(.ARM.extab* .gnu.linkonce.armextab.*)
-  } > FLASH
+  } > FLASH_EXT
 
   __exidx_start = .;
   .ARM.exidx :
   {
     *(.ARM.exidx* .gnu.linkonce.armexidx.*)
-  } > FLASH
+  } > FLASH_EXT
   __exidx_end = .;
 
   /* Put .bss to RAM */
@@ -73,7 +73,7 @@ SECTIONS
     LONG (__bss_start)
     LONG ((__bss_end - __bss_start) / 4)
     __zero_table_end = .;
-  } > FLASH
+  } > FLASH_EXT
 
   /* mps3 qemu boot image can not bigger than 512K, we set LMA same as VMA,
    * and not need to copy data.

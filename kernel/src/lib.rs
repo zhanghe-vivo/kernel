@@ -82,6 +82,7 @@ pub(crate) mod devices;
 pub mod error;
 pub(crate) mod irq;
 pub(crate) mod logger;
+pub mod net;
 pub mod scheduler;
 pub mod support;
 pub mod sync;

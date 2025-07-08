@@ -13,11 +13,12 @@
 // limitations under the License.
 
 extern crate alloc;
+use core::ffi::{c_size_t, c_ssize_t};
+
 use crate::{
-    arch, scheduler,
+    arch, net, scheduler,
     sync::atomic_wait as futex,
-    thread,
-    thread::{Builder, Entry, Stack, Thread, ThreadNode},
+    thread::{self, Builder, Entry, Stack, Thread, ThreadNode},
     time,
     vfs::syscalls as vfs_syscalls,
 };
@@ -28,7 +29,8 @@ use blueos_header::{
 };
 use core::sync::atomic::AtomicUsize;
 use libc::{
-    c_char, c_int, c_ulong, c_void, clockid_t, mode_t, off_t, sigset_t, size_t, timespec, EINVAL,
+    addrinfo, c_char, c_int, c_ulong, c_void, clockid_t, mode_t, msghdr, off_t, sigset_t, size_t,
+    sockaddr, socklen_t, timespec, EINVAL,
 };
 
 #[repr(C)]
@@ -376,6 +378,126 @@ define_syscall_handler!(
         0
     }
 );
+
+// Socket syscall begin
+define_syscall_handler!(
+    socket(domain: c_int, type_: c_int, protocol_: c_int) -> c_int {
+        unsafe{
+            net::syscalls::socket(domain, type_, protocol_)
+        }
+    }
+);
+
+define_syscall_handler!(
+    bind(sockfd: c_int, addr: *const sockaddr, len: socklen_t) -> c_int {
+        net::syscalls::bind(sockfd, addr, len)
+    }
+);
+
+define_syscall_handler!(
+    connect(sockfd: c_int, addr: *const sockaddr, len: socklen_t) -> c_int {
+        net::syscalls::connect(sockfd, addr, len)
+    }
+);
+
+define_syscall_handler!(
+    listen(sockfd: c_int, backlog: c_int) -> c_int {
+        unsafe {
+            net::syscalls::listen(sockfd, backlog)
+        }
+    }
+);
+
+define_syscall_handler!(
+    accept(sockfd: c_int, addr: *mut sockaddr, len: *mut socklen_t) -> c_int {
+        let orig_len = if !len.is_null() { unsafe { *len } } else { 0 };
+
+        let result = net::syscalls::accept(
+            sockfd,
+            addr as *const sockaddr,
+            orig_len
+        );
+        if !len.is_null() && result >= 0 {
+            unsafe { *len = orig_len };
+        }
+
+        result
+    }
+);
+
+define_syscall_handler!(
+    send(sockfd: c_int, buffer: *const core::ffi::c_void, length: c_size_t, flags: c_int) -> c_ssize_t {
+        net::syscalls::send(sockfd, buffer, length, flags)
+    }
+);
+
+define_syscall_handler!(
+    sendto(sockfd: c_int, message: *const core::ffi::c_void, length: c_size_t, flags: c_int, dest_addr: *const sockaddr, dest_len: socklen_t) -> c_ssize_t {
+        net::syscalls::sendto(sockfd, message, length, flags, dest_addr, dest_len)
+    }
+);
+
+define_syscall_handler!(
+    recv(sockfd: c_int, buffer: *mut core::ffi::c_void, length: c_size_t, flags: c_int) -> c_ssize_t {
+        net::syscalls::recv(sockfd, buffer, length, flags)
+    }
+);
+
+define_syscall_handler!(
+    recvfrom(sockfd: c_int, buffer: *mut core::ffi::c_void, length: c_size_t, flags: c_int, address: *mut sockaddr, address_len: *mut socklen_t) -> c_ssize_t {
+        net::syscalls::recvfrom(sockfd, buffer, length, flags, address, address_len)
+    }
+);
+
+define_syscall_handler!(
+    shutdown(sockfd: c_int, how: c_int) -> c_int {
+        unsafe {
+            net::syscalls::shutdown(sockfd, how)
+        }
+    }
+);
+
+define_syscall_handler!(
+    setsockopt(sockfd: c_int, level: c_int, option_name: c_int, option_value: *const core::ffi::c_void, option_len: socklen_t) -> c_int {
+        net::syscalls::setsockopt(sockfd, level, option_name, option_value, option_len)
+    }
+);
+
+define_syscall_handler!(
+    getsockopt(sockfd: c_int, level: c_int, option_name: c_int, option_value: *mut core::ffi::c_void, option_len: *mut socklen_t) -> c_int {
+        net::syscalls::getsockopt(sockfd, level, option_name, option_value, option_len)
+    }
+);
+
+define_syscall_handler!(
+    sendmsg(sockfd: c_int, message: *const msghdr, flags: c_int) -> c_ssize_t {
+        net::syscalls::sendmsg(sockfd, message, flags)
+    }
+);
+
+define_syscall_handler!(
+    recvmsg(sockfd: c_int, message: *mut msghdr, flags: c_int) -> c_ssize_t {
+        net::syscalls::recvmsg(sockfd, message, flags)
+    }
+);
+// Socket syscall end
+
+// Netdb syscall begin
+define_syscall_handler!(
+    getaddrinfo(node: *const c_char,
+        service: *const c_char,
+        hints: *const addrinfo,
+        res: *mut *mut addrinfo) -> c_int {
+        net::syscalls::getaddrinfo(node, service, hints, res)
+    }
+);
+define_syscall_handler!(
+    freeaddrinfo(res: *mut addrinfo) -> usize {
+        net::syscalls::freeaddrinfo(res)
+    }
+);
+// Netdb syscall end
+
 syscall_table! {
     (Echo, echo),
     (Nop, nop),
@@ -416,6 +538,22 @@ syscall_table! {
     (RtSigQueueInfo, sigqueueinfo),
     (RtSigSuspend, sigsuspend),
     (RtSigTimedWait, sigtimedwait),
+    (Socket, socket),
+    (Bind, bind),
+    (Connect, connect),
+    (Listen,listen),
+    (Accept,accept),
+    (Send,send),
+    (Sendto,sendto),
+    (Recv,recv),
+    (Recvfrom,recvfrom),
+    (Shutdown,shutdown),
+    (Setsockopt,setsockopt),
+    (Getsockopt,getsockopt),
+    (Sendmsg,sendmsg),
+    (Recvmsg,recvmsg),
+    (GetAddrinfo,getaddrinfo),
+    (FreeAddrinfo,freeaddrinfo),
 }
 
 // Begin syscall modules.

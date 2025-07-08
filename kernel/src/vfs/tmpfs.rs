@@ -48,9 +48,9 @@ enum TmpFileData {
     Directory(TmpDir),
     File(Vec<u8>),
     Device(Arc<dyn Device>),
-    // TODO: support symlink and socket
+    // TODO: support symlink
     // SymLink(String),
-    //Socket,
+    Socket(),
 }
 
 #[derive(Debug)]
@@ -225,6 +225,23 @@ impl TmpInode {
             fs: fs.clone(),
         })
     }
+
+    fn new_socket(
+        fs: &Weak<TmpFileSystem>,
+        inode_no: InodeNo,
+        mode: InodeMode,
+        uid: u32,
+        gid: u32,
+    ) -> Arc<Self> {
+        Arc::new_cyclic(|weak_inode| Self {
+            inner: RwLock::new(InnerNode {
+                attr: InodeAttr::new(inode_no, InodeFileType::Socket, mode, uid, gid, 0),
+                data: TmpFileData::Socket(),
+            }),
+            this: weak_inode.clone(),
+            fs: fs.clone(),
+        })
+    }
 }
 
 #[derive(Debug)]
@@ -358,6 +375,16 @@ impl InodeOps for TmpInode {
         Ok(inode)
     }
 
+    fn create_socket(&self, mode: InodeMode) -> Result<Arc<dyn InodeOps>, Error> {
+        assert!(self.type_() == InodeFileType::Directory);
+        let mut inner = self.inner.write();
+        let ino = self.fs.upgrade().unwrap().alloc_inode_no();
+        let inode = TmpInode::new_socket(&self.fs, ino, mode, 0, 0);
+        inner.inc_size();
+
+        Ok(inode)
+    }
+
     fn close(&self) -> Result<(), Error> {
         let inner = self.inner.read();
         if let Some(device) = inner.as_device() {
@@ -373,6 +400,7 @@ impl InodeOps for TmpInode {
                 .read(offset as u64, buf, nonblock)
                 .map_err(Error::from);
         }
+
         let Some(data) = inner.as_file() else {
             warn!("read_at: inode is not a file");
             return Err(code::EISDIR);

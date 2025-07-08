@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::{allocator, arch, asynk, boards, logger, scheduler, thread, time, vfs};
+use crate::{allocator, arch, asynk, boards, logger, net, scheduler, thread, time, vfs};
 use core::ptr::{addr_of, addr_of_mut};
 
 pub(crate) static mut INIT_BSS_DONE: bool = false;
@@ -54,6 +54,7 @@ extern "C" fn init() {
     logger::logger_init();
     time::timer::system_timer_init();
     asynk::init();
+    net::net_manager::init();
     init_vfs();
     init_apps();
     arch::start_schedule(scheduler::schedule);

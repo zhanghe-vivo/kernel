@@ -155,6 +155,10 @@ pub trait InodeOps: Any + Sync + Send {
         warn!("create_device is not implemented");
         Err(code::EINVAL)
     }
+    fn create_socket(&self, mode: InodeMode) -> Result<Arc<dyn InodeOps>, Error> {
+        warn!("create_socket is not implemented");
+        Err(code::EINVAL)
+    }
     fn close(&self) -> Result<(), Error> {
         Ok(())
     }

@@ -29,11 +29,13 @@ shared_deps = [
   "//external/cfg-if/v1.0.0:cfg_if",
   "//external/const-default/v1.0.0:const_default",
   "//external/embedded-io/v0.6.1:embedded_io",
+  "//external/heapless/v0.8.0:heapless",
   "//external/log/v0.4.22:log",
   "//external/pinned-init/v0.0.8:pinned_init",
   "//external/rust-fatfs/v0.4:fatfs",
   "//external/safe-mmio/v0.2.5:safe_mmio",
   "//external/semihosting/v0.1.20:semihosting",
+  "//external/smoltcp/v0.12.0:smoltcp",
   "//external/spin/v0.9.8:spin",
   "//external/thiserror/v2.0.9:thiserror",
   "//external/tock-registers/v0.9.0:tock_registers",
@@ -105,6 +107,7 @@ build_rust("kernel_integration_test") {
   proc_macro_deps = [ "//kernel/test_harness:blueos_test_macro" ]
   deps = [
     ":blueos",
+    "//external/byteorder/v1.5.0:byteorder",
     "//external/semihosting/v0.1.20:semihosting",
     "//external/smoltcp/v0.12.0:smoltcp",
     "//kernel/rsrt:rsrt",

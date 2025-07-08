@@ -26,6 +26,8 @@ use virtio_drivers::{
     BufferDirection, Hal, PhysAddr, PAGE_SIZE,
 };
 
+use crate::devices::net::virtio_net_device::register_virtio_net_device;
+
 const VIRTIO_MMIO_COMPATIBLE: &str = "virtio,mmio";
 pub fn init_virtio(fdt: &Fdt) {
     find_virtio_mmio_devices(fdt);
@@ -79,7 +81,9 @@ fn find_virtio_mmio_devices(fdt: &Fdt) {
 
 fn init_virtio_device(transport: SomeTransport<'static>) {
     match transport.device_type() {
-        DeviceType::Network => {}
+        DeviceType::Network => {
+            crate::devices::net::virtio_net_device::register_virtio_net_device(transport);
+        }
         DeviceType::Block => {
             if let Err(e) = init_virtio_block(VirtIOBlk::new(transport).unwrap()) {
                 error!("Failed to init virtio blk, {:?}", e);

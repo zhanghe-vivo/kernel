@@ -12,12 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use alloc::{ffi::CString, format, string::String, vec};
+#![allow(dead_code)]
+use crate::net_utils;
+use alloc::{boxed::Box, ffi::CString, format, string::String, vec};
 use blueos::{
+    allocator,
     error::{
         code::{EEXIST, ENOENT, ENOTEMPTY},
         Error,
     },
+    net, scheduler,
+    sync::atomic_wait as futex,
+    thread::{Builder as ThreadBuilder, Entry, Stack},
     vfs::{
         dirent::{Dirent, DirentType},
         syscalls::*,
@@ -26,10 +32,12 @@ use blueos::{
 use blueos_test_macro::test;
 use core::{
     cmp::min,
-    ffi::{c_char, c_int, CStr},
+    ffi::{c_char, c_int, c_void, CStr},
     fmt::Write,
+    mem,
+    sync::atomic::{AtomicUsize, Ordering},
 };
-use libc::{ENOSYS, O_CREAT, O_DIRECTORY, O_RDONLY, O_RDWR, O_TRUNC, O_WRONLY, SEEK_SET};
+use libc::{AF_INET, ENOSYS, O_CREAT, O_DIRECTORY, O_RDONLY, O_RDWR, O_TRUNC, O_WRONLY, SEEK_SET};
 use semihosting::println;
 
 #[test]
@@ -602,4 +610,250 @@ fn read_fd_content(path_str: &str, fd: i32) -> usize {
     }
     println!("[VFS Test] read {} content:\n{}", path_str, result);
     read_size as usize
+}
+
+#[test]
+fn test_socket_file() {
+    println!("[VFS SockFS Test] start~~~ ");
+    let (server_fd, client_fd) = create_connected_sockets();
+    println!(
+        "created connected sockets successfully.server fd:{}, client fd:{}",
+        server_fd, client_fd
+    );
+
+    // === test 1: client write server read ===
+    // client write
+    let test_data = b"Block test == client send.";
+    let write_size = write(client_fd, test_data.as_ptr(), test_data.len());
+    assert_eq!(write_size, test_data.len() as isize, "Client send failed");
+    // server read
+    let mut read_buf = [0u8; 64];
+    let read_size = read(server_fd, read_buf.as_mut_ptr(), read_buf.len());
+    assert_eq!(read_size, test_data.len() as isize, "Server read failed");
+    // Verify read data
+    assert_eq!(
+        &read_buf[..test_data.len()],
+        test_data,
+        "Data verification failed (client -> server)"
+    );
+    println!("Data verified successfully (client -> server)");
+
+    // === test 2: server write client read ===
+    // server write
+    let response_data = b"Block test == server response.";
+    let write_size = write(server_fd, response_data.as_ptr(), response_data.len());
+    assert_eq!(
+        write_size,
+        response_data.len() as isize,
+        "Server response failed"
+    );
+    // client read
+    let mut response_buf = [0u8; 64];
+    let read_size = read(client_fd, response_buf.as_mut_ptr(), response_buf.len());
+    assert_eq!(
+        read_size,
+        response_data.len() as isize,
+        "Client read failed"
+    );
+    // Verify response data
+    assert_eq!(
+        &response_buf[..response_data.len()],
+        response_data,
+        "Data verification failed (server -> client)"
+    );
+    println!("Data verified successfully (server -> client)");
+
+    // === test 3: nonblock ===
+    test_nonblock_socket(server_fd, client_fd);
+    println!("Test non-block successfully");
+
+    println!("[VFS SockFS Test] end~~~ ");
+}
+
+fn create_connected_sockets() -> (i32, i32) {
+    // Create server socket without O_NONBLOCK flag
+    let server_fd = net::syscalls::socket(AF_INET, libc::SOCK_STREAM, 0);
+    assert!(server_fd >= 0, "Failed to create server socket");
+    println!("Server socket created successfully with FD {}", server_fd);
+
+    // Convert sockaddr_in to sockaddr and call bind
+    let ip_addr = "127.0.0.1"; // Replace with actual IP address
+    let port = 2345;
+    let server_addr = net_utils::create_ipv4_sockaddr(ip_addr, port);
+    let _bind_result = net::syscalls::bind(
+        server_fd,
+        &server_addr as *const _ as *const libc::sockaddr,
+        mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
+    );
+    assert_eq!(_bind_result, 0, "Failed to bind server socket");
+    println!("Server socket bound successfully");
+
+    // Start listening
+    let _listen_result = net::syscalls::listen(server_fd, 0);
+    assert_eq!(_listen_result, 0, "Failed to listen on server socket");
+    println!("Server started listening");
+
+    // Create client socket without O_NONBLOCK flag
+    let client_fd = net::syscalls::socket(AF_INET, libc::SOCK_STREAM, 0);
+    assert!(client_fd >= 0, "Failed to create client socket");
+    println!("Client socket created successfully with FD {}", client_fd);
+
+    // Strat connecting
+    let ip_addr = "127.0.0.1"; // Replace with actual IP address
+    let port = 2345;
+    let server_addr = net_utils::create_ipv4_sockaddr(ip_addr, port);
+
+    let _connect_result = net::syscalls::connect(
+        client_fd,
+        &server_addr as *const _ as *const libc::sockaddr,
+        mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
+    );
+    assert_eq!(_connect_result, 0, "Failed to connect client");
+    println!("Client connected successfully");
+
+    (server_fd, client_fd)
+}
+
+pub type NetThreadFn = extern "C" fn(arg: *mut core::ffi::c_void);
+fn start_test_thread(
+    _thread_name: &str,
+    thread_fn: NetThreadFn,
+    arg: *mut c_void,
+    base: usize,
+    size: usize,
+) {
+    let t = ThreadBuilder::new(Entry::Posix(thread_fn, arg))
+        .set_stack(Stack::Raw { base, size })
+        .build();
+    t.lock()
+        .set_cleanup(Entry::Closure(Box::new(move || unsafe {
+            println!("clean up begin 0x{:x}", base);
+            allocator::free_align(base as *mut u8, 16);
+
+            println!("clean up finish 0x{:x}", base);
+        })));
+    scheduler::queue_ready_thread(t.state(), t);
+}
+
+#[repr(C)]
+struct FdPair {
+    server_fd: i32,
+    client_fd: i32,
+}
+
+const TEST_NONBLOCK_MODE: usize = 20;
+static TCP_CLIENT_DONE: AtomicUsize = AtomicUsize::new(0);
+static TCP_SERVER_DONE: AtomicUsize = AtomicUsize::new(0);
+
+fn test_nonblock_socket(server_fd: i32, client_fd: i32) {
+    let size = 32 << 10;
+    let tcp_client_base = allocator::malloc_align(size, 16);
+    let arg = Box::into_raw(Box::new(FdPair {
+        server_fd,
+        client_fd,
+    })) as *mut c_void;
+
+    start_test_thread(
+        "socket_server_thread",
+        socket_server_thread,
+        arg,
+        tcp_client_base as usize,
+        size,
+    );
+
+    let _ = futex::atomic_wait(&TCP_CLIENT_DONE, 0, None);
+}
+
+extern "C" fn socket_server_thread(_arg: *mut core::ffi::c_void) {
+    let fd_pair = unsafe { Box::from_raw(_arg as *mut FdPair) };
+    let server_fd = fd_pair.server_fd;
+    let client_fd = fd_pair.client_fd;
+
+    // call fcntl func to set server nonblock
+    let flags = fcntl(server_fd, libc::F_GETFL, usize::MAX);
+    fcntl(server_fd, libc::F_SETFL, libc::O_NONBLOCK as usize);
+    let new_flags = fcntl(server_fd, libc::F_GETFL, usize::MAX);
+    assert_eq!(
+        new_flags,
+        libc::O_NONBLOCK as i32,
+        "Failed to set server flag to nonblock"
+    );
+    println!("Set server to non-blocking mode. new_flags={}", new_flags);
+
+    let size = 32 << 10;
+    let tcp_server_base = allocator::malloc_align(size, 16);
+    start_test_thread(
+        "socket_client_thread",
+        socket_client_thread,
+        client_fd as *mut c_void,
+        tcp_server_base as usize,
+        size,
+    );
+
+    // loop reading
+    let mut buffer = vec![0u8; 1024];
+    for _ in 0..TEST_NONBLOCK_MODE {
+        // Call read function to read data
+        let bytes_received = read(server_fd, buffer.as_mut_ptr(), buffer.len());
+        if bytes_received > 0 {
+            let received_size = bytes_received as usize;
+
+            // Try to convert using String::from_utf8
+            match String::from_utf8(buffer[0..received_size].to_vec()) {
+                Ok(text) => println!("Received text: {}", text),
+                Err(_) => println!("Received data is not valid UTF-8 text"),
+            }
+            // Hex print section
+            net_utils::println_hex(buffer.as_slice(), received_size);
+        }
+
+        scheduler::yield_me();
+    }
+    close(server_fd);
+    TCP_SERVER_DONE.store(1, Ordering::Relaxed);
+    let _ = futex::atomic_wake(&TCP_SERVER_DONE, 1);
+}
+
+extern "C" fn socket_client_thread(_arg: *mut core::ffi::c_void) {
+    let client_fd = _arg as i32;
+
+    // call fcntl func to set client nonblock
+    let flags = fcntl(client_fd, libc::F_GETFL, usize::MAX);
+    fcntl(
+        client_fd,
+        libc::F_SETFL,
+        libc::O_NONBLOCK as usize,
+        // (flags & !libc::O_NONBLOCK) as usize,
+    );
+    let new_flags = fcntl(client_fd, libc::F_GETFL, usize::MAX);
+    assert_eq!(
+        new_flags,
+        libc::O_NONBLOCK as i32,
+        "Failed to set client flag to nonblock mode"
+    );
+    println!("Set client to non-blocking mode. new_flags={}", new_flags);
+
+    let message = "Test non-block write.";
+    let bytes = message.as_bytes();
+    // loop writing
+    for _ in 0..TEST_NONBLOCK_MODE {
+        // call write func to send data
+        let bytes_sent = write(client_fd, bytes.as_ptr(), bytes.len());
+        if bytes_sent >= 0 {
+            if bytes_sent as usize != bytes.len() {
+                println!(
+                    "Warning: Only sent partial data ({}/{} bytes)",
+                    bytes_sent,
+                    bytes.len()
+                );
+            }
+        } else {
+            println!("Failed to send data");
+        }
+        scheduler::yield_me();
+    }
+    let _ = futex::atomic_wait(&TCP_SERVER_DONE, 0, None);
+    close(client_fd);
+    TCP_CLIENT_DONE.store(1, Ordering::Relaxed);
+    let _ = futex::atomic_wake(&TCP_CLIENT_DONE, 1);
 }
