@@ -201,30 +201,30 @@ free_mem(ptr: *mut c_void) -> c_long {
 define_syscall_handler!(
 write(fd: i32, buf: *const u8, size: usize) -> c_long {
     unsafe {
-        vfs_syscalls::vfs_write(
+        vfs_syscalls::write(
         fd,
         buf, size) as c_long
     }
 });
 
 define_syscall_handler!(open(path: *const c_char, flags: c_int, mode: mode_t) -> c_int {
-    vfs_syscalls::vfs_open(path, flags, mode)
+    vfs_syscalls::open(path, flags, mode)
 });
 
 define_syscall_handler!(
     close(fd: c_int) -> c_int {
-        vfs_syscalls::vfs_close(fd)
+        vfs_syscalls::close(fd)
     }
 );
 define_syscall_handler!(
     read(fd: c_int, buf: *mut c_void, count: size_t) -> isize {
-        vfs_syscalls::vfs_read(fd, buf as *mut u8, count as usize)
+        vfs_syscalls::read(fd, buf as *mut u8, count as usize)
     }
 );
 
 define_syscall_handler!(
     lseek(fildes: c_int, offset: usize, whence: c_int) -> c_int {
-        vfs_syscalls::vfs_lseek(fildes, offset as i64, whence) as c_int
+        vfs_syscalls::lseek(fildes, offset as i64, whence) as c_int
     }
 );
 
@@ -252,70 +252,70 @@ define_syscall_handler!(sched_yield() -> c_long {
 });
 define_syscall_handler!(
     rmdir(path: *const c_char) -> c_int {
-        vfs_syscalls::vfs_rmdir(path)
+        vfs_syscalls::rmdir(path)
     }
 );
 define_syscall_handler!(
     link(oldpath: *const c_char, newpath: *const c_char) -> c_int {
-        vfs_syscalls::vfs_link(oldpath, newpath)
+        vfs_syscalls::link(oldpath, newpath)
     }
 );
 define_syscall_handler!(
     unlink(path: *const c_char) -> c_int {
-        vfs_syscalls::vfs_unlink(path)
+        vfs_syscalls::unlink(path)
     }
 );
 define_syscall_handler!(
     fcntl(fildes: c_int, cmd: c_int, arg: usize) -> c_int {
-        vfs_syscalls::vfs_fcntl(fildes, cmd, arg)
+        vfs_syscalls::fcntl(fildes, cmd, arg)
     }
 );
 define_syscall_handler!(
     stat(path: *const c_char, buf: *mut c_char) -> c_int {
-        vfs_syscalls::vfs_stat(path, buf as *mut Stat) as c_int
+        vfs_syscalls::stat(path, buf as *mut Stat) as c_int
     }
 );
 
 define_syscall_handler!(
     fstat(fd: c_int, buf: *mut c_char) -> c_int {
-        vfs_syscalls::vfs_fstat(fd, buf as *mut Stat) as c_int
+        vfs_syscalls::fstat(fd, buf as *mut Stat) as c_int
     }
 );
 define_syscall_handler!(
     mkdir(path: *const c_char, mode: mode_t) -> c_int {
-        vfs_syscalls::vfs_mkdir(path, mode)
+        vfs_syscalls::mkdir(path, mode)
     }
 );
 define_syscall_handler!(
     statfs(path: *const c_char, buf: *mut c_char) -> c_int {
-        vfs_syscalls::vfs_statfs(path, buf as *mut StatFs) as c_int
+        vfs_syscalls::statfs(path, buf as *mut StatFs) as c_int
     }
 );
 
 define_syscall_handler!(
     fstatfs(fd: c_int, buf: *mut c_char) -> c_int {
-        vfs_syscalls::vfs_fstatfs(fd, buf as *mut StatFs) as c_int
+        vfs_syscalls::fstatfs(fd, buf as *mut StatFs) as c_int
     }
 );
 
 define_syscall_handler!(
     getdents(fd: c_int, buf: *mut c_void, size: usize) -> isize {
-        vfs_syscalls::vfs_getdents(fd, buf as *mut u8, size as usize) as isize
+        vfs_syscalls::getdents(fd, buf as *mut u8, size as usize) as isize
     }
 );
 define_syscall_handler!(
     chdir(path: *const c_char) -> c_int {
-        vfs_syscalls::vfs_chdir(path)
+        vfs_syscalls::chdir(path)
     }
 );
 define_syscall_handler!(
     getcwd(buf: *mut c_char, size: size_t) -> c_int {
-        vfs_syscalls::vfs_getcwd(buf, size as usize) as c_int
+        vfs_syscalls::getcwd(buf, size as usize) as c_int
     }
 );
 define_syscall_handler!(
     ftruncate(fd: c_int, length: off_t) -> c_int {
-        vfs_syscalls::vfs_ftruncate(fd, length)
+        vfs_syscalls::ftruncate(fd, length)
     }
 );
 define_syscall_handler!(
@@ -326,7 +326,7 @@ define_syscall_handler!(
         flags: c_ulong,
         data: *const c_void
     ) -> c_int {
-        vfs_syscalls::vfs_mount(
+        vfs_syscalls::mount(
             source,
             target,
             fstype,
@@ -337,7 +337,7 @@ define_syscall_handler!(
 );
 define_syscall_handler!(
     umount(target: *const c_char) -> c_int {
-        vfs_syscalls::vfs_umount(target)
+        vfs_syscalls::umount(target)
     }
 );
 define_syscall_handler!(
