@@ -475,7 +475,7 @@ mod tests {
             test();
         }
         semihosting::println!(
-            "After test, thread 0x{:x}, heap status: {:?}, sp: 0x{:x}",
+            "After All tests, thread 0x{:x}, heap status: {:?}, sp: 0x{:x}",
             Thread::id(&t),
             ALLOCATOR.memory_info(),
             arch::current_sp()

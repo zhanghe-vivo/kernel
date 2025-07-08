@@ -954,6 +954,7 @@ mod tests {
         // Should handle overflow gracefully
         let timeout = timer.timeout_ticks();
         assert!(timeout > 0);
+        timer.stop();
     }
 
     #[cfg(soft_timer)]
@@ -979,6 +980,7 @@ mod tests {
 
         assert_eq!(counter1.load(Ordering::Relaxed), 1);
         assert_eq!(counter2.load(Ordering::Relaxed), 1);
+        assert_eq!(SOFT_TIMER_WHEEL.next_timeout(), usize::MAX);
     }
 
     #[test]
@@ -1055,6 +1057,9 @@ mod tests {
 
         // Timer should remain active
         assert!(timer.is_activated());
+
+        scheduler::suspend_me_for(10);
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
     }
 
     #[test]

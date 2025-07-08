@@ -19,15 +19,20 @@ use alloc::alloc::Layout;
 use core::{alloc::GlobalAlloc, ptr};
 
 pub mod block;
-#[cfg(allocator = "tlsf")]
+#[cfg(any(allocator = "tlsf", allocator = "slab"))]
 pub(crate) mod tlsf;
 #[cfg(allocator = "tlsf")]
 pub(crate) use tlsf::heap::Heap;
 
 #[cfg(allocator = "llff")]
-pub mod llff;
+pub(crate) mod llff;
 #[cfg(allocator = "llff")]
-pub use llff::heap::LlffHeap as Heap;
+pub(crate) use llff::heap::LlffHeap as Heap;
+
+#[cfg(allocator = "slab")]
+pub(crate) mod slab;
+#[cfg(allocator = "slab")]
+pub(crate) use slab::heap::Heap;
 
 pub struct KernelAllocator;
 static_arc! {

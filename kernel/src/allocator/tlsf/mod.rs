@@ -832,11 +832,11 @@ impl<'pool, FLBitmap: BinInteger, SLBitmap: BinInteger, const FLLEN: usize, cons
     ///  - The memory block must have been allocated with the same alignment
     ///    ([`Layout::align`]) as `align`.
     ///
-    pub unsafe fn deallocate(&mut self, ptr: NonNull<u8>, align: usize) {
+    pub unsafe fn deallocate(&mut self, ptr: NonNull<u8>, align: usize) -> usize {
         // Safety: `ptr` is a previously allocated memory block with the same
         //         alignment as `align`. This is upheld by the caller.
         let block = used_block_hdr_for_allocation(ptr, align).cast::<BlockHdr>();
-        self.deallocate_block(block);
+        self.deallocate_block(block)
     }
 
     /// Deallocate a previously allocated memory block with an unknown alignment.
@@ -852,20 +852,21 @@ impl<'pool, FLBitmap: BinInteger, SLBitmap: BinInteger, const FLLEN: usize, cons
     ///
     ///  - `ptr` must denote a memory block previously allocated via `self`.
     ///
-    pub(crate) unsafe fn deallocate_unknown_align(&mut self, ptr: NonNull<u8>) {
+    pub(crate) unsafe fn deallocate_unknown_align(&mut self, ptr: NonNull<u8>) -> usize {
         // Safety: `ptr` is a previously allocated memory block. This is upheld
         //         by the caller.
         let block = used_block_hdr_for_allocation_unknown_align(ptr).cast::<BlockHdr>();
-        self.deallocate_block(block);
+        self.deallocate_block(block)
     }
 
     /// Deallocate a previously allocated memory block. Takes a pointer to
     /// `BlockHdr` instead of a payload pointer.
     #[inline]
-    unsafe fn deallocate_block(&mut self, mut block: NonNull<BlockHdr>) {
-        let mut size = block.as_ref().size & !SIZE_USED;
+    pub(crate) unsafe fn deallocate_block(&mut self, mut block: NonNull<BlockHdr>) -> usize {
+        let deallocated_size = block.as_ref().size & !SIZE_USED;
         debug_assert!((block.as_ref().size & SIZE_USED) != 0);
-        self.allocated -= size;
+        self.allocated -= deallocated_size;
+        let mut size = deallocated_size;
 
         // This variable tracks whose `prev_phys_block` we should update.
         let mut new_next_phys_block;
@@ -932,6 +933,7 @@ impl<'pool, FLBitmap: BinInteger, SLBitmap: BinInteger, const FLLEN: usize, cons
         // Link `new_next_phys_block.prev_phys_block` to `block`
         debug_assert_eq!(new_next_phys_block, block.as_ref().common.next_phys_block());
         new_next_phys_block.as_mut().prev_phys_block = Some(block.cast());
+        deallocated_size
     }
 
     // TODO: `reallocate_no_move` (constant-time reallocation)

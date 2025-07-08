@@ -941,6 +941,18 @@ mod tests {
         let result = vfs_open(TEST_DIR, libc::O_RDONLY, 0o755);
         assert_eq!(result, code::ENOENT.to_errno());
 
+        let result = vfs_mkdir(TEST_DIR, 0o755);
+        assert_eq!(result, code::EOK.to_errno());
+
+        let result = vfs_rmdir(TEST_DIR);
+        assert_eq!(result, code::EOK.to_errno());
+    }
+
+    #[test]
+    fn test_sub_dir() {
+        let result = vfs_open(TEST_DIR, libc::O_RDONLY, 0o755);
+        assert_eq!(result, code::ENOENT.to_errno());
+
         let result = vfs_mkdir(TEST_SUB_DIR, 0o755);
         assert_eq!(result, code::EINVAL.to_errno());
 
@@ -1100,6 +1112,9 @@ mod tests {
         assert_eq!(result, code::EINVAL.to_errno());
 
         let result = vfs_rmdir(TEST_DIR);
+        assert_eq!(result, code::EOK.to_errno());
+
+        let result = vfs_chdir(ROOT_DIR);
         assert_eq!(result, code::EOK.to_errno());
     }
 

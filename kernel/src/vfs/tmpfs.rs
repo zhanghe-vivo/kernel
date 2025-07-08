@@ -36,7 +36,7 @@ use core::{
     time::Duration,
 };
 use delegate::delegate;
-use log::{debug, warn};
+use log::{debug, trace, warn};
 use spin::RwLock;
 
 static MAGIC: usize = 0x01021994;
@@ -638,5 +638,11 @@ impl InodeOps for TmpInode {
             fn set_atime(&self, time: Duration);
             fn set_mtime(&self, time: Duration);
         }
+    }
+}
+
+impl Drop for TmpInode {
+    fn drop(&mut self) {
+        trace!("Drop {:?}", self);
     }
 }
