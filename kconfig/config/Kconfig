@@ -127,6 +127,10 @@ config PROCFS
     default n
     bool "Enable proc file system"
 
+config NETWORK_STACK_SIZE
+    default 32768
+    int "The stack size of network stack thread"
+
 # smoltcp IP Stack Configuration , default and range from smoltcp:gen_config.py
 menu "smoltcp TCP/IP Stack Configuration"
     config SMOLTCP

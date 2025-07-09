@@ -26,7 +26,8 @@ use crate::{
     scheduler,
     thread::{self, Builder as ThreadBuilder, Entry, Stack, SystemThreadStorage, ThreadNode},
 };
-use alloc::{collections::btree_map::BTreeMap, rc::Rc, vec::Vec};
+use alloc::{boxed::Box, collections::btree_map::BTreeMap, rc::Rc, vec::Vec};
+use blueos_kconfig::NETWORK_STACK_SIZE;
 use core::{cell::RefCell, mem::MaybeUninit};
 use smoltcp::{
     time::{Duration, Instant},
@@ -270,14 +271,21 @@ extern "C" fn net_stack_main_loop() {
     log::debug!("[NetworkManager] exit");
 }
 
+#[repr(align(16))]
+#[derive(Copy, Clone, Debug)]
+pub(crate) struct NetworkStack {
+    pub(crate) rep: [u8; NETWORK_STACK_SIZE],
+}
+
+static mut NETWORK_STACK: NetworkStack = NetworkStack {
+    rep: [0u8; NETWORK_STACK_SIZE],
+};
+
 pub(crate) fn init() {
-    let size: usize = 32 << 10;
-    // never free, loop forever
-    let base = allocator::malloc_align(size, 16);
     let t = ThreadBuilder::new(Entry::C(net_stack_main_loop))
         .set_stack(Stack::Raw {
-            base: base as usize,
-            size,
+            base: unsafe { NETWORK_STACK.rep.as_ptr() } as usize,
+            size: NETWORK_STACK_SIZE,
         })
         .start();
 }
