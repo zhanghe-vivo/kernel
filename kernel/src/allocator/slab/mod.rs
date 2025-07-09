@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// This code is based on
-// https://github.com/weclaw1/slab_allocator/blob/master/src/slab.rs
+// This code is based on https://github.com/weclaw1/slab_allocator/blob/master/src/slab.rs
 // Copyright (c) 2017 Robert Węcławski
 // SPDX-LICENSE: MIT
 

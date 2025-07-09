@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// This code is modified from https://github.com/zesterer/spin-rs/blob/master/src/rwlock.rs
+// This code is based on https://github.com/zesterer/spin-rs/blob/master/src/rwlock.rs
 // Copyright (c) 2014 Mathijs van de Nes
 // SPDX-License: MIT
 
