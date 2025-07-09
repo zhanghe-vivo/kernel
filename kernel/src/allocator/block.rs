@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// This code is derived from https://github.com/yvt/rlsf/blob/main/crates/rlsf/src/tlsf.rs.
+// This code is based on https://github.com/yvt/rlsf/blob/main/crates/rlsf/src/tlsf.rs.
 // Copyright 2021 yvt
 // SPDX-LICENSE: MIT
 
