@@ -77,7 +77,7 @@ pub(crate) mod boot;
 pub(crate) mod config;
 pub(crate) mod console;
 #[cfg(coverage)]
-pub mod cov;
+pub mod coverage;
 pub(crate) mod devices;
 pub mod error;
 pub(crate) mod irq;
@@ -483,6 +483,6 @@ mod tests {
         );
         semihosting::println!("---- Done kernel unittests.");
         #[cfg(coverage)]
-        crate::cov::write_coverage_data();
+        crate::coverage::write_coverage_data();
     }
 }

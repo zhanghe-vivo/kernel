@@ -230,7 +230,7 @@ run_qemu_check("run_integration_test") {
   runner = ":integration_test_runner"
   if (coverage) {
     img = ":kernel_integration_test"
-    checker = "src/cov.rs"
+    checker = "src/coverage.checker"
   } else {
     checker = "tests/integration.checker"
   }
@@ -260,7 +260,7 @@ run_qemu_check("run_unittest") {
   runner = ":unittest_runner"
   if (coverage) {
     img = ":kernel_unittest"
-    checker = "src/cov.rs"
+    checker = "src/coverage.checker"
   } else {
     checker = "src/unittests.checker"
   }

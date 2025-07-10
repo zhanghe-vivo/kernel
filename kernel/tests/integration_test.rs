@@ -58,6 +58,6 @@ fn main() -> i32 {
     kernel_test_main();
 
     #[cfg(coverage)]
-    blueos::cov::write_coverage_data();
+    blueos::coverage::write_coverage_data();
     0
 }
