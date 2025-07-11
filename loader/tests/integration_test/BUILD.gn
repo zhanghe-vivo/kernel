@@ -47,16 +47,9 @@ gen_qemu_runner("loader_integration_test_runner") {
   qemu = "$qemu_exe"
   machine = "$machine"
   semihosting = true
-  if ("$board" == "qemu_virt64_aarch64") {
-    qemu_args =
-        "-cpu cortex-a53" + " -smp 4" + " -chardev stdio,id=con,mux=on" +
-        " -serial chardev:con" + " -global virtio-mmio.force-legacy=false" +
-        " -device virtio-rng-device,bus=virtio-mmio-bus.1" +
-        " -mon chardev=con,mode=readline"
-    block_img = "test.img"
-  } else if ("$board" == "qemu_riscv64") {
-    qemu_args = qemu_riscv64_run_args
-  }
+  qemu_args = qemu_extra_args
+  block_img = "loader_integration_test_block.img"
+  block_args = qemu_block_args
 }
 
 run_qemu_check("run_loader_integration_test") {

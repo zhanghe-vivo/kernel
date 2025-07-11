@@ -81,7 +81,44 @@ test_image_rustflags = [
 ]
 test_image_rustflags += common_image_rustflags
 
-qemu_riscv64_run_args = "-bios none -smp 32 "
+qemu_extra_args = []
+qemu_net_args = []
+qemu_block_args = []
+if ("$board" == "qemu_riscv64") {
+  qemu_extra_args += [
+    "-bios",
+    "none",
+    "-smp",
+    "32",
+  ]
+} else if ("$board" == "qemu_virt64_aarch64") {
+  qemu_extra_args += [
+    "-cpu",
+    "cortex-a53",
+    "-smp",
+    "4",
+    "-chardev",
+    "stdio,id=con,mux=on",
+    "-serial",
+    "chardev:con",
+    "-global",
+    "virtio-mmio.force-legacy=false",
+    "-device",
+    "virtio-rng-device,bus=virtio-mmio-bus.1",
+    "-mon",
+    "chardev=con,mode=readline",
+  ]
+  qemu_net_args += [
+    "-netdev",
+    "user,id=u1,hostfwd=tcp:127.0.0.1:10024-10.0.2.15:23,hostfwd=tcp:127.0.0.1:15002-10.0.2.15:5001",
+    "-device",
+    "virtio-net-device,netdev=u1,bus=virtio-mmio-bus.2",
+  ]
+  qemu_block_args += [
+    "-device",
+    "virtio-blk-device,bus=virtio-mmio-bus.3,drive=hd",
+  ]
+}
 
 blueos_default_cfgs = [
   "target_board=\"$board\"",
