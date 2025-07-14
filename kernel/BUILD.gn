@@ -31,7 +31,6 @@ shared_deps = [
   "//external/embedded-io/v0.6.1:embedded_io",
   "//external/heapless/v0.8.0:heapless",
   "//external/log/v0.4.22:log",
-  "//external/pinned-init/v0.0.8:pinned_init",
   "//external/rust-fatfs/v0.4:fatfs",
   "//external/safe-mmio/v0.2.5:safe_mmio",
   "//external/semihosting/v0.1.20:semihosting",

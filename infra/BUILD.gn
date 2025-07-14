@@ -23,7 +23,6 @@ group("check_infra") {
 shared_deps = [
   "//external/cfg-if/v1.0.0:cfg_if",
   "//external/memchr/v2.7.4:memchr",
-  "//external/pinned-init/v0.0.8:pinned_init",
 ]
 
 build_rust("blueos_infra") {

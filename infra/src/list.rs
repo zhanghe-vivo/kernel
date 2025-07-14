@@ -12,6 +12,5 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod doubly_linked_list;
 pub mod singly_linked_list;
 pub mod typed_ilist;
