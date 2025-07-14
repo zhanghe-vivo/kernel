@@ -65,7 +65,7 @@ if (board == "qemu_mps2_an385" || board == "qemu_mps3_an547") {
     "--cfg",
     "hardware_schedule",
   ]
-  shared_deps += [ "//external/cortex-m:cortex_m" ]
+  shared_deps += [ "//external/cortex-m/v0.7.7:cortex_m" ]
 } else if (board == "qemu_virt64_aarch64") {
   shared_deps += [
     "//external/arm-gic/v0.4.0:arm_gic",
