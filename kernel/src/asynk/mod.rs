@@ -84,11 +84,6 @@ fn create_tasklet(future: impl Future<Output = ()> + 'static) -> Arc<Tasklet> {
     Arc::new(Tasklet::new(future))
 }
 
-pub fn submit(future: impl Future<Output = ()> + Send + 'static) {
-    let mut task = create_tasklet(future);
-    enqueue_active_tasklet(task);
-}
-
 pub fn block_on(future: impl Future<Output = ()> + Send + 'static) {
     let t = scheduler::current_thread();
     let mut task = create_tasklet(future);

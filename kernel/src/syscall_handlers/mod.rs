@@ -251,7 +251,7 @@ define_syscall_handler!(exit_thread(exit_args: *const ExitArgs) -> c_long {
     if let Some(ref hook) = exit_args.exit_hook {
         let hook = move || {
             let fut = cleanup_for_exited_thread(exit_args.clone());
-            asynk::submit(fut);
+            asynk::spawn(fut);
         };
         t.lock().set_cleanup(Entry::Closure(Box::new(hook)));
     }
