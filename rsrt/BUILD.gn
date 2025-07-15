@@ -24,16 +24,21 @@ group("check_rsrt") {
 
 build_rust("rsrt") {
   crate_type = "rlib"
+  crate_name = "rsrt"
   sources = [ "src/lib.rs" ]
   deps = [
     "//external/semihosting/v0.1.20:semihosting",
-    "//libc:libc",
+    "//kernel/kernel:blueos",
   ]
 }
 
 build_rust("rsrt_std") {
   crate_type = "rlib"
   crate_name = "rsrt"
-  cfgs = [ "feature=\"std\"" ]
   sources = [ "src/lib.rs" ]
+  deps = [
+    "//external/semihosting/v0.1.20:semihosting",
+    "//kernel/kernel:blueos",
+  ]
+  features = [ "std" ]
 }

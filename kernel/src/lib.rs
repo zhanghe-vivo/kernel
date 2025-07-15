@@ -18,6 +18,7 @@
 #![feature(alloc_error_handler)]
 #![feature(alloc_layout_extra)]
 #![feature(allocator_api)]
+#![feature(async_closure)]
 #![feature(box_as_ptr)]
 #![feature(c_size_t)]
 #![feature(c_variadic)]

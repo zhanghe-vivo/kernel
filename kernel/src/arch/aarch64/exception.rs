@@ -14,6 +14,7 @@
 
 use super::{irq, registers::esr_el1::ESR_EL1, Context, NR_SWITCH};
 use crate::{
+    arch::aarch64::{disable_local_irq, enable_local_irq},
     scheduler::{self, ContextSwitchHookHolder},
     support::sideeffect,
     syscalls::{dispatch_syscall, Context as ScContext},
@@ -32,15 +33,21 @@ macro_rules! exception_handler {
         unsafe extern "C" fn $name() {
             naked_asm!(
                 concat!(
-                    "msr DAIFSet, #0x3\n",
+                    "
+                    msr DAIFSet, #0x3
+                    ",
                     crate::aarch64_save_context_prologue!(),
                     crate::aarch64_save_context!(),
-                    "mov x0, sp\n",
-                    "bl {cont}\n",
-                    "mov sp, x0\n",
+                    "
+                    mov x0, sp
+                    bl {cont}
+                    mov sp, x0
+                    ",
                     crate::aarch64_restore_context!(),
                     crate::aarch64_restore_context_epilogue!(),
-                    "eret\n"
+                    "
+                    eret
+                    ",
                 ),
                 lr = const offset_of!(self::Context, lr),
                 stack_size = const core::mem::size_of::<self::Context>(),
@@ -90,52 +97,71 @@ unsupported_handler!(el0_not_supported, "el0 is not supported.");
 unsupported_handler!(lowerel_not_supported, "lowerel is not supported.");
 
 #[naked]
-unsafe extern "C" fn trap_sync(context: &mut Context) {
+unsafe extern "C" fn trap_sync(context: &mut Context) -> usize {
     naked_asm!(
         concat!(
-            "mov sp, x1\n",
-            "b {handle_svc}\n",
+            "
+            mov x19, lr
+            mov x20, x0
+            bl {handle_svc}
+            mov sp, x0
+            mov x1, x20
+            mov lr, x19
+            b {might_switch}
+            ",
         ),
         handle_svc = sym handle_svc,
+        might_switch = sym might_switch,
     );
 }
 
-unsafe extern "C" fn handle_svc(context: &mut Context) -> usize {
+extern "C" fn might_switch(to: &Context, from: &Context) -> usize {
+    let to_ptr = to as *const _;
+    let from_ptr = from as *const _;
+    assert_eq!(to_ptr != from_ptr, from.x8 == NR_SWITCH);
+    if to_ptr == from_ptr {
+        return from_ptr as usize;
+    }
+    let saved_sp_ptr: *mut usize = unsafe { from.x0 as *mut usize };
+    if !saved_sp_ptr.is_null() {
+        unsafe {
+            sideeffect();
+            saved_sp_ptr.write_volatile(from_ptr as usize)
+        };
+    }
+    let hook: *mut ContextSwitchHookHolder =
+        unsafe { from.x2 as *mut scheduler::ContextSwitchHookHolder<'_> };
+    if !hook.is_null() {
+        sideeffect();
+        unsafe {
+            scheduler::save_context_finish_hook(Some(&mut *hook));
+        }
+    }
+    to as *const _ as usize
+}
+
+extern "C" fn handle_svc(context: &mut Context) -> usize {
     let esr = ESR_EL1.get();
     let ec = (esr >> 26) & 0x3F;
     let old_sp = context as *const _ as usize;
-    if ec == 0x15 {
-        if context.x8 == NR_SWITCH {
-            let saved_sp_ptr: *mut usize = unsafe { context.x0 as *mut usize };
-            if !saved_sp_ptr.is_null() {
-                unsafe {
-                    sideeffect();
-                    saved_sp_ptr.write_volatile(old_sp)
-                };
-            }
-            let hook: *mut ContextSwitchHookHolder =
-                unsafe { context.x2 as *mut scheduler::ContextSwitchHookHolder<'_> };
-            if !hook.is_null() {
-                sideeffect();
-                unsafe {
-                    scheduler::save_context_finish_hook(Some(&mut *hook));
-                }
-            }
-            return context.x1;
-        } else {
-            compiler_fence(Ordering::SeqCst);
-            let sc = ScContext {
-                nr: context.x8,
-                args: [
-                    context.x0, context.x1, context.x2, context.x3, context.x4, context.x5,
-                ],
-            };
-            context.x0 = dispatch_syscall(&sc);
-            compiler_fence(Ordering::SeqCst);
-        }
-    } else {
+    if ec != 0x15 {
         show_exception(ec, context);
+        return old_sp;
     }
+    if context.x8 == NR_SWITCH {
+        return context.x1;
+    }
+    compiler_fence(Ordering::SeqCst);
+    let sc = ScContext {
+        nr: context.x8,
+        args: [
+            context.x0, context.x1, context.x2, context.x3, context.x4, context.x5,
+        ],
+    };
+    enable_local_irq();
+    context.x0 = dispatch_syscall(&sc);
+    disable_local_irq();
+    compiler_fence(Ordering::SeqCst);
     old_sp
 }
 

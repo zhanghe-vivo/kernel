@@ -84,7 +84,12 @@ fn create_tasklet(future: impl Future<Output = ()> + 'static) -> Arc<Tasklet> {
     Arc::new(Tasklet::new(future))
 }
 
-pub fn block_on(future: impl Future<Output = ()> + 'static) {
+pub fn submit(future: impl Future<Output = ()> + Send + 'static) {
+    let mut task = create_tasklet(future);
+    enqueue_active_tasklet(task);
+}
+
+pub fn block_on(future: impl Future<Output = ()> + Send + 'static) {
     let t = scheduler::current_thread();
     let mut task = create_tasklet(future);
     task.lock().blocked = Some(t.clone());
@@ -106,7 +111,7 @@ fn wake_poller() {
     atomic_wait::atomic_wake(&POLLER_WAKER, 1);
 }
 
-pub fn spawn(future: impl Future<Output = ()> + 'static) -> Arc<Tasklet> {
+pub fn spawn(future: impl Future<Output = ()> + Send + 'static) -> Arc<Tasklet> {
     let task = create_tasklet(future);
     enqueue_active_tasklet(task.clone());
     wake_poller();

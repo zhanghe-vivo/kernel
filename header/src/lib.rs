@@ -98,8 +98,10 @@ pub mod thread {
     }
 
     #[repr(C)]
+    #[derive(Clone, Debug)]
     pub struct ExitArgs {
-        pub exit_hook: Option<fn(tid: usize, exit_args: &ExitArgs)>,
-        pub stack_start: *mut u8,
+        pub exit_hook: Option<fn(exit_args: &ExitArgs)>,
+        pub tid: usize,
+        pub stack_start: &'static u8,
     }
 }

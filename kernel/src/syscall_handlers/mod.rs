@@ -16,7 +16,7 @@ extern crate alloc;
 use core::ffi::{c_size_t, c_ssize_t};
 
 use crate::{
-    arch, net, scheduler,
+    arch, asynk, net, scheduler,
     sync::atomic_wait as futex,
     thread::{self, Builder, Entry, Stack, Thread, ThreadNode},
     time,
@@ -230,6 +230,13 @@ define_syscall_handler!(
     }
 );
 
+async fn cleanup_for_exited_thread(exit_args: ExitArgs) {
+    let Some(ref hook) = exit_args.exit_hook else {
+        return;
+    };
+    hook(&exit_args);
+}
+
 define_syscall_handler!(exit_thread(exit_args: *const ExitArgs) -> c_long {
     if exit_args.is_null() {
         scheduler::retire_me();
@@ -238,9 +245,13 @@ define_syscall_handler!(exit_thread(exit_args: *const ExitArgs) -> c_long {
     let t = scheduler::current_thread();
     let id = Thread::id(&t);
     let exit_args = unsafe{ &*exit_args };
+    // We can't assume there is no syscalls inside the exit hook, so that we
+    // can't run the exit hook in the cleanup stage which happens during context
+    // switch. We resort to asynk.
     if let Some(ref hook) = exit_args.exit_hook {
         let hook = move || {
-            hook(id, exit_args);
+            let fut = cleanup_for_exited_thread(exit_args.clone());
+            asynk::submit(fut);
         };
         t.lock().set_cleanup(Entry::Closure(Box::new(hook)));
     }

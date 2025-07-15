@@ -103,7 +103,7 @@ pub(crate) extern "C" fn start_schedule(cont: extern "C" fn() -> !) {
     }
 }
 
-#[repr(C, align(4))]
+#[repr(C, align(8))]
 #[derive(Default, Debug, Copy, Clone)]
 pub struct Context {
     pub r4: usize,
@@ -127,7 +127,7 @@ pub struct Context {
     pub xpsr: usize,
 }
 
-#[repr(C, align(4))]
+#[repr(C, align(8))]
 #[derive(Default)]
 pub struct IsrContext {
     pub r0: usize,
@@ -232,6 +232,10 @@ unsafe extern "C" fn syscall_stub(ctx: *mut Context) {
             "
             pop {{r0-r3, r12}}
             pop {{lr}}
+            tst lr, #0x200
+            beq 1f
+            pop {{lr}}
+            1:
             pop {{lr}}
             pop {{pc}}
             ",
@@ -279,16 +283,39 @@ extern "C" fn handle_syscall(ctx: &mut Context) -> usize {
     let region = Region { base, size };
     let mut rb = RegionalObjectBuilder::new(region);
     let dup_ctx = rb.write_after_start::<Context>(*ctx).unwrap() as *mut Context as *mut usize;
-    // Use thumb mode.
-    ctx.xpsr = ctx.pc | 1;
-    ctx.pc = ctx.lr;
+    // Check if re-alignment happened.
+    // See https://developer.arm.com/documentation/ddi0403/d/System-Level-Architecture/System-Level-Programmers--Model/ARMv7-M-exception-model/Stack-alignment-on-exception-entry
+    let realigned = (ctx.xpsr & (1 << 9)) != 0;
     unsafe {
+        sideeffect();
         dup_ctx
             .byte_offset(offset_of!(Context, pc) as isize)
             .write_volatile(syscall_stub as usize);
         dup_ctx
             .byte_offset(offset_of!(Context, r0) as isize)
             .write_volatile(ctx as *const _ as usize);
+        // The duplicated context doesn't need realignment.
+        dup_ctx
+            .byte_offset(offset_of!(Context, xpsr) as isize)
+            .write_volatile(ctx.xpsr & !(1 << 9))
+    }
+    // We are playing a trick here, so that we can use `pop {{pc}}`
+    // instruction, without using any scratch register.
+    // Enforce thumb mode.
+    let pc = ctx.pc | 1;
+    let lr = ctx.lr;
+    ctx.lr = ctx.xpsr;
+    ctx.pc = lr;
+    if realigned {
+        unsafe {
+            sideeffect();
+            ctx.xpsr = lr;
+            let reserved_ptr: *mut usize =
+                (ctx as *mut _ as *mut usize).byte_offset(core::mem::size_of::<Context>() as isize);
+            reserved_ptr.write_volatile(pc);
+        }
+    } else {
+        ctx.xpsr = pc;
     }
     base
 }
