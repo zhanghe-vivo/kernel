@@ -17,10 +17,10 @@
 // https://github.com/smoltcp-rs/smoltcp/blob/main/LICENSE-0BSD.txt
 // standard BSD Zero Clause License
 
-use crate::net_utils;
+use super::net_utils;
 use alloc::{boxed::Box, vec, vec::Vec};
 use blueos::{
-    allocator, scheduler,
+    allocator, net, scheduler,
     sync::atomic_wait as futex,
     thread::{Builder as ThreadBuilder, Entry, Stack},
 };
@@ -67,10 +67,11 @@ mod mock {
 pub type NetThreadFn = extern "C" fn(arg: *mut core::ffi::c_void);
 
 static SMOLTCP_TEST_DONE: AtomicUsize = AtomicUsize::new(0);
+static ICMP_LOOPBACK_TEST_DONE: AtomicUsize = AtomicUsize::new(0);
 
 // Run smoltcp socket test on loopback device.
 // WARNING: Do not run this test in the main thread to prevent stack overflow.
-extern "C" fn thread_entry(_arg: *mut core::ffi::c_void) {
+fn smoltcp_test_thread() {
     let clock = mock::Clock::new();
     let mut device = Loopback::new(Medium::Ethernet);
 
@@ -176,13 +177,10 @@ extern "C" fn thread_entry(_arg: *mut core::ffi::c_void) {
         done,
         "[smoltcp Tcp Socket Test]: Bailing out: socket test took too long on loopback device"
     );
-    SMOLTCP_TEST_DONE.store(1, Ordering::Relaxed);
-    let _ = futex::atomic_wake(&SMOLTCP_TEST_DONE, 1);
 }
 
 // Run smoltcp socket test on loopback device
-static ICMP_LOOPBACK_TEST_DONE: AtomicUsize = AtomicUsize::new(0);
-extern "C" fn test_icmp_loopback(arg: *mut core::ffi::c_void) {
+fn smoltcp_test_thread_icmp() {
     println!("Enter test_icmp_loopback");
     let clock = mock::Clock::new();
     let mut device = Loopback::new(Medium::Ethernet);
@@ -238,10 +236,9 @@ extern "C" fn test_icmp_loopback(arg: *mut core::ffi::c_void) {
     // For socket api test
     // Create a libc::msghdr
     let mut sockaddr_in_obj = net_utils::create_ipv4_sockaddr("127.0.0.1", 1234);
-    let mut icmp_echo_packet = net_utils::create_icmpv4_echo_packet();
-    let packet_len = icmp_echo_packet.as_slice().len();
+    let (icmp_echo_packet_ptr, packet_len) = net_utils::create_icmpv4_echo_packet();
     let mut iovec_obj = libc::iovec {
-        iov_base: icmp_echo_packet.as_mut_ptr() as *mut c_void,
+        iov_base: icmp_echo_packet_ptr as *mut c_void,
         iov_len: packet_len,
     };
 
@@ -399,44 +396,38 @@ extern "C" fn test_icmp_loopback(arg: *mut core::ffi::c_void) {
     } else {
         println!("Bailing out : this is taking too long.")
     }
-
-    ICMP_LOOPBACK_TEST_DONE.store(1, Ordering::Relaxed);
-    let _ = futex::atomic_wake(&ICMP_LOOPBACK_TEST_DONE, 1);
-}
-
-pub fn start_test_thread(_thread_name: &str, thread_fn: NetThreadFn, base: usize, size: usize) {
-    println!("start_test_thread [{}] at base 0x{:x}", _thread_name, base);
-    let t = ThreadBuilder::new(Entry::Posix(thread_fn, core::ptr::null_mut()))
-        .set_stack(Stack::Raw { base, size })
-        .build();
-    t.lock()
-        .set_cleanup(Entry::Closure(Box::new(move || unsafe {
-            println!("clean up begin 0x{:x}", base);
-            allocator::free_align(base as *mut u8, 16);
-            println!("clean up finish 0x{:x}", base);
-        })));
-    scheduler::queue_ready_thread(t.state(), t);
 }
 
 #[test]
 fn test_smoltcp() {
-    println!("[smoltcp Integration Test] Enter test_loopback_in_thread");
-    let size = 32 << 10;
-    let base = allocator::malloc_align(size, 16);
-    start_test_thread("test_smoltcp", thread_entry, base as usize, size);
+    SMOLTCP_TEST_DONE.store(0, Ordering::Release);
+
+    net_utils::start_test_thread_with_cleanup(
+        "smoltcp_test_thread",
+        Box::new(move || {
+            smoltcp_test_thread();
+        }),
+        Some(Box::new(|| {
+            SMOLTCP_TEST_DONE.store(1, Ordering::Release);
+            let _ = futex::atomic_wake(&SMOLTCP_TEST_DONE, 1);
+        })),
+    );
     let _ = futex::atomic_wait(&SMOLTCP_TEST_DONE, 0, None);
 }
 
 #[test]
 fn test_smoltcp_icmp_loopback() {
-    println!("[smoltcp Integration Test] Enter test_loopback_in_thread");
-    let size = 32 << 10;
-    let base = allocator::malloc_align(size, 16);
-    start_test_thread(
+    ICMP_LOOPBACK_TEST_DONE.store(0, Ordering::Release);
+
+    net_utils::start_test_thread_with_cleanup(
         "test_icmp_loopback",
-        test_icmp_loopback,
-        base as usize,
-        size,
+        Box::new(move || {
+            smoltcp_test_thread_icmp();
+        }),
+        Some(Box::new(|| {
+            ICMP_LOOPBACK_TEST_DONE.store(1, Ordering::Release);
+            let _ = futex::atomic_wake(&ICMP_LOOPBACK_TEST_DONE, 1);
+        })),
     );
     let _ = futex::atomic_wait(&ICMP_LOOPBACK_TEST_DONE, 0, None);
 }

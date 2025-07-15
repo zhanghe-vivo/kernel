@@ -23,12 +23,8 @@ extern crate rsrt;
 use blueos::allocator;
 use semihosting::println;
 
-mod net_utils;
+mod net;
 mod test_futex;
-mod test_net_posix_api;
-mod test_net_smoltcp;
-#[cfg(virtio)]
-mod test_net_smoltcp_virtio_net;
 /// Unstable rust custom test framework test file hierarchy.
 /// Since there is no cargo framework, we manually set it up.
 mod test_semaphore;

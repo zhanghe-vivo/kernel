@@ -301,25 +301,22 @@ pub fn recvmsg(socket: c_int, message: *mut libc::msghdr, flags: c_int) -> c_ssi
     }
 
     let sockaddr_buffer_ptr = message as usize;
-
     // parse msghdr
     let recv_payload = Box::new(move |payload: &[u8], endpoint: IpEndpoint| -> usize {
         log::debug!("Received packet from {}: {:?}", endpoint, payload);
 
-        let Some(msghdr) = (unsafe {
-            SocketMsghdr::from_ptr_mut(&mut *(sockaddr_buffer_ptr as *mut libc::msghdr))
-        }) else {
+        let Some(msghdr) =
+            (unsafe { SocketMsghdr::from_ptr_mut(sockaddr_buffer_ptr as *mut libc::msghdr) })
+        else {
             log::error!("Parse Msghdr fail");
             return 0;
         };
 
-        // Fill addr buffer
+        // Write ip address to recv msghdr
         msghdr.fill_ip_endpoint(endpoint);
 
-        // Fill with iov
-        let total_copied: usize = msghdr.scatter_from_buffer(payload);
-        log::debug!("Recv payload size={}", total_copied);
-        total_copied
+        // Write payload to recv msghdr
+        msghdr.scatter_from_buffer(payload)
     });
 
     connection

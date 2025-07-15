@@ -13,7 +13,7 @@
 // limitations under the License.
 
 #![allow(dead_code)]
-use crate::net_utils;
+use crate::net::net_utils;
 use alloc::{boxed::Box, ffi::CString, format, string::String, vec};
 use blueos::{
     allocator,
@@ -612,9 +612,25 @@ fn read_fd_content(path_str: &str, fd: i32) -> usize {
     read_size as usize
 }
 
+static TCP_SOCKET_FILE_DONE: AtomicUsize = AtomicUsize::new(0);
+
 #[test]
 fn test_socket_file() {
-    println!("[VFS SockFS Test] start~~~ ");
+    net_utils::start_test_thread_with_cleanup(
+        "tcp_socket_file_thread",
+        Box::new(move || {
+            tcp_socket_file_thread();
+        }),
+        Some(Box::new(|| {
+            TCP_SOCKET_FILE_DONE.store(1, Ordering::Release);
+            let _ = futex::atomic_wake(&TCP_SOCKET_FILE_DONE, 1);
+        })),
+    );
+
+    let _ = futex::atomic_wait(&TCP_SOCKET_FILE_DONE, 0, None);
+}
+
+fn tcp_socket_file_thread() {
     let (server_fd, client_fd) = create_connected_sockets();
     println!(
         "created connected sockets successfully.server fd:{}, client fd:{}",
@@ -663,11 +679,8 @@ fn test_socket_file() {
     );
     println!("Data verified successfully (server -> client)");
 
-    // === test 3: nonblock ===
-    test_nonblock_socket(server_fd, client_fd);
-    println!("Test non-block successfully");
-
-    println!("[VFS SockFS Test] end~~~ ");
+    close(server_fd);
+    close(client_fd);
 }
 
 fn create_connected_sockets() -> (i32, i32) {
@@ -714,60 +727,31 @@ fn create_connected_sockets() -> (i32, i32) {
     (server_fd, client_fd)
 }
 
-pub type NetThreadFn = extern "C" fn(arg: *mut core::ffi::c_void);
-fn start_test_thread(
-    _thread_name: &str,
-    thread_fn: NetThreadFn,
-    arg: *mut c_void,
-    base: usize,
-    size: usize,
-) {
-    let t = ThreadBuilder::new(Entry::Posix(thread_fn, arg))
-        .set_stack(Stack::Raw { base, size })
-        .build();
-    t.lock()
-        .set_cleanup(Entry::Closure(Box::new(move || unsafe {
-            println!("clean up begin 0x{:x}", base);
-            allocator::free_align(base as *mut u8, 16);
-
-            println!("clean up finish 0x{:x}", base);
-        })));
-    scheduler::queue_ready_thread(t.state(), t);
-}
-
-#[repr(C)]
-struct FdPair {
-    server_fd: i32,
-    client_fd: i32,
-}
-
 const TEST_NONBLOCK_MODE: usize = 20;
 static TCP_CLIENT_DONE: AtomicUsize = AtomicUsize::new(0);
 static TCP_SERVER_DONE: AtomicUsize = AtomicUsize::new(0);
 
-fn test_nonblock_socket(server_fd: i32, client_fd: i32) {
-    let size = 32 << 10;
-    let tcp_client_base = allocator::malloc_align(size, 16);
-    let arg = Box::into_raw(Box::new(FdPair {
-        server_fd,
-        client_fd,
-    })) as *mut c_void;
+#[test]
+fn test_socket_file_nonblock() {
+    TCP_CLIENT_DONE.store(0, Ordering::Release);
+    TCP_SERVER_DONE.store(0, Ordering::Release);
 
-    start_test_thread(
+    net_utils::start_test_thread(
         "socket_server_thread",
-        socket_server_thread,
-        arg,
-        tcp_client_base as usize,
-        size,
+        Box::new(move || {
+            socket_server_thread();
+        }),
     );
 
     let _ = futex::atomic_wait(&TCP_CLIENT_DONE, 0, None);
 }
 
-extern "C" fn socket_server_thread(_arg: *mut core::ffi::c_void) {
-    let fd_pair = unsafe { Box::from_raw(_arg as *mut FdPair) };
-    let server_fd = fd_pair.server_fd;
-    let client_fd = fd_pair.client_fd;
+fn socket_server_thread() {
+    let (server_fd, client_fd) = create_connected_sockets();
+    println!(
+        "created connected sockets successfully.server fd:{}, client fd:{}",
+        server_fd, client_fd
+    );
 
     // call fcntl func to set server nonblock
     let flags = fcntl(server_fd, libc::F_GETFL, usize::MAX);
@@ -780,14 +764,15 @@ extern "C" fn socket_server_thread(_arg: *mut core::ffi::c_void) {
     );
     println!("Set server to non-blocking mode. new_flags={}", new_flags);
 
-    let size = 32 << 10;
-    let tcp_server_base = allocator::malloc_align(size, 16);
-    start_test_thread(
+    net_utils::start_test_thread_with_cleanup(
         "socket_client_thread",
-        socket_client_thread,
-        client_fd as *mut c_void,
-        tcp_server_base as usize,
-        size,
+        Box::new(move || {
+            socket_client_thread(client_fd);
+        }),
+        Some(Box::new(|| {
+            TCP_CLIENT_DONE.store(1, Ordering::Release);
+            let _ = futex::atomic_wake(&TCP_CLIENT_DONE, 1);
+        })),
     );
 
     // loop reading
@@ -805,6 +790,7 @@ extern "C" fn socket_server_thread(_arg: *mut core::ffi::c_void) {
             }
             // Hex print section
             net_utils::println_hex(buffer.as_slice(), received_size);
+            break;
         }
 
         scheduler::yield_me();
@@ -814,9 +800,7 @@ extern "C" fn socket_server_thread(_arg: *mut core::ffi::c_void) {
     let _ = futex::atomic_wake(&TCP_SERVER_DONE, 1);
 }
 
-extern "C" fn socket_client_thread(_arg: *mut core::ffi::c_void) {
-    let client_fd = _arg as i32;
-
+fn socket_client_thread(client_fd: i32) {
     // call fcntl func to set client nonblock
     let flags = fcntl(client_fd, libc::F_GETFL, usize::MAX);
     fcntl(
@@ -847,13 +831,12 @@ extern "C" fn socket_client_thread(_arg: *mut core::ffi::c_void) {
                     bytes.len()
                 );
             }
+            break;
         } else {
             println!("Failed to send data");
         }
         scheduler::yield_me();
     }
-    let _ = futex::atomic_wait(&TCP_SERVER_DONE, 0, None);
     close(client_fd);
-    TCP_CLIENT_DONE.store(1, Ordering::Relaxed);
-    let _ = futex::atomic_wake(&TCP_CLIENT_DONE, 1);
+    let _ = futex::atomic_wait(&TCP_SERVER_DONE, 0, None);
 }

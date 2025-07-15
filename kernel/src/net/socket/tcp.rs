@@ -115,8 +115,8 @@ impl PosixSocket for TcpSocket<'static> {
 
     fn accept(&self, _local_endpoint: IpListenEndpoint) -> SocketResult {
         Err(SocketError::UnsupportedSocketTypeForOperation(
-            SocketType::SockDgram,
-            "use send() instead".into(),
+            SocketType::SockStream,
+            "use listen() for each connection".into(),
         ))
     }
 
@@ -143,8 +143,10 @@ impl PosixSocket for TcpSocket<'static> {
 
         self.with(|socket, interface| {
             // match socket type
-            let _ = socket.connect(interface.context(), remote_endpoint, local_port);
-            Ok(0)
+            socket
+                .connect(interface.context(), remote_endpoint, local_port)
+                .map(|_| 0)
+                .map_err(SocketError::SmoltcpTcpConnectError)
         })
     }
 
@@ -162,7 +164,7 @@ impl PosixSocket for TcpSocket<'static> {
 
             socket
                 .listen(local_endpoint)
-                .map(|()| 1)
+                .map(|()| 0)
                 .map_err(SocketError::SmoltcpTcpListenError)
         })
     }
@@ -227,7 +229,7 @@ impl PosixSocket for TcpSocket<'static> {
         ipc_reply: Arc<OperationIPCReply>,
     ) -> SocketResult {
         Err(SocketError::UnsupportedSocketTypeForOperation(
-            SocketType::SockDgram,
+            SocketType::SockStream,
             "use send() instead".into(),
         ))
     }
@@ -242,7 +244,7 @@ impl PosixSocket for TcpSocket<'static> {
         ipc_reply: Arc<OperationIPCReply>,
     ) -> SocketResult {
         Err(SocketError::UnsupportedSocketTypeForOperation(
-            SocketType::SockDgram,
+            SocketType::SockStream,
             "use send() instead".into(),
         ))
     }
@@ -309,8 +311,8 @@ impl PosixSocket for TcpSocket<'static> {
         ipc_reply: Arc<OperationIPCReply>,
     ) -> SocketResult {
         Err(SocketError::UnsupportedSocketTypeForOperation(
-            SocketType::SockDgram,
-            "use send() instead".into(),
+            SocketType::SockStream,
+            "use recv() instead".into(),
         ))
     }
 
@@ -321,8 +323,8 @@ impl PosixSocket for TcpSocket<'static> {
         ipc_reply: Arc<OperationIPCReply>,
     ) -> SocketResult {
         Err(SocketError::UnsupportedSocketTypeForOperation(
-            SocketType::SockDgram,
-            "use send() instead".into(),
+            SocketType::SockStream,
+            "use recv() instead".into(),
         ))
     }
 

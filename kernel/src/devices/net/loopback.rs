@@ -27,7 +27,7 @@ use smoltcp::{
 /// Add SmoltcpNetInterface wrapper to smoltcp::phy::Loopback device
 impl NetInterface<'_> {
     pub fn create_loopback_interface() -> Self {
-        let mut inner = smoltcp::phy::Loopback::new(Medium::Ethernet);
+        let mut inner = smoltcp::phy::Loopback::new(Medium::Ip);
 
         // Create Device
         let mut socket_set = SocketSet::new(vec![]);
@@ -49,8 +49,15 @@ impl NetInterface<'_> {
                 .push(IpCidr::new(IpAddress::v4(127, 0, 0, 1), 8)) // local ip
                 .is_err()
             {
-                log::error!("Add ip addrs to loopback device fail");
-            }
+                log::error!("Add ip v4 addrs to loopback device fail");
+            };
+
+            if ip_addrs
+                .push(IpCidr::new(IpAddress::v6(0, 0, 0, 0, 0, 0, 0, 1), 128))
+                .is_err()
+            {
+                log::error!("Add ip v6 addrs to loopback device fail");
+            };
         });
 
         let device = Rc::new(RefCell::new(NetDevice::Loopback(inner)));

@@ -87,7 +87,7 @@ impl Connection {
             ipc_reply: self.ipc_reply.clone(),
         };
 
-        log::debug!("[Socket {}] Creation request queued", self.socket_fd);
+        log::debug!("[Socket {}] Create request queued", self.socket_fd);
 
         self.ipc_reply.queue_and_wait(create_task)
     }
@@ -207,7 +207,7 @@ impl Connection {
         };
 
         // Log successful request submission
-        log::debug!("[Socket {}] Receive request queued", self.socket_fd);
+        log::debug!("[Socket {}] Recv request queued", self.socket_fd);
 
         // Wait for network stack response and convert result
         self.ipc_reply.queue_and_wait(recv_task)
@@ -223,7 +223,7 @@ impl Connection {
         };
 
         // Log successful request submission
-        log::debug!("[Socket {}] Receive request queued", self.socket_fd);
+        log::debug!("[Socket {}] RecvFrom request queued", self.socket_fd);
 
         // Wait for network stack response and convert result
         self.ipc_reply.queue_and_wait(recv_task)
@@ -322,7 +322,7 @@ impl Connection {
         };
 
         // Log successful request submission
-        log::debug!("[Socket {}] SendMsg request queued", self.socket_fd);
+        log::debug!("[Socket {}] RecvMsg request queued", self.socket_fd);
 
         self.ipc_reply.queue_and_wait(sendmsg_task)
     }
@@ -537,7 +537,7 @@ impl Connection {
                             match result.as_ref() {
                                 Ok(0) => {
                                     log::debug!(
-                                        "[Connection] handle Send socket_fd={} , recv 0 data , wait for socket",
+                                        "[Connection] handle SendTo socket_fd={} , blocking wait for socket",
                                         socket_fd
                                     );
                                     None
@@ -581,7 +581,7 @@ impl Connection {
                             match result.as_ref() {
                                 Ok(0) => {
                                     log::debug!(
-                                        "[Connection] handle SendMsg socket_fd={} , send 0 data , wait for socket",
+                                        "[Connection] handle SendMsg socket_fd={} , blocking wait for socket",
                                         socket_fd
                                     );
                                     None
@@ -610,7 +610,7 @@ impl Connection {
                             match result.as_ref() {
                                 Ok(0) => {
                                     log::debug!(
-                                        "[Connection] handle Recv socket_fd={} , send 0 data , wait for socket",
+                                        "[Connection] handle Recv socket_fd={} , blocking wait for socket",
                                         socket_fd
                                     );
                                     None
@@ -640,7 +640,7 @@ impl Connection {
                             match result.as_ref() {
                                 Ok(0) => {
                                     log::debug!(
-                                        "[Connection] handle RecvFrom socket_fd={} , send 0 data , wait for socket",
+                                        "[Connection] handle RecvFrom socket_fd={} , blocking wait for socket",
                                         socket_fd
                                     );
                                     None
@@ -669,7 +669,7 @@ impl Connection {
                             match result.as_ref() {
                                 Ok(0) => {
                                     log::debug!(
-                                        "[Connection] handle RecvMsg socket_fd={} , send 0 data , wait for socket",
+                                        "[Connection] handle RecvMsg socket_fd={} , blocking wait for socket",
                                         socket_fd
                                     );
                                     None

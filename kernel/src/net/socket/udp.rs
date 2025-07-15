@@ -117,7 +117,7 @@ impl PosixSocket for UdpSocket<'static> {
     fn accept(&self, _local_endpoint: IpListenEndpoint) -> SocketResult {
         Err(SocketError::UnsupportedSocketTypeForOperation(
             SocketType::SockDgram,
-            "accept".into(),
+            "accept()".into(),
         ))
     }
 
@@ -147,14 +147,14 @@ impl PosixSocket for UdpSocket<'static> {
     ) -> SocketResult {
         Err(SocketError::UnsupportedSocketTypeForOperation(
             SocketType::SockDgram,
-            "conncet".into(),
+            "connect()".into(),
         ))
     }
 
     fn listen(&mut self, _local_endpoint: IpListenEndpoint) -> SocketResult {
         Err(SocketError::UnsupportedSocketTypeForOperation(
             SocketType::SockDgram,
-            "listen".into(),
+            "listen()".into(),
         ))
     }
 

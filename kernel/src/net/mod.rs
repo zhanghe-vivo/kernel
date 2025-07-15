@@ -270,7 +270,7 @@ impl SocketAddress {
         ptr: *const libc::sockaddr,
         len: libc::socklen_t,
     ) -> Option<&'a Self> {
-        if ptr.is_null() || (len as usize) < core::mem::size_of::<libc::sa_family_t>() {
+        if ptr.is_null() || (len as usize) < core::mem::size_of::<libc::sockaddr>() {
             return None;
         }
 
@@ -293,12 +293,23 @@ impl SocketAddress {
 }
 
 impl SocketAddressV4 {
+    pub unsafe fn from_ptr<'a>(
+        ptr: *const libc::sockaddr_in,
+        len: libc::socklen_t,
+    ) -> Option<&'a Self> {
+        if ptr.is_null() || (len as usize) < core::mem::size_of::<libc::sockaddr_in>() {
+            return None;
+        }
+
+        Some(&*(ptr as *const Self))
+    }
+
     pub fn create_ip_endpoint(&self) -> IpEndpoint {
         IpEndpoint {
             addr: IpAddress::Ipv4(core::net::Ipv4Addr::from(
                 self.sin_addr.s_addr.to_ne_bytes(),
             )),
-            port: self.sin_port,
+            port: u16::from_be(self.sin_port),
         }
     }
 }
@@ -307,7 +318,7 @@ impl SocketAddressV6 {
     pub fn create_ip_endpoint(&self) -> IpEndpoint {
         IpEndpoint {
             addr: IpAddress::Ipv6(core::net::Ipv6Addr::from(self.sin6_addr.s6_addr)),
-            port: self.sin6_port,
+            port: u16::from_be(self.sin6_port),
         }
     }
 }
@@ -410,37 +421,6 @@ impl SocketMsghdr {
         );
     }
 
-    pub fn fill_ip_address(&mut self, source: SocketAddr) {
-        if self.msg_namelen as usize >= core::mem::size_of::<libc::sockaddr>() {
-            match source {
-                SocketAddr::V4(ipv4) => unsafe {
-                    let dest = self.msg_name.cast::<libc::sockaddr_in>();
-
-                    (*dest).sin_len = core::mem::size_of::<libc::sockaddr_in>() as u8;
-                    (*dest).sin_family = libc::AF_INET as libc::sa_family_t;
-                    (*dest).sin_port = ipv4.port();
-                    (*dest).sin_addr.s_addr = u32::from_be_bytes(ipv4.ip().octets());
-
-                    let addr_ptr = dest
-                        .cast::<u8>()
-                        .add(core::mem::offset_of!(libc::sockaddr_in, sin_zero));
-                    core::ptr::write_bytes(addr_ptr, 0, 6);
-                },
-                SocketAddr::V6(ipv6) => unsafe {
-                    let dest = self.msg_name.cast::<libc::sockaddr_in6>();
-
-                    (*dest).sin6_len = core::mem::size_of::<libc::sockaddr_in6>() as u8;
-                    (*dest).sin6_family = libc::AF_INET6 as libc::sa_family_t;
-                    (*dest).sin6_port = ipv6.port();
-                    (*dest).sin6_flowinfo = ipv6.flowinfo();
-                    (*dest).sin6_addr.s6_addr = ipv6.ip().octets();
-                    (*dest).sin6_vport = 0;
-                    (*dest).sin6_scope_id = ipv6.scope_id();
-                },
-            }
-        }
-    }
-
     pub fn scatter_from_buffer(&mut self, payload: &[u8]) -> usize {
         if payload.is_empty() || self.msg_iov.is_null() || self.msg_iovlen == 0 {
             return 0;
@@ -460,12 +440,6 @@ impl SocketMsghdr {
             let buffer_len = iov.iov_len as usize;
             let copy_len = remaining.len().min(buffer_len);
 
-            semihosting::println!(
-                "scatter_from_buffer msg_iovlen={} buffer_len={} copy_len={}",
-                (self.msg_iovlen as usize),
-                buffer_len,
-                copy_len
-            );
             let dst =
                 unsafe { core::slice::from_raw_parts_mut(iov.iov_base.cast::<u8>(), buffer_len) }; // TODO copy_len to buffer_len
             let (dst_part, src_part) = (&mut dst[..copy_len], &remaining[..copy_len]);
@@ -595,11 +569,10 @@ pub fn write_to_sockaddr(
             IpAddress::Ipv4(ipv4) => unsafe {
                 let addr_len = core::mem::size_of::<libc::sockaddr_in>();
                 let sockaddr_ptr = sockaddr_ptr.cast::<libc::sockaddr_in>();
-
                 // addr
                 (*sockaddr_ptr).sin_len = addr_len as u8;
                 (*sockaddr_ptr).sin_family = libc::AF_INET as libc::sa_family_t;
-                (*sockaddr_ptr).sin_port = endpoint.port;
+                (*sockaddr_ptr).sin_port = u16::from_be(endpoint.port);
                 (*sockaddr_ptr).sin_addr.s_addr = u32::from_ne_bytes(ipv4.octets());
                 let addr_ptr = sockaddr_ptr
                     .cast::<u8>()
@@ -616,7 +589,7 @@ pub fn write_to_sockaddr(
                 // addr
                 (*sockaddr_ptr).sin6_len = addr_len as u8;
                 (*sockaddr_ptr).sin6_family = libc::AF_INET6 as libc::sa_family_t;
-                (*sockaddr_ptr).sin6_port = endpoint.port;
+                (*sockaddr_ptr).sin6_port = u16::from_be(endpoint.port);
                 (*sockaddr_ptr).sin6_flowinfo = 0;
                 (*sockaddr_ptr).sin6_addr.s6_addr = ipv6.octets();
                 (*sockaddr_ptr).sin6_vport = 0;

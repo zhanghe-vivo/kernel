@@ -13,20 +13,109 @@
 // limitations under the License.
 
 #![allow(unused)]
-use alloc::{format, string::String, vec::Vec};
-use blueos::net::{SocketAddress, SocketDomain};
+use alloc::{boxed::Box, format, string::String, vec::Vec};
+use blueos::{
+    allocator,
+    net::{self, SocketAddress, SocketDomain},
+    scheduler,
+    sync::atomic_wait as futex,
+    thread::{Builder as ThreadBuilder, Entry, Stack},
+};
 use core::{
     ffi::{c_int, c_void},
     fmt::Write,
-    mem,
-    mem::MaybeUninit,
+    mem::{self, MaybeUninit},
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     slice,
+    sync::atomic::AtomicUsize,
     time::Duration,
 };
 use libc::{sockaddr_in, sockaddr_in6, AF_INET, AF_INET6, IN6ADDR_LOOPBACK_INIT};
 use semihosting::println;
 use smoltcp::wire::{IpAddress, IpEndpoint};
+
+const TEST_BLOCK_MODE: usize = 1;
+const TEST_NONBLOCK_MODE: usize = 20;
+const TEST_IO_MODE: usize = TEST_BLOCK_MODE;
+
+pub type NetThreadFn = extern "C" fn(arg: *mut core::ffi::c_void);
+pub type NetThreadClosure = Box<dyn FnOnce()>;
+
+#[derive(Debug)]
+pub struct NetTestArgs {
+    pub domain: SocketDomain,
+    pub is_nonblocking: bool,
+}
+
+impl NetTestArgs {
+    pub fn icmp_protocol_type(&self) -> libc::c_int {
+        match self.domain {
+            SocketDomain::AfInet => libc::IPPROTO_ICMP,
+            SocketDomain::AfInet6 => libc::IPPROTO_ICMPV6,
+        }
+    }
+
+    pub fn type_flag(&self) -> libc::c_int {
+        let mut type_flag = 0;
+        if self.is_nonblocking {
+            type_flag |= libc::SO_NONBLOCK;
+        }
+        type_flag
+    }
+}
+
+pub fn loop_with_io_mode<T: FnMut() -> bool>(is_block: bool, mut f: T) {
+    if is_block {
+        loop_with_times(TEST_IO_MODE, f);
+    } else {
+        loop_with_times(TEST_NONBLOCK_MODE, f);
+    }
+}
+
+pub fn loop_with_times<T: FnMut() -> bool>(times: usize, mut f: T) {
+    for _num in 0..times {
+        if f() {
+            break;
+        }
+    }
+}
+
+pub fn start_test_thread(thread_name: &str, worker: NetThreadClosure) {
+    start_test_thread_with_cleanup(thread_name, worker, None);
+}
+
+pub fn start_test_thread_with_cleanup(
+    thread_name: &str,
+    worker: NetThreadClosure,
+    on_cleanup_finish: Option<NetThreadClosure>,
+) {
+    let stack_size = 16 << 10;
+    let thread_stack_base = allocator::malloc_align(stack_size, 16) as usize;
+
+    println!(
+        "start_test_thread [{}] at base 0x{:x}",
+        thread_name, thread_stack_base
+    );
+
+    let t = ThreadBuilder::new(Entry::Closure(worker))
+        .set_stack(Stack::Raw {
+            base: thread_stack_base,
+            size: stack_size,
+        })
+        .build();
+    t.lock()
+        .set_cleanup(Entry::Closure(Box::new(move || unsafe {
+            println!("clean up begin 0x{:x}", thread_stack_base);
+            allocator::free_align(thread_stack_base as *mut u8, 16);
+            println!("clean up finish 0x{:x}", thread_stack_base);
+
+            if let Some(closure) = on_cleanup_finish {
+                closure();
+            }
+        })));
+
+    scheduler::queue_ready_thread(t.state(), t);
+}
 
 /// Get packet data from iovec which using a scatter/gather IO vec
 fn collect_iovec_data(iov_ptr: *const libc::iovec, iov_len: usize) -> Result<Vec<u8>, String> {
@@ -50,6 +139,57 @@ fn collect_iovec_data(iov_ptr: *const libc::iovec, iov_len: usize) -> Result<Vec
 
     if buffer.is_empty() {
         Err("Null in iovec".into())
+    } else {
+        Ok(buffer)
+    }
+}
+
+pub fn read_bytes_from_iov(
+    msg_iov: *const libc::iovec,
+    msg_iovlen: usize,
+    recv_bytes: usize,
+) -> Result<Vec<u8>, String> {
+    if msg_iov.is_null() {
+        return Err("read_bytes_from_iov fail: msg_iov is null".into());
+    }
+
+    if msg_iovlen == 0 {
+        return Err("read_bytes_from_iov fail: msg_iovlen is 0".into());
+    }
+
+    if recv_bytes == 0 {
+        return Err("read_bytes_from_iov fail: recv_bytes is 0".into());
+    }
+
+    let iov_array = unsafe { core::slice::from_raw_parts(msg_iov, msg_iovlen) };
+    let mut buffer: Vec<u8> = Vec::with_capacity(recv_bytes);
+    let mut remaining = recv_bytes;
+
+    for iov in iov_array {
+        if remaining == 0 {
+            break;
+        }
+
+        if iov.iov_base.is_null() {
+            continue;
+        }
+
+        let to_read = core::cmp::min(remaining, iov.iov_len as usize);
+
+        unsafe {
+            let src = iov.iov_base as *const u8;
+
+            let current_len = buffer.len();
+            buffer.resize(current_len + to_read, 0);
+
+            src.copy_to_nonoverlapping(buffer.as_mut_ptr().add(current_len), to_read);
+        }
+
+        remaining -= to_read;
+    }
+
+    if buffer.is_empty() {
+        Err("No valid data read".into())
     } else {
         Ok(buffer)
     }
@@ -150,12 +290,35 @@ pub fn parse_ipv4_to_network_order(ip_addr: &str) -> u32 {
 }
 
 // Creates a sockaddr_in structure for socket operations
+pub fn write_ipv4_sockaddr(addr_ptr: *mut libc::sockaddr_in, ip_addr: &str, port: u16) {
+    let ip_network_order = parse_ipv4_to_network_order(ip_addr);
+
+    unsafe {
+        (*addr_ptr).sin_len = core::mem::size_of::<libc::sockaddr_in>() as u8;
+        (*addr_ptr).sin_family = libc::AF_INET as libc::sa_family_t;
+        (*addr_ptr).sin_port = port.to_be();
+        (*addr_ptr).sin_addr.s_addr = ip_network_order;
+    }
+}
+
+// Creates a sockaddr_in6 structure for IPv6 socket operations
+pub fn write_ipv6_local_sockaddr(addr_ptr: *mut libc::sockaddr_in6, port: u16) {
+    unsafe {
+        (*addr_ptr).sin6_len = core::mem::size_of::<libc::sockaddr_in6>() as u8;
+        (*addr_ptr).sin6_family = libc::AF_INET6 as libc::sa_family_t;
+        (*addr_ptr).sin6_port = port.to_be();
+        (*addr_ptr).sin6_addr = IN6ADDR_LOOPBACK_INIT;
+    }
+}
+
+// Creates a sockaddr_in structure for socket operations
 pub fn create_ipv4_sockaddr(ip_addr: &str, port: u16) -> libc::sockaddr_in {
     let ip_network_order = parse_ipv4_to_network_order(ip_addr);
 
     let mut addr: libc::sockaddr_in = unsafe { mem::zeroed() };
+    addr.sin_len = core::mem::size_of::<libc::sockaddr_in>() as u8;
     addr.sin_family = libc::AF_INET as libc::sa_family_t;
-    addr.sin_port = port; // Do not need network byte order, smoltcp will handle it
+    addr.sin_port = port.to_be();
     addr.sin_addr.s_addr = ip_network_order;
 
     addr
@@ -164,15 +327,16 @@ pub fn create_ipv4_sockaddr(ip_addr: &str, port: u16) -> libc::sockaddr_in {
 // Creates a sockaddr_in6 structure for IPv6 socket operations
 pub fn create_ipv6_local_sockaddr(port: u16) -> libc::sockaddr_in6 {
     let mut addr: libc::sockaddr_in6 = unsafe { mem::zeroed() };
+    addr.sin6_len = core::mem::size_of::<libc::sockaddr_in6>() as u8;
     addr.sin6_family = libc::AF_INET6 as libc::sa_family_t;
-    addr.sin6_port = port; // Do not need network byte order, smoltcp will handle it
+    addr.sin6_port = port.to_be();
     addr.sin6_addr = IN6ADDR_LOOPBACK_INIT;
 
     addr
 }
 
-pub fn create_icmpv4_echo_packet() -> Vec<u8> {
-    static ECHO_PACKET_BYTES: [u8; 12] = [
+pub fn create_icmpv4_echo_packet() -> (*mut u8, usize) {
+    static mut ECHO_PACKET_BYTES: [u8; 12] = [
         0x08, // type     : u8    ICMPv4 ECHO = 8
         0x00, // code     : u8
         0x8e, 0xfe, // checksum : u16
@@ -180,12 +344,13 @@ pub fn create_icmpv4_echo_packet() -> Vec<u8> {
         0x00, 0x00, // sequence : u16   BinEndian , seq_no  = 0
         0xaa, 0x00, 0x00, 0xff, // data : Vec<u8>
     ];
-
-    Vec::from(ECHO_PACKET_BYTES)
+    (unsafe { ECHO_PACKET_BYTES.as_mut_ptr() }, unsafe {
+        ECHO_PACKET_BYTES.len()
+    })
 }
 
-pub fn create_icmpv6_echo_packet() -> Vec<u8> {
-    static ECHO_PACKET_BYTES: [u8; 12] = [
+pub fn create_icmpv6_echo_packet() -> (*mut u8, usize) {
+    static mut ECHO_PACKET_BYTES: [u8; 12] = [
         0x80, // type     : u8    ICMPv6 ECHO = 0x80
         0x00, // code     : u8
         0x19, 0xb3, // checksum : u16
@@ -194,32 +359,12 @@ pub fn create_icmpv6_echo_packet() -> Vec<u8> {
         0xaa, 0x00, 0x00, 0xff, // data : Vec<u8>
     ];
 
-    Vec::from(ECHO_PACKET_BYTES)
+    (unsafe { ECHO_PACKET_BYTES.as_mut_ptr() }, unsafe {
+        ECHO_PACKET_BYTES.len()
+    })
 }
 
-pub fn create_icmp_msghdr(ip_addr: &str, port: u16) -> libc::msghdr {
-    let mut sockaddr_in_obj = create_ipv4_sockaddr(ip_addr, port);
-
-    // Create a ICMP packet , and put into iovec
-    let mut icmp_echo_packet = create_icmpv4_echo_packet();
-    let packet_len = icmp_echo_packet.as_slice().len();
-    let mut iovec_obj = libc::iovec {
-        iov_base: icmp_echo_packet.as_mut_ptr() as *mut libc::c_void,
-        iov_len: packet_len,
-    };
-
-    libc::msghdr {
-        msg_name: &mut sockaddr_in_obj as *mut libc::sockaddr_in as *mut libc::c_void,
-        msg_namelen: core::mem::size_of::<libc::sockaddr_in>() as u32,
-        msg_iov: &mut iovec_obj as *mut libc::iovec,
-        msg_iovlen: 1,
-        msg_control: core::ptr::null_mut(),
-        msg_controllen: 0,
-        msg_flags: 0,
-    }
-}
-
-// print hex data
+// For Debug
 pub fn println_hex(buffer: &[u8], received_size: usize) {
     println!("Print Hex (hex), size={}: Start----------", received_size);
 
@@ -262,23 +407,10 @@ pub fn println_hex(buffer: &[u8], received_size: usize) {
     println!("Print Hex (hex), size={}: End----------", received_size);
 }
 
-pub fn print_libc_msghdr(hdr: &libc::msghdr) {
-    println!(
-        "libc::msghdr {{ 
-            msg_name: {:p}, 
-            msg_namelen: {}, 
-            msg_iov: {:p}, 
-            msg_iovlen: {}, 
-            msg_control: {:p}, 
-            msg_controllen: {}, 
-            msg_flags: 0x{:x} 
-        }}",
-        hdr.msg_name,
-        hdr.msg_namelen,
-        hdr.msg_iov,
-        hdr.msg_iovlen,
-        hdr.msg_control,
-        hdr.msg_controllen,
-        hdr.msg_flags
-    );
+// For Debug
+pub fn print_ptr_content(addr_ptr: *const u8, len: usize) {
+    for i in 0..len {
+        let byte = unsafe { *addr_ptr.add(i) };
+        println!("  [0x{:02x}]: 0x{:02x}", i, byte);
+    }
 }

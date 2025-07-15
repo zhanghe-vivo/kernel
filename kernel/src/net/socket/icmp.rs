@@ -115,7 +115,7 @@ impl PosixSocket for IcmpSocket<'static> {
     fn accept(&self, _local_endpoint: IpListenEndpoint) -> SocketResult {
         Err(SocketError::UnsupportedSocketTypeForOperation(
             SocketType::SockRaw,
-            "accept".into(),
+            "accept()".into(),
         ))
     }
 
@@ -145,14 +145,14 @@ impl PosixSocket for IcmpSocket<'static> {
     ) -> SocketResult {
         Err(SocketError::UnsupportedSocketTypeForOperation(
             SocketType::SockRaw,
-            "connect".into(),
+            "connect()".into(),
         ))
     }
 
     fn listen(&mut self, _local_endpoint: IpListenEndpoint) -> SocketResult {
         Err(SocketError::UnsupportedSocketTypeForOperation(
             SocketType::SockRaw,
-            "listen".into(),
+            "listen()".into(),
         ))
     }
 
@@ -165,7 +165,7 @@ impl PosixSocket for IcmpSocket<'static> {
     ) -> SocketResult {
         Err(SocketError::UnsupportedSocketTypeForOperation(
             SocketType::SockRaw,
-            "use sendmsg instead".into(),
+            "use sendmsg() instead".into(),
         ))
     }
 
@@ -180,7 +180,7 @@ impl PosixSocket for IcmpSocket<'static> {
     ) -> SocketResult {
         Err(SocketError::UnsupportedSocketTypeForOperation(
             SocketType::SockRaw,
-            "use sendmsg instead".into(),
+            "use sendmsg() instead".into(),
         ))
     }
 
@@ -221,7 +221,7 @@ impl PosixSocket for IcmpSocket<'static> {
 
             match socket.can_send() {
                 true => {
-                    log::debug!("Icmp socket send");
+                    log::debug!("Icmp socket sendmsg");
                     socket
                         .send_with(packet_len, remote_endpoint.addr, f)
                         .map_err(SocketError::SmoltcpIcmpSendError)
@@ -271,7 +271,7 @@ impl PosixSocket for IcmpSocket<'static> {
     ) -> SocketResult {
         Err(SocketError::UnsupportedSocketTypeForOperation(
             SocketType::SockRaw,
-            "use recvmsg instead".into(),
+            "use recvmsg() instead".into(),
         ))
     }
 
@@ -305,7 +305,7 @@ impl PosixSocket for IcmpSocket<'static> {
                         );
                         socket.register_recv_waker(&waker);
                         log::debug!(
-                            "no data for icmp recvfrom recv_queue={:?}",
+                            "no data for icmp recvmsg recv_queue={:?}",
                             socket.recv_queue()
                         );
                         Ok(0)
@@ -331,7 +331,7 @@ impl PosixSocket for IcmpSocket<'static> {
     ) -> SocketResult {
         Err(SocketError::UnsupportedSocketTypeForOperation(
             SocketType::SockRaw,
-            "use recvfrom instead".into(),
+            "use recvmsg() instead".into(),
         ))
     }
 
