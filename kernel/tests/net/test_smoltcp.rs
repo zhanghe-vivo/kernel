@@ -11,11 +11,10 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-//
-//
-// This code is based on smoltcp (original license follows):
-// https://github.com/smoltcp-rs/smoltcp/blob/main/LICENSE-0BSD.txt
-// standard BSD Zero Clause License
+
+// This code is based on https://github.com/smoltcp-rs/smoltcp/blob/main/examples/loopback.rs:
+// Copyright (C) smoltcp contributors
+// SPDX-LICENSE: 0BSD
 
 use super::net_utils;
 use alloc::{boxed::Box, vec, vec::Vec};
