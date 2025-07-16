@@ -14,7 +14,10 @@
 
 use core::cell::RefCell;
 
-use crate::net::net_interface::{NetDevice, NetInterface};
+use crate::{
+    net::net_interface::{NetDevice, NetInterface},
+    time::tick_get_millisecond,
+};
 use alloc::{rc::Rc, vec};
 use smoltcp::{
     iface::{Config, Interface, SocketSet},
@@ -41,8 +44,11 @@ impl NetInterface<'_> {
             Medium::Ieee802154 => todo!(),
         };
 
-        // FIXME : use system clock
-        let mut interface = Interface::new(config, &mut inner, Instant::from_millis(0));
+        let mut interface = Interface::new(
+            config,
+            &mut inner,
+            Instant::from_millis(i64::try_from(tick_get_millisecond()).unwrap_or(0)),
+        );
 
         interface.update_ip_addrs(|ip_addrs| {
             if ip_addrs

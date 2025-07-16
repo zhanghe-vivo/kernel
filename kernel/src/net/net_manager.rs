@@ -25,36 +25,23 @@ use crate::{
     },
     scheduler,
     thread::{self, Builder as ThreadBuilder, Entry, Stack, SystemThreadStorage, ThreadNode},
+    time::{tick_from_millisecond, tick_get_millisecond},
 };
-use alloc::{boxed::Box, collections::btree_map::BTreeMap, rc::Rc, vec::Vec};
+use alloc::{
+    boxed::Box,
+    collections::btree_map::BTreeMap,
+    rc::Rc,
+    string::{String, ToString},
+    vec::Vec,
+};
 use blueos_kconfig::NETWORK_STACK_SIZE;
-use core::{cell::RefCell, mem::MaybeUninit};
+use core::{cell::RefCell, mem::MaybeUninit, time};
 use smoltcp::{
     time::{Duration, Instant},
     wire::{IpAddress, IpEndpoint},
 };
 
-mod mock {
-    use core::cell::Cell;
-    use smoltcp::time::{Duration, Instant};
-
-    #[derive(Debug)]
-    pub struct Clock(Cell<Instant>);
-
-    impl Clock {
-        pub fn new() -> Clock {
-            Clock(Cell::new(Instant::from_millis(0)))
-        }
-
-        pub fn advance(&self, duration: Duration) {
-            self.0.set(self.0.get() + duration)
-        }
-
-        pub fn elapsed(&self) -> Instant {
-            self.0.get()
-        }
-    }
-}
+const DEFAULT_DELAY_TIME_IN_MILLIS: u64 = 100;
 
 pub struct NetworkManager<'a> {
     net_interfaces: Vec<Rc<RefCell<NetInterface<'a>>>>,
@@ -194,37 +181,66 @@ where
 
     pub fn loop_within_single_thread<F>(
         network_manager: Rc<RefCell<NetworkManager<'static>>>,
-        timeout: i64,
+        timeout_millis: usize,
         mut f: F,
     ) where
         F: FnMut(Rc<RefCell<NetworkManager<'a>>>) -> bool,
     {
-        // TODO using sys clock
-        let clock = mock::Clock::new();
-        let is_forever = timeout == 0;
+        let is_forever = timeout_millis == 0;
+        let timeout = tick_get_millisecond() + timeout_millis;
+        log::trace!(
+            "[NetworkManager] start with timeout_millis={} timeout={}",
+            timeout_millis,
+            timeout
+        );
 
         let net_manager = network_manager.clone();
+
         // Loop for request finish
-        while is_forever || clock.elapsed() < Instant::from_millis(timeout) {
+        while is_forever || tick_get_millisecond() < timeout {
+            // Step1 : poll smoltcp network stack
             {
                 let network_manager = network_manager.borrow();
-                network_manager.net_interfaces.iter().for_each(|interface| {
-                    let _ = interface.borrow_mut().poll(clock.elapsed());
-                });
+
+                if let Err(e) = network_manager.net_interfaces.iter().try_for_each(
+                    |interface| -> Result<(), String> {
+                        let millis_i64 =
+                            i64::try_from(tick_get_millisecond()).map_err(|e| e.to_string())?;
+                        interface
+                            .borrow_mut()
+                            .poll(Instant::from_millis(millis_i64));
+                        Ok(())
+                    },
+                ) {
+                    log::error!("[NetworkManager]: looper exit with poll error {}", e);
+                    break;
+                } else {
+                    // Do nothing and just continue when poll success
+                }
             }
 
+            // Step 2 : handle msg from event queue
             if !f(net_manager.clone()) {
                 log::warn!("[NetworkManager]: looper exit");
                 break;
             }
 
+            // Step3 : get next poll time from smoltcp network stack
             {
                 let network_manager = network_manager.borrow();
                 let sleep_time = network_manager
                     .net_interfaces
                     .iter()
-                    .map(
-                        |interface| match interface.borrow_mut().poll_delay(clock.elapsed()) {
+                    .map(|interface| {
+                        let Ok(millis_i64) = i64::try_from(tick_get_millisecond()) else {
+                            log::error!("[NetworkManager]: Interface poll_delay get ms fail");
+                            return DEFAULT_DELAY_TIME_IN_MILLIS;
+                        };
+
+                        match interface
+                            .borrow_mut()
+                            .poll_delay(Instant::from_millis(millis_i64))
+                        {
                             Some(Duration::ZERO) => {
                                 log::debug!("[NetworkManager]: Inteface resuming");
                                 // Do next poll immediately
@@ -238,18 +254,21 @@ where
                             None => {
                                 // Wait until there is a task before the next poll
                                 // TODO add trigger when enqueue task
-                                42
+                                DEFAULT_DELAY_TIME_IN_MILLIS
                             }
-                        },
-                    )
+                        }
+                    })
                     .min()
-                    .unwrap_or(42);
-
-                // TODO sleep
-                clock.advance(Duration::from_millis(sleep_time));
+                    .unwrap_or(DEFAULT_DELAY_TIME_IN_MILLIS);
 
                 // Warning!!! Need to yield or sleep for a while , or other threads may have no change to insert msg to NETSTACK_QUEUE
-                scheduler::yield_me();
+                if sleep_time == 0 {
+                    scheduler::yield_me();
+                } else {
+                    scheduler::suspend_me_for(tick_from_millisecond(
+                        sleep_time.min(DEFAULT_DELAY_TIME_IN_MILLIS) as usize,
+                    ));
+                }
             }
         }
     }

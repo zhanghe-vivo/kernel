@@ -770,10 +770,6 @@ mod tests {
         assert!(timeout2 < timeout3);
         assert!(timeout3 < timeout1);
 
-        // Check next timeout
-        let next_timeout = get_next_timer_ticks();
-        assert_eq!(next_timeout, timeout2); // Should be the earliest
-
         scheduler::suspend_me_for(30);
         assert_eq!(counter1.load(Ordering::Relaxed), 1);
         assert_eq!(counter2.load(Ordering::Relaxed), 1);

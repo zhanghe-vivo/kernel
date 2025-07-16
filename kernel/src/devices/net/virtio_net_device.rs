@@ -17,6 +17,7 @@ use core::cell::RefCell;
 use crate::{
     devices::virtio::{self, VirtioHal},
     net::net_interface::NetInterface,
+    time::tick_get_millisecond,
 };
 use alloc::{boxed::Box, rc::Rc, vec, vec::Vec};
 use smoltcp::{
@@ -88,8 +89,11 @@ where
             Medium::Ieee802154 => todo!(),
         };
 
-        // FIXME : use system clock
-        let mut interface = Interface::new(config, &mut inner, Instant::from_millis(0));
+        let mut interface = Interface::new(
+            config,
+            &mut inner,
+            Instant::from_millis(i64::try_from(tick_get_millisecond()).unwrap_or(0)),
+        );
 
         // Configure static guest IP (QEMU user networking)
         interface.update_ip_addrs(|ip_addrs| {
