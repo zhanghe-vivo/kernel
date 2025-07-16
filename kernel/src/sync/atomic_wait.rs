@@ -117,13 +117,13 @@ pub fn atomic_wake(atom: &AtomicUsize, how_many: usize) -> Result<usize, Error> 
     if how_many == 0 {
         return Ok(0);
     }
+    let addr = atom as *const _ as usize;
     #[cfg(debugging_scheduler)]
     crate::trace!(
         "[TH:0x{:x}] Waking up @ 0x{:x}",
         scheduler::current_thread_id(),
         addr
     );
-    let addr = atom as *const _ as usize;
     let mut woken = 0;
     let w = SYNC_ENTRIES.irqsave_lock();
     for e in ArcListIterator::new(&*w, None) {

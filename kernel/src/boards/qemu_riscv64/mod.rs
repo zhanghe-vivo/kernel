@@ -92,7 +92,7 @@ pub(crate) fn get_cycles_to_duration(cycles: u64) -> core::time::Duration {
 }
 
 pub(crate) fn get_cycles_to_ms(cycles: u64) -> u64 {
-    cycles / 1_000_000
+    cycles / 1_000
 }
 
 pub(crate) fn ticks_to_duration(ticks: usize) -> core::time::Duration {

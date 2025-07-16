@@ -96,7 +96,7 @@ if ("$board" == "qemu_riscv64") {
     "-cpu",
     "cortex-a53",
     "-smp",
-    "4",
+    "8",
     "-chardev",
     "stdio,id=con,mux=on",
     "-serial",

@@ -99,5 +99,5 @@ pub(crate) fn get_cycles_to_duration(cycles: u64) -> core::time::Duration {
 }
 
 pub(crate) fn get_cycles_to_ms(cycles: u64) -> u64 {
-    return (cycles as u128 * 1_000_000 as u128 / config::SYSTEM_CORE_CLOCK as u128) as u64;
+    return (cycles as u128 * 1_000 as u128 / config::SYSTEM_CORE_CLOCK as u128) as u64;
 }

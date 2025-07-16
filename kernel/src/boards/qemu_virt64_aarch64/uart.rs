@@ -91,3 +91,7 @@ pub fn uart_init() -> Result<(), ErrorKind> {
     let _ = irq::register_handler(PL011_UART0_IRQNUM, Box::new(Serial0Irq {}));
     DeviceManager::get().register_device(String::from("ttyS0"), serial0.clone())
 }
+
+pub fn enable_uart(cpu_id: usize) {
+    irq::enable_irq_with_priority(PL011_UART0_IRQNUM, cpu_id, irq::Priority::Normal);
+}

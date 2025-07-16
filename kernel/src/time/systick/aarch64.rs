@@ -43,15 +43,14 @@ impl IrqHandler for SystickIrq {
 impl Systick {
     pub fn init(&self, _sys_clock: u32, tick_per_second: u32) -> bool {
         let cpu_id = arch::current_cpu_id();
+        let step = CNTFRQ_EL0.get() / tick_per_second as u64;
         if cpu_id == 0 {
             register_handler(self.irq_num, Box::new(SystickIrq {}));
             let _ = get_boot_cycle_count();
-        }
-
-        let step = CNTFRQ_EL0.get() / tick_per_second as u64;
-        // SAFETY: step is only written once during initialization
-        unsafe {
-            *self.step.get() = step as usize;
+            // SAFETY: step is only written once during initialization
+            unsafe {
+                *self.step.get() = step as usize;
+            }
         }
         CNTP_TVAL_EL0.set(step);
         CNTP_CTL_EL0.write(CNTP_CTL_EL0::ENABLE::Enabled);

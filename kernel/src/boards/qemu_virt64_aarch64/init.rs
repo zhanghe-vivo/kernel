@@ -42,7 +42,9 @@ pub(crate) fn init() {
     STAGING.run(5, false, || {
         time::systick_init(0);
     });
-    STAGING.run(6, false, || time::reset_systick());
+    STAGING.run(6, false, || {
+        uart::enable_uart(arch::current_cpu_id());
+    });
     STAGING.run(7, true, || arch::secondary_cpu_setup(config::PSCI_BASE));
     if arch::current_cpu_id() != 0 {
         wait_and_then_start_schedule();

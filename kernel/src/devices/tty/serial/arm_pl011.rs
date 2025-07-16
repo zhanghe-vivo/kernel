@@ -585,9 +585,7 @@ impl UartOps for Driver<'_> {
     fn setup(&mut self, termios: &Termios) -> Result<(), SerialError> {
         self.enable(termios);
         self.uart.clear_interrupts(ALL_INTERRUPTS);
-        for cpu_id in 0..blueos_kconfig::NUM_CORES {
-            irq::enable_irq_with_priority(self.irq, cpu_id, irq::Priority::Normal);
-        }
+        irq::enable_irq_with_priority(self.irq, 0, irq::Priority::Normal);
         Ok(())
     }
 

@@ -1,7 +1,7 @@
 OUTPUT_FORMAT("elf64-littleaarch64", "elf64-littleaarch64", "elf64-littleaarch64")
 OUTPUT_ARCH(aarch64)
 
-STACK_SIZE = 64 * 1024;
+STACK_SIZE = 128 * 1024;
 
 MEMORY
 {

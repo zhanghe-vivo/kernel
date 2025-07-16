@@ -339,7 +339,7 @@ pub(crate) extern "C" fn init(_: *mut u8, stack_end: *mut u8, cont: extern "C" f
         core::arch::naked_asm!(
             "
                 mrs x8, mpidr_el1
-                and x8, x8, #0b11
+                and x8, x8, #0Xff
                 lsl x8, x8, #14
                 sub sp, x1, x8 
                 br x2
@@ -379,7 +379,7 @@ pub extern "C" fn enable_local_irq() {
 
 #[inline]
 pub extern "C" fn current_cpu_id() -> usize {
-    (MPIDR_EL1.get() & 0b11) as usize
+    (MPIDR_EL1.get() & 0xff) as usize
 }
 
 #[inline(always)]
