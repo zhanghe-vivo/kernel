@@ -1,0 +1,66 @@
+# Copyright (c) 2025 vivo Mobile Communication Co., Ltd.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#       http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import("//build/templates/build_template.gni")
+
+action("kconfig_const") {
+  script = "//kernel/kconfig/src/parse_const.py"
+  inputs = [
+    "config/Kconfig",
+    "config/$board/$build_type/defconfig",
+  ]
+  output = rebase_path("$target_gen_dir/kconfig.rs")
+  outputs = [ "$target_gen_dir/kconfig.rs" ]
+  args = [
+    "--kconfig",
+    rebase_path("config/Kconfig"),
+    "--board",
+    "$board",
+    "--build_type",
+    "$build_type",
+    "--output",
+    "$output",
+  ]
+}
+
+build_rust("blueos_kconfig") {
+  crate_type = "rlib"
+  sources = get_target_outputs(":kconfig_const")
+  edition = "2021"
+  deps = [ ":kconfig_const" ]
+}
+
+config("kconfigs") {
+  args = [
+    "--kconfig",
+    rebase_path("config/Kconfig"),
+    "--board",
+    "$board",
+    "--build_type",
+    "$build_type",
+  ]
+  inputs = [
+    "config/Kconfig",
+    "config/$board/$build_type/defconfig",
+  ]
+  parse_configs = rebase_path("//kernel/kconfig/src/parse_rustflags.py")
+  kernel_configs = exec_script(parse_configs, args, "list lines")
+  rustflags = []
+  foreach(_config, kernel_configs) {
+    rustflags += [
+      "--cfg",
+      _config,
+    ]
+  }
+}
