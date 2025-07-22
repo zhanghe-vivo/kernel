@@ -404,3 +404,7 @@ macro_rules! static_assert {
         const _: () = [()][!($condition) as usize];
     };
 }
+
+pub(crate) fn show_current_heap_usage() {
+    semihosting::println!("Current heap: {:?}", crate::allocator::memory_info());
+}

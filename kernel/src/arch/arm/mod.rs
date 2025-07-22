@@ -49,6 +49,12 @@ macro_rules! arch_bootstrap {
 }
 
 extern "C" fn prepare_schedule(cont: extern "C" fn() -> !) -> usize {
+    #[cfg(test)]
+    {
+        if crate::arch::current_cpu_id() == 0 {
+            crate::support::show_current_heap_usage();
+        }
+    }
     let current = scheduler::current_thread();
     current.lock().reset_saved_sp();
     current.saved_sp()

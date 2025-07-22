@@ -350,6 +350,12 @@ pub(crate) extern "C" fn init(_: *mut u8, stack_end: *mut u8, cont: extern "C" f
 
 #[no_mangle]
 pub(crate) extern "C" fn start_schedule(cont: extern "C" fn() -> !) {
+    #[cfg(test)]
+    {
+        if crate::arch::current_cpu_id() == 0 {
+            crate::support::show_current_heap_usage();
+        }
+    }
     let current = crate::scheduler::current_thread();
     current.lock().reset_saved_sp();
     let sp = current.saved_sp();
