@@ -11,7 +11,7 @@ config TICKS_PER_SECOND
     int "Tick frequency, Hz"
 
 config SMP
-    default n
+    default y
     bool "Enable Symmetric multiprocessing"
 
 config NUM_CORES
@@ -134,7 +134,7 @@ config VIRTIO
     bool "Enable VirtIO"
 
 config PROCFS
-    default n
+    default y
     bool "Enable proc file system"
 
 config NETWORK_STACK_SIZE

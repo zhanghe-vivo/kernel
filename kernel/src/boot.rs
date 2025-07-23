@@ -11,8 +11,9 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
-use crate::{allocator, arch, asynk, boards, logger, net, scheduler, thread, time, vfs};
+#[cfg(net)]
+use crate::net;
+use crate::{allocator, arch, asynk, boards, logger, scheduler, thread, time, vfs};
 use core::ptr::{addr_of, addr_of_mut};
 
 pub(crate) static mut INIT_BSS_DONE: bool = false;
@@ -26,6 +27,10 @@ pub(crate) static mut INIT_VFS_DONE: bool = false;
 pub unsafe extern "C" fn _start() {
     // Arch is responsible to init cores. After initialiing
     // cores, arch_bootstrap should continue with `init`.
+    // temproary solution for bcm2711.
+    #[cfg(target_board = "bcm2711")]
+    crate::arch_bootstrap_bcm2711!(__sys_stack_start, __sys_stack_end, init);
+    #[cfg(not(target_board = "bcm2711"))]
     crate::arch_bootstrap!(__sys_stack_start, __sys_stack_end, init);
 }
 
@@ -54,7 +59,10 @@ extern "C" fn init() {
     logger::logger_init();
     time::timer::system_timer_init();
     asynk::init();
-    net::net_manager::init();
+    #[cfg(net)]
+    {
+        net::net_manager::init();
+    }
     init_vfs();
     init_apps();
     arch::start_schedule(scheduler::schedule);

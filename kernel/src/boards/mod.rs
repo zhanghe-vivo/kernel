@@ -43,3 +43,7 @@ mod raspberry_pico2_cortexm;
 pub(crate) use raspberry_pico2_cortexm::{
     get_cycles_to_duration, get_cycles_to_ms, get_early_uart, init,
 };
+#[cfg(target_board = "bcm2711")]
+mod bcm2711;
+#[cfg(target_board = "bcm2711")]
+pub(crate) use bcm2711::{get_cycles_to_duration, get_cycles_to_ms, get_early_uart, init};

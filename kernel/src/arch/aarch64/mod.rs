@@ -15,7 +15,13 @@
 // pub(crate) mod asm;
 // pub(crate) mod mmu;
 mod exception;
+#[cfg(not(target_board = "bcm2711"))]
+#[path = "gicv3.rs"]
 pub mod irq;
+#[cfg(target_board = "bcm2711")]
+#[path = "gicv2.rs"]
+pub mod irq;
+
 pub(crate) mod psci;
 pub(crate) mod registers;
 pub(crate) mod vector;
@@ -82,11 +88,98 @@ macro_rules! enter_el1 {
     };
 }
 
+// in fact, we already in EL1, so just set the stack and continue
+#[macro_export]
+macro_rules! enter_el1_bcm2711 {
+    () => {
+        "
+        mrs x9, CurrentEL
+        lsr x9, x9, #2
+        cmp x9, #3
+        beq 3f
+        cmp x9, #2
+        beq 4f
+        // only boot core 0 now, already in EL1
+    1:  mrs x0, mpidr_el1
+        and x0, x0, 0x3
+        ldr x1, =0
+        cmp x0, x1
+        b.ne 2f
+        ldr x0, ={stack_start}
+        ldr x1, ={stack_end}
+        ldr x2, ={cont}
+        adr x3, {entry}
+        br   x3
+    2:
+        wfe
+        b 2b
+    3:
+        mrs x0, mpidr_el1
+        and x0, x0, 0x3
+        ldr x1, =0
+        cmp x0, x1
+        b.ne 2b
+        mov   x10, #(1 << 0) | (1 << 10)  // SCR_EL3.NS=1, RW=1
+        msr   scr_el3, x10
+        msr   cptr_el3, xzr               // no traps to EL3
+        msr   cntvoff_el2, xzr
+        mov   x10, #(1 << 0) | (1 << 1)   // CNTHCTL_EL2.EL1PCTEN|EL1PCEN
+        msr   cnthctl_el2, x10
+        mov   x10, #(1 << 31)             // HCR_EL2.RW=1
+        msr   hcr_el2, x10
+        msr   sp_el1, x1
+        mov   x10, #0b0101
+        orr   x10, x10, #(0b1111 << 6)
+        msr   spsr_el3, x10
+        ldr x0, ={stack_start}
+        ldr x1, ={stack_end}
+        ldr x2, ={cont}
+        adr x3, {entry}
+        msr elr_el3, x3
+        eret
+    4:
+        mrs x0, mpidr_el1
+        and x0, x0, 0x3
+        ldr x1, =0
+        cmp x0, x1
+        b.ne 2b
+        msr   cntvoff_el2, xzr
+        mov   x10, #(1 << 0) | (1 << 1)   // cnthctl_el2.EL1PCTEN|EL1PCEN
+        msr   cnthctl_el2, x10
+        mov   x10, #(1 << 31)             // hcr_el2.RW=1 (AArch64 at EL1)
+        msr   hcr_el2, x10
+        msr   sp_el1, x1
+        mov   x10, #0b0101                // EL1h
+        orr   x10, x10, #(0b1111 << 6)    // mask DAIF
+        msr   spsr_el2, x10
+        ldr x0, ={stack_start}
+        ldr x1, ={stack_end}
+        ldr x2, ={cont}
+        adr x3, {entry}
+        msr elr_el2, x3
+        eret
+        "
+    };
+}
+
 #[macro_export]
 macro_rules! arch_bootstrap {
     ($stack_start:path, $stack_end:path, $cont: path) => {
         core::arch::naked_asm!(
             $crate::enter_el1!(),
+            entry = sym $crate::arch::aarch64::init,
+            stack_start = sym $stack_start,
+            stack_end = sym $stack_end,
+            cont = sym $cont,
+        )
+    };
+}
+
+#[macro_export]
+macro_rules! arch_bootstrap_bcm2711 {
+    ($stack_start:path, $stack_end:path, $cont: path) => {
+        core::arch::naked_asm!(
+            $crate::enter_el1_bcm2711!(),
             entry = sym $crate::arch::aarch64::init,
             stack_start = sym $stack_start,
             stack_end = sym $stack_end,
@@ -341,7 +434,7 @@ pub(crate) extern "C" fn init() -> ! {
                 mrs x8, mpidr_el1
                 and x8, x8, #0Xff
                 lsl x8, x8, #14
-                sub sp, x1, x8 
+                sub sp, x1, x8
                 br x2
             "
         )
