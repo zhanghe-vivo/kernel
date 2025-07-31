@@ -154,7 +154,6 @@ impl Semaphore {
 impl !Send for Semaphore {}
 unsafe impl Sync for Semaphore {}
 
-#[cfg(cortex_m)]
 #[cfg(test)]
 mod tests {
     use super::*;

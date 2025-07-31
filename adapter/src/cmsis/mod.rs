@@ -12,11 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod atomic_wait;
-pub use atomic_wait::{atomic_wait, atomic_wake};
-pub mod semaphore;
-pub mod spinlock;
-pub use semaphore::Semaphore;
-pub use spinlock::{ISpinLock, SpinLock, SpinLockGuard};
-#[cfg(event_flags)]
-pub mod event_flags;
+#[cfg(cmsis_rtos1_adapter)]
+mod os1;
+#[cfg(cmsis_rtos1_adapter)]
+pub use os1::*;
+
+#[cfg(cmsis_rtos2_adapter)]
+mod os2;
+#[cfg(cmsis_rtos2_adapter)]
+pub use os2::*;

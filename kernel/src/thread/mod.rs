@@ -13,6 +13,8 @@
 // limitations under the License.
 
 extern crate alloc;
+#[cfg(event_flags)]
+use crate::sync::event_flags::EventFlagsMode;
 use crate::{
     arch, config, debug, scheduler,
     support::{Region, RegionalObjectBuilder},
@@ -20,6 +22,7 @@ use crate::{
     time::timer::Timer,
     types::{impl_simple_intrusive_adapter, Arc, AtomicUint, IlistHead, ThreadPriority, Uint},
 };
+
 use alloc::boxed::Box;
 use core::sync::atomic::{AtomicI32, AtomicUsize, Ordering};
 
@@ -147,6 +150,10 @@ pub struct Thread {
     lock: ISpinLock<Thread, OffsetOfLock>,
     posix_compat: Option<PosixCompat>,
     stats: ThreadStats,
+    #[cfg(event_flags)]
+    event_flags_mode: EventFlagsMode,
+    #[cfg(event_flags)]
+    event_flags_mask: u32,
 }
 
 extern "C" fn run_simple_c(f: extern "C" fn()) {
@@ -316,6 +323,10 @@ impl Thread {
             #[cfg(robin_scheduler)]
             robin_count: AtomicI32::new(0),
             kind,
+            #[cfg(event_flags)]
+            event_flags_mode: EventFlagsMode::empty(),
+            #[cfg(event_flags)]
+            event_flags_mask: 0,
         }
     }
 
@@ -442,6 +453,30 @@ impl Thread {
     #[inline]
     pub fn get_cycles(&self) -> u64 {
         self.stats.get_cycles()
+    }
+
+    #[cfg(event_flags)]
+    #[inline]
+    pub fn event_flags_mode(&self) -> EventFlagsMode {
+        self.event_flags_mode
+    }
+
+    #[cfg(event_flags)]
+    #[inline]
+    pub fn event_flags_mask(&self) -> u32 {
+        self.event_flags_mask
+    }
+
+    #[cfg(event_flags)]
+    #[inline]
+    pub fn set_event_flags_mode(&mut self, mode: EventFlagsMode) {
+        self.event_flags_mode = mode;
+    }
+
+    #[cfg(event_flags)]
+    #[inline]
+    pub fn set_event_flags_mask(&mut self, mask: u32) {
+        self.event_flags_mask = mask;
     }
 }
 

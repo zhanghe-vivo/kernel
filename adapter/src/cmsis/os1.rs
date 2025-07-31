@@ -12,11 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod atomic_wait;
-pub use atomic_wait::{atomic_wait, atomic_wake};
-pub mod semaphore;
-pub mod spinlock;
-pub use semaphore::Semaphore;
-pub use spinlock::{ISpinLock, SpinLock, SpinLockGuard};
-#[cfg(event_flags)]
-pub mod event_flags;
+use blueos::time;
+use blueos_kconfig::TICKS_PER_SECOND;
+
+// Define constants that will be exported to C
+// These match the extern const declarations in cmsis_os.h
+#[no_mangle]
+pub static os_tickfreq: u32 = TICKS_PER_SECOND as u32; // System timer frequency in Hz
+
+/// Get the RTOS kernel system timer counter.
+/// \return RTOS kernel system timer as 32-bit value
+/// uint32_t osKernelSysTick (void);
+#[no_mangle]
+pub extern "C" fn osKernelSysTick() -> u32 {
+    time::get_sys_ticks() as u32
+}

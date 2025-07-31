@@ -25,7 +25,7 @@ use core::{
 };
 
 #[derive(Debug)]
-pub(crate) struct DisableInterruptGuard {
+pub struct DisableInterruptGuard {
     old: usize,
 }
 
@@ -45,7 +45,7 @@ impl Drop for DisableInterruptGuard {
     }
 }
 
-pub(crate) struct PlainDisableInterruptGuard;
+pub struct PlainDisableInterruptGuard;
 
 impl PlainDisableInterruptGuard {
     #[inline]

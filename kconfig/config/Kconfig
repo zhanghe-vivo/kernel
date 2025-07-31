@@ -82,6 +82,11 @@ config SOFT_TIMER
     default y
     bool "Enable soft timer"
 
+config EVENT_FLAGS
+    default y if CMSIS_RTOS1_ADAPTER || CMSIS_RTOS2_ADAPTER || RTTHREAD_ADAPTER
+    default n
+    bool "Enable event flags"
+
 config ROBIN_SCHEDULER
     default y
     bool "Enable robin scheduler"
@@ -245,3 +250,25 @@ config DNS_MAX_SERVER_COUNT
       Maximum amount of DNS servers that can be configured in one DNS socket.
 
 endmenu # SMOLTCP
+
+# os adapter configuration
+menu "os adapter configuration"
+    config CMSIS_RTOS1_ADAPTER
+        bool "CMSIS RTOS1 Adapter"
+        default n
+        help
+          os adapter for CMSIS RTOS1
+
+    config CMSIS_RTOS2_ADAPTER
+        bool "CMSIS RTOS2 Adapter"
+        default n
+        help
+          os adapter for CMSIS RTOS2
+
+    config RTTHREAD_ADAPTER
+        bool "RT-Thread Adapter"
+        default n
+        help
+          os adapter for RT-Thread
+
+endmenu # os adapter configuration

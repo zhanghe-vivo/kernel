@@ -12,11 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod atomic_wait;
-pub use atomic_wait::{atomic_wait, atomic_wake};
-pub mod semaphore;
-pub mod spinlock;
-pub use semaphore::Semaphore;
-pub use spinlock::{ISpinLock, SpinLock, SpinLockGuard};
-#[cfg(event_flags)]
-pub mod event_flags;
+#![allow(non_upper_case_globals)]
+#![allow(non_camel_case_types)]
+#![allow(non_snake_case)]
+#![allow(dead_code)]
+#![no_std]
+
+use core::{env, include};
+
+include!(env!("BINDGEN_DIR"));

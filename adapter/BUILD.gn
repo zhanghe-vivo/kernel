@@ -1,0 +1,76 @@
+# Copyright (c) 2025 vivo Mobile Communication Co., Ltd.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#       http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import("//build/templates/build_template.gni")
+import("//build/toolchain/blueos.gni")
+import("//kernel/common_crate_rustflags.gni")
+
+build_rust("adapter") {
+  sources = [ "src/lib.rs" ]
+  edition = "2021"
+  deps = [
+    "cmsis_header:cmsis_os",
+    "cmsis_header:cmsis_os2",
+    "//kernel/kconfig:blueos_kconfig",
+    "//kernel/kernel:blueos",
+  ]
+  configs += [ "//kernel/kconfig:kconfigs" ]
+}
+
+build_rust("adapter_unittest") {
+  testonly = true
+  crate_name = "adapter_unittest"
+  crate_type = "bin"
+  sources = [ "src/lib.rs" ]
+  edition = "2021"
+  proc_macro_deps = [ "//kernel/test_harness:blueos_test_macro" ]
+  deps = [
+    ":adapter",
+    "cmsis_header:cmsis_os",
+    "cmsis_header:cmsis_os2",
+    "//external/semihosting/v0.1.20:semihosting",
+    "//kernel/kconfig:blueos_kconfig",
+    "//kernel/kernel:blueos",
+  ]
+  configs += [ "//kernel/kconfig:kconfigs" ]
+  rustflags = common_crate_rustflags
+  rustflags += test_image_rustflags
+}
+
+gen_qemu_runner("adapter_unittest_runner") {
+  testonly = true
+  img = ":adapter_unittest"
+  qemu = "$qemu_exe"
+  machine = "$machine"
+  qemu_args = qemu_extra_args
+  block_img = "unittest_block.img"
+  block_args = qemu_block_args
+  semihosting = true
+}
+
+run_qemu_check("run_adapter_unittest") {
+  testonly = true
+  runner = ":adapter_unittest_runner"
+  if (coverage) {
+    img = ":adapter_unittest"
+    checker = "src/coverage.checker"
+  } else {
+    checker = "src/unittests.checker"
+  }
+}
+
+group("check_adapter") {
+  testonly = true
+  deps = [ ":run_adapter_unittest($libc_toolchain)" ]
+}

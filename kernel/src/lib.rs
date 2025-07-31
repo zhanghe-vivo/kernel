@@ -91,7 +91,7 @@ pub mod support;
 pub mod sync;
 pub mod syscall_handlers;
 pub mod thread;
-pub(crate) mod time;
+pub mod time;
 pub mod types;
 pub mod vfs;
 
