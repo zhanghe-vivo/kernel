@@ -21,7 +21,7 @@ use crate::allocator::{
     tlsf,
 };
 use blueos_infra::list::singly_linked_list::SinglyLinkedList;
-use core::{alloc::Layout, mem, ptr::NonNull};
+use core::{alloc::Layout, mem, ptr, ptr::NonNull};
 use log::{debug, warn};
 
 pub mod heap;
@@ -100,7 +100,14 @@ impl Slab {
                 panic!("dealloc ptr is not in the heap\n");
             }
         }
-        self.free_block_list.push(ptr as *mut usize);
+
+        let magic_ptr = ptr.wrapping_add(1);
+        if *magic_ptr == 0xdeadbeef {
+            log::warn!("0x{:p} is already freed", ptr);
+            return;
+        }
+        self.free_block_list.push(ptr);
+        ptr::write(magic_ptr, 0xdeadbeef);
         self.len += 1;
     }
 }
@@ -260,6 +267,7 @@ impl<
                         // Update allocated size for system allocator
                         self.allocated += unsafe {
                             used_block_hdr_for_allocation_unknown_align(ptr.unwrap())
+                                .unwrap()
                                 .cast::<BlockHdr>()
                                 .as_ref()
                                 .size
