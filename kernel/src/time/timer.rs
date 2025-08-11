@@ -391,6 +391,8 @@ impl Timer {
             {
                 HARD_TIMER_WHEEL.remove_timer(&timer);
             }
+            // take and drop callback.
+            let _ = self.inner.irqsave_lock().callback.take();
         }
     }
 
@@ -552,6 +554,7 @@ mod tests {
         assert!(!timer.is_activated());
 
         // Test start again
+        timer.set_callback(create_test_callback(counter.clone()));
         timer.start();
         assert!(timer.is_activated());
 
@@ -921,6 +924,7 @@ mod tests {
         assert!(!timer.is_activated());
 
         // Start again -> Active
+        timer.set_callback(create_test_callback(counter.clone()));
         timer.start();
         assert!(timer.is_activated());
 
@@ -1017,6 +1021,7 @@ mod tests {
         assert!(!timer.is_activated());
 
         // Try to run stopped timer
+        timer.set_callback(create_test_callback(counter.clone()));
         timer.run();
         assert_eq!(counter.load(Ordering::Relaxed), 0); // Should not execute
 
@@ -1090,6 +1095,7 @@ mod tests {
         assert!(!timer2.is_activated());
 
         // Restart and test concurrent run
+        timer1.set_callback(create_test_callback(counter.clone()));
         timer1.start();
 
         scheduler::suspend_me_for(10);

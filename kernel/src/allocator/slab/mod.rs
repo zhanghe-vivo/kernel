@@ -69,7 +69,6 @@ impl Slab {
         match self.free_block_list.pop() {
             Some(block) => {
                 self.len -= 1;
-                unsafe { *block = self.block_size };
                 let ptr = unsafe { NonNull::new_unchecked(block as *mut u8) };
                 #[cfg(debug_slab)]
                 {
@@ -79,9 +78,11 @@ impl Slab {
                         panic!("alloc ptr is not in the heap\n");
                     }
                 }
+                // Safety: ptr is valid, and we need to clear the magic number
+                unsafe { ptr::write((ptr.as_ptr() as *mut usize).wrapping_add(1), 0) };
                 Some(ptr)
             }
-            None => None, //Err(AllocErr)
+            None => None,
         }
     }
 

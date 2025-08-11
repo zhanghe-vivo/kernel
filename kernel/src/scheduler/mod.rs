@@ -285,7 +285,7 @@ pub(crate) fn suspend_me_with_hook(hook: impl FnOnce() + 'static) {
     assert!(arch::local_irq_enabled());
 }
 
-pub(crate) fn suspend_me_for(tick: usize) {
+pub fn suspend_me_for(tick: usize) {
     assert!(tick != 0);
     let next = next_ready_thread().map_or_else(|| idle::current_idle_thread().clone(), |v| v);
     let to_sp = next.saved_sp();

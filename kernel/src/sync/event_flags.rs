@@ -42,6 +42,12 @@ pub struct EventFlags {
     pending: SpinLock<WaitQueue>,
 }
 
+impl Default for EventFlags {
+    fn default() -> Self {
+        Self::const_new()
+    }
+}
+
 impl EventFlags {
     pub const fn const_new() -> Self {
         Self {
@@ -54,7 +60,7 @@ impl EventFlags {
         self.pending.irqsave_lock().init()
     }
 
-    pub fn set(&self, flags: u32) -> Result<(), Error> {
+    pub fn set(&self, flags: u32) -> Result<u32, Error> {
         if flags == 0 {
             return Err(code::EINVAL);
         }
@@ -63,15 +69,17 @@ impl EventFlags {
         thread_list.init();
 
         let mut w = self.pending.irqsave_lock();
-        self.flags.set(self.flags.get() | flags);
+        let new_flags = self.flags.get() | flags;
+        self.flags.set(new_flags);
         for mut entry in w.iter() {
             let thread = entry.thread.clone();
             let event_mask = thread.event_flags_mask();
             let event_mode = thread.event_flags_mode();
-            if event_mode.contains(EventFlagsMode::ANY) && event_mask & flags != 0
+            if event_mode.contains(EventFlagsMode::ANY)
+                && (event_mask & flags != 0 || event_mask == 0)
                 || event_mode.contains(EventFlagsMode::ALL) && event_mask & flags == event_mask
             {
-                ThreadList::detach(&thread);
+                WaitQueue::detach(&entry);
                 thread_list.push_back(thread);
             }
         }
@@ -88,20 +96,25 @@ impl EventFlags {
             scheduler::queue_ready_thread(thread::SUSPENDED, thread);
         }
 
-        if clear_flags != 0 {
-            self.flags.set(self.flags.get() & !clear_flags);
-        }
+        let new_flags = if clear_flags != 0 {
+            new_flags & !clear_flags
+        } else {
+            new_flags
+        };
+        self.flags.set(new_flags);
 
         if need_schedule {
             scheduler::yield_me_now_or_later();
         }
 
-        Ok(())
+        Ok(new_flags)
     }
 
-    pub fn clear(&self, flags: u32) {
-        let _guard = self.pending.irqsave_lock();
-        self.flags.set(self.flags.get() & !flags);
+    pub fn clear(&self, flags: u32) -> u32 {
+        let mut w = self.pending.irqsave_lock();
+        let old_flags = self.flags.get();
+        self.flags.set(old_flags & !flags);
+        old_flags
     }
 
     pub fn get(&self) -> u32 {
@@ -109,8 +122,8 @@ impl EventFlags {
         self.flags.get()
     }
 
-    pub fn wait(&self, flags: u32, mode: EventFlagsMode, timeout: usize) -> Result<(), Error> {
-        if flags == 0 {
+    pub fn wait(&self, flags: u32, mode: EventFlagsMode, timeout: usize) -> Result<u32, Error> {
+        if flags == 0 && mode.contains(EventFlagsMode::ALL) {
             return Err(code::EINVAL);
         }
 
@@ -118,7 +131,7 @@ impl EventFlags {
         let mut event_get = false;
         let event_flags = self.flags.get();
         if mode.contains(EventFlagsMode::ANY) {
-            if event_flags & flags != 0 {
+            if event_flags & flags != 0 || flags == 0 && event_flags != 0 {
                 event_get = true;
             }
         } else if mode.contains(EventFlagsMode::ALL) {
@@ -137,7 +150,7 @@ impl EventFlags {
             if !mode.contains(EventFlagsMode::NO_CLEAR) {
                 self.flags.set(event_flags & !flags);
             }
-            return Ok(());
+            return Ok(event_flags);
         }
 
         if timeout == 0 {
@@ -154,7 +167,11 @@ impl EventFlags {
             return Err(code::ETIMEDOUT);
         }
 
-        return Ok(());
+        if !mode.contains(EventFlagsMode::NO_CLEAR) {
+            let _guard = self.pending.irqsave_lock();
+            self.flags.set(event_flags & !flags);
+        }
+        return Ok(event_flags);
     }
 }
 

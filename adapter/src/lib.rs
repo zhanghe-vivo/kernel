@@ -19,8 +19,11 @@
 #![cfg_attr(test, reexport_test_harness_main = "adapter_test_main")]
 #![cfg_attr(test, no_main)]
 
+extern crate alloc;
 pub mod cmsis;
 pub mod utils;
+
+pub const MAX_NAME_LEN: usize = 16;
 
 #[cfg(test)]
 mod tests {

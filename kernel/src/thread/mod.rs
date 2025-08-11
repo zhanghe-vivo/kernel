@@ -24,7 +24,10 @@ use crate::{
 };
 
 use alloc::boxed::Box;
-use core::sync::atomic::{AtomicI32, AtomicUsize, Ordering};
+use core::{
+    ptr::NonNull,
+    sync::atomic::{AtomicI32, AtomicUsize, Ordering},
+};
 
 mod builder;
 mod posix;
@@ -48,7 +51,7 @@ impl core::fmt::Debug for Entry {
     }
 }
 
-#[derive(Debug, Copy, Clone, Default)]
+#[derive(Debug, Copy, Clone, Default, PartialEq, Eq)]
 pub enum ThreadKind {
     AsyncPoller,
     Idle,
@@ -154,6 +157,7 @@ pub struct Thread {
     event_flags_mode: EventFlagsMode,
     #[cfg(event_flags)]
     event_flags_mask: u32,
+    alien_ptr: Option<NonNull<core::ffi::c_void>>,
 }
 
 extern "C" fn run_simple_c(f: extern "C" fn()) {
@@ -327,6 +331,7 @@ impl Thread {
             event_flags_mode: EventFlagsMode::empty(),
             #[cfg(event_flags)]
             event_flags_mask: 0,
+            alien_ptr: None,
         }
     }
 
@@ -477,6 +482,16 @@ impl Thread {
     #[inline]
     pub fn set_event_flags_mask(&mut self, mask: u32) {
         self.event_flags_mask = mask;
+    }
+
+    #[inline]
+    pub fn set_alien_ptr(&mut self, ptr: NonNull<core::ffi::c_void>) {
+        self.alien_ptr = Some(ptr);
+    }
+
+    #[inline]
+    pub fn get_alien_ptr(&self) -> Option<NonNull<core::ffi::c_void>> {
+        self.alien_ptr
     }
 }
 

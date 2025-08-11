@@ -36,6 +36,7 @@ type Uint = usize;
 type AtomicUint = core::sync::atomic::AtomicUsize;
 
 #[derive(Debug)]
+#[repr(C)]
 pub struct TinyArcInner<T: Sized> {
     data: T,
     // We don't need a large counter as Arc, we don't have weak
@@ -93,7 +94,7 @@ impl<T> TinyArc<T> {
     }
 
     pub unsafe fn get_handle(this: &Self) -> *const u8 {
-        this.inner.as_ref() as *const _ as *const u8
+        Self::as_ptr(this) as *const u8
     }
 
     #[allow(clippy::unnecessary_cast)]
@@ -113,6 +114,28 @@ impl<T> TinyArc<T> {
 
     pub fn is(&self, other: &Self) -> bool {
         unsafe { Self::get_handle(self) == Self::get_handle(other) }
+    }
+
+    #[must_use]
+    pub fn as_ptr(this: &Self) -> *const T {
+        let ptr: *mut TinyArcInner<T> = NonNull::as_ptr(this.inner);
+
+        // SAFETY: This cannot go through Deref::deref because this is required to retain raw/mut provenance
+        unsafe { &raw mut (*ptr).data }
+    }
+
+    pub fn into_raw(this: Self) -> *const T {
+        let ptr = Self::as_ptr(&this);
+        core::mem::forget(this);
+        ptr
+    }
+
+    pub unsafe fn from_raw(ptr: *const T) -> Self {
+        // SAFETY: ptr offset is same as TinyArcInner struct offset no recalculation of
+        // offset is required
+        TinyArc {
+            inner: NonNull::new_unchecked(ptr as *mut TinyArcInner<T>),
+        }
     }
 }
 
@@ -549,6 +572,16 @@ mod tests {
             }
         }
         l.clear();
+    }
+
+    #[test]
+    fn test_into_raw_and_from_raw() {
+        type Ty = TinyArc<Thread>;
+        let t = Ty::new(Thread::default());
+        assert_eq!(Ty::strong_count(&t), 1);
+        let ptr = Ty::into_raw(t);
+        let t2 = unsafe { Ty::from_raw(ptr) };
+        assert_eq!(Ty::strong_count(&t2), 1);
     }
 
     #[bench]

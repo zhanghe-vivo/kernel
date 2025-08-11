@@ -16,15 +16,19 @@ import("//build/templates/build_template.gni")
 import("//build/toolchain/blueos.gni")
 import("//kernel/common_crate_rustflags.gni")
 
+adapter_deps = [
+  "cmsis_header:cmsis_os",
+  "cmsis_header:cmsis_os2",
+  "//external/log/v0.4.22:log",
+  "//kernel/kconfig:blueos_kconfig",
+  "//kernel/kernel:blueos",
+]
+
 build_rust("adapter") {
   sources = [ "src/lib.rs" ]
   edition = "2021"
-  deps = [
-    "cmsis_header:cmsis_os",
-    "cmsis_header:cmsis_os2",
-    "//kernel/kconfig:blueos_kconfig",
-    "//kernel/kernel:blueos",
-  ]
+  proc_macro_deps = [ "//external/rust-delegate/v0.13.3:delegate" ]
+  deps = adapter_deps
   configs += [ "//kernel/kconfig:kconfigs" ]
 }
 
@@ -34,14 +38,14 @@ build_rust("adapter_unittest") {
   crate_type = "bin"
   sources = [ "src/lib.rs" ]
   edition = "2021"
-  proc_macro_deps = [ "//kernel/test_harness:blueos_test_macro" ]
-  deps = [
+  proc_macro_deps = [
+    "//external/rust-delegate/v0.13.3:delegate",
+    "//kernel/test_harness:blueos_test_macro",
+  ]
+  deps = adapter_deps
+  deps += [
     ":adapter",
-    "cmsis_header:cmsis_os",
-    "cmsis_header:cmsis_os2",
     "//external/semihosting/v0.1.20:semihosting",
-    "//kernel/kconfig:blueos_kconfig",
-    "//kernel/kernel:blueos",
   ]
   configs += [ "//kernel/kconfig:kconfigs" ]
   rustflags = common_crate_rustflags
