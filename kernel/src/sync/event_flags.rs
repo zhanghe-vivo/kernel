@@ -134,10 +134,8 @@ impl EventFlags {
             if event_flags & flags != 0 || flags == 0 && event_flags != 0 {
                 event_get = true;
             }
-        } else if mode.contains(EventFlagsMode::ALL) {
-            if event_flags & flags == flags {
-                event_get = true;
-            }
+        } else if mode.contains(EventFlagsMode::ALL) && event_flags & flags == flags {
+            event_get = true;
         }
 
         let current_thread = scheduler::current_thread();
@@ -171,7 +169,7 @@ impl EventFlags {
             let _guard = self.pending.irqsave_lock();
             self.flags.set(event_flags & !flags);
         }
-        return Ok(event_flags);
+        Ok(event_flags)
     }
 }
 

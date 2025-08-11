@@ -255,14 +255,9 @@ endmenu # SMOLTCP
 menu "os adapter configuration"
     choice
         prompt "RTOS Adapter Selection"
-        default NONE_RTOS_ADAPTER
+        optional
         help
           Select which RTOS adapter to use. Only one can be selected.
-
-    config NONE_RTOS_ADAPTER
-        bool "None"
-        help
-          No RTOS adapter selected
 
     config CMSIS_RTOS1_ADAPTER
         bool "CMSIS RTOS1 Adapter"
