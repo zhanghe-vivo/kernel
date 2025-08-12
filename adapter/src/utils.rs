@@ -211,14 +211,17 @@ macro_rules! os_adapter {
 }
 
 // Define the OS adapter types
+#[cfg(semaphore)]
 os_adapter! {
     OsTimer: blueos::time::timer::Timer,
     OsSemaphore: blueos::sync::semaphore::Semaphore,
 }
 
+#[cfg(semaphore)]
 impl OsSemaphore {
     delegate! {
         to self.inner() {
+            pub fn count(&self) -> blueos::types::Int;
             pub fn try_acquire(&self) -> bool;
             pub fn acquire_notimeout(&self) -> bool;
             pub fn acquire_timeout(&self, t: usize) -> bool;

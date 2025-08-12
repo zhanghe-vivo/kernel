@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+pub mod semaphore;
 pub mod signal_event;
 pub mod thread;
 pub mod tick;

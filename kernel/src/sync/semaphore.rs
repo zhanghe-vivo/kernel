@@ -42,6 +42,10 @@ impl Semaphore {
         self.pending.irqsave_lock().init()
     }
 
+    pub fn count(&self) -> Int {
+        self.counter.get()
+    }
+
     pub fn try_acquire(&self) -> bool {
         let w = self.pending.irqsave_lock();
         let old = self.counter.get();
@@ -192,6 +196,15 @@ mod tests {
         // Test multiple initializations
         let result2 = semaphore.init();
         assert!(!result2);
+    }
+
+    #[test]
+    fn test_semaphore_count() {
+        let semaphore = Semaphore::new(5);
+        semaphore.init();
+
+        // Test semaphore number count
+        assert_eq!(semaphore.count(), 5);
     }
 
     #[test]

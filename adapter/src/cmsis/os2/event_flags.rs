@@ -81,11 +81,11 @@ pub extern "C" fn osEventFlagsNew(attr: *const osEventFlagsAttr_t) -> osEventFla
             )
         }
     };
-    return unsafe {
+    (unsafe {
         Arc::into_raw(Arc::from_raw(
             attr_ref.cb_mem as *mut ArcInner<OsEventFlags>,
         ))
-    } as osEventFlagsId_t;
+    }) as osEventFlagsId_t
 }
 
 // Get name of an Event Flags object.

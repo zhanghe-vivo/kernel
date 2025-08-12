@@ -87,6 +87,11 @@ config EVENT_FLAGS
     default n
     bool "Enable event flags"
 
+config SEMAPHORE
+    default y if CMSIS_RTOS1_ADAPTER || CMSIS_RTOS2_ADAPTER || RTTHREAD_ADAPTER
+    default n
+    bool "Enable semaphore"
+
 config ROBIN_SCHEDULER
     default y
     bool "Enable robin scheduler"
