@@ -72,14 +72,14 @@ impl EventFlags {
         let new_flags = self.flags.get() | flags;
         self.flags.set(new_flags);
         for mut entry in w.iter() {
-            let thread = entry.thread.clone();
+            let mut thread = entry.thread.clone();
             let event_mask = thread.event_flags_mask();
             let event_mode = thread.event_flags_mode();
             if event_mode.contains(EventFlagsMode::ANY)
                 && (event_mask & flags != 0 || event_mask == 0)
                 || event_mode.contains(EventFlagsMode::ALL) && event_mask & flags == event_mask
             {
-                WaitQueue::detach(&entry);
+                WaitQueue::detach(&mut entry);
                 thread_list.push_back(thread);
             }
         }
