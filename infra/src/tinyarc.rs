@@ -219,7 +219,6 @@ unsafe impl<T: Sized> Sync for TinyArc<T> {}
 // belongs to the list we are locking.
 #[derive(Default, Debug)]
 pub struct TinyArcList<T: Sized, A: Adapter> {
-    len: usize,
     head: AtomicListHead<T, A>,
     tail: AtomicListHead<T, A>,
 }
@@ -227,7 +226,6 @@ pub struct TinyArcList<T: Sized, A: Adapter> {
 impl<T: Sized, A: Adapter> TinyArcList<T, A> {
     pub const fn const_new() -> Self {
         Self {
-            len: 0,
             head: AtomicListHead::<T, A>::new(),
             tail: AtomicListHead::<T, A>::new(),
         }
@@ -244,9 +242,6 @@ impl<T: Sized, A: Adapter> TinyArcList<T, A> {
 
     #[inline]
     pub fn is_empty(&self) -> bool {
-        // FIXME: We should assert_eq!(self.head.next() ==
-        // Some(NonNull::from_ref(&self.tail)), self.len == 0), however some
-        // incorrect uses have broken that!
         self.head.next() == Some(NonNull::from_ref(&self.tail))
     }
 
@@ -297,7 +292,6 @@ impl<T: Sized, A: Adapter> TinyArcList<T, A> {
 
     pub fn push_back(&mut self, me: TinyArc<T>) -> bool {
         if Self::insert_before(&mut self.tail, me) {
-            self.len += 1;
             return true;
         }
         false
@@ -335,7 +329,6 @@ impl<T: Sized, A: Adapter> TinyArcList<T, A> {
         let ok = AtomicListHead::<T, A>::detach(unsafe { next.as_mut() });
         assert!(ok);
         unsafe { TinyArc::<T>::decrement_strong_count(&arc) };
-        self.len -= 1;
         Some(arc)
     }
 
@@ -348,10 +341,6 @@ impl<T: Sized, A: Adapter> TinyArcList<T, A> {
         true
     }
 
-    pub fn len(&self) -> usize {
-        self.len
-    }
-
     pub fn clear(&mut self) -> usize {
         let mut c = 0;
         for mut i in
@@ -360,10 +349,6 @@ impl<T: Sized, A: Adapter> TinyArcList<T, A> {
             Self::detach(&mut i);
             c += 1;
         }
-        // FIXME: We expect debug_assert_eq!(self.len, c); However, in some use
-        // cases, we combine using push_back and insert_after, making self.len
-        // inconsistent.
-        self.len = 0;
         c
     }
 
@@ -375,7 +360,6 @@ impl<T: Sized, A: Adapter> TinyArcList<T, A> {
 impl<T: Sized, A: Adapter> Drop for TinyArcList<T, A> {
     #[inline]
     fn drop(&mut self) {
-        // FIXME: Warn if self.len != 0 since memory might leak.
         // NOTE: Elements should be cleared by calling `clear` method
         // since move occurs when dropping. Do you recall how drop is
         // called? It's `drop(val)`.
