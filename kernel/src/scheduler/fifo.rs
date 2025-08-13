@@ -41,3 +41,8 @@ pub fn queue_ready_thread(old_state: Uint, t: ThreadNode) -> bool {
     rq.push_back(t);
     true
 }
+
+pub fn remove_from_ready_thread(mut t: ThreadNode) -> bool {
+    // todo
+    true
+}

@@ -22,6 +22,7 @@ use crate::{
 use core::mem::MaybeUninit;
 
 static mut READY_TABLE: MaybeUninit<SpinLock<ReadyTable>> = MaybeUninit::zeroed();
+type ReadyQueue = ArcList<Thread, thread::OffsetOfSchedNode>;
 
 type ReadyTableBitFields = u32;
 
@@ -38,7 +39,7 @@ pub(super) fn init() {
 #[derive(Debug, Default)]
 struct ReadyTable {
     active_tables: ReadyTableBitFields,
-    tables: [ArcList<Thread, thread::OffsetOfSchedNode>; (MAX_THREAD_PRIORITY + 1) as usize],
+    tables: [ReadyQueue; (MAX_THREAD_PRIORITY + 1) as usize],
 }
 
 impl ReadyTable {
@@ -104,6 +105,23 @@ pub fn queue_ready_thread(old_state: Uint, t: ThreadNode) -> bool {
             priority,
             tbl.highest_active()
         );
+    }
+    true
+}
+
+pub fn remove_from_ready_thread(mut t: ThreadNode) -> bool {
+    let mut tbl = unsafe { READY_TABLE.assume_init_ref().irqsave_lock() };
+    let priority = t.priority();
+    assert!(priority <= MAX_THREAD_PRIORITY);
+    debug_assert_eq!(t.state(), thread::READY);
+    let q = &mut tbl.tables[priority as usize];
+
+    if ReadyQueue::detach(&mut t) {
+        if q.is_empty() {
+            tbl.clear_active_queue(priority as u32);
+        }
+    } else {
+        return false;
     }
     true
 }

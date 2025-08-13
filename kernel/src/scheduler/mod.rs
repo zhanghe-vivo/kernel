@@ -43,6 +43,15 @@ pub use fifo::*;
 pub use global_scheduler::*;
 pub(crate) use wait_queue::*;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum InsertMode {
+    /// Insert by priority
+    InsertByPrio,
+    /// Append to end
+    InsertToEnd,
+}
+
 pub(crate) static mut RUNNING_THREADS: [MaybeUninit<ThreadNode>; NUM_CORES] =
     [const { MaybeUninit::zeroed() }; NUM_CORES];
 
@@ -285,8 +294,8 @@ pub(crate) fn suspend_me_with_hook(hook: impl FnOnce() + 'static) {
     assert!(arch::local_irq_enabled());
 }
 
-pub fn suspend_me_for(tick: usize) {
-    assert!(tick != 0);
+pub fn suspend_me_for(ticks: usize) {
+    assert_ne!(ticks, 0);
     let next = next_ready_thread().map_or_else(|| idle::current_idle_thread().clone(), |v| v);
     let to_sp = next.saved_sp();
     let old = current_thread();
@@ -294,7 +303,7 @@ pub fn suspend_me_for(tick: usize) {
     let mut hook_holder = ContextSwitchHookHolder::new(next);
     hook_holder.set_pending_thread(old.clone());
 
-    if tick != WAITING_FOREVER {
+    if ticks != WAITING_FOREVER {
         let th = old.clone();
         let timer_callback = Box::new(move || {
             #[cfg(debugging_scheduler)]
@@ -308,10 +317,10 @@ pub fn suspend_me_for(tick: usize) {
             match &old.timer {
                 Some(t) => {
                     t.set_callback(timer_callback);
-                    t.start_new_interval(tick);
+                    t.start_new_interval(ticks);
                 }
                 None => {
-                    let timer = Timer::new_hard_oneshot(tick, timer_callback);
+                    let timer = Timer::new_hard_oneshot(ticks, timer_callback);
                     old.lock().timer = Some(timer.clone());
                     compiler_fence(Ordering::SeqCst);
                     timer.start();
@@ -325,8 +334,36 @@ pub fn suspend_me_for(tick: usize) {
     assert!(arch::local_irq_enabled());
 }
 
-pub(crate) fn suspend_me_with_timeout(mut w: SpinLockGuard<'_, WaitQueue>, ticks: usize) -> bool {
-    assert!(ticks != 0);
+pub fn insert_wait_queue(
+    mut w: &mut SpinLockGuard<'_, WaitQueue>,
+    owner: ThreadNode,
+    insert_mode: InsertMode,
+) -> bool {
+    let cur = Arc::new(WaitEntry {
+        wait_node: IlistHead::<WaitEntry, OffsetOfWait>::new(),
+        thread: owner.clone(),
+    });
+
+    if insert_mode == InsertMode::InsertByPrio {
+        for mut entry in w.iter() {
+            if entry.thread.priority() > owner.priority() {
+                return WaitQueue::insert_before(
+                    unsafe { WaitQueue::list_head_of_mut_unchecked(&mut entry) },
+                    cur.clone(),
+                );
+            }
+        }
+    }
+
+    w.push_back(cur)
+}
+
+pub(crate) fn suspend_me_with_timeout(
+    mut w: SpinLockGuard<'_, WaitQueue>,
+    ticks: usize,
+    insert_mode: InsertMode,
+) -> bool {
+    assert_ne!(ticks, 0);
     #[cfg(debugging_scheduler)]
     crate::trace!(
         "[TH:0x{:x}] is looking for the next thread",
@@ -343,11 +380,8 @@ pub(crate) fn suspend_me_with_timeout(mut w: SpinLockGuard<'_, WaitQueue>, ticks
     let to_sp = next.saved_sp();
     let old = current_thread();
     let from_sp_ptr = old.saved_sp_ptr();
-    let entry = Arc::new(WaitEntry {
-        wait_node: IlistHead::<WaitEntry, OffsetOfWait>::new(),
-        thread: old.clone(),
-    });
-    let ok = w.push_back(entry);
+
+    let ok = insert_wait_queue(&mut w, old.clone(), insert_mode);
     assert!(ok);
     // old's context saving must happen before old is requeued to
     // ready queue.
@@ -364,11 +398,12 @@ pub(crate) fn suspend_me_with_timeout(mut w: SpinLockGuard<'_, WaitQueue>, ticks
     let mut hook_holder = ContextSwitchHookHolder::new(next);
     hook_holder.set_dropper(dropper);
     hook_holder.set_pending_thread(old.clone());
-    let timed_out = Arc::new(AtomicBool::new(false));
-    let timed_out_clone = timed_out.clone();
+    let timeout = Arc::new(AtomicBool::new(false));
 
     if ticks != WAITING_FOREVER {
         let th = old.clone();
+        let timeout = timeout.clone();
+
         let timer_callback = Box::new(move || {
             #[cfg(debugging_scheduler)]
             crate::trace!(
@@ -376,7 +411,7 @@ pub(crate) fn suspend_me_with_timeout(mut w: SpinLockGuard<'_, WaitQueue>, ticks
                 Thread::id(&th)
             );
             let _ = queue_ready_thread(thread::SUSPENDED, th.clone());
-            timed_out_clone.store(true, Ordering::SeqCst);
+            timeout.store(true, Ordering::SeqCst);
         });
         let hook = Box::new(move || {
             match &old.timer {
@@ -396,7 +431,7 @@ pub(crate) fn suspend_me_with_timeout(mut w: SpinLockGuard<'_, WaitQueue>, ticks
     }
     arch::switch_context_with_hook(from_sp_ptr as *mut u8, to_sp, &mut hook_holder as *mut _);
     assert!(arch::local_irq_enabled());
-    timed_out.load(Ordering::SeqCst)
+    timeout.load(Ordering::SeqCst)
 }
 
 // Yield me immediately if not in ISR, otherwise switch context on

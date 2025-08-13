@@ -130,7 +130,8 @@ mod tests {
     extern crate alloc;
     use super::*;
     use crate::{
-        allocator, allocator::KernelAllocator, config, support::DisableInterruptGuard, sync,
+        allocator, allocator::KernelAllocator, config, scheduler::current_thread_id,
+        support::DisableInterruptGuard, sync, time::WAITING_FOREVER, types::Arc,
     };
     use blueos_header::syscalls::NR::Nop;
     use blueos_kconfig::NUM_CORES;
@@ -140,7 +141,6 @@ mod tests {
         panic::PanicInfo,
         sync::atomic::{AtomicUsize, Ordering},
     };
-    use spin::Mutex;
     use thread::{Entry, SystemThreadStorage, Thread, ThreadKind, ThreadNode};
 
     #[used]
@@ -357,6 +357,35 @@ mod tests {
                 break;
             }
             sync::atomic_wait::atomic_wait(&TEST_ATOMIC_WAIT, n, None);
+        }
+    }
+
+    static_arc! {
+        MUTEX(sync::mutex::Mutex, sync::mutex::Mutex::new()),
+    }
+    static mut MUTEX_COUNTER: usize = 0usize;
+
+    extern "C" fn test_mutex() {
+        MUTEX.pend_for(WAITING_FOREVER);
+        let n = unsafe { MUTEX_COUNTER };
+        unsafe { MUTEX_COUNTER += 1 };
+        MUTEX.post();
+    }
+
+    #[test]
+    fn stress_mutex() {
+        MUTEX.init();
+        reset_and_queue_test_threads(test_mutex, None);
+        let l = unsafe { TEST_THREADS.len() };
+        loop {
+            MUTEX.pend_for(WAITING_FOREVER);
+            let n = unsafe { MUTEX_COUNTER };
+            if n == l {
+                MUTEX.post();
+                break;
+            }
+            MUTEX.post();
+            scheduler::yield_me();
         }
     }
 

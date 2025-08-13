@@ -18,11 +18,11 @@ use crate::sync::event_flags::EventFlagsMode;
 use crate::{
     arch, config, debug, scheduler,
     support::{Region, RegionalObjectBuilder},
-    sync::{ISpinLock, SpinLockGuard},
+    sync::{mutex::OffsetOfMutexNode, ISpinLock, Mutex, SpinLockGuard},
     thread::builder::GlobalQueue,
     time::timer::Timer,
     types::{
-        impl_simple_intrusive_adapter, Arc, AtomicUint, IlistHead, ThreadPriority, Uint,
+        impl_simple_intrusive_adapter, Arc, ArcList, AtomicUint, IlistHead, ThreadPriority, Uint,
         UniqueListHead,
     },
 };
@@ -163,6 +163,9 @@ pub struct Thread {
     #[cfg(event_flags)]
     event_flags_mask: u32,
     alien_ptr: Option<NonNull<core::ffi::c_void>>,
+    origin_priority: ThreadPriority,
+    pub pend_mutex: Option<Arc<Mutex>>,
+    pub mutex_list: ArcList<Mutex, OffsetOfMutexNode>,
 }
 
 extern "C" fn run_simple_c(f: extern "C" fn()) {
@@ -337,6 +340,9 @@ impl Thread {
             #[cfg(event_flags)]
             event_flags_mask: 0,
             alien_ptr: None,
+            origin_priority: 0,
+            pend_mutex: None,
+            mutex_list: ArcList::<Mutex, OffsetOfMutexNode>::new(),
         }
     }
 
@@ -382,6 +388,8 @@ impl Thread {
         // TODO: Stack sanity check.
         self.saved_sp =
             self.stack.base() + self.stack.size() - core::mem::size_of::<arch::Context>();
+        self.mutex_list.init();
+
         let region = Region {
             base: self.saved_sp,
             size: core::mem::size_of::<arch::Context>(),
@@ -497,6 +505,17 @@ impl Thread {
     #[inline]
     pub fn get_alien_ptr(&self) -> Option<NonNull<core::ffi::c_void>> {
         self.alien_ptr
+    }
+
+    #[inline]
+    pub fn get_origin_priority(&self) -> ThreadPriority {
+        self.origin_priority
+    }
+
+    #[inline]
+    pub fn set_origin_priority(&mut self, p: ThreadPriority) {
+        self.origin_priority = p;
+        self.priority = p;
     }
 }
 

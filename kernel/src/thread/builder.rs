@@ -118,7 +118,7 @@ impl Builder {
             |v| v,
         );
         w.init(stack, self.entry);
-        w.set_priority(self.priority);
+        w.set_origin_priority(self.priority);
         drop(w);
         GlobalQueueVisitor::add(thread.clone());
 
@@ -187,7 +187,7 @@ pub(crate) fn build_static_thread(
         },
         entry,
     );
-    w.set_priority(p);
+    w.set_origin_priority(p);
     w.set_kind(kind);
     assert!((thread::CREATED..=thread::RETIRED).contains(&init_state));
     unsafe { w.set_state(init_state) };
