@@ -236,6 +236,7 @@ use spin::Mutex;
 
 mod raw_allocator;
 
+#[derive(Debug)]
 pub struct MemoryInfo {
     total: usize,
     max_used: usize,
