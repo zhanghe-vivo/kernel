@@ -85,7 +85,7 @@ pub mod coverage;
 pub(crate) mod devices;
 pub(crate) mod drivers;
 pub mod error;
-pub(crate) mod irq;
+pub mod irq;
 pub(crate) mod logger;
 pub mod net;
 pub mod scheduler;
