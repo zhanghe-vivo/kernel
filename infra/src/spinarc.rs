@@ -533,6 +533,8 @@ mod tests {
         assert!(b.read().is_detached());
         assert_eq!(**a.read().next.as_ref().unwrap().read(), 2);
         assert_eq!(**c.read().prev.as_ref().unwrap().read(), 0);
+        // We still have a <-> c, if we don't detach any of them, memory leaks.
+        Node::detach(&mut a);
     }
 
     #[bench]
