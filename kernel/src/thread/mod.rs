@@ -44,10 +44,6 @@ pub enum Entry {
         *mut core::ffi::c_void,
     ),
     Closure(Box<dyn FnOnce()>),
-    CMSIS(
-        unsafe extern "C" fn(*mut core::ffi::c_void),
-        *mut core::ffi::c_void,
-    ),
 }
 
 impl core::fmt::Debug for Entry {
@@ -144,13 +140,19 @@ impl ThreadStats {
 
 pub(crate) type GlobalQueueListHead = UniqueListHead<Thread, OffsetOfGlobal, GlobalQueue>;
 
-#[derive(Debug)]
 pub(crate) struct SignalContext {
     active: bool,
     handler_stack: AlignedStackStorage,
     // Will recover thread_context at recover_sp on exiting of signal handler.
     recover_sp: usize,
     thread_context: arch::Context,
+    once_action: [Option<Box<dyn FnOnce()>>; 32],
+}
+
+impl core::fmt::Debug for SignalContext {
+    fn fmt(&self, _f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        Ok(())
+    }
 }
 
 #[derive(Default, Debug)]
@@ -199,16 +201,10 @@ extern "C" fn run_posix(f: extern "C" fn(*mut core::ffi::c_void), arg: *mut core
     scheduler::retire_me();
 }
 
-extern "C" fn run_cmsis(
-    f: unsafe extern "C" fn(*mut core::ffi::c_void),
-    arg: *mut core::ffi::c_void,
-) {
-    unsafe { f(arg) };
-    scheduler::retire_me();
-}
-
 // FIXME: If the closure doesn't get run, memory leaks.
 extern "C" fn run_closure(raw: *mut Box<dyn FnOnce()>) {
+    // FIXME: If `retire_me` is called in the closure, we are unable to recycle
+    // the Box and memory leaks.
     unsafe { Box::from_raw(raw)() };
     scheduler::retire_me();
 }
@@ -234,12 +230,20 @@ impl Thread {
     #[inline(always)]
     pub fn validate_sp(&self) -> bool {
         let sp = arch::current_sp();
+        if self.is_in_signal_context() {
+            // TODO: Validate signal context stack.
+            return true;
+        }
         sp >= self.stack.base() && sp <= self.stack.base() + self.stack.size()
     }
 
     #[inline(always)]
     pub fn validate_saved_sp(&self) -> bool {
         let sp = self.saved_sp;
+        if self.is_in_signal_context() {
+            // TODO: Validate signal context stack.
+            return true;
+        }
         sp >= self.stack.base() && sp <= self.stack.base() + self.stack.size()
     }
 
@@ -420,15 +424,31 @@ impl Thread {
             _ => {
                 let mut ctx: Box<SignalContext> = unsafe { Box::new_uninit().assume_init() };
                 ctx.active = false;
+                for i in 0..32 {
+                    unsafe { core::ptr::write(&mut ctx.once_action[i] as *mut _, None) };
+                }
                 self.signal_context = Some(ctx);
-                unsafe { self.signal_context.as_mut().unwrap_unchecked() }
+                self.signal_context.as_mut().unwrap()
             }
         }
     }
 
-    pub(crate) fn kill(&self, signum: i32) {
-        self.pending_signals
+    pub fn kill(&self, signum: i32) -> bool {
+        let old = self
+            .pending_signals
             .fetch_or(1 << signum, Ordering::Release);
+        // Return false if there is signum pending.
+        (old & 1 << signum) == 0
+    }
+
+    pub fn register_once_signal_handler(&mut self, signum: i32, f: impl FnOnce() + 'static) {
+        let sig_ctx = self.get_or_create_signal_context();
+        sig_ctx.once_action[signum as usize] = Some(Box::new(f));
+    }
+
+    pub fn take_signal_handler(&mut self, signum: i32) -> Option<Box<dyn FnOnce()>> {
+        let sig_ctx = self.get_or_create_signal_context();
+        sig_ctx.once_action[signum as usize].take()
     }
 
     pub(crate) fn activate_signal_context(&mut self) -> bool {
@@ -444,6 +464,13 @@ impl Thread {
         unsafe { core::ptr::copy(ctx, &mut sig_ctx.thread_context as *mut _, 1) };
         sig_ctx.active = true;
         true
+    }
+
+    fn is_in_signal_context(&self) -> bool {
+        let Some(ref ctx) = self.signal_context else {
+            return false;
+        };
+        ctx.active
     }
 
     pub(crate) fn deactivate_signal_context(&mut self) {
@@ -493,14 +520,10 @@ impl Thread {
                 // platform, aka, it's a fat pointer.
                 let raw = Box::into_raw(Box::new(boxed));
                 ctx.set_return_address(run_closure as usize)
-                    .set_arg(0, raw as *mut u8 as usize)
+                    .set_arg(0, raw as *mut Box<dyn FnOnce()> as usize)
             }
             Entry::Posix(f, arg) => ctx
                 .set_return_address(run_posix as usize)
-                .set_arg(0, unsafe { f as usize })
-                .set_arg(1, unsafe { arg as usize }),
-            Entry::CMSIS(f, arg) => ctx
-                .set_return_address(run_cmsis as usize)
                 .set_arg(0, unsafe { f as usize })
                 .set_arg(1, unsafe { arg as usize }),
         };

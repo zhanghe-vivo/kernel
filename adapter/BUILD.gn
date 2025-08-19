@@ -23,6 +23,7 @@ adapter_deps = [
   "//kernel/infra:blueos_infra",
   "//kernel/kconfig:blueos_kconfig",
   "//kernel/kernel:blueos",
+  "//libc:libc",
 ]
 
 build_rust("adapter") {

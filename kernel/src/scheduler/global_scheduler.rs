@@ -19,6 +19,7 @@ use crate::{
     thread::{Thread, ThreadNode},
     types::{ArcList, ThreadPriority, Uint},
 };
+
 use core::mem::MaybeUninit;
 
 static mut READY_TABLE: MaybeUninit<SpinLock<ReadyTable>> = MaybeUninit::zeroed();

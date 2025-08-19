@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::utils::OsSemaphore;
+use crate::common_objects::OsSemaphore;
 use blueos::{
     sync::semaphore::Semaphore,
     types::{Arc, ArcInner, Int},

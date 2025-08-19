@@ -12,12 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::utils::OsEventFlags;
-use core::{
-    mem, ptr,
-    sync::atomic::{compiler_fence, Ordering},
-};
-
+use crate::common_objects::OsEventFlags;
 use blueos::{
     error::{code, Error},
     sync::event_flags::{EventFlags, EventFlagsMode},
@@ -25,6 +20,10 @@ use blueos::{
     types::{Arc, ArcInner},
 };
 use cmsis_os2::*;
+use core::{
+    mem, ptr,
+    sync::atomic::{compiler_fence, Ordering},
+};
 
 fn os_event_flags_error(e: Error) -> u32 {
     match e {

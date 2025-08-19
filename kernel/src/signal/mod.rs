@@ -12,18 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::{arch, scheduler, thread};
-use libc::SIGTERM;
+use crate::{arch, scheduler, thread, thread::ThreadNode};
 
-fn handle_sigterm(signum: i32) {
+fn handle_signal_fallback(signum: i32) {
+    if signum != libc::SIGTERM {
+        return;
+    }
     scheduler::retire_me();
 }
 
-fn handle_signal(signum: i32) {
-    if signum != SIGTERM {
-        return;
-    }
-    handle_sigterm(signum);
+fn handle_signal(t: &ThreadNode, signum: i32) {
+    let mut l = t.lock();
+    let Some(handler) = l.take_signal_handler(signum) else {
+        drop(l);
+        return handle_signal_fallback(signum);
+    };
+    drop(l);
+    handler();
 }
 
 // This routine is supposed to be executed in THREAD mode.
@@ -35,7 +40,7 @@ pub(crate) unsafe extern "C" fn handler_entry(_sp: usize, _old_sp: usize) {
         if sigset & (1 << i) == 0 {
             continue;
         }
-        handle_signal(i as i32);
+        handle_signal(&current, i);
         current.clear_signal(i);
     }
     {

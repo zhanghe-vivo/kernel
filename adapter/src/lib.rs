@@ -22,8 +22,10 @@
 #![feature(negative_impls)]
 
 extern crate alloc;
+pub mod bridge_utils;
 pub mod cmsis;
-pub mod utils;
+pub mod common_objects;
+pub use blueos::types::Arc;
 
 pub const MAX_NAME_LEN: usize = 16;
 
@@ -38,6 +40,7 @@ mod tests {
 
     #[global_allocator]
     static ALLOCATOR: KernelAllocator = KernelAllocator;
+    //static ALLOCATOR: emballoc::Allocator<{ 2 << 20 }> = emballoc::Allocator::new();
 
     #[used]
     #[link_section = ".bk_app_array"]

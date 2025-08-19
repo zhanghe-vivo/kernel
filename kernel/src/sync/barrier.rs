@@ -18,6 +18,7 @@ use crate::sync::{atomic_wait, atomic_wake};
 use core::sync::atomic::{AtomicUsize, Ordering};
 
 // Used when N is small and contention is low.
+#[derive(Debug, Default)]
 pub struct ConstBarrier<const N: usize> {
     state: AtomicUsize,
 }

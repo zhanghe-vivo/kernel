@@ -204,14 +204,6 @@ pub(crate) extern "C" fn save_context_finish_hook(hook: Option<&mut ContextSwitc
                 Entry::C(f) => f(),
                 Entry::Closure(f) => f(),
                 Entry::Posix(f, arg) => f(arg),
-                _ => {
-                    #[cfg(debugging_scheduler)]
-                    crate::trace!(
-                        "Thread 0x{:x} is not an os2 thread, but into retired status, it's fault: {:?}",
-                        Thread::id(&t),
-                        entry
-                    );
-                }
             }
         };
         GlobalQueueVisitor::remove(&mut t);
@@ -225,6 +217,12 @@ pub(crate) extern "C" fn save_context_finish_hook(hook: Option<&mut ContextSwitc
                 Thread::id(&t),
                 ThreadNode::strong_count(&t)
             );
+            #[cfg(debugging_scheduler)]
+            crate::trace!(
+                "Thread 0x{:x} alien_ptr: {:?}",
+                Thread::id(&t),
+                t.get_alien_ptr()
+            )
         }
     }
 }

@@ -17,4 +17,5 @@ pub mod event_flags;
 pub mod kernel;
 pub mod mempool;
 pub mod semaphore;
+pub mod thread;
 pub mod tick;

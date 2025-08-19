@@ -239,8 +239,8 @@ mod raw_allocator;
 #[derive(Debug)]
 pub struct MemoryInfo {
     total: usize,
-    max_used: usize,
     used: usize,
+    max_used: usize,
 }
 
 /// The memory allocator for embedded systems.

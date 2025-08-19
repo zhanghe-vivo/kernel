@@ -75,6 +75,12 @@ pub struct TinyArc<T: Sized> {
     inner: NonNull<TinyArcInner<T>>,
 }
 
+impl<T: Default + Sized> Default for TinyArc<T> {
+    fn default() -> Self {
+        Self::new(T::default())
+    }
+}
+
 impl<T> TinyArc<T> {
     #[inline]
     pub fn new(data: T) -> Self {
@@ -363,6 +369,8 @@ impl<T: Sized, A: Adapter> Drop for TinyArcList<T, A> {
         // NOTE: Elements should be cleared by calling `clear` method
         // since move occurs when dropping. Do you recall how drop is
         // called? It's `drop(val)`.
+        // Maybe we can change `head` and `tail` to `Box<struct(AtomicListHead,AtomicListHead)>`,
+        // which is implicitly pinned.
     }
 }
 
