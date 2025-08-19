@@ -23,7 +23,6 @@ use core::mem::MaybeUninit;
 
 static mut READY_TABLE: MaybeUninit<SpinLock<ReadyTable>> = MaybeUninit::zeroed();
 type ReadyQueue = ArcList<Thread, thread::OffsetOfSchedNode>;
-
 type ReadyTableBitFields = u32;
 
 #[allow(clippy::assertions_on_constants)]

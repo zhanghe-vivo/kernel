@@ -36,7 +36,7 @@ static_arc! {
     GLOBAL_QUEUE(SpinLock<Head>, SpinLock::new(Head::new())),
 }
 
-pub(crate) struct GlobalQueueVisitor<'a> {
+pub struct GlobalQueueVisitor<'a> {
     lock: SpinLockGuard<'a, Head>,
     it: ArcListIterator<Thread, OffsetOfGlobal>,
 }
@@ -57,6 +57,7 @@ impl GlobalQueueVisitor<'_> {
         Self { lock, it }
     }
 
+    #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> Option<ThreadNode> {
         self.it.next()
     }

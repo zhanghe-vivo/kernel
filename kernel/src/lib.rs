@@ -78,7 +78,7 @@ pub(crate) mod arch;
 pub mod asynk;
 pub(crate) mod boards;
 pub(crate) mod boot;
-pub(crate) mod config;
+pub mod config;
 pub(crate) mod console;
 #[cfg(coverage)]
 pub mod coverage;
@@ -96,8 +96,8 @@ pub mod thread;
 pub mod time;
 pub mod types;
 pub mod vfs;
-
 pub use syscall_handlers as syscalls;
+pub(crate) mod signal;
 
 #[macro_export]
 macro_rules! debug {
@@ -131,7 +131,8 @@ mod tests {
     use super::*;
     use crate::{
         allocator, allocator::KernelAllocator, config, scheduler::current_thread_id,
-        support::DisableInterruptGuard, sync, time::WAITING_FOREVER, types::Arc,
+        support::DisableInterruptGuard, sync, sync::ConstBarrier, time::WAITING_FOREVER,
+        types::Arc,
     };
     use blueos_header::syscalls::NR::Nop;
     use blueos_kconfig::NUM_CORES;
@@ -466,6 +467,32 @@ mod tests {
                 break;
             }
             scheduler::yield_me();
+        }
+    }
+
+    // Should not hang.
+    #[test]
+    fn test_simple_signal() {
+        let b = Arc::new(ConstBarrier::<{ 2 }>::new());
+        let a = Arc::new(ConstBarrier::<{ 2 }>::new());
+        let b_cloned = b.clone();
+        let a_cloned = a.clone();
+        let t = crate::thread::spawn(move || {
+            b.wait();
+            a.wait();
+        })
+        .unwrap();
+        b_cloned.wait();
+        t.kill(libc::SIGTERM as i32);
+        loop {
+            if t.state() == thread::SUSPENDED {
+                a_cloned.wait();
+                continue;
+            }
+            if t.state() == thread::RETIRED {
+                break;
+            }
+            core::hint::spin_loop();
         }
     }
 

@@ -14,13 +14,12 @@
 
 extern crate alloc;
 use crate::{
-    arch,
+    arch, signal,
     support::DisableInterruptGuard,
-    sync::SpinLockGuard,
-    thread,
-    thread::{Entry, GlobalQueueVisitor, Thread, ThreadNode},
+    sync::{spinlock::SpinLock, SpinLockGuard},
+    thread::{self, Entry, GlobalQueueVisitor, OffsetOfSchedNode, Thread, ThreadNode},
     time::{self, timer::Timer, WAITING_FOREVER},
-    types::{Arc, IlistHead},
+    types::{Arc, ArcList, IlistHead},
 };
 use alloc::boxed::Box;
 use blueos_kconfig::NUM_CORES;
@@ -111,6 +110,20 @@ impl<'a> ContextSwitchHookHolder<'a> {
     }
 }
 
+fn prepare_signal_handling(t: &ThreadNode) {
+    // Save the context being restored first.
+    let mut l = t.lock();
+    if !l.activate_signal_context() {
+        return;
+    };
+    let ctx = l.saved_sp() as *mut arch::Context;
+    let ctx = unsafe { &mut *ctx };
+    // Update ctx so that signal context will be restored.
+    ctx.set_return_address(arch::switch_stack as usize)
+        .set_arg(0, l.signal_handler_sp())
+        .set_arg(1, signal::handler_entry as usize);
+}
+
 // Must use next's thread's stack or system stack to exeucte this function.
 // We assume this hook is invoked with local irq disabled.
 // FIXME: rustc miscompiles it if inlined.
@@ -153,6 +166,10 @@ pub(crate) extern "C" fn save_context_finish_hook(hook: Option<&mut ContextSwitc
         let cycles = time::get_sys_cycles();
         old.lock().increment_cycles(cycles);
         next.lock().set_start_cycles(cycles);
+
+        if next.has_pending_signals() {
+            prepare_signal_handling(&next);
+        }
     }
     compiler_fence(Ordering::SeqCst);
     if let Some(t) = ready_thread {
@@ -187,6 +204,14 @@ pub(crate) extern "C" fn save_context_finish_hook(hook: Option<&mut ContextSwitc
                 Entry::C(f) => f(),
                 Entry::Closure(f) => f(),
                 Entry::Posix(f, arg) => f(arg),
+                _ => {
+                    #[cfg(debugging_scheduler)]
+                    crate::trace!(
+                        "Thread 0x{:x} is not an os2 thread, but into retired status, it's fault: {:?}",
+                        Thread::id(&t),
+                        entry
+                    );
+                }
             }
         };
         GlobalQueueVisitor::remove(&mut t);
@@ -194,6 +219,12 @@ pub(crate) extern "C" fn save_context_finish_hook(hook: Option<&mut ContextSwitc
         assert!(ok);
         if ThreadNode::strong_count(&t) != 1 {
             // TODO: Warn if there are still references to the thread.
+            #[cfg(debugging_scheduler)]
+            crate::trace!(
+                "Thread 0x{:x} has {} references when retiring",
+                Thread::id(&t),
+                ThreadNode::strong_count(&t)
+            );
         }
     }
 }

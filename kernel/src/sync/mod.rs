@@ -20,5 +20,7 @@ pub mod spinlock;
 pub use mutex::Mutex;
 pub use semaphore::Semaphore;
 pub use spinlock::{ISpinLock, SpinLock, SpinLockGuard};
+pub mod barrier;
+pub use barrier::ConstBarrier;
 #[cfg(event_flags)]
 pub mod event_flags;

@@ -29,13 +29,11 @@ use crate::{
 use alloc::boxed::Box;
 use core::{
     ptr::NonNull,
-    sync::atomic::{AtomicI32, AtomicUsize, Ordering},
+    sync::atomic::{AtomicI32, AtomicU32, AtomicUsize, Ordering},
 };
 
 mod builder;
-mod posix;
 pub use builder::*;
-use posix::*;
 
 pub type ThreadNode = Arc<Thread>;
 
@@ -46,6 +44,10 @@ pub enum Entry {
         *mut core::ffi::c_void,
     ),
     Closure(Box<dyn FnOnce()>),
+    CMSIS(
+        unsafe extern "C" fn(*mut core::ffi::c_void),
+        *mut core::ffi::c_void,
+    ),
 }
 
 impl core::fmt::Debug for Entry {
@@ -67,6 +69,12 @@ pub enum ThreadKind {
 #[derive(Debug, Copy, Clone)]
 #[repr(align(16))]
 pub struct AlignedStackStorage([u8; config::DEFAULT_STACK_SIZE]);
+
+impl AlignedStackStorage {
+    pub fn top(&mut self) -> *mut u8 {
+        unsafe { self.0.as_mut_ptr().add(config::DEFAULT_STACK_SIZE) }
+    }
+}
 
 #[derive(Debug)]
 pub enum Stack {
@@ -136,6 +144,15 @@ impl ThreadStats {
 
 pub(crate) type GlobalQueueListHead = UniqueListHead<Thread, OffsetOfGlobal, GlobalQueue>;
 
+#[derive(Debug)]
+pub(crate) struct SignalContext {
+    active: bool,
+    handler_stack: AlignedStackStorage,
+    // Will recover thread_context at recover_sp on exiting of signal handler.
+    recover_sp: usize,
+    thread_context: arch::Context,
+}
+
 #[derive(Default, Debug)]
 pub struct Thread {
     global: GlobalQueueListHead,
@@ -156,16 +173,20 @@ pub struct Thread {
     // fields this lock is protecting. lock is protecting the
     // whole struct except those atomic fields.
     lock: ISpinLock<Thread, OffsetOfLock>,
-    posix_compat: Option<PosixCompat>,
     stats: ThreadStats,
     #[cfg(event_flags)]
     event_flags_mode: EventFlagsMode,
     #[cfg(event_flags)]
     event_flags_mask: u32,
+    // An opaque pointer used by C extensions. Must be noted, these C extensions
+    // are aware of kernel's APIs, while POSIX are not. So librs' POSIX
+    // implementation should not rely on this field.
     alien_ptr: Option<NonNull<core::ffi::c_void>>,
     origin_priority: ThreadPriority,
     pub pend_mutex: Option<Arc<Mutex>>,
     pub mutex_list: ArcList<Mutex, OffsetOfMutexNode>,
+    pending_signals: AtomicU32,
+    signal_context: Option<Box<SignalContext>>,
 }
 
 extern "C" fn run_simple_c(f: extern "C" fn()) {
@@ -175,6 +196,14 @@ extern "C" fn run_simple_c(f: extern "C" fn()) {
 
 extern "C" fn run_posix(f: extern "C" fn(*mut core::ffi::c_void), arg: *mut core::ffi::c_void) {
     f(arg);
+    scheduler::retire_me();
+}
+
+extern "C" fn run_cmsis(
+    f: unsafe extern "C" fn(*mut core::ffi::c_void),
+    arg: *mut core::ffi::c_void,
+) {
+    unsafe { f(arg) };
     scheduler::retire_me();
 }
 
@@ -329,7 +358,6 @@ impl Thread {
             saved_sp: 0,
             priority: 0,
             preempt_count: AtomicUint::new(0),
-            posix_compat: None,
             stats: ThreadStats::new(),
             timer: None,
             #[cfg(robin_scheduler)]
@@ -343,6 +371,8 @@ impl Thread {
             origin_priority: 0,
             pend_mutex: None,
             mutex_list: ArcList::<Mutex, OffsetOfMutexNode>::new(),
+            pending_signals: AtomicU32::new(0),
+            signal_context: None,
         }
     }
 
@@ -383,6 +413,54 @@ impl Thread {
         self
     }
 
+    #[inline]
+    fn get_or_create_signal_context(&mut self) -> &mut SignalContext {
+        match self.signal_context {
+            Some(ref mut ctx) => ctx,
+            _ => {
+                let mut ctx: Box<SignalContext> = unsafe { Box::new_uninit().assume_init() };
+                ctx.active = false;
+                self.signal_context = Some(ctx);
+                unsafe { self.signal_context.as_mut().unwrap_unchecked() }
+            }
+        }
+    }
+
+    pub(crate) fn kill(&self, signum: i32) {
+        self.pending_signals
+            .fetch_or(1 << signum, Ordering::Release);
+    }
+
+    pub(crate) fn activate_signal_context(&mut self) -> bool {
+        let saved_sp = self.saved_sp();
+        let sig_ctx = self.get_or_create_signal_context();
+        // Nested signal handling is not supported.
+        if sig_ctx.active {
+            return false;
+        }
+        // Save the context being restored first.
+        sig_ctx.recover_sp = saved_sp;
+        let ctx = saved_sp as *const arch::Context;
+        unsafe { core::ptr::copy(ctx, &mut sig_ctx.thread_context as *mut _, 1) };
+        sig_ctx.active = true;
+        true
+    }
+
+    pub(crate) fn deactivate_signal_context(&mut self) {
+        let sig_ctx = self.get_or_create_signal_context();
+        debug_assert!(sig_ctx.active);
+        let saved_sp = sig_ctx.recover_sp;
+        let ctx = saved_sp as *mut arch::Context;
+        unsafe { core::ptr::copy(&sig_ctx.thread_context as *const _, ctx, 1) };
+        sig_ctx.active = false;
+        self.saved_sp = saved_sp;
+    }
+
+    pub(crate) fn signal_handler_sp(&mut self) -> usize {
+        let sig_ctx = self.get_or_create_signal_context();
+        sig_ctx.handler_stack.top() as usize
+    }
+
     pub(crate) fn init(&mut self, stack: Stack, entry: Entry) -> &mut Self {
         self.stack = stack;
         // TODO: Stack sanity check.
@@ -419,6 +497,10 @@ impl Thread {
             }
             Entry::Posix(f, arg) => ctx
                 .set_return_address(run_posix as usize)
+                .set_arg(0, unsafe { f as usize })
+                .set_arg(1, unsafe { arg as usize }),
+            Entry::CMSIS(f, arg) => ctx
+                .set_return_address(run_cmsis as usize)
                 .set_arg(0, unsafe { f as usize })
                 .set_arg(1, unsafe { arg as usize }),
         };
@@ -516,6 +598,29 @@ impl Thread {
     pub fn set_origin_priority(&mut self, p: ThreadPriority) {
         self.origin_priority = p;
         self.priority = p;
+    }
+
+    #[inline]
+    pub fn pending_signals(&self) -> u32 {
+        self.pending_signals.load(Ordering::Acquire)
+    }
+
+    #[inline]
+    pub fn has_pending_signals(&self) -> bool {
+        self.pending_signals.load(Ordering::Acquire) != 0
+    }
+
+    #[inline]
+    pub fn clear_signal(&self, signum: i32) -> &Self {
+        self.pending_signals
+            .fetch_and(!(1 << signum), Ordering::Release);
+        self
+    }
+
+    #[inline]
+    pub fn clear_all_signals(&self) -> &Self {
+        self.pending_signals.store(0, Ordering::Release);
+        self
     }
 }
 
