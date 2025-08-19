@@ -473,27 +473,26 @@ mod tests {
     // Should not hang.
     #[test]
     fn test_simple_signal() {
-        let b = Arc::new(ConstBarrier::<{ 2 }>::new());
         let a = Arc::new(ConstBarrier::<{ 2 }>::new());
-        let b_cloned = b.clone();
         let a_cloned = a.clone();
+        let b = Arc::new(AtomicUsize::new(0));
+        let b_cloned = b.clone();
         let t = crate::thread::spawn(move || {
-            b.wait();
             a.wait();
+            sync::atomic_wait::atomic_wait(&b, 0, None);
         })
         .unwrap();
-        b_cloned.wait();
+        // Send SIGTERM after t enters its entry function.
+        a_cloned.wait();
         t.kill(libc::SIGTERM as i32);
-        loop {
-            if t.state() == thread::SUSPENDED {
-                a_cloned.wait();
-                continue;
-            }
-            if t.state() == thread::RETIRED {
-                break;
-            }
-            core::hint::spin_loop();
-        }
+        // At this point, t is either
+        // 0: waking up from a or
+        // 1: is suspended on b.
+        // We solve both cases by invoking yield_me and atomic_wake, which
+        // should not hang.
+        b_cloned.store(1, Ordering::Release);
+        sync::atomic_wait::atomic_wake(&b_cloned, 1);
+        scheduler::yield_me();
     }
 
     async fn foo(i: usize) -> usize {
