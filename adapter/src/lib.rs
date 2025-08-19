@@ -18,6 +18,8 @@
 #![cfg_attr(test, test_runner(tests::adapter_test_runner))]
 #![cfg_attr(test, reexport_test_harness_main = "adapter_test_main")]
 #![cfg_attr(test, no_main)]
+#![feature(const_trait_impl)]
+#![feature(negative_impls)]
 
 extern crate alloc;
 pub mod cmsis;

@@ -20,6 +20,7 @@ adapter_deps = [
   "cmsis_header:cmsis_os",
   "cmsis_header:cmsis_os2",
   "//external/log/v0.4.22:log",
+  "//kernel/infra:blueos_infra",
   "//kernel/kconfig:blueos_kconfig",
   "//kernel/kernel:blueos",
 ]

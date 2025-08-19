@@ -20,7 +20,7 @@ bindgen("cmsis_os2_header") {
     "--ctypes-prefix",
     "core::ffi",
   ]
-  sources = [ "RTOS2/wapper.h" ]
+  sources = [ "RTOS2/wrapper.h" ]
   inputs = [
     "RTOS2/cmsis_os2.h",
     "RTOS2/os_tick.h",
