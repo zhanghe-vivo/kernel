@@ -12,26 +12,61 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::{common_objects::OsEventFlags, rt_def::*};
+use crate::rt_def::*;
 use blueos::{
+    error::Error,
+    static_assert,
     sync::event_flags::{EventFlags, EventFlagsMode},
     time,
-    types::{Arc, ArcInner},
+    types::{Arc, ArcInner, Uint},
 };
 use core::{
     ffi::{c_char, c_void},
-    mem::ManuallyDrop,
+    mem::{self, ManuallyDrop},
     ptr,
 };
+use delegate::delegate;
 
 extern "C" {
     fn rt_object_init(obj: *mut rt_object, type_: rt_uint8_t, name: *const c_char) -> rt_err_t;
     fn rt_object_detach(obj: *mut rt_object) -> rt_err_t;
 }
 
+#[derive(Debug)]
+#[repr(C)]
+struct OsEventFlags {
+    pub obj: rt_object,
+    pub inner: Arc<EventFlags>,
+}
+
+impl OsEventFlags {
+    pub fn new(inner: Arc<EventFlags>) -> Self {
+        Self {
+            obj: rt_object::default(),
+            inner,
+        }
+    }
+
+    delegate! {
+        to self.inner {
+            pub fn init(&self, flags: u32) -> bool;
+            pub fn get(&self) -> u32;
+            pub fn set(&self, flags: u32) -> Result<u32, Error>;
+            pub fn clear(&self, flags: u32) -> u32;
+            pub fn wait(&self, flags: u32, mode: EventFlagsMode, timeout: usize) -> Result<u32, Error>;
+            pub fn reset(&self);
+        }
+    }
+}
+
+// layout is same as ArcInner<OsEventFlags>
 #[allow(non_camel_case_types)]
-#[repr(transparent)]
-pub struct rt_event(ArcInner<OsEventFlags>);
+#[repr(C)]
+pub struct rt_event {
+    data: OsEventFlags,
+    rc: Uint,
+}
+static_assert!(mem::size_of::<rt_event>() == mem::size_of::<ArcInner<OsEventFlags>>());
 
 // rt_err_t rt_event_init(rt_event_t event, const char *name, rt_uint8_t flag)
 #[no_mangle]
@@ -181,6 +216,7 @@ pub extern "C" fn rt_event_control(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::object_name_to_string;
     use blueos_test_macro::test;
     extern crate alloc;
     use alloc::ffi::CString;
@@ -195,8 +231,8 @@ mod tests {
         assert_eq!(result, RT_EOK as rt_err_t);
 
         let mut event = unsafe { raw_event.assume_init() };
-        let os_event = unsafe { Arc::from_raw(&event.0 as *const _ as *mut OsEventFlags) };
-        assert_eq!(os_event.name(), "evt");
+        let os_event = unsafe { Arc::from_raw(&event.data as *const _ as *mut OsEventFlags) };
+        assert_eq!(object_name_to_string(&event.data.obj), "evt");
         let result = rt_event_detach(Arc::into_raw(os_event) as *mut rt_event);
         assert_eq!(result, RT_EOK as rt_err_t);
         // memory will drop by event.
@@ -207,7 +243,6 @@ mod tests {
         // Test successful creation
         let name = CString::new("evt").unwrap();
         let event = rt_event_create(name.as_ptr(), 2);
-
         assert!(!event.is_null());
 
         // Clean up

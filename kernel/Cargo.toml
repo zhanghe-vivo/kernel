@@ -1,5 +1,5 @@
 [package]
-name = "blueos-kernel"
+name = "blueos"
 version = "0.8.0"
 edition = "2021"
 authors = ["BlueOS Team"]
@@ -8,3 +8,6 @@ license = "Apache-2.0"
 
 [lib]
 path = "src/lib.rs"
+
+[dependencies]
+blueos_infra = { path = "../infra" }

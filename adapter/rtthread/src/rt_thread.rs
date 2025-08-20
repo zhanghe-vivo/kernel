@@ -14,23 +14,40 @@
 #![allow(non_upper_case_globals)]
 
 extern crate alloc;
-use crate::{os_adapter, rt_def::*};
+use crate::rt_def::*;
 use blueos::{
-    scheduler,
+    scheduler, static_assert,
     thread::Thread,
-    types::{Arc, ArcInner},
+    types::{Arc, ArcInner, Uint},
 };
-use core::{ffi::c_void, ptr::NonNull};
+use core::{ffi::c_void, mem, ptr::NonNull};
 
-os_adapter! {
-    "th" => OsThread: Thread {
-        errno: rt_err_t,
+#[derive(Debug)]
+#[repr(C)]
+pub struct OsThread {
+    pub obj: rt_object,
+    pub inner: Arc<Thread>,
+    pub errno: rt_err_t,
+}
+
+impl OsThread {
+    pub fn new(inner: Arc<Thread>) -> Self {
+        Self {
+            obj: rt_object::default(),
+            inner,
+            errno: 0,
+        }
     }
 }
 
 #[allow(non_camel_case_types)]
-#[repr(transparent)]
-pub struct rt_thread(ArcInner<OsThread>);
+#[repr(C)]
+pub struct rt_thread {
+    data: OsThread,
+    rc: Uint,
+}
+
+static_assert!(mem::size_of::<rt_thread>() == mem::size_of::<ArcInner<OsThread>>());
 
 // rt_thread_t rt_thread_self(void);
 #[no_mangle]
@@ -40,7 +57,7 @@ pub extern "C" fn rt_thread_self() -> *mut OsThread {
         alien_ptr.as_ptr() as *mut OsThread
     } else {
         // need to free when thread is retired
-        let os_thread = Arc::new(OsThread::new(thread.clone(), 0));
+        let os_thread = Arc::new(OsThread::new(thread.clone()));
         let res = Arc::into_raw(os_thread) as *mut rt_thread;
         thread
             .lock()

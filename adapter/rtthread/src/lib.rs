@@ -20,14 +20,38 @@
 #![cfg_attr(test, reexport_test_harness_main = "adapter_test_main")]
 #![cfg_attr(test, no_main)]
 
-pub(crate) mod bridge_utils;
-pub(crate) mod common_objects;
 pub(crate) mod rt_def;
 #[cfg(event_flags)]
 pub mod rt_event;
 pub mod rt_hw;
 pub mod rt_memory;
 pub mod rt_thread;
+
+extern crate alloc;
+use crate::rt_def::*;
+use alloc::string::ToString;
+use core::ffi::{c_char, c_void};
+
+pub(crate) fn object_name_to_string(obj: *const rt_object) -> alloc::string::String {
+    extern "C" {
+        fn rt_object_get_name(
+            obj: *const rt_object,
+            name: *mut core::ffi::c_char,
+            len: rt_uint8_t,
+        ) -> rt_err_t;
+    }
+    let mut name = [0; RT_NAME_MAX as usize];
+    unsafe {
+        rt_object_get_name(
+            obj,
+            name.as_mut_ptr() as *mut core::ffi::c_char,
+            RT_NAME_MAX as rt_uint8_t,
+        );
+        core::ffi::CStr::from_ptr(name.as_ptr() as *const core::ffi::c_char)
+            .to_string_lossy()
+            .to_string()
+    }
+}
 
 #[cfg(test)]
 mod tests {

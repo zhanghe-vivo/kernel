@@ -1,5 +1,5 @@
 [package]
-name = "infra"
+name = "blueos_infra"
 version = "0.8.0"
 edition = "2021"
 authors = ["BlueOS Team"]
