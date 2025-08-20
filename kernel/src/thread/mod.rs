@@ -608,6 +608,12 @@ impl Thread {
     }
 
     #[inline]
+    pub fn reset_alien_ptr(&mut self) -> &mut Self {
+        self.alien_ptr = None;
+        self
+    }
+
+    #[inline]
     pub fn get_alien_ptr(&self) -> Option<NonNull<core::ffi::c_void>> {
         self.alien_ptr
     }

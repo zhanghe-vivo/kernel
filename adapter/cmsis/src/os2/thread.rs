@@ -317,9 +317,10 @@ fn exit_os2_thread(t: &mut Os2Thread) {
     let detached = t.detached.swap(-1, Ordering::SeqCst);
     if detached == 0 {
         t.joint.wait();
-    } else {
+    } else if detached == 1 {
         drop_os2_thread(t);
     }
+    scheduler::current_thread().lock().reset_alien_ptr();
 }
 
 // See https://arm-software.github.io/CMSIS_6/main/RTOS2/group__CMSIS__RTOS__ThreadMgmt.html#gaddaa452dd7610e4096647a566d3556fc
