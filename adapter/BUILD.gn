@@ -22,4 +22,7 @@ group("check_adapter") {
   if (use_cmsis_adapter) {
     deps += [ "cmsis:run_cmsis_unittest($libc_toolchain)" ]
   }
+  if (use_rtthread_adapter) {
+    deps += [ "rtthread:run_rtthread_unittest($libc_toolchain)" ]
+  }
 }

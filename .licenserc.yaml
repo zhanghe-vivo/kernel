@@ -71,6 +71,8 @@ header: # `header` section is configurations for source codes license header.
       - "**/*.lds"
       - "**/lib64"
       - "adapter/cmsis/cmsis_header/**/*.h" # CMSIS header files from third party
+      - "adapter/rtthread/rtthread_header/**/*.h"
+      - "adapter/rtthread/rtthread_header/**/*.c"
 
     comment: on-failure # on what condition license-eye will comment on the pull request, `on-failure`, `always`, `never`.
 

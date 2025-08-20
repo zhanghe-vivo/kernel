@@ -1,0 +1,10 @@
+[package]
+name = "rtthread-adapter"
+version = "0.8.0"
+edition = "2021"
+authors = ["BlueOS Team"]
+description = "Rtthread adapter layer for BlueOS Kernel"
+license = "Apache-2.0"
+
+[lib]
+path = "src/lib.rs"
