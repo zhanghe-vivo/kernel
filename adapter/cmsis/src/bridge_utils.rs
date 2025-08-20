@@ -32,12 +32,14 @@ pub fn c_name_to_bytes<const LEN: usize>(name_ptr: *const core::ffi::c_char) -> 
 /// This macro creates new types that wrap Arc<T> with an additional name field and custom fields
 #[macro_export]
 macro_rules! os_adapter {
-    // Basic version without additional fields
-    ($($name:ident: $inner_type:ty),* $(,)?) => {
+    // Basic version with required name prefix (no additional fields)
+    // Syntax: (prefix1 "name1" -> type1: inner_type1, prefix2 "name2" -> type2: inner_type2, ...)
+    ($($prefix:expr => $name:ident: $inner_type:ty),* $(,)?) => {
         $(
             #[allow(non_upper_case_globals)]
             static $name: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::new(1);
 
+            #[repr(C)]
             #[derive(Debug)]
             pub struct $name {
                 pub inner: Arc<$inner_type>,
@@ -53,7 +55,7 @@ macro_rules! os_adapter {
                 /// Create a new adapter with a default name plus counter
                 pub fn with_default_name(inner: Arc<$inner_type>) -> Self {
                     let mut name = [0u8; $crate::MAX_NAME_LEN];
-                    let name_str = stringify!($name);
+                    let name_str = $prefix;
                     let counter = $name.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
                     let name_with_counter = alloc::format!("{}{}", name_str, counter);
                     let bytes = name_with_counter.as_bytes();
@@ -64,6 +66,9 @@ macro_rules! os_adapter {
 
                 /// Create a new adapter with a custom name from C string
                 pub fn with_name(inner: Arc<$inner_type>, name_ptr: *const core::ffi::c_char) -> Self {
+                    if name_ptr.is_null() {
+                        return Self::with_default_name(inner);
+                    }
                     let name = $crate::bridge_utils::c_name_to_bytes::<{ $crate::MAX_NAME_LEN }>(name_ptr);
                     Self { inner, name }
                 }
@@ -110,10 +115,11 @@ macro_rules! os_adapter {
     };
 
     // Extended version with additional fields
-    ($name:ident: $inner_type:ty { $($field:ident: $field_type:ty),* $(,)? }) => {
+    ($prefix:expr => $name:ident: $inner_type:ty { $($field:ident: $field_type:ty),* $(,)? }) => {
         #[allow(non_upper_case_globals)]
         static $name: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::new(1);
 
+        #[repr(C)]
         #[derive(Debug)]
         pub struct $name {
             pub inner: $crate::Arc<$inner_type>,
@@ -137,7 +143,7 @@ macro_rules! os_adapter {
             /// Create a new adapter with a default name plus counter and additional fields
             pub fn with_default_name(inner: $crate::Arc<$inner_type>) -> Self {
                 let mut name = [0u8; $crate::MAX_NAME_LEN];
-                let name_str = stringify!($name);
+                let name_str = $prefix;
                 let counter = $name.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
                 let name_with_counter = alloc::format!("{}{}", name_str, counter);
                 let bytes = name_with_counter.as_bytes();
@@ -151,7 +157,10 @@ macro_rules! os_adapter {
             }
 
             /// Create a new adapter with a custom name from C string and additional fields
-            pub fn with_name(inner: $crate::Arc<$inner_type>, name_ptr: *const core::ffi::c_char) -> Self {
+            pub fn with_name(inner: Arc<$inner_type>, name_ptr: *const core::ffi::c_char) -> Self {
+                if name_ptr.is_null() {
+                    return Self::with_default_name(inner);
+                }
                 let name = $crate::bridge_utils::c_name_to_bytes::<{ $crate::MAX_NAME_LEN }>(name_ptr);
                 Self {
                     inner,

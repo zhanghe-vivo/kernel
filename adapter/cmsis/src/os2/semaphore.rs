@@ -15,7 +15,7 @@
 use crate::common_objects::OsSemaphore;
 use blueos::{
     sync::semaphore::Semaphore,
-    types::{Arc, ArcInner, Int},
+    types::{Arc, ArcInner, Uint},
 };
 use cmsis_os2::*;
 use core::{mem, ptr};
@@ -35,16 +35,17 @@ pub extern "C" fn osSemaphoreNew(
     attr: *const osSemaphoreAttr_t,
 ) -> osSemaphoreId_t {
     // Note: only support 32-bit target temporarily
-    if initial_count > Int::MAX as u32 || initial_count > max_count {
+    if initial_count > Uint::MAX as u32 || initial_count > max_count {
         return ptr::null_mut();
     }
 
-    let semaphore = Arc::new(Semaphore::new(initial_count as Int));
+    let semaphore = Arc::new(Semaphore::new(initial_count as Uint));
     semaphore.init();
 
     if attr.is_null() {
         // Use default values when attr is NULL
         let os_sem = Arc::new(OsSemaphore::with_default_name(semaphore));
+        os_sem.init();
         return Arc::into_raw(os_sem) as osSemaphoreId_t;
     }
 
@@ -57,6 +58,7 @@ pub extern "C" fn osSemaphoreNew(
         } else {
             Arc::new(OsSemaphore::with_name(semaphore, attr_ref.name))
         };
+        os_sem.init();
         return Arc::into_raw(os_sem) as osSemaphoreId_t;
     }
 
@@ -65,24 +67,17 @@ pub extern "C" fn osSemaphoreNew(
         return ptr::null_mut();
     }
 
-    // Use provided memory
-    if attr_ref.name.is_null() {
-        unsafe {
-            ptr::write(
-                attr_ref.cb_mem as *mut ArcInner<OsSemaphore>,
-                ArcInner::new(OsSemaphore::with_default_name(semaphore)),
-            )
-        }
-    } else {
-        unsafe {
-            ptr::write(
-                attr_ref.cb_mem as *mut ArcInner<OsSemaphore>,
-                ArcInner::new(OsSemaphore::with_name(semaphore, attr_ref.name)),
-            )
-        }
+    // Use provided memory;
+    unsafe {
+        ptr::write(
+            attr_ref.cb_mem as *mut ArcInner<OsSemaphore>,
+            ArcInner::const_new(OsSemaphore::with_name(semaphore, attr_ref.name)),
+        )
     };
-    (unsafe { Arc::into_raw(Arc::from_raw(attr_ref.cb_mem as *mut ArcInner<OsSemaphore>)) })
-        as osSemaphoreId_t
+    let os_sem = unsafe { Arc::from_raw(attr_ref.cb_mem as *mut _ as *mut OsSemaphore) };
+    os_sem.init();
+
+    (unsafe { Arc::into_raw(os_sem) }) as osSemaphoreId_t
 }
 
 // Get name of a Semaphore object.
@@ -144,12 +139,7 @@ pub extern "C" fn osSemaphoreGetCount(semaphore_id: osSemaphoreId_t) -> u32 {
 
     let semaphore = unsafe { &*(semaphore_id as *const OsSemaphore) };
 
-    let count = semaphore.count();
-    // Note: only support 32-bit target temporarily
-    if count < 0 {
-        return 0;
-    }
-    count as u32
+    semaphore.count() as u32
 }
 
 // Delete a Semaphore object.
@@ -183,7 +173,7 @@ mod tests {
     #[test]
     fn test_os_semaphore_new_with_name() {
         let attr = osSemaphoreAttr_t {
-            name: "test_sem01".as_ptr() as *const core::ffi::c_char,
+            name: "sem01".as_ptr() as *const core::ffi::c_char,
             attr_bits: 0,
             cb_mem: ptr::null_mut(),
             cb_size: 0,
@@ -194,7 +184,7 @@ mod tests {
             unsafe { CStr::from_ptr(osSemaphoreGetName(semaphore_id)) }
                 .to_str()
                 .unwrap(),
-            "test_sem01"
+            "sem01"
         );
         osSemaphoreDelete(semaphore_id);
     }
@@ -210,7 +200,7 @@ mod tests {
         };
         let semaphore_id = osSemaphoreNew(127, 10, &attr);
         assert!(!semaphore_id.is_null());
-        unsafe { dealloc(attr.cb_mem as *mut u8, layout) };
+        osSemaphoreDelete(semaphore_id);
     }
 
     #[test]

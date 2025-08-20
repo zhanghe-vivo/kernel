@@ -202,15 +202,6 @@ build_rust("blueos_posixtestsuite") {
   ]
 }
 
-cbindgen("rust_wrapper") {
-  sources = [ "cbindgen.toml" ]
-  args = [
-           "--quiet",
-           "-c",
-         ] + rebase_path([ "cbindgen.toml" ], root_build_dir) +
-         rebase_path([ "." ], root_build_dir)
-}
-
 gen_qemu_runner("integration_test_runner") {
   testonly = true
   semihosting = true

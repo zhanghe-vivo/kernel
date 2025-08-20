@@ -38,10 +38,9 @@ header: # `header` section is configurations for source codes license header.
     paths-ignore: # `paths-ignore` are the path list that will be ignored by license-eye.
       - "licenses"
       - "**/cov.rs"
-      - "**/Cargo.toml"
-      - "**/Cargo.lock"
+      - "**/*.toml"
+      - "**/*.lock"
       - "**/rust-toolchain.toml"
-      - "**/rustfmt.toml"
       - "**/TODO"
       - "backup/**"
       - "kconfig/**/defconfig"
@@ -53,7 +52,6 @@ header: # `header` section is configurations for source codes license header.
       - "kernel/src/sync/libatomic/**" # special process for kernel imported
       - "loader/tests/integration_test/src/test.rs"
       - "loader/tests/cov/lib.rs"
-      - "adapter/rt_thread/include/rt_thread_wrapper.inc"
       - "kernel/src/sync/futex.rs"
       - "scal/src/platform/**"
       - ".gitignore"
@@ -72,7 +70,7 @@ header: # `header` section is configurations for source codes license header.
       - ".licenserc.yaml"
       - "**/*.lds"
       - "**/lib64"
-      - "adapter/cmsis_header/**" # CMSIS header files from third party
+      - "adapter/cmsis/cmsis_header/**/*.h" # CMSIS header files from third party
 
     comment: on-failure # on what condition license-eye will comment on the pull request, `on-failure`, `always`, `never`.
 

@@ -40,11 +40,12 @@ fn os_event_flags_error(e: Error) -> u32 {
 #[no_mangle]
 pub extern "C" fn osEventFlagsNew(attr: *const osEventFlagsAttr_t) -> osEventFlagsId_t {
     let event_flags = Arc::new(EventFlags::const_new());
-    event_flags.init();
+    event_flags.init(0);
 
     if attr.is_null() {
         // Use default values when attr is NULL
         let os_event = Arc::new(OsEventFlags::with_default_name(event_flags));
+        os_event.init(0);
         return Arc::into_raw(os_event) as osEventFlagsId_t;
     }
 
@@ -56,6 +57,7 @@ pub extern "C" fn osEventFlagsNew(attr: *const osEventFlagsAttr_t) -> osEventFla
         } else {
             Arc::new(OsEventFlags::with_name(event_flags, attr_ref.name))
         };
+        os_event.init(0);
         return Arc::into_raw(os_event) as osEventFlagsId_t;
     }
 
@@ -64,27 +66,16 @@ pub extern "C" fn osEventFlagsNew(attr: *const osEventFlagsAttr_t) -> osEventFla
         return ptr::null_mut();
     }
 
-    // Use provided memory
-    if attr_ref.name.is_null() {
-        unsafe {
-            ptr::write(
-                attr_ref.cb_mem as *mut ArcInner<OsEventFlags>,
-                ArcInner::const_new(OsEventFlags::with_default_name(event_flags)),
-            )
-        }
-    } else {
-        unsafe {
-            ptr::write(
-                attr_ref.cb_mem as *mut ArcInner<OsEventFlags>,
-                ArcInner::const_new(OsEventFlags::with_name(event_flags, attr_ref.name)),
-            )
-        }
-    };
-    (unsafe {
-        Arc::into_raw(Arc::from_raw(
+    // Use provided memory;
+    unsafe {
+        ptr::write(
             attr_ref.cb_mem as *mut ArcInner<OsEventFlags>,
-        ))
-    }) as osEventFlagsId_t
+            ArcInner::const_new(OsEventFlags::with_name(event_flags, attr_ref.name)),
+        )
+    };
+    let os_event = unsafe { Arc::from_raw(attr_ref.cb_mem as *mut _ as *mut OsEventFlags) };
+    os_event.init(0);
+    Arc::into_raw(os_event) as osEventFlagsId_t
 }
 
 // Get name of an Event Flags object.
@@ -227,7 +218,7 @@ mod tests {
         };
         let ef_id = osEventFlagsNew(&attr);
         assert!(!ef_id.is_null());
-        unsafe { dealloc(attr.cb_mem as *mut u8, layout) };
+        osEventFlagsDelete(ef_id);
     }
 
     #[test]

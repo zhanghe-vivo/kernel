@@ -56,6 +56,11 @@ pub fn is_in_irq() -> bool {
     unsafe { IRQ_NESTING_COUNT[arch::current_cpu_id()] != 0 }
 }
 
+pub fn irq_nesting_count() -> usize {
+    let _dig = DisableInterruptGuard::new();
+    (unsafe { IRQ_NESTING_COUNT[arch::current_cpu_id()] }) as usize
+}
+
 #[inline]
 unsafe fn increment_nesting_count() -> usize {
     let id = arch::current_cpu_id();

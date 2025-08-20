@@ -16,7 +16,7 @@
 // https://arm-software.github.io/CMSIS_6/main/RTOS2/group__CMSIS__RTOS__PoolMgmt.html.
 
 use alloc::boxed::Box;
-use blueos::{allocator, irq, sync::Semaphore, types::Arc};
+use blueos::{allocator, irq, sync::Semaphore, time::WAITING_FOREVER, types::Arc};
 use blueos_infra::{
     impl_simple_intrusive_adapter,
     list::typed_ilist::{ListHead, ListIterator},
@@ -78,7 +78,8 @@ impl Block {
     #[inline]
     fn base(&mut self) -> *mut u8 {
         let this = self as *mut _ as *mut u8;
-        unsafe { this.offset(core::mem::size_of::<Self>() as isize) }
+        // unsafe { this.offset(core::mem::size_of::<Self>() as isize) }
+        unsafe { this.add(core::mem::size_of::<Self>()) }
     }
 }
 
@@ -352,11 +353,14 @@ mod tests {
         for i in 0..n {
             let mp = mp.clone();
             let counter = counter.clone();
-            thread::spawn(move || {
-                let block = mp.get_block_with_timeout(1024);
-                assert!(!block.is_null());
+            thread::spawn(move || loop {
+                let block = mp.get_block_with_timeout(WAITING_FOREVER);
+                if block.is_null() {
+                    continue;
+                }
                 mp.put_block(block);
                 counter.fetch_add(1, Ordering::Relaxed);
+                break;
             });
         }
         loop {

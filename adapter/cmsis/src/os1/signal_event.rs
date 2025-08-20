@@ -128,7 +128,7 @@ mod tests {
     fn create_test_thread(entry: Entry) -> *mut OsThread {
         let thread = Builder::new(entry).start();
         let os_thread = Box::new(OsThread::with_default_name(thread.clone()));
-        os_thread.init_event_flags();
+        os_thread.init_event_flags(0);
         let ptr = Box::into_raw(os_thread);
         // Store the OsThread in the thread's alien pointer
         thread

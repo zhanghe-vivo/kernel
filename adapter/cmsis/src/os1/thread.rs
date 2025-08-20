@@ -21,14 +21,14 @@ use blueos::{
 };
 
 os_adapter! {
-    OsThread: Thread {
+    "th" => OsThread: Thread {
         event_flags: EventFlags,
     }
 }
 
 impl OsThread {
-    pub fn init_event_flags(&self) {
-        self.event_flags.init();
+    pub fn init_event_flags(&self, flags: u32) {
+        self.event_flags.init(flags);
     }
 
     pub fn set_event_flags(&self, flags: u32) -> Result<u32, Error> {

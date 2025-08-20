@@ -14,7 +14,7 @@
 
 use blueos::{
     sync::semaphore::Semaphore,
-    types::{Arc, Int},
+    types::{Arc, Int, Uint},
 };
 use cmsis_os::*;
 
@@ -34,7 +34,7 @@ pub extern "C" fn osSemaphoreCreate(
         return core::ptr::null_mut();
     }
 
-    let semaphore = Arc::new(Semaphore::new(count as Int));
+    let semaphore = Arc::new(Semaphore::new(count as Uint));
     semaphore.init();
     let semaphore_raw = Arc::into_raw(semaphore);
     semaphore_raw as osSemaphoreId
@@ -47,12 +47,7 @@ fn __osSemaphoreGetCount(semaphore_id: osSemaphoreId) -> i32 {
     }
     let semaphore = unsafe { &*(semaphore_id as *const Semaphore) };
 
-    let count = semaphore.count();
-    // Note: only support 32-bit target temporarily
-    if count < 0 {
-        return 0;
-    }
-    count as i32
+    semaphore.count() as i32
 }
 
 // Wait until a Semaphore token becomes available.

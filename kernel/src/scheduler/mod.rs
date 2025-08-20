@@ -439,8 +439,9 @@ pub(crate) fn suspend_me_with_timeout(
                 "Add thread 0x{:x} to ready queue after timeout",
                 Thread::id(&th)
             );
-            let _ = queue_ready_thread(thread::SUSPENDED, th.clone());
+            // thread may start to run by another core, so we need set timeout first.
             timeout.store(true, Ordering::SeqCst);
+            let _ = queue_ready_thread(thread::SUSPENDED, th.clone());
         });
         let hook = Box::new(move || {
             match &old.timer {

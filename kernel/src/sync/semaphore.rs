@@ -19,19 +19,19 @@ use crate::{
     thread,
     thread::Thread,
     time::WAITING_FOREVER,
-    types::Int,
+    types::Uint,
 };
 use core::cell::Cell;
 
 #[derive(Debug)]
 pub struct Semaphore {
-    counter: Cell<Int>,
+    counter: Cell<Uint>,
     // We let the Spinlock protect the whole semaphore.
     pending: SpinLock<WaitQueue>,
 }
 
 impl Semaphore {
-    pub const fn const_new(counter: Int) -> Self {
+    pub const fn const_new(counter: Uint) -> Self {
         debug_assert!(counter >= 1, "Init resources should not be zero");
         Self {
             counter: Cell::new(counter),
@@ -39,7 +39,7 @@ impl Semaphore {
         }
     }
 
-    pub const fn new(counter: Int) -> Self {
+    pub const fn new(counter: Uint) -> Self {
         Self::const_new(counter)
     }
 
@@ -47,14 +47,14 @@ impl Semaphore {
         self.pending.irqsave_lock().init()
     }
 
-    pub fn count(&self) -> Int {
+    pub fn count(&self) -> Uint {
         self.counter.get()
     }
 
     pub fn try_acquire(&self) -> bool {
         let w = self.pending.irqsave_lock();
         let old = self.counter.get();
-        if old <= 0 {
+        if old == 0 {
             return false;
         }
         self.counter.set(old - 1);

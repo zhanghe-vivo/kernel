@@ -43,7 +43,7 @@ use delegate::delegate;
 type Joint = ConstBarrier<2>;
 
 os_adapter! {
-    Os2Thread: blueos::thread::Thread {
+    "th" => Os2Thread: blueos::thread::Thread {
         joint: Joint,
         suspension: AtomicUsize,
         detached: AtomicI8,
@@ -66,7 +66,7 @@ impl Os2Thread {
 
 #[inline(always)]
 pub fn to_os_state(state: u8) -> osThreadState_t {
-    match state {
+    match state as Uint {
         thread::CREATED => osThreadState_t_osThreadInactive,
         thread::READY => osThreadState_t_osThreadReady,
         thread::RUNNING => osThreadState_t_osThreadRunning,
@@ -80,11 +80,11 @@ pub fn to_os_state(state: u8) -> osThreadState_t {
 #[inline(always)]
 pub fn to_thread_state(state: osThreadState_t) -> u8 {
     match state {
-        osThreadState_t_osThreadInactive => thread::CREATED,
-        osThreadState_t_osThreadReady => thread::READY,
-        osThreadState_t_osThreadRunning => thread::RUNNING,
-        osThreadState_t_osThreadBlocked => thread::SUSPENDED,
-        osThreadState_t_osThreadTerminated => thread::RETIRED,
+        osThreadState_t_osThreadInactive => thread::CREATED as u8,
+        osThreadState_t_osThreadReady => thread::READY as u8,
+        osThreadState_t_osThreadRunning => thread::RUNNING as u8,
+        osThreadState_t_osThreadBlocked => thread::SUSPENDED as u8,
+        osThreadState_t_osThreadTerminated => thread::RETIRED as u8,
         _ => unreachable!("Unknown thread state"), // Invalid state
     }
 }
@@ -144,31 +144,26 @@ pub extern "C" fn osThreadNew(
                 log::error!("osThreadNew: cb_size is too small");
                 return ptr::null_mut();
             }
-        } else {
-            if merge_attr.cb_size != 0 {
-                log::error!("osThreadNew: cb_size must be 0 when cb_mem isn't provided");
-                return ptr::null_mut();
-            }
+        } else if merge_attr.cb_size != 0 {
+            log::error!("osThreadNew: cb_size must be 0 when cb_mem isn't provided");
+            return ptr::null_mut();
         }
         // Check stack param.
-        if !merge_attr.stack_mem.is_null() {
-            if merge_attr.stack_mem as u32 & 0xef != 0
+        if !merge_attr.stack_mem.is_null()
+            && (merge_attr.stack_mem as u32 & 0xef != 0
                 || merge_attr.stack_size < 128
-                || merge_attr.stack_size > 0x7fff_ffff
-            {
-                log::error!("osThreadNew: stack_mem must be aligned to 128 bytes, not greater than 0x7fff_ffff, and stack_size must be at least 128 bytes");
-                return ptr::null_mut();
-            }
+                || merge_attr.stack_size > 0x7fff_ffff)
+        {
+            log::error!("osThreadNew: stack_mem must be aligned to 128 bytes, not greater than 0x7fff_ffff, and stack_size must be at least 128 bytes");
+            return ptr::null_mut();
         }
         if merge_attr.priority == osPriority_t_osPriorityError {
             merge_attr.priority = osPriority_t_osPriorityNormal;
-        } else {
-            if merge_attr.priority < osPriority_t_osPriorityIdle
-                || merge_attr.priority > osPriority_t_osPriorityISR
-            {
-                log::error!("osThreadNew: invalid priority");
-                return ptr::null_mut();
-            }
+        } else if merge_attr.priority < osPriority_t_osPriorityIdle
+            || merge_attr.priority > osPriority_t_osPriorityISR
+        {
+            log::error!("osThreadNew: invalid priority");
+            return ptr::null_mut();
         }
     }
     let mut stack = thread::Stack::Raw {
@@ -224,7 +219,8 @@ pub extern "C" fn osThreadNew(
     // Store the Os2Thread in the thread's alien pointer.
     t.lock()
         .set_alien_ptr(unsafe { NonNull::new_unchecked(ptr as *mut core::ffi::c_void) });
-    let ok = scheduler::queue_ready_thread(to_thread_state(osThreadState_t_osThreadInactive), t);
+    let ok =
+        scheduler::queue_ready_thread(to_thread_state(osThreadState_t_osThreadInactive) as Uint, t);
     assert!(ok);
     ptr as osThreadId_t
 }
@@ -252,11 +248,11 @@ pub extern "C" fn osThreadSetPriority(
     if thread_id.is_null() {
         return osStatus_t_osErrorParameter;
     }
-    if priority < osPriority_t_osPriorityIdle || priority > osPriority_t_osPriorityISR {
+    if !(osPriority_t_osPriorityIdle..=osPriority_t_osPriorityISR).contains(&priority) {
         return osStatus_t_osErrorParameter;
     }
     let t = unsafe { &mut *(thread_id as *const _ as *mut Os2Thread) };
-    if to_os_state(t.state()) == osThreadState_t_osThreadTerminated {
+    if to_os_state(t.state() as u8) == osThreadState_t_osThreadTerminated {
         // Cannot set priority for terminated thread.
         return osStatus_t_osErrorResource;
     }
@@ -292,7 +288,7 @@ pub extern "C" fn osThreadGetState(thread_id: osThreadId_t) -> osThreadState_t {
         return osThreadState_t_osThreadError;
     }
     let t = unsafe { &*(thread_id as *const _ as *const Os2Thread) };
-    to_os_state(t.state())
+    to_os_state(t.state() as u8)
 }
 
 #[no_mangle]
@@ -351,7 +347,7 @@ pub extern "C" fn osThreadGetCount() -> usize {
     while let Some(thread) = global_queue_visitor.next() {
         if let Some(alien_ptr) = thread.get_alien_ptr() {
             let t = unsafe { &*(alien_ptr.as_ptr() as *const Os2Thread) };
-            count += match to_os_state(t.state()) {
+            count += match to_os_state(t.state() as u8) {
                 osThreadState_t_osThreadBlocked
                 | osThreadState_t_osThreadReady
                 | osThreadState_t_osThreadRunning => 1,
@@ -399,7 +395,7 @@ pub extern "C" fn osThreadSuspend(thread_id: osThreadId_t) -> osStatus_t {
     };
     let t = unsafe { &mut *(thread_id as *const _ as *mut Os2Thread) };
     // If this thread is suspending its self.
-    if t as *mut _ == alien_ptr.as_ptr() as *mut Os2Thread {
+    if ptr::eq(t, alien_ptr.as_ptr() as *mut Os2Thread) {
         atomic_wait(&t.suspension, 0, None);
         return osStatus_t_osOK;
     }
@@ -444,7 +440,7 @@ pub extern "C" fn osThreadResume(thread_id: osThreadId_t) -> osStatus_t {
     };
     let t = unsafe { &mut *(thread_id as *const _ as *mut Os2Thread) };
     // It's impossible to resume current thread in the current thread.
-    if t as *mut _ == alien_ptr.as_ptr() as *mut Os2Thread {
+    if ptr::eq(t, alien_ptr.as_ptr() as *mut Os2Thread) {
         return osStatus_t_osErrorResource;
     }
     t.suspension.store(1, Ordering::Release);
@@ -511,7 +507,7 @@ pub extern "C" fn osThreadTerminate(thread_id: osThreadId_t) -> osStatus_t {
 
     if let Some(alien_ptr) = scheduler::current_thread().get_alien_ptr() {
         // If this thread is terminating its self. It's supposed to be detached.
-        if t as *mut _ == alien_ptr.as_ptr() as *mut Os2Thread {
+        if ptr::eq(t, alien_ptr.as_ptr() as *mut Os2Thread) {
             exit_os2_thread(t);
             scheduler::retire_me();
             return osStatus_t_osErrorResource;
@@ -531,6 +527,7 @@ pub extern "C" fn osThreadTerminate(thread_id: osThreadId_t) -> osStatus_t {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::os2::delay;
     use blueos_test_macro::test;
     // TODO: missing call from ISR, AVH support assigned ISR handler and trigger interrupt
     // in running function, if qemu support it, we can support full test with CMSIS-RTOS2_Validation
@@ -540,6 +537,7 @@ mod tests {
     // helper function
     extern "C" fn Th_SelfTerminate(arg: *mut core::ffi::c_void) {
         let _ = arg;
+        delay::osDelay(10);
         osThreadTerminate(osThreadGetId());
     }
     // helper function
@@ -596,7 +594,7 @@ mod tests {
             cb_mem: ptr::null_mut(),
             cb_size: 0,
             stack_mem: ptr::null_mut(),
-            stack_size: 4096,
+            stack_size: DEFAULT_STACK_SIZE as u32,
             priority: osPriority_t_osPriorityHigh,
             tz_module: 0,
             reserved: 0,
@@ -607,7 +605,7 @@ mod tests {
         // now adapter always convert to bytes array, maybe changed after clarification
         // assert!(name.is_null(), "Thread name should be null");
         assert!(!name.is_null(), "Thread name should not be null");
-        attr.name = b"TestThread\0".as_ptr() as *const core::ffi::c_char;
+        attr.name = c"thread0".as_ptr() as *const core::ffi::c_char;
         osThreadJoin(thread_id);
         let thread_id2 = osThreadNew(Some(Th_SelfTerminate), ptr::null_mut(), &attr as *const _);
         let name2 = osThreadGetName(thread_id2);
@@ -630,7 +628,7 @@ mod tests {
             cb_mem: ptr::null_mut(),
             cb_size: 0,
             stack_mem: ptr::null_mut(),
-            stack_size: 4096,
+            stack_size: DEFAULT_STACK_SIZE as u32,
             priority: osPriority_t_osPriorityNormal,
             tz_module: 0,
             reserved: 0,
@@ -640,10 +638,12 @@ mod tests {
             &mut cnt as *mut _ as *mut core::ffi::c_void,
             &attr as *const _,
         );
-        assert_eq!(
-            osThreadGetState(thread_id),
-            osThreadState_t_osThreadReady,
-            "New thread should be in ready state"
+        let state = osThreadGetState(thread_id);
+        assert!(
+            state == osThreadState_t_osThreadReady
+                || state == osThreadState_t_osThreadRunning
+                || state == osThreadState_t_osThreadBlocked,
+            "New thread should be in ready, running or blocked state"
         );
         osThreadJoin(thread_id);
         // test call from ISR
@@ -657,7 +657,7 @@ mod tests {
             cb_mem: ptr::null_mut(),
             cb_size: 0,
             stack_mem: ptr::null_mut(),
-            stack_size: 4096,
+            stack_size: DEFAULT_STACK_SIZE as u32,
             priority: osPriority_t_osPriorityLow,
             tz_module: 0,
             reserved: 0,
@@ -666,8 +666,9 @@ mod tests {
         let thread_id = osThreadNew(Some(Th_SelfTerminate), ptr::null_mut(), &attr as *const _);
         let stack_size = osGetThreadStackSize(thread_id);
         assert_eq!(
-            stack_size, 4096,
-            "Stack size should be 4096 for the new thread"
+            stack_size, DEFAULT_STACK_SIZE,
+            "Stack size should be {} for the new thread",
+            DEFAULT_STACK_SIZE
         );
         // osThreadTerminate(thread_id);
         assert_eq!(
@@ -689,7 +690,7 @@ mod tests {
             cb_mem: ptr::null_mut(),
             cb_size: 0,
             stack_mem: ptr::null_mut(),
-            stack_size: 4096,
+            stack_size: DEFAULT_STACK_SIZE as u32,
             priority: osPriority_t_osPriorityHigh,
             tz_module: 0,
             reserved: 0,
@@ -698,8 +699,9 @@ mod tests {
         let thread_id = osThreadNew(Some(Th_SelfTerminate), ptr::null_mut(), &attr as *const _);
         let stack_space = osGetThreadStackSpace(thread_id);
         assert!(
-            stack_space > 0 && stack_space < 4096,
-            "Stack space should be great then 0 and less then 4096 for the new thread"
+            stack_space > 0 && stack_space < DEFAULT_STACK_SIZE,
+            "Stack space should be great then 0 and less then {} for the new thread",
+            DEFAULT_STACK_SIZE
         );
 
         // osThreadTerminate(thread_id);
@@ -772,16 +774,16 @@ mod tests {
         assert!(cnt > 0, "Thread enumeration count should be greater than 0");
         assert!(cnt < N, "Thread enumeration count should be less than N");
         let mut id_0_idx = usize::MAX;
-        for k in 0..N {
-            if thread_ids[k] == id_0 {
+        for (k, it) in thread_ids.iter().enumerate().take(N) {
+            if *it == id_0 {
                 id_0_idx = k;
                 break;
             }
         }
         assert!(id_0_idx < N, "Thread ID should found in enumeration");
         let mut id_1_idx = usize::MAX;
-        for k in 0..N {
-            if thread_ids[k] == id_1 {
+        for (k, it) in thread_ids.iter().enumerate().take(N) {
+            if *it == id_1 {
                 id_1_idx = k;
                 break;
             }

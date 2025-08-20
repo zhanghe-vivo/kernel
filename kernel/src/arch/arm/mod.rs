@@ -467,7 +467,7 @@ pub extern "C" fn current_psp() -> usize {
 }
 
 #[naked]
-pub extern "C" fn switch_context_with_hook(
+pub(crate) extern "C" fn switch_context_with_hook(
     saved_sp_mut: *mut u8,
     to_sp: usize,
     hook: *mut ContextSwitchHookHolder,
@@ -518,7 +518,10 @@ pub extern "C" fn restore_context(to_sp: usize) -> ! {
 }
 
 #[inline(always)]
-pub extern "C" fn restore_context_with_hook(to_sp: usize, hook: *mut ContextSwitchHookHolder) -> ! {
+pub(crate) extern "C" fn restore_context_with_hook(
+    to_sp: usize,
+    hook: *mut ContextSwitchHookHolder,
+) -> ! {
     switch_context_with_hook(core::ptr::null_mut(), to_sp, hook);
     unreachable!("Should have switched to another thread");
 }

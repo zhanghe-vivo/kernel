@@ -23,18 +23,21 @@
 
 extern crate alloc;
 pub mod bridge_utils;
-pub mod cmsis;
 pub mod common_objects;
 pub use blueos::types::Arc;
+#[cfg(cmsis_rtos1_adapter)]
+pub mod os1;
+#[cfg(cmsis_rtos2_adapter)]
+pub mod os2;
 
-pub const MAX_NAME_LEN: usize = 16;
+pub const MAX_NAME_LEN: usize = 8;
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use blueos::{
         allocator::KernelAllocator,
-        scheduler,
+        arch, scheduler,
         thread::{Builder, Entry, Thread, ThreadNode},
     };
 
@@ -52,18 +55,20 @@ mod tests {
         semihosting::println!("Adapter unittest started");
         semihosting::println!("Running {} tests", tests.len());
         semihosting::println!(
-            "Before test, thread 0x{:x}, rc: {}, heap status: {:?}",
+            "Before test, thread 0x{:x}, rc: {}, heap status: {:?}, sp: 0x{:x}",
             Thread::id(&t),
             ThreadNode::strong_count(&t),
             ALLOCATOR.memory_info(),
+            arch::current_sp(),
         );
         for test in tests {
             test();
         }
         semihosting::println!(
-            "After test, thread 0x{:x}, heap status: {:?}",
+            "After test, thread 0x{:x}, heap status: {:?}, sp: 0x{:x}",
             Thread::id(&t),
             ALLOCATOR.memory_info(),
+            arch::current_sp(),
         );
         semihosting::println!("Adapter unittest ended");
 

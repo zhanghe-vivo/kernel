@@ -37,9 +37,9 @@ bitflags! {
 
 #[derive(Debug)]
 pub struct EventFlags {
-    flags: Cell<u32>,
     // We let the Spinlock protect the whole semaphore.
     pending: SpinLock<WaitQueue>,
+    flags: Cell<u32>,
 }
 
 impl Default for EventFlags {
@@ -56,8 +56,10 @@ impl EventFlags {
         }
     }
 
-    pub fn init(&self) -> bool {
-        self.pending.irqsave_lock().init()
+    pub fn init(&self, flags: u32) -> bool {
+        let mut w = self.pending.irqsave_lock();
+        self.flags.set(flags);
+        w.init()
     }
 
     pub fn set(&self, flags: u32) -> Result<u32, Error> {
@@ -70,7 +72,6 @@ impl EventFlags {
 
         let mut w = self.pending.irqsave_lock();
         let new_flags = self.flags.get() | flags;
-        self.flags.set(new_flags);
         for mut entry in w.iter() {
             let mut thread = entry.thread.clone();
             let event_mask = thread.event_flags_mask();
@@ -102,6 +103,7 @@ impl EventFlags {
             new_flags
         };
         self.flags.set(new_flags);
+        drop(w);
 
         if need_schedule {
             scheduler::yield_me_now_or_later();
@@ -165,11 +167,22 @@ impl EventFlags {
             return Err(code::ETIMEDOUT);
         }
 
-        if !mode.contains(EventFlagsMode::NO_CLEAR) {
-            let _guard = self.pending.irqsave_lock();
-            self.flags.set(event_flags & !flags);
-        }
+        // The flags are cleared by the thread when it is resumed.
         Ok(event_flags)
+    }
+
+    pub fn reset(&self) {
+        let mut w = self.pending.irqsave_lock();
+        self.flags.set(0);
+        while let Some(entry) = w.pop_front() {
+            let thread = entry.thread.clone();
+            if let Some(timer) = &thread.timer {
+                timer.stop();
+            }
+            scheduler::queue_ready_thread(thread::SUSPENDED, thread);
+        }
+        drop(w);
+        scheduler::yield_me_now_or_later();
     }
 }
 
@@ -187,13 +200,13 @@ mod tests {
     #[test]
     fn test_event_flags_init() {
         let event_flags = EventFlags::const_new();
-        assert!(event_flags.init());
+        assert!(event_flags.init(0));
     }
 
     #[test]
     fn test_event_flags_set_get() {
         let event_flags = EventFlags::const_new();
-        event_flags.init();
+        event_flags.init(0);
 
         // Test set and get single flag
         assert!(event_flags.set(0x01).is_ok());
@@ -211,78 +224,84 @@ mod tests {
     #[test]
     fn test_event_flags_set_zero() {
         let event_flags = EventFlags::const_new();
-        event_flags.init();
+        event_flags.init(0);
 
         // Setting zero flags should return error
-        assert!(event_flags.set(0).is_err());
+        assert_eq!(event_flags.set(0), Err(code::EINVAL));
     }
 
     #[test]
     fn test_event_flags_wait_any() {
         let event_flags = EventFlags::const_new();
-        event_flags.init();
+        event_flags.init(0);
 
         // Set flags first
         assert!(event_flags.set(0x01).is_ok());
 
         // Wait for any flag (should succeed immediately)
-        let result = event_flags.wait(0x01, EventFlagsMode::ANY, 1000);
+        let result = event_flags.wait(0x01, EventFlagsMode::ANY, 100);
         assert!(result.is_ok());
 
         // Wait for flag that doesn't exist (should timeout)
         let result = event_flags.wait(0x02, EventFlagsMode::ANY, 100);
-        assert!(result.is_err());
+        assert_eq!(result, Err(code::ETIMEDOUT));
     }
 
     #[test]
     fn test_event_flags_wait_all() {
         let event_flags = EventFlags::const_new();
-        event_flags.init();
+        event_flags.init(0);
 
         // Set multiple flags
         assert!(event_flags.set(0x01).is_ok());
         assert!(event_flags.set(0x02).is_ok());
 
         // Wait for all flags (should succeed)
-        let result = event_flags.wait(0x03, EventFlagsMode::ALL, 1000);
+        let result = event_flags.wait(0x03, EventFlagsMode::ALL, 100);
         assert!(result.is_ok());
 
         // Wait for flags that don't all exist (should timeout)
         let result = event_flags.wait(0x07, EventFlagsMode::ALL, 100);
-        assert!(result.is_err());
+        assert_eq!(result, Err(code::ETIMEDOUT));
     }
 
     #[test]
     fn test_event_flags_wait_zero() {
         let event_flags = EventFlags::const_new();
-        event_flags.init();
+        event_flags.init(0);
 
         // Waiting for zero flags should return error
-        let result = event_flags.wait(0, EventFlagsMode::ANY, 1000);
-        assert!(result.is_err());
+        let result = event_flags.wait(0, EventFlagsMode::ALL, 100);
+        assert_eq!(result, Err(code::EINVAL));
+
+        let result = event_flags.wait(0, EventFlagsMode::ANY, 0);
+        assert_eq!(result, Err(code::ETIMEDOUT));
+
+        let result = event_flags.wait(0, EventFlagsMode::ANY, 100);
+        assert_eq!(result, Err(code::ETIMEDOUT));
     }
 
     #[test]
     fn test_event_flags_timeout() {
         let event_flags = EventFlags::const_new();
-        event_flags.init();
+        event_flags.init(0);
 
         // Wait with zero timeout should return error immediately
         let result = event_flags.wait(0x01, EventFlagsMode::ANY, 0);
-        assert!(result.is_err());
+        assert_eq!(result, Err(code::ETIMEDOUT));
     }
 
     #[test]
     fn test_event_flags_no_clear() {
         let event_flags = EventFlags::const_new();
-        event_flags.init();
+        event_flags.init(0);
 
         // Set flags
         assert!(event_flags.set(0x01).is_ok());
         assert_eq!(event_flags.get(), 0x01);
 
         // Wait with NO_CLEAR mode
-        let result = event_flags.wait(0x01, EventFlagsMode::ANY | EventFlagsMode::NO_CLEAR, 1000);
+        let result = event_flags.wait(0x01, EventFlagsMode::ANY | EventFlagsMode::NO_CLEAR, 100);
         assert!(result.is_ok());
 
         // Flags should still be set
@@ -292,7 +311,7 @@ mod tests {
     #[test]
     fn test_event_flags_clear_on_wait() {
         let event_flags = EventFlags::const_new();
-        event_flags.init();
+        event_flags.init(0);
 
         // Set flags
         assert!(event_flags.set(0x01).is_ok());
@@ -309,7 +328,7 @@ mod tests {
     #[test]
     fn test_event_flags_edge_cases() {
         let event_flags = EventFlags::const_new();
-        event_flags.init();
+        event_flags.init(0);
 
         // Test with maximum flag values
         assert!(event_flags.set(0xFFFFFFFF).is_ok());
@@ -334,7 +353,7 @@ mod tests {
     #[test]
     fn test_event_flags_wait_combinations() {
         let event_flags = EventFlags::const_new();
-        event_flags.init();
+        event_flags.init(0);
 
         // Set multiple flags
         assert!(event_flags.set(0x01).is_ok());
@@ -343,18 +362,18 @@ mod tests {
         assert_eq!(event_flags.get(), 0x07);
 
         // Wait for ANY with multiple flags set
-        assert!(event_flags.wait(0x01, EventFlagsMode::ANY, 1000).is_ok());
+        assert!(event_flags.wait(0x01, EventFlagsMode::ANY, 100).is_ok());
         assert_eq!(event_flags.get(), 0x06); // 0x02 and 0x04 remain
 
         // Wait for ALL with remaining flags
-        assert!(event_flags.wait(0x06, EventFlagsMode::ALL, 1000).is_ok());
+        assert!(event_flags.wait(0x06, EventFlagsMode::ALL, 100).is_ok());
         assert_eq!(event_flags.get(), 0x00); // All cleared
     }
 
     #[test]
     fn test_event_flags_no_clear_behavior() {
         let event_flags = EventFlags::const_new();
-        event_flags.init();
+        event_flags.init(0);
 
         // Set flags
         assert!(event_flags.set(0x01).is_ok());
@@ -363,13 +382,13 @@ mod tests {
 
         // Wait with NO_CLEAR for ANY
         assert!(event_flags
-            .wait(0x01, EventFlagsMode::ANY | EventFlagsMode::NO_CLEAR, 1000)
+            .wait(0x01, EventFlagsMode::ANY | EventFlagsMode::NO_CLEAR, 100)
             .is_ok());
         assert_eq!(event_flags.get(), 0x03); // Should not be cleared
 
         // Wait with NO_CLEAR for ALL
         assert!(event_flags
-            .wait(0x03, EventFlagsMode::ALL | EventFlagsMode::NO_CLEAR, 1000)
+            .wait(0x03, EventFlagsMode::ALL | EventFlagsMode::NO_CLEAR, 100)
             .is_ok());
         assert_eq!(event_flags.get(), 0x03); // Should not be cleared
 
@@ -381,14 +400,14 @@ mod tests {
     #[test]
     fn test_event_flags_complex_scenario() {
         let event_flags = EventFlags::const_new();
-        event_flags.init();
+        event_flags.init(0);
 
         // Test complex scenario with multiple operations
         assert!(event_flags.set(0x01).is_ok());
         assert_eq!(event_flags.get(), 0x01);
 
         // Wait for any flag
-        assert!(event_flags.wait(0x01, EventFlagsMode::ANY, 1000).is_ok());
+        assert!(event_flags.wait(0x01, EventFlagsMode::ANY, 100).is_ok());
         assert_eq!(event_flags.get(), 0x00); // Should be cleared
 
         // Set multiple flags
@@ -398,7 +417,7 @@ mod tests {
         assert_eq!(event_flags.get(), 0x07);
 
         // Wait for specific combination
-        assert!(event_flags.wait(0x03, EventFlagsMode::ALL, 1000).is_ok());
+        assert!(event_flags.wait(0x03, EventFlagsMode::ALL, 100).is_ok());
         assert_eq!(event_flags.get(), 0x04); // Only 0x04 should remain
 
         // Clear remaining flag
@@ -409,19 +428,19 @@ mod tests {
     #[test]
     fn test_event_flags_mode_combinations() {
         let event_flags = EventFlags::const_new();
-        event_flags.init();
+        event_flags.init(0);
 
         // Test ANY + NO_CLEAR
         assert!(event_flags.set(0x01).is_ok());
         assert!(event_flags
-            .wait(0x01, EventFlagsMode::ANY | EventFlagsMode::NO_CLEAR, 1000)
+            .wait(0x01, EventFlagsMode::ANY | EventFlagsMode::NO_CLEAR, 100)
             .is_ok());
         assert_eq!(event_flags.get(), 0x01); // Should not be cleared
 
         // Test ALL + NO_CLEAR
         assert!(event_flags.set(0x02).is_ok());
         assert!(event_flags
-            .wait(0x03, EventFlagsMode::ALL | EventFlagsMode::NO_CLEAR, 1000)
+            .wait(0x03, EventFlagsMode::ALL | EventFlagsMode::NO_CLEAR, 100)
             .is_ok());
         assert_eq!(event_flags.get(), 0x03); // Should not be cleared
 
@@ -454,7 +473,7 @@ mod tests {
     #[test]
     fn test_event_flags_sequential_operations() {
         let event_flags = EventFlags::const_new();
-        event_flags.init();
+        event_flags.init(0);
 
         // Sequential set operations
         assert!(event_flags.set(0x01).is_ok());
@@ -477,7 +496,7 @@ mod tests {
     #[test]
     fn test_event_flags_clear_nonexistent() {
         let event_flags = EventFlags::const_new();
-        event_flags.init();
+        event_flags.init(0);
 
         // Clear flags that don't exist (should be safe)
         event_flags.clear(0x01);
