@@ -182,7 +182,7 @@ impl<T: Sized> Clone for TinyArc<T> {
     fn clone(&self) -> TinyArc<T> {
         let old = unsafe { self.inner.as_ref() }
             .rc
-            .fetch_add(1, Ordering::Relaxed);
+            .fetch_add(1, Ordering::AcqRel);
         assert!(old >= 1);
         TinyArc { inner: self.inner }
     }
@@ -197,7 +197,6 @@ impl<T: Sized> Drop for TinyArc<T> {
         if old_val != 1 {
             return;
         }
-        fence(Ordering::SeqCst);
         // Static data should never reach here.
         let x = unsafe { Box::from_non_null(self.inner) };
         drop(x);
@@ -669,21 +668,92 @@ mod tests {
         let n = 1 << 16;
         b.iter(|| {
             let mut head = L::default();
-            let mut tail = L::default();
-            L::insert_after(&mut head, &mut tail);
             for i in 0..n {
-                let mut t = Ty::new(Thread::new(i));
-                assert_eq!(Ty::strong_count(&t), 1);
-                CslList::insert_before(&mut tail, t.clone());
-                assert_eq!(Ty::strong_count(&t), 2);
+                CslList::insert_after(&mut head, Ty::new(Thread::new(i)));
             }
-            for (counter, mut i) in
-                TinyArcListIterator::new(&head, Some(NonNull::from_ref(&tail))).enumerate()
-            {
-                assert_eq!(i.id, counter);
-                assert_eq!(Ty::strong_count(&i), 2);
-                assert!(CslList::detach(&mut i));
-                assert_eq!(Ty::strong_count(&i), 1);
+            for mut i in TinyArcListIterator::new(&head, None) {
+                CslList::detach(&mut i);
+            }
+        });
+    }
+
+    #[bench]
+    fn bench_insert_and_detach_1_std(b: &mut Bencher) {
+        use alloc::{collections::linked_list::LinkedList, sync::Arc};
+        let n = 1 << 16;
+        b.iter(|| {
+            let mut mu = spin::Mutex::new(LinkedList::new());
+            for i in 0..n {
+                let Some(mut guard) = mu.try_lock() else {
+                    continue;
+                };
+                guard.push_back(Arc::new(Thread::new(i)));
+            }
+            for i in 0..n {
+                let Some(mut guard) = mu.try_lock() else {
+                    continue;
+                };
+                guard.pop_front();
+            }
+        });
+    }
+
+    // When a Thread belongs to two lists.
+    #[bench]
+    fn bench_insert_and_detach_2(b: &mut Bencher) {
+        type Ty = TinyArc<Thread>;
+        type CslList = TinyArcList<Thread, OffsetOfCsl>;
+        type Csl = AtomicListHead<Thread, OffsetOfCsl>;
+        type TlList = TinyArcList<Thread, OffsetOfTl>;
+        type Tl = AtomicListHead<Thread, OffsetOfTl>;
+        let n = 1 << 16;
+        b.iter(|| {
+            let mut csl_head = Csl::default();
+            let mut tl_head = Tl::default();
+            for i in 0..n {
+                let t = Ty::new(Thread::new(i));
+                CslList::insert_after(&mut csl_head, t.clone());
+                TlList::insert_after(&mut tl_head, t);
+            }
+            for mut i in TinyArcListIterator::new(&csl_head, None) {
+                CslList::detach(&mut i);
+            }
+            for mut i in TinyArcListIterator::new(&tl_head, None) {
+                TlList::detach(&mut i);
+            }
+        });
+    }
+
+    // When a Thread belongs to two lists.
+    #[bench]
+    fn bench_insert_and_detach_2_std(b: &mut Bencher) {
+        use alloc::{collections::linked_list::LinkedList, sync::Arc};
+        let n = 1 << 16;
+        b.iter(|| {
+            let mut l0 = spin::Mutex::new(LinkedList::new());
+            let mut l1 = spin::Mutex::new(LinkedList::new());
+            for i in 0..n {
+                let t = Arc::new(Thread::new(i));
+                let Some(mut g0) = l0.try_lock() else {
+                    continue;
+                };
+                g0.push_back(t.clone());
+                let Some(mut g1) = l1.try_lock() else {
+                    continue;
+                };
+                g1.push_back(t);
+            }
+            for i in 0..n {
+                let Some(mut g0) = l0.try_lock() else {
+                    continue;
+                };
+                g0.pop_front();
+            }
+            for i in 0..n {
+                let Some(mut g1) = l1.try_lock() else {
+                    continue;
+                };
+                g1.pop_front();
             }
         });
     }
