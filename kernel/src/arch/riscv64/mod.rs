@@ -273,7 +273,7 @@ pub(crate) extern "C" fn restore_context_with_hook(
     hook: *mut ContextSwitchHookHolder,
 ) -> ! {
     switch_context_with_hook(core::ptr::null_mut(), to_sp, hook);
-    loop {}
+    unreachable!("Should have switched to another thread");
 }
 
 // This context is used when we are performing context switching in

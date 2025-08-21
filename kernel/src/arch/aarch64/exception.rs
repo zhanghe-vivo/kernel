@@ -30,7 +30,7 @@ macro_rules! exception_handler {
     ($name:ident, $cont:path) => {
         #[no_mangle]
         #[naked]
-        unsafe extern "C" fn $name() {
+        unsafe extern "C" fn $name() -> ! {
             naked_asm!(
                 concat!(
                     "
@@ -97,19 +97,17 @@ unsupported_handler!(el0_not_supported, "el0 is not supported.");
 unsupported_handler!(lowerel_not_supported, "lowerel is not supported.");
 
 #[naked]
-unsafe extern "C" fn trap_sync(context: &mut Context) -> usize {
+unsafe extern "C" fn trap_sync() -> ! {
     naked_asm!(
-        concat!(
-            "
-            mov x19, lr
-            mov x20, x0
-            bl {handle_svc}
-            mov sp, x0
-            mov x1, x20
-            mov lr, x19
-            b {might_switch}
-            ",
-        ),
+        "
+        mov x19, lr
+        mov x20, x0
+        bl {handle_svc}
+        mov sp, x0
+        mov x1, x20
+        mov lr, x19
+        b {might_switch}
+        ",
         handle_svc = sym handle_svc,
         might_switch = sym might_switch,
     );

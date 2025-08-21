@@ -91,7 +91,7 @@ impl Slab {
         // Since ptr was allocated by self, its alignment must be at least
         // the alignment of FreeBlock. Casting a less aligned pointer to
         // &mut FreeBlock would be undefined behavior.
-        #[cfg_attr(feature = "cargo-clippy", allow(clippy::cast_ptr_alignment))]
+        #[cfg_attr(feature = "clippy", allow(clippy::cast_ptr_alignment))]
         let ptr = ptr.as_ptr() as *mut usize;
         #[cfg(debug_slab)]
         {
@@ -376,9 +376,7 @@ impl<
     ) -> Option<NonNull<u8>> {
         let allocator = self.ptr_to_allocator(ptr.as_ptr() as usize);
         match allocator {
-            HeapAllocator::SystemAllocator => {
-                return self.system_allocator.reallocate(ptr, new_layout);
-            }
+            HeapAllocator::SystemAllocator => self.system_allocator.reallocate(ptr, new_layout),
             block_allocator => {
                 let block_size = block_allocator.block_size();
                 if new_layout.size() <= block_size {
@@ -386,9 +384,9 @@ impl<
                 }
                 let new_ptr = self.allocate(new_layout)?;
                 core::ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_ptr(), block_size);
-                let old_size = self.deallocate(ptr, &new_layout);
+                let old_size = self.deallocate(ptr, new_layout);
                 self.allocated += new_layout.size() - old_size;
-                return Some(new_ptr);
+                Some(new_ptr)
             }
         }
     }
@@ -400,11 +398,9 @@ impl<
     ) -> Option<NonNull<u8>> {
         let allocator = self.ptr_to_allocator(ptr.as_ptr() as usize);
         match allocator {
-            HeapAllocator::SystemAllocator => {
-                return self
-                    .system_allocator
-                    .reallocate_unknown_align(ptr, new_size);
-            }
+            HeapAllocator::SystemAllocator => self
+                .system_allocator
+                .reallocate_unknown_align(ptr, new_size),
             block_allocator => {
                 let block_size = block_allocator.block_size();
                 if new_size <= block_size {
@@ -416,7 +412,7 @@ impl<
                 core::ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_ptr(), block_size);
                 let old_size = self.deallocate(ptr, &new_layout);
                 self.allocated += new_size - old_size;
-                return Some(new_ptr);
+                Some(new_ptr)
             }
         }
     }

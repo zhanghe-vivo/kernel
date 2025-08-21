@@ -48,7 +48,7 @@ macro_rules! arch_bootstrap {
     };
 }
 
-extern "C" fn prepare_schedule(cont: extern "C" fn() -> !) -> usize {
+extern "C" fn prepare_schedule() -> usize {
     #[cfg(test)]
     {
         if crate::arch::current_cpu_id() == 0 {
@@ -81,30 +81,40 @@ macro_rules! enable_interrupt {
     };
 }
 
-#[naked]
 pub(crate) extern "C" fn start_schedule(cont: extern "C" fn() -> !) {
+    #[cfg(test)]
+    {
+        if crate::arch::current_cpu_id() == 0 {
+            crate::support::show_current_heap_usage();
+        }
+    }
+    let sp = prepare_schedule();
     unsafe {
-        core::arch::naked_asm!(
-            "mov r4, r0",
-            "bl {prepare}",
-            "msr psp, r0",
-            "mov r0, r4",
-            "ldr r12, ={stack_end}", // Reset MSP.
-            "msr msp, r12",
+        core::arch::asm!(
+            "
+            msr psp, {sp}
+            ldr {tmp}, ={stack_end}
+            msr msp, {tmp}
+            ",
             // Reset handler is special, see
             // https://stackoverflow.com/questions/59008284/if-the-main-function-is-called-inside-the-reset-handler-how-other-interrupts-ar
-            "ldr r12, ={thumb}",
-            "msr xpsr, r12",
-            "ldr r12, ={ctrl}",
-            "msr control, r12",
-            "ldr lr, =0",
-            "isb",
-            "cpsie i",
-            "bx r0",
+            "
+            ldr {tmp}, ={thumb}
+            msr xpsr, {tmp}
+            ldr {tmp}, ={ctrl}
+            msr control, {tmp}
+            ldr lr, =0
+            isb
+            cpsie i
+            bx {cont}
+            ",
+            options(nostack, noreturn),
             thumb = const THUMB_MODE,
             ctrl = const CONTROL,
-            prepare = sym prepare_schedule,
             stack_end = sym __sys_stack_end,
+            sp = in(reg) sp,
+            tmp = in(reg) 0,
+            cont = in(reg) cont,
         )
     }
 }
@@ -225,7 +235,7 @@ extern "C" fn syscall_handler(ctx: &mut Context) {
 }
 
 #[naked]
-unsafe extern "C" fn syscall_stub(ctx: *mut Context) {
+unsafe extern "C" fn syscall_stub(ctx: *mut Context) -> ! {
     core::arch::naked_asm!(
         concat!(
             "
@@ -466,20 +476,24 @@ pub extern "C" fn current_psp() -> usize {
     x
 }
 
-#[naked]
+#[inline(never)]
 pub(crate) extern "C" fn switch_context_with_hook(
     saved_sp_mut: *mut u8,
     to_sp: usize,
     hook: *mut ContextSwitchHookHolder,
 ) {
     unsafe {
-        core::arch::naked_asm!(
-            "movs r12, r7",
+        core::arch::asm!(
+            "movs {tmp}, r7",
             "ldr r7, ={nr}",
             "svc 0",
-            "mov r7, r12",
-            "bx lr",
+            "mov r7, {tmp}",
+            inlateout("r0") saved_sp_mut as usize => _,
+            inlateout("r1") to_sp => _,
+            in("r2") hook as usize,
+            tmp = out(reg) _,
             nr = const NR_SWITCH,
+            options(nostack),
         )
     }
 }
@@ -492,23 +506,6 @@ pub extern "C" fn pend_switch_context() {
 #[inline(always)]
 pub extern "C" fn switch_context(saved_sp_mut: *mut u8, to_sp: usize) {
     switch_context_with_hook(saved_sp_mut, to_sp, core::ptr::null_mut());
-}
-
-#[naked]
-pub extern "C" fn save_context_in_isr(sp: &mut usize) {
-    unsafe {
-        core::arch::naked_asm!(
-            concat!(
-                store_callee_saved_regs!(),
-                "
-                mrs r1, psp
-                str r1, [r0]
-                bx lr
-                ",
-            ),
-            options(),
-        )
-    }
 }
 
 #[inline(always)]
@@ -524,25 +521,6 @@ pub(crate) extern "C" fn restore_context_with_hook(
 ) -> ! {
     switch_context_with_hook(core::ptr::null_mut(), to_sp, hook);
     unreachable!("Should have switched to another thread");
-}
-
-#[naked]
-pub extern "C" fn restore_context_in_isr(to_sp: usize) {
-    unsafe {
-        core::arch::naked_asm!(
-            concat!(
-                "
-                mov r12, r0
-                ",
-                load_callee_saved_regs!(),
-                "
-                isb
-                bx lr
-                ",
-            ),
-            options(),
-        )
-    }
 }
 
 #[inline]

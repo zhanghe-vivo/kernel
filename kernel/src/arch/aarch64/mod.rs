@@ -334,7 +334,7 @@ pub(crate) extern "C" fn switch_context_with_hook(
 }
 
 #[naked]
-pub(crate) extern "C" fn init(_: *mut u8, stack_end: *mut u8, cont: extern "C" fn()) {
+pub(crate) extern "C" fn init() -> ! {
     unsafe {
         core::arch::naked_asm!(
             "
