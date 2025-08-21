@@ -51,8 +51,15 @@ impl Semaphore {
         self.counter.get()
     }
 
+    #[inline]
     pub fn try_acquire(&self) -> bool {
-        let w = self.pending.irqsave_lock();
+        self.acquire_timeout(0)
+    }
+
+    pub fn try_acquire_nowait(&self) -> bool {
+        let Some(w) = self.pending.try_irqsave_lock() else {
+            return false;
+        };
         let old = self.counter.get();
         if old == 0 {
             return false;
@@ -77,39 +84,52 @@ impl Semaphore {
                     old,
                 );
             }
-            if old == 0 {
-                let _ =
-                    scheduler::suspend_me_with_timeout(w, WAITING_FOREVER, InsertMode::InsertToEnd);
-                w = self.pending.irqsave_lock();
-                continue;
-            } else {
+            if old != 0 {
                 self.counter.set(old - 1);
-                break;
+                return true;
             }
+            scheduler::suspend_me_with_timeout(w, WAITING_FOREVER, InsertMode::InsertToEnd);
+            w = self.pending.irqsave_lock();
         }
-        true
     }
 
-    pub fn acquire_timeout(&self, t: usize) -> bool {
+    pub fn acquire_timeout(&self, mut ticks: usize) -> bool {
         assert!(!irq::is_in_irq());
-        let w = self.pending.irqsave_lock();
-        let old = self.counter.get();
-        #[cfg(debugging_scheduler)]
-        {
-            use crate::arch;
-            crate::trace!(
-                "[TH:0x{:x}] reads counter to acquire: {}",
-                scheduler::current_thread_id(),
-                old,
-            );
+        let mut w = self.pending.irqsave_lock();
+        let mut last_sys_ticks = crate::time::get_sys_ticks();
+        loop {
+            let old = self.counter.get();
+            #[cfg(debugging_scheduler)]
+            {
+                use crate::arch;
+                crate::trace!(
+                    "[TH:0x{:x}] reads counter to acquire: {}",
+                    scheduler::current_thread_id(),
+                    old,
+                );
+            }
+            if old != 0 {
+                self.counter.set(old - 1);
+                return true;
+            }
+            // Don't bother to suspend further.
+            if ticks == 0 {
+                return false;
+            }
+            let timeout = scheduler::suspend_me_with_timeout(w, ticks, InsertMode::InsertToEnd);
+            if timeout {
+                return false;
+            }
+            let now = crate::time::get_sys_ticks();
+            let elapsed_ticks = now - last_sys_ticks;
+            if elapsed_ticks >= ticks {
+                ticks = 0;
+            } else {
+                ticks -= elapsed_ticks;
+            }
+            last_sys_ticks = now;
+            w = self.pending.irqsave_lock();
         }
-        if old == 0 {
-            let _ = scheduler::suspend_me_with_timeout(w, t, InsertMode::InsertToEnd);
-            return self.try_acquire();
-        } else {
-            self.counter.set(old - 1);
-        }
-        true
     }
 
     pub fn acquire(&self, timeout: Option<usize>) -> bool {
