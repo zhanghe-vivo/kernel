@@ -48,31 +48,6 @@
 
 extern crate alloc;
 
-pub mod ffi {
-    #[coverage(off)]
-    #[no_mangle]
-    pub extern "C" fn disable_local_irq_save() -> usize {
-        crate::arch::disable_local_irq_save()
-    }
-
-    #[coverage(off)]
-    #[no_mangle]
-    pub extern "C" fn enable_local_irq_restore(val: usize) {
-        crate::arch::enable_local_irq_restore(val)
-    }
-
-    #[coverage(off)]
-    #[no_mangle]
-    #[linkage = "weak"]
-    pub unsafe extern "C" fn __aeabi_memclr8(s: *mut u8, n: usize) -> *mut u8 {
-        let mut i = 0;
-        for i in 0..n {
-            s.add(i).write(0u8);
-        }
-        s
-    }
-}
-
 pub mod allocator;
 pub mod arch;
 pub mod asynk;
@@ -85,6 +60,7 @@ pub mod coverage;
 pub(crate) mod devices;
 pub(crate) mod drivers;
 pub mod error;
+pub mod ffi;
 pub mod irq;
 pub(crate) mod logger;
 pub mod net;
