@@ -82,20 +82,22 @@ mod tests {
 
     #[test]
     fn join_thread() {
-        let mut n = 64;
+        let n = 64;
         let mut vt = Vec::new();
+        let counter = Arc::new(AtomicUsize::new(n));
         for i in 0..n {
             let b = Arc::new(ConstBarrier::<{ 2 }>::new());
             vt.push(b.clone());
+            let counter = counter.clone();
             crate::thread::spawn(move || {
+                counter.fetch_sub(1, Ordering::Relaxed);
                 b.wait();
             });
         }
         assert_eq!(vt.len(), n);
         for b in vt {
             b.wait();
-            n -= 1;
         }
-        assert_eq!(n, 0);
+        assert_eq!(counter.load(Ordering::SeqCst), 0);
     }
 }

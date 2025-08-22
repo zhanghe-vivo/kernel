@@ -276,7 +276,8 @@ fn restore_priority() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use blueos_test_macro::test;
+    use crate::sync::ConstBarrier;
+    use blueos_test_macro::{only_test, test};
 
     #[test]
     fn test_mutex_new() {
@@ -466,14 +467,23 @@ mod tests {
 
     #[test]
     fn test_mutex_multi_thread_priority1() {
+        let sync0 = Arc::new(ConstBarrier::<{ 2 }>::new());
+        let consumer_sync0 = sync0.clone();
+        let sync1 = Arc::new(ConstBarrier::<{ 2 }>::new());
+        let consumer_sync1 = sync1.clone();
         let mutex = Mutex::create();
-
         let mutex_consumer = mutex.clone();
         let current = crate::scheduler::current_thread();
         let origin_priority = current.priority();
         let consumer = thread::spawn(move || {
+            // We have to wait the outer thread to change this thread's priority.
+            consumer_sync0.wait();
             let current = crate::scheduler::current_thread();
             assert_eq!(origin_priority - 1, current.priority());
+            // We have to wait the outer thread to get the mutex first.
+            consumer_sync1.wait();
+            // Now the outer thread has got the mutex, the following pend_for
+            // will increase the priority of the outer thread temporarily.
             let result = mutex_consumer.pend_for(10);
             assert!(result);
         });
@@ -482,9 +492,11 @@ mod tests {
         let mut w = thread.lock();
         w.set_priority(origin_priority - 1);
         drop(w);
+        sync0.wait();
         mutex.pend_for(10);
         assert_eq!(mutex.nesting_count(), 1);
-        scheduler::suspend_me_for(1);
+        sync1.wait();
+        scheduler::yield_me();
         assert_eq!(origin_priority - 1, current.priority());
         mutex.post();
         assert_eq!(origin_priority, current.priority());
